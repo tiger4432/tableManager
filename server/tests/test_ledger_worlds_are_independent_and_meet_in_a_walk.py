@@ -54,6 +54,18 @@ def _sample(name):
         return json.load(fh)
 
 
+#: the sample sources' time columns - declared datetime, as the owner's are (11-07 «시각칸 바꿔보지 뭐»): a virtual walk
+#: orders a time column (`sql_translate._time`)
+SOURCE_TIMES = {"wafer_process": "eventtime", "lot_slot_wafer": "event_time"}
+
+
+def _timed(document):
+    """The table catalogue `document` with `SOURCE_TIMES` declared datetime."""
+    for table, column in SOURCE_TIMES.items():
+        document[table]["column_types"][column] = "datetime"
+    return document
+
+
 def _only(*sources, one=False):
     """The sample declaring `sources` alone - `one`: `processed_with@1` holds one recipe."""
     document = _sample("ledger_config.json.sample")

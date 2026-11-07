@@ -1,7 +1,8 @@
 """`python -m ledger walk-shadow` (lead 11-06): the same walk read two ways - the stored ledger and the declaration read
 from its own tables (engine=virtual, `sql_translate.compile_world`) - source by source, on the same seeds, read only.
 
-Each atom one side has and the other has not goes in one bin:
+The two are matched by row (owner 11-07: the virtual read is SQL alone - its atom names its row «relation:row id», the
+stored one by `read.order_by`, read back to its row here). Each atom one side has and the other has not goes in one bin:
   spelling     the same source row, said differently (a key, a time, a qualifier) - the cells that differ are named
   stale        a row the stored ledger has no atom of yet (translation behind the table), or a second stored copy of an
                atom the virtual read makes once - the same fact of the same row kept from two declaration generations
@@ -52,17 +53,34 @@ def _read(lookup, seeds, follow):
     return Counter(keys), round(time.perf_counter() - started, 3), drawn
 
 
-def _rows_present(fetch, relation, order_by, refs) -> set:
-    """Of `refs` (row refs `<relation>:{order_by}`), those whose row is in the table now."""
+def _rows(fetch, relation, order_by, refs, by_id=False) -> dict:
+    """{a stored row ref «relation:{order_by}»: its row's «relation:row id»} of the rows in the table now - `refs` the
+    stored refs, or (`by_id`) the row ids' refs."""
     wanted = sorted({ref.split(":", 1)[1] for ref in refs if ref.startswith(relation + ":")})
     if not wanted:
-        return set()
+        return {}
     built = "jsonb_build_object(%s)" % ", ".join(
         "'%s', w.\"%s\"" % (column.replace("'", "''"), column.replace('"', '""')) for column in order_by)
-    found = fetch(f"SELECT {built}::text FROM {relation} w WHERE {built} = ANY(CAST(%(rows)s AS jsonb[]))",
-                  {"rows": wanted})
-    return {relation + ":" + json.dumps(json.loads(text), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            for (text,) in found}
+    where = "w.row_id = ANY(%(rows)s)" if by_id else f"{built} = ANY(CAST(%(rows)s AS jsonb[]))"
+    found = fetch(f"SELECT {built}::text, w.row_id FROM {relation} w WHERE {where}", {"rows": wanted})
+    return {relation + ":" + json.dumps(json.loads(text), ensure_ascii=False, sort_keys=True, separators=(",", ":")):
+            f"{relation}:{row_id}" for text, row_id in found}
+
+
+def _by_row(fetch, plan, keys, drawn):
+    """`keys` / `drawn` of the stored read with each atom's ref read back to its row - a claim of one row in the table
+    now; any other keeps its ref. Also the row refs read back."""
+    from .roleframe import claim_source_row_refs
+
+    rows = {ref: claim_source_row_refs(ref) for ref in {key[-1] for key in keys}}
+    found = _rows(fetch, plan.relation, plan.driver.order_by, [r for refs in rows.values() for r in refs])
+    to = {ref: found[refs[0]] for ref, refs in rows.items() if len(refs) == 1 and refs[0] in found}
+
+    def moved(key):
+        return key[:-1] + (to.get(key[-1], key[-1]),)
+
+    return (Counter({moved(key): count for key, count in keys.items()}),
+            {edge: moved(key) for edge, key in drawn.items()}, set(to.values()))
 
 
 def _tie_split(stored, drawn) -> int:
@@ -77,10 +95,9 @@ def _tie_split(stored, drawn) -> int:
 def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=None) -> dict:
     """One source, one seed set: the two reads, their seconds and the bins. `stored` / `virtual`: the two lookups,
     `window` (stored, virtual) the same two asked with --since / --until."""
-    from .roleframe import claim_source_row_refs
-
     have, stored_s, have_drawn = _read(stored, seeds, follow)
     made, virtual_s, made_drawn = _read(virtual, seeds, follow)
+    have, have_drawn, present = _by_row(fetch, plan, have, have_drawn)
     only = {"stored": have - made, "virtual": made - have}
     by_ref = {side: defaultdict(list) for side in only}
     for side, atoms in only.items():
@@ -93,13 +110,12 @@ def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=N
     kept_twice = {key: count for key, count in only["stored"].items() if key in made}
     gone_refs = [ref for ref in by_ref["stored"] if ref not in both
                  and any(key not in kept_twice for key in by_ref["stored"][ref])]
-    rows = {ref: claim_source_row_refs(ref) for ref in gone_refs}
-    present = _rows_present(fetch, plan.relation, plan.driver.order_by, [r for refs in rows.values() for r in refs])
-    real = [ref for ref in gone_refs if any(row in present for row in rows[ref])]
+    real = [ref for ref in gone_refs if ref in present]
     virtual_refs = [ref for ref in by_ref["virtual"] if ref not in both]
-    said = {ref for (ref,) in fetch(f"SELECT DISTINCT source_raw_ref FROM {ledger} WHERE source_who = %(s)s "
-                                    f"AND source_raw_ref = ANY(%(refs)s)", {"s": plan.source_id, "refs": virtual_refs})
-            } if virtual_refs else set()
+    stored_refs = _rows(fetch, plan.relation, plan.driver.order_by, virtual_refs, by_id=True)
+    said = {stored_refs[ref] for (ref,) in fetch(
+        f"SELECT DISTINCT source_raw_ref FROM {ledger} WHERE source_who = %(s)s AND source_raw_ref = ANY(%(refs)s)",
+        {"s": plan.source_id, "refs": sorted(stored_refs)})} if stored_refs else set()
     bins = {"spelling": sum(len(by_ref["stored"][ref]) for ref in both) + sum(
                 len(by_ref["virtual"][ref]) for ref in virtual_refs if ref in said),
             "stale": sum(len(by_ref["virtual"][ref]) for ref in virtual_refs if ref not in said) + sum(
@@ -117,7 +133,8 @@ def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=N
                     "stale": [dict(zip(CELLS, by_ref["virtual"][r][0])) for r in virtual_refs if r not in said][:show]}}
     if window is not None:
         whole = set(only["stored"]) | set(only["virtual"])
-        have_w, _, _ = _read(window[0], seeds, follow)
+        have_w, _, drawn_w = _read(window[0], seeds, follow)
+        have_w = _by_row(fetch, plan, have_w, drawn_w)[0]
         made_w, _, _ = _read(window[1], seeds, follow)
         bins["time"] = len((set(have_w - made_w) | set(made_w - have_w)) - whole)
     return out

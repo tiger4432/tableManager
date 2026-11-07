@@ -324,3 +324,38 @@ def _zone(tzname: str):
             f"ledger_config declares timezone {tzname!r}, which this interpreter cannot "
             f"resolve ({exc}). The translator refuses rather than fall back to UTC - a "
             f"silent fallback would shift every occurred_at by the offset.") from exc
+
+
+#: The directives whose text sorts as its time - fixed width, digits only - and the unit each holds (`text_order`).
+_ORDERED = {"%Y": ("[0-9]{4}", "year"), "%y": ("[0-9]{2}", "year"), "%m": ("[0-9]{2}", "month"),
+            "%d": ("[0-9]{2}", "day"), "%j": ("[0-9]{3}", "day of year"), "%H": ("[0-9]{2}", "hour"),
+            "%M": ("[0-9]{2}", "minute"), "%S": ("[0-9]{2}", "second"), "%f": ("[0-9]{6}", "microsecond")}
+#: the units a sorting text reads, from the year down - one of these, cut anywhere
+_LADDERS = (("year", "month", "day", "hour", "minute", "second", "microsecond"),
+            ("year", "day of year", "hour", "minute", "second", "microsecond"))
+
+
+def text_order(fmt: str):
+    """(the regular expression a text written in `fmt` matches, None) when such texts sort as their times - fixed width,
+    from the year down, no unit skipped - else (None, why). The one judgment the walk's SQL orders and bounds a text
+    time by (lead 11-07, owner «yymmdd_hhmmss»): `ORDER BY` the text, a bound spelled in `fmt`. %y sorts inside one
+    century only."""
+    import re
+
+    parts, units, at = [], [], 0
+    while at < len(fmt):
+        if fmt[at] != "%":
+            parts.append(re.escape(fmt[at]))
+            at += 1
+            continue
+        directive, at = fmt[at:at + 2], at + 2
+        if directive == "%%":
+            parts.append(r"\x25")           # not «%» - the SQL it goes in is %-interpolated
+        elif directive in _ORDERED:
+            parts.append(_ORDERED[directive][0])
+            units.append(_ORDERED[directive][1])
+        else:
+            return None, f"its text does not sort as its time: {directive} is not a fixed-width number"
+    if not units or not any(tuple(units) == ladder[:len(units)] for ladder in _LADDERS):
+        return None, f"its text does not sort as its time: {fmt!r} does not read from the year down, unit by unit"
+    return "^" + "".join(parts) + "$", None

@@ -9,8 +9,9 @@ through `server/tests/test_ledger_sql_compile_contract.py`, the shim, as the oth
 
 Each case: the hold world's official table with the case's rows (written through the write door), the case's source
 declared on it. The translator's atoms (`sql_translate.event_results` - what the stored ledger holds) and the compile's
-(`sql_translate.compile_world`, every leg's rows read whole and made atoms by `Leg.atom`) must each be the case's atoms, and the two must name the same
-rows (`source_raw_ref`) for the same facts.
+(`sql_translate.compile_world`, every leg's rows read whole by the walk's SQL, `VirtualEvidenceLookup._select`) must
+each be the case's atoms; the compile's name their rows by row id. A case with `walk` also walks its subjects -
+newest first, from `since`, the current facts of `one`, the unreadable counted.
 """
 import copy
 import json
@@ -56,7 +57,7 @@ def fixture_world(request, pg_engine, monkeypatch, tmp_path):
         conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.key_number_sql())
     tables = copy.deepcopy(hw.TABLES)
     tables[hw.OFFICIAL]["column_types"].update(VECTORS["table"])
-    tables[hw.OFFICIAL]["composite_key_source"] = ["dt_x"]          # one row each: the cases vary dt_x
+    tables[hw.OFFICIAL]["composite_key_source"] = case.get("key", ["dt_x"])   # one row each: the cases vary dt_x
     monkeypatch.setattr(hw, "TABLES", tables)
     source = copy.deepcopy(hw.LEDGER_SOURCE)
     source["read"], source["bind"] = case["read"], {"mappings": case["mappings"]}
@@ -100,20 +101,32 @@ def _python(world):
 def _compiled(world):
     from ledger_api import ledger_subgraph
 
+    case = world["case"]
     with world["engine"].connect() as connection:
         legs, left_out = sql_translate.compile_world(
             world["setup"].snapshot, lambda sql, params=None: trace._fetch(connection, sql, params), "default")
-        reader = ledger_subgraph.VirtualEvidenceLookup(connection, legs)
-        atoms = [atom for leg in legs for atom in reader._atoms(leg, reader._execute(leg.read(), None))]
+        reader = ledger_subgraph.VirtualEvidenceLookup(connection, legs, current_only=False)
+        atoms = [atom for leg in reader.legs for row in reader._select(leg, "true", {}, current=False)
+                 for atom in [reader._atom(leg, row)] if atom]
+        rows = {row_id for (row_id,) in trace._fetch(connection, f"SELECT row_id FROM {hw.OFFICIAL}")}
+        walk = []
+        for asked in case.get("walk", ()):
+            walker = ledger_subgraph.VirtualEvidenceLookup(connection, legs, since=case.get("since"),
+                                                           one=case.get("one", ()))
+            subjects = {json.dumps([a.subject_type, a.subject_keys], sort_keys=True) for a in atoms}
+            read, cut = walker.claims_for_entities([tuple(json.loads(s)) for s in sorted(subjects)], "outgoing",
+                                                   asked["cap"])
+            walk.append(([_instant(a.occurred_at.isoformat()) for a in read], cut, walker.said["unreadable_times"]))
         connection.rollback()
     said = sorted((_fact(a.subject_type, a.subject_keys, a.predicate, a.object_payload, a.occurred_at.isoformat(),
                          a.occurred_at_basis), a.source_raw_ref) for a in atoms)
-    return said, left_out
+    assert all(ref.split(":", 1)[1] in rows for _fact_, ref in said), "the compile names each row by its row id"
+    return said, left_out, walk
 
 
 def test_each_engine_says_the_atoms_the_case_says(world):
     case = world["case"]
-    sql, left_out = _compiled(world)
+    sql, left_out, walk = _compiled(world)
     if "left_out" in case:
         assert [item["why"] for item in left_out if item["source"] == hw.SOURCE] == [case["left_out"]]
         return
@@ -122,9 +135,10 @@ def test_each_engine_says_the_atoms_the_case_says(world):
     expected = sorted(_fact(*atom) for atom in case["expected"])
     assert [fact for fact, _ref in python] == expected, "the translator, against the hand-written atoms"
     assert [fact for fact, _ref in sql] == expected, "the compile, against the same"
-    assert sql == python, "and the same row named for each fact (source_raw_ref, byte for byte)"
     if "rows_named" in case:
-        assert [list(roleframe.claim_source_row_refs(ref)) for _fact_, ref in sql] == case["rows_named"]
+        assert [list(roleframe.claim_source_row_refs(ref)) for _fact_, ref in python] == case["rows_named"]
+    assert walk == [([_instant(at) for at in asked["times"]], asked["cut"], case["unreadable"])
+                    for asked in case.get("walk", ())], "newest first at each cap, the current, from since"
 
 
 def test_every_case_is_consumed():

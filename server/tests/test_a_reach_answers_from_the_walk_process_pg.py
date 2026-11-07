@@ -13,7 +13,6 @@ process reads the server's engine and data root, never the test's (`tests/suppor
 import copy
 import json
 import os
-import shutil
 import sys
 from datetime import datetime, timezone
 
@@ -34,7 +33,7 @@ from runtime import process_pool                                    # noqa: E402
 from support.isolated_pg import RUN_TOKEN, declared_as_test_database, resolve_url  # noqa: E402
 from conftest import retire_dynamic_model                            # noqa: E402
 from test_a_reach_is_the_rows_the_walk_read_pg import PROCESSES, SEATS, WAFERS  # noqa: E402
-from test_ledger_worlds_are_independent_and_meet_in_a_walk import CHANGED, KEPT, SAMPLE, _only, _sample  # noqa: E402
+from test_ledger_worlds_are_independent_and_meet_in_a_walk import CHANGED, KEPT, _only, _sample, _timed  # noqa: E402
 
 pytestmark = pytest.mark.pg
 TABLES = ("wafer_process", "lot_slot_wafer")
@@ -67,7 +66,8 @@ def fixture_box(tmp_path, monkeypatch):
 
     config = tmp_path / "config"
     (config / "ontology").mkdir(parents=True)
-    shutil.copy(os.path.join(SAMPLE, "table_config.json.sample"), config / "table_config.json")
+    sample = _timed(_sample("table_config.json.sample"))
+    (config / "table_config.json").write_text(json.dumps(sample), encoding="utf-8")
     (config / "ontology" / "ledger_config.json").write_text(json.dumps(_only(CHANGED, KEPT)), encoding="utf-8")
     monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
     # the walk process's: the server's data root and engine are these (inherited at its start)
@@ -76,7 +76,6 @@ def fixture_box(tmp_path, monkeypatch):
     monkeypatch.setenv("ASSY_TEST_DATABASE_URL", throwaway)
     monkeypatch.setattr(process_pool, "_settings", lambda: {"walk_processes": 1, "walk_seconds_max": 300})
 
-    sample = _sample("table_config.json.sample")
     declared = {table: sample[table] for table in (*TABLES, schema.ATOM_ROWS_VIEW)}
     saved = dict(crud.TABLE_CONFIG)
     ask('DROP DATABASE IF EXISTS "%s" WITH (FORCE)' % name)

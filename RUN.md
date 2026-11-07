@@ -34,50 +34,21 @@
 >
 > ---
 >
-> ## [11-07] **reach 의 씨앗은 원자 없이 행의 키만 읽는다** — git pull · 런처 재기동(API · 걷기 프로세스)
+> ## [11-07] **가상 걷기(engine=virtual)는 SQL 한 문장씩 — 파이썬은 포장만, 글자 시각은 선언 형식이 시각 순서일 때 읽음** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```
-> 무엇     engine=virtual 의 reach 만 — 씨앗이 같고 시간만 줄어듦(박스 씨앗 단계 lot 1000 2.8 -> 1.1 s, wafer 1000 0.8 -> 0.3 s)
+> 무엇     engine=virtual 을 줄 때만 — 다리마다 SQL 한 문장(행 · 키 · 수식어 · 시각, 새것부터, 상한에서 자름)
+>          저장 원장과 «같은 행 · 같은 사실»까지 같음 — 원자 id · 원천 행 글자는 다름(가상은 «표:row_id»)
+>          시각 칸이 글자면: 형식을 선언했고 그 형식이 연도부터 고정 폭이면 읽음(yymmdd_hhmmss 됨)
+>          형식에 «정확히» 안 맞는 글자 행은 답의 engine.unreadable_times 로 셈 — 전보다 답이 작아질 수 있음
+>          상한 걸린 읽기는 이제 진짜 최신 상한개(전 파이썬은 다리마다 상한 x 10 행에서 끊겨 새것을 놓침)
 > 돌릴 것  server 폴더에서  python -m ledger walk-shadow
-> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
-> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
-> ```
->
-> ---
->
-> ## [11-07] **가상 걷기가 읽은 행을 새것부터 줄 세우고 원자는 상한이 찰 때까지만 짓는다** — git pull · 런처 재기동(API · 걷기 프로세스)
->
-> ```
-> 무엇     engine=virtual 을 줄 때만 — 답은 그대로, 시간만 줄어듦(박스 reach wafer 1000 6.3 -> 4.0 s, lot 1000 10.5 -> 8.6 s)
->          since · until 이 좁아 구간 밖 행이 많으면 그 행도 지어 세므로 빨라지지 않음(박스 하루 창 +0.15~0.45 s)
-> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
-> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
-> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
-> ```
->
-> ---
->
-> ## [11-07] **가상 걷기가 남기지 않을 원자의 참조 · id 를 안 짓는다 — 같은 값은 한 번만 철자** — git pull · 런처 재기동(API · 걷기 프로세스)
->
-> ```
-> 무엇     engine=virtual 을 줄 때만 — 답은 그대로, 시간만 줄어듦(박스 reach wafer 1000 11.8 -> 6.2 s, lot 1000 17.7 -> 10.4 s)
-> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
-> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
-> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
-> ```
->
-> ---
->
-> ## [11-07] **가상 걷기(engine=virtual)는 표의 칸을 «그대로» 읽고 원자는 파이썬에서 짓는다 — SQL 다리 은퇴** — git pull · 런처 재기동(API · 걷기 프로세스)
->
-> ```
-> 무엇     engine=virtual 을 줄 때만 — 가상 걷기 · reach · key-values · gaps 가 선언 표의 칸만 읽음(행 거르기 + 키 칸), 원자는 번역기의 함수로
->          다리 하나가 한 번에 읽는 행은 그 읽기 상한 x 10 까지 — 넘으면 capped (박스 실측 최대 3.07 x)
->          답의 engine 칸에 unreadable_times = 읽은 행 중 시각 칸이 있는데 안 읽히는 행 수
-> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
-> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
->          답의 engine.unreadable_times > 0 = 그 행은 저장 원장에도 원자가 없음 — 원천 표의 시각 글자를 볼 일
->          답의 capped(reach 는 count.capped) = 상한이나 다리 하나의 읽기 가드에 걸려 잘림
+> 답의 뜻  bins.real 0 이어야 함 — 아니면 그 줄 그대로 총괄에게. tie_split > 0 = 같은 시각 동률에서 보이는 원자만 다름
+>          답의 engine.left_out 의 why 가 다음 행동:
+>            «... is text - declare its time format in the read»  그 칸이 키 — 소스 read 에 형식을
+>            «... is text - declare <칸> datetime»                 표 선언에서 그 칸을 datetime 으로
+>            «its text does not sort as its time ...»              그 형식은 순서가 안 맞음 — 칸을 datetime 으로
+>            «... declared one and more than one source says it»   one 술어를 두 소스가 말함 — 그 소스는 빠짐
 > 끄기     engine 을 빼면(기본 stored) 오늘과 같음
 > ```
 >

@@ -395,36 +395,39 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 인자      engine=stored(기본, 오늘 그대로) | virtual — subgraph · key-values · gaps 셋이 같은 낱말. 묻는 자리는
           trace_router._engine_reading 하나. 걷기 답의 cards 는 답 본문과 선언만 읽어 따로 할 것 없음
 읽기      sql_translate.compile_world — 선언 소스를 «다리»(sql_translate.Leg = 칸 맵)로: 문장 하나 · 그 문장의
-          엔티티가 든 references 하나마다 끝마다의 키 칸 · 수식어 칸 · 시각 칸. SQL 은 칸을 «그대로» 읽기만
-          (Leg.read — 행 거르기 + 프런티어 키 칸 = ANY, 키가 두 칸 이상이면 그 묶음 IN 프런티어 묶음)
-          원자는 파이썬에서 번역기의 함수로(Leg.atom — 키 철자 map_overlay · 시각 _aware_time + PostgreSQL 이
-          읽는 시각 · 원천 행 _claim_source_raw_ref). 원자를 SQL 로 짓는 자리 0(총괄 11-07 «SQL 다리 은퇴»)
-          값 철자 · 시각 · 정본 JSON 은 조회기 하나에서 값마다 한 번(사전 열쇠는 타입까지 — 9 · 9.0 · '9').
-          원천 행 참조 · id 는 처음 읽힐 때 지음(Leg.late · _RowAtom) — 규칙과 순서의 앞 다섯 칸은 안 읽고,
-          동률일 때와 남긴 원자만 읽음(박스 wafer 1000: 72,400 행 중 남는 10,000)
-          원자는 쪽마다(총괄 11-07): 읽은 행의 시각을 번역기 함수로 먼저 읽어(Leg.moment) 새것부터 줄 세우고
-          상한만큼씩 지어 규칙에 — 남긴 것이 상한을 넘고 다음 행이 상한째보다 이르면 멈춤. 구간이 있으면
-          구간 밖 행은 마저 지어 규칙이 세고 버림(interval_excluded 그대로). 커서(before)가 있으면 다 지음
-          reach 의 씨앗(nodes_of_rows)은 원자 없이 행의 키만 — Leg.ends_of(atom 과 같은 철자) + 시각이 읽히는 행
-          ledger_subgraph.VirtualEvidenceLookup — InMemoryEvidenceLookup 의 규칙(순서 · 자르기 · 구간 · 지금 것)을
-          그 원자에 그대로. 다리 하나가 읽는 행은 READ_GUARD_FACTOR x 그 읽기의 상한까지 — 넘으면 cut(capped)
+          엔티티가 든 references 하나마다 끝마다의 키 칸 · 수식어 칸 · 시각 칸(clock)
+          다리마다 SQL 한 문장(소유자 11-07 ㄱ «원장은 테이블을 감싸서 하나의 통일된 폼으로 보여주는 껍데기»):
+          row_id · 끝의 키(조인의 철자 notation_norm.key_expression_text) · 수식어 칸 · 시각 FROM 표 WHERE 말하는
+          행(kept · 키 비지 않음 · 시각 있음) · 프런티어(노드마다 skip · 수식어 경계) · 구간 ORDER BY 시각 DESC,
+          row_id DESC LIMIT 상한+1 — VirtualEvidenceLookup._select 하나를 걷기 · reach 씨앗 · 시간 쪽 · 먼 끝 수가 지남
+          파이썬은 포장만: 다리들을 (시각, 소스, 문장, row_id) 내림으로 합쳐 상한에서 자름. 원자 id =
+          uuid5(«소스|문장|row_id»), 원천 행 «표:row_id» — 저장 원장과 바이트 같음은 버림(같은 행 · 같은 사실까지)
+          one 술어의 지금 것 = 그 소스에서 그 술어를 말하는 문장들(같은 주어 타입)의 주어마다 max(시각)
+시각      timestamptz 그대로 · zone 없는 시각은 read.occurred_at.timezone 필수 · 글자 칸은 선언 형식이 시각
+          순서로 정렬될 때만(utils.time_format.text_order: 고정 폭 숫자, 연도부터 단위를 안 건너뜀 — %y%m%d_%H%M%S
+          됨, %d/%m/%Y 안 됨). 그 형식에 «정확히» 맞는 글자만 시각이 있음, 구간 경계는 그 형식으로 철자
+          형식에 안 맞는 글자 행은 unreadable_times 로 셈 — 파이썬 읽기(5742f494d)보다 답이 작아질 수 있다
           씨앗 없는 질문(key-values · gaps · 타입의 씨앗)은 다리 끝마다 키 칸 GROUP BY 한 번(행은 안 읽음)
 시점      since · until · include_superseded 는 저장 걷기와 같은 절 — 원자의 occurred_at 은 선언된 시각 칸이므로
           원천 행에 그대로 걸림. 이력표로 지어내지 않음(소유자 11-06 «시점 걷기 그대로»)
 답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}],
           unreadable_times: n} — n = 읽은 행 중 시각 칸이 있는데 안 읽히는 행(저장 원장에도 원자가 없는 행)
           left_out = 컴파일이 안 읽는 소스(계획 안 됨 · 코드 맵퍼 · 묶음 단위 · attributes · value 목적어 ·
-          format 시각 · 숫자 칸 when · 필수 수식어) — 그 소스의 사실은 이 답에 없음
+          숫자 칸 when · 필수 수식어 · 형식 없는 글자 시각 · 정렬 안 되는 형식 · 소스 둘이 말하는 one 술어)
+          — 그 소스의 사실은 이 답에 없음. 글자 시각의 거절 문장이 다음 행동: 키 칸이면(admin.retype.key_uses)
+          «declare its time format in the read», 아니면 «declare <칸> datetime»
           scans = 다리 끝의 글자 키 칸이 표 선언 "indexes" 의 첫 칸이 아님 — 그 표를 훑음
 거절      resumable · resume + virtual -> 422 virtual_walk_not_continued (기록이 없어 «첫 쪽 시점»이 없다)
-비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, 칸 spelling · stale ·
-          stored-only · real · tie · time. real 이 있으면 종료 1. 계약 contracts/ledger_sql_compile
+비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, «행»으로 맞춰(저장 원자의 order_by
+          참조를 그 행의 row_id 로 읽어) 칸 spelling · stale · stored-only · real · tie_split · time. real 이 있으면
+          종료 1. 계약 contracts/ledger_sql_compile(번역기 · 컴파일이 같은 사실, 글자 시각의 순서 · 경계 · 거절)
 ```
 🔴 읽기 순서 `ledger_subgraph.READ_ORDER`(총괄 11-07): 시각 내림차순, 같은 시각은 원자 자신의 내용(주어 · 목적어 ·
 술어 · 원천 행)으로, id 는 마지막. 역할이 둘(총괄 11-07 ㄴ): SQL 순서는 «무엇을 읽나»(LIMIT · fan-out 의 앞 N ·
 프런티어 · 허브 구성원)만 정하고 글자는 전부 C 정렬이라 설치의 정렬 규칙과 무관, «무엇을 보이나»(엣지의 원자 ·
-records · 이름의 값)는 파이썬 키(`_read_order_key`)만 정한다 — 두 엔진이 같다(walk-shadow 의 tie_split = 0).
-시간 쪽(time page)은 (시각, id) 키셋 그대로 — 원자 집합은 같다.
+records · 이름의 값)는 파이썬 키(`_read_order_key`)만 정한다. 가상은 원천 행이 «표:row_id» · id 가 uuid5 라 같은
+시각의 동률에서 보이는 원자가 저장과 다를 수 있다 — walk-shadow 의 tie_split 이 센다.
+시간 쪽(time page)은 (시각, id) 키셋 그대로 — 원자 집합은 같고, 같은 시각 안의 줄은 id(가상은 uuid5) 순.
 
 ## 🔵 닿은 행 — `/subgraph` 의 `reach` 본문 (총괄 11-06, Tables 페이지 S-hop · S-count)
 

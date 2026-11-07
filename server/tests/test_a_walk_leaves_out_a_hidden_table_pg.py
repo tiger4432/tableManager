@@ -13,7 +13,7 @@ import pytest
 
 from ledger import trace_router
 from test_a_virtual_walk_draws_what_the_ledger_draws_pg import (  # noqa: F401
-    _drawn, _walk, fixture_board)
+    _drawn, _times_declared, _walk, fixture_board)
 from test_ledger_worlds_are_independent_and_meet_in_a_walk import fixture_config, fixture_world  # noqa: F401
 
 pytestmark = pytest.mark.pg
@@ -22,8 +22,10 @@ ENGINES = ("stored", "virtual")
 
 
 def _relations(payload):
-    """The tables an answer's edges stand on - each basis names its event's relation (`event_frame`)."""
-    return {json.loads(json.loads(edge["basis"])["event"])["relation"] for edge in payload["edges"] if edge.get("basis")}
+    """The tables an answer's edges stand on - a stored basis names its event's relation (`event_frame`), a virtual one
+    is «relation:row id»."""
+    return {json.loads(json.loads(edge["basis"])["event"])["relation"] if edge["basis"].startswith("{")
+            else edge["basis"].split(":", 1)[0] for edge in payload["edges"] if edge.get("basis")}
 
 
 @pytest.mark.parametrize("engine", ENGINES)

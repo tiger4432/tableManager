@@ -21,9 +21,19 @@ import paths                                                        # noqa: E402
 from ledger import backfill, schema, trace_router                  # noqa: E402
 from ledger_api import ledger_subgraph                              # noqa: E402
 from test_ledger_worlds_are_independent_and_meet_in_a_walk import (  # noqa: E402,F401
-    CHANGED, KEPT, _only, _write, fixture_config, fixture_world)
+    CHANGED, KEPT, _only, _timed, _write, fixture_config, fixture_world)
 
 pytestmark = pytest.mark.pg
+
+
+@pytest.fixture(autouse=True)
+def _times_declared(monkeypatch):
+    """The world's tables built with the sources' time columns declared datetime (`_timed`)."""
+    import test_ledger_worlds_are_independent_and_meet_in_a_walk as worlds
+
+    sample = worlds._sample
+    monkeypatch.setattr(worlds, "_sample", lambda name: _timed(sample(name)) if name.startswith("table_config")
+                        else sample(name))
 ENGINES = ("stored", "virtual")
 PROCESSES = [{"proc_id": "P1", "wafer_id": "W1", "step": "S1", "recipe_id": "RCP-1", "eventtime": "2026-09-30 10:00:00"},
              {"proc_id": "P2", "wafer_id": "W1", "step": "S2", "recipe_id": "RCP-2", "eventtime": "2026-09-30 11:00:00"},

@@ -5,9 +5,6 @@ whose mapper is code is not this path's (`NotCovered`) - it stays on the Python 
 from __future__ import annotations
 
 import json
-import uuid
-
-import map_overlay
 
 from . import roleframe
 from .event_frame import SourcePreparationContext, SourcePreparationError, named_columns, prepared_molecules
@@ -216,151 +213,87 @@ class Leg:
     spec}; `required` the specs that must not be blank for the row to say anything (a reference's sentence's own keys
     too); `kept` the rows it says - SQL over the table's own cells; `columns` {arm: the text columns its keys are read
     from as they are} - an index on one of them serves the arm, else the answer says «scan»; `filled` the `required`
-    columns and the time not blank, as SQL - what a count of the rows a node is named by asks without reading them."""
+    columns not blank, as SQL; `clock` how the SQL reads its time - {"text": None} a time column, {"text": regex} a text
+    column whose declared format sorts as its time (`time_format.text_order`), "naive" a time without a zone."""
 
-    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, filled):
+    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, filled,
+                 clock):
         self.source, self.relation, self.sentence, self.predicate = plan.source_id, plan.relation, sentence, predicate
         self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
         self.basis, self.version, self.columns, self.plan, self.world = basis, version, columns, plan, None
-        self.filled = filled
+        self.filled, self.clock = filled, clock
         self.time = plan.driver.occurred_at
-        self.order_by = sorted(plan.driver.order_by)
 
-    def cells(self, arm=None):
-        """The columns a read selects - `row_id` first; `arm`: that end's key columns alone."""
-        specs = [spec for each in ((arm,) if arm else self.ends) for spec in self.ends[each][1].values()]
-        if arm is None:
-            specs += [*self.qualifiers.values(), *self.required]
-        named = [spec["column"] for spec in specs if "column" in spec]
-        if arm is not None:
-            return list(dict.fromkeys(named))
-        return list(dict.fromkeys(["row_id", *named, self.time.column, *self.order_by]))
-
-    def read(self, where=(), cells=None, tail=""):
-        """`SELECT <cells> FROM <relation> w WHERE <the rows it says> AND <where>` - a column read, nothing computed."""
-        return "SELECT %s FROM %s w WHERE %s%s" % (
-            ", ".join(cells or (f"w.{_quoted(column)}" for column in self.cells())), self.relation,
-            " AND ".join([*self.kept, *where]) or "true", tail)
-
-    def matching(self, arm, frontier, params, name):
-        """[SQL condition] - the rows whose `arm` keys are one of `frontier` [{key: value}] as the columns hold them:
-        each key column = ANY(its values), and with two or more, the columns together IN the frontier's tuples (one
-        column at a time is their cross product - 77,154 rows read for 4,240 on the box's die, 11-07); None when none
-        can. The atom holds it to the frontier exactly."""
+    def key(self, spec) -> str:
+        """The SQL that spells a column key - the join's own (`notation_norm.key_expression_text`)."""
         import notation_norm
 
-        specs = sorted(self.ends[arm][1].items())
-        held = set()
-        for keys in frontier:
-            if all("column" in spec or keys.get(key) == spec["constant"] for key, spec in specs):
-                said = tuple(_held(keys.get(key), spec) for key, spec in specs if "column" in spec)
-                if None not in said:
-                    held.add(said)
-        if not held:
-            return None
-        held, cells = sorted(held, key=str), []
-        for key, spec in specs:
-            if "column" in spec:
-                cell = f"w.{_quoted(spec['column'])}"
-                if spec.get("zone"):                # the declaration reads this column as a time: its function stays
-                    cell = notation_norm.key_expression_text(cell, zone=spec["zone"])
-                cells.append(cell)
-        conditions = []
-        for index, cell in enumerate(cells):
-            params[f"{name}_{index}"] = sorted({each[index] for each in held}, key=str)
-            conditions.append(f"{cell} = ANY(%({name}_{index})s)")
-        if len(cells) > 1:
-            for index in range(len(cells)):
-                params[f"{name}_t{index}"] = [each[index] for each in held]
-            conditions.append("(%s) IN (SELECT * FROM unnest(%s))" % (
-                ", ".join(cells), ", ".join(f"%({name}_t{index})s" for index in range(len(cells)))))
-        return conditions
+        column = spec["column"]
+        return notation_norm.key_expression_text(
+            f"w.{_quoted(column)}", rules=notation_norm.rules_for_column(self.relation, column),
+            text_column=spec["kind"] == _TEXT, zone=spec.get("zone"), number_column=spec["kind"] in _NUMBERS)
 
-    def atom(self, row, memo=None):
-        """(the row's atom as the translator makes it - {EvidenceAtom field: value} but the two `late` makes, or None
-        when the row says nothing: a blank key or a blank time; whether its time was there and did not read).
-        `memo`: one read's spellings - a value the rows repeat is spelled once, keyed by its type too (9, 9.0 and '9'
-        are three keys; 11-07: 724 wafers and 6,126 times in 72,400 rows)."""
-        memo = {} if memo is None else memo
-        ends = self.ends_of(row, memo)
-        if ends is None:
-            return None, False
-        moment, unreadable = self.moment(row, memo)
-        if moment is None:
-            return None, unreadable
-        qualifiers = {}
-        for name, spec in self.qualifiers.items():
-            value = spec["constant"] if "constant" in spec else roleframe._plain(row[spec["column"]])
-            if value is not None:
-                qualifiers[name] = value
-        (subject_type, subject_keys), (object_type, object_keys) = ends["outgoing"], ends["incoming"]
-        payload = {"type": object_type, "keys": object_keys, **({"qualifiers": qualifiers} if qualifiers else {})}
-        return {"subject_type": subject_type, "subject_keys": subject_keys, "predicate": self.predicate,
-                "object_kind": "entity_ref", "object_payload": payload, "occurred_at": moment, "source_who": self.source,
-                "source_translator_ver": self.version, "supersedes": None, "source_event_id": None,
-                "source_event_state": None, "occurred_at_basis": self.basis, "world": self.world}, False
+    def columns_of(self, arm) -> list:
+        """[(key, spec)] of an end's column keys, in key order - the order a read selects and compares them in."""
+        return [(key, spec) for key, spec in sorted(self.ends[arm][1].items()) if "column" in spec]
 
-    def ends_of(self, row, memo):
-        """{arm: (bare type, {key: spelled})} of the row, or None when a required cell or a key is blank - each value
-        spelled once a `memo`. `atom` and a reach's seeds (`VirtualEvidenceLookup.nodes_of_rows`) read it."""
-        def spell(spec):
-            if "constant" in spec:
-                return spec["constant"]
-            value = row[spec["column"]]
-            said = ("key", str(spec["declared"]), type(value).__name__, repr(value))
-            if said not in memo:
-                memo[said] = _spelled(spec, row)
-            return memo[said]
+    def named(self, arm, entities) -> list:
+        """[(entity, its column keys' texts in `columns_of` order)] of the `entities` [(type, keys, ...)] this end can
+        name: its type, its key names, text for each (a key the SQL spells is text) and a constant key's own spelling."""
+        bare, specs = self.ends[arm]
+        out = []
+        for item in entities:
+            keys = item[1] or {}
+            if item[0] != bare or set(keys) != set(specs):
+                continue
+            texts = []
+            for key, spec in sorted(specs.items()):
+                if not isinstance(keys[key], str) or keys[key] != spec.get("constant", keys[key]):
+                    break
+                if "column" in spec:
+                    texts.append(keys[key])
+            else:
+                out.append((item, tuple(texts)))
+        return out
 
-        if any(spell(spec) is None for spec in self.required):
-            return None
-        ends = {arm: (bare, {key: spell(spec) for key, spec in keys.items()}) for arm, (bare, keys) in self.ends.items()}
-        if any(value is None for _bare, keys in ends.values() for value in keys.values()):
-            return None
-        return ends
+    def said(self, timed=True) -> list:
+        """[SQL] - the rows that say something: kept, every key not blank as the SQL spells it, and the time there and
+        readable (`timed`; else left out - what a count of the unreadable asks)."""
+        keys = {spec["column"]: spec for spec in self.required if "column" in spec}
+        out = [*self.kept, *self.filled, *(f"{self.key(spec)} <> ''" for _column, spec in sorted(keys.items()))]
+        return out + [self.present()] if timed else out
 
-    def moment(self, row, memo):
-        """(the row's instant as the translator reads it, or None: blank or not read; whether it was there and did not
-        read) - each time text once a `memo`."""
+    def at(self) -> str:
+        """The time as the SQL orders and bounds it - a text in the C order (`text_order`: its order is its time's)."""
+        return f"w.{_quoted(self.time.column)}" + (' COLLATE "C"' if self.clock["text"] else "")
+
+    def present(self) -> str:
+        """The time is there and readable: a time not NULL, a text matching its format exactly."""
+        if self.clock["text"]:
+            return f"w.{_quoted(self.time.column)} ~ {_literal(self.clock['text'])}"
+        return f"w.{_quoted(self.time.column)} IS NOT NULL"
+
+    def edge(self, instant):
+        """`instant` as the time column compares - itself, its wall clock on the zone, or its text in the format."""
+        from utils import time_format
+
+        if self.clock["text"]:
+            return instant.astimezone(time_format._zone(self.time.timezone)).strftime(self.time.format)
+        if self.clock.get("naive"):
+            from zoneinfo import ZoneInfo
+
+            return instant.astimezone(ZoneInfo(str(self.time.timezone))).replace(tzinfo=None)
+        return instant
+
+    def instant(self, value):
+        """The time a row says, read by the translator's function (`_aware_time`), or None when it does not read."""
         from .event_frame import SourcePreparationError, _aware_time
 
-        moment = row[self.time.column]
-        if roleframe.is_blank_source_value(moment):
-            return None, False
-        said = ("time", self.time.timezone, self.time.format, type(moment).__name__, repr(moment))
-        if said not in memo:
-            try:
-                memo[said] = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
-                                         self.time.timezone, f"read.{self.time.column}", self.time.format)
-            except SourcePreparationError:
-                memo[said] = None
-        return memo[said], memo[said] is None
-
-    def late(self, row):
-        """(source_raw_ref, id) of the row's atom - the read order reads them only at a tie and the answer for the
-        atoms it keeps, so a reader makes them when first read (`ledger_subgraph._RowAtom`)."""
-        from .event_frame import STORED_RAW_REF_JOINS
-        from .event_frame import _canonical as canonical
-
-        row_ref = f"{self.relation}:" + canonical({column: row[column] for column in self.order_by},
-                                                   path="source_row_ref")
-        event = canonical({"relation": self.relation, "rows": [row_ref], "verified_joins": STORED_RAW_REF_JOINS},
-                          path="event_frame.source_raw_ref")
-        # an atom id is a uuid, as the ledger's - a time page's cursor carries it (`ledger_subgraph.time_cursor`)
-        said = "%s|%s|%s" % (self.source, self.sentence, row["row_id"])
-        return roleframe._claim_source_raw_ref(event, [row_ref]), str(uuid.uuid5(uuid.NAMESPACE_OID, said))
-
-
-def _spelled(spec, row):
-    """A key part as the translator spells it (`roleframe` - the column's declared type, then the ledger's one fold);
-    None when blank."""
-    if "constant" in spec:
-        return spec["constant"]
-    value = roleframe._plain(row[spec["column"]])
-    if roleframe.is_blank_key_part(value):
-        return None
-    spelled = map_overlay.canonical_key_value(map_overlay.canonical_key_value(value, spec["declared"]), None)
-    return None if roleframe.is_blank_key_part(spelled) else spelled
+        try:
+            return _aware_time(value if hasattr(value, "tzinfo") else roleframe._plain(value), self.time.timezone,
+                               f"read.{self.time.column}", self.time.format)
+        except SourcePreparationError:
+            return None
 
 
 def _held(value, spec):
@@ -471,22 +404,33 @@ def _entity(relation, kinds, binding, why):
                                                 for key, child in (binding.get("keys") or {}).items()}
 
 
-def _time(plan, kinds) -> None:
-    """The molecule's instant is read by the translator's `_aware_time` - a column this compile reads only."""
+def _time(plan, kinds) -> dict:
+    """A leg's `clock` - how its SQL orders and bounds rows by the molecule's instant (lead 11-07, owner «시각칸 바꿔보지
+    뭐»): a time column as it is; a text column only when its declared format sorts as its time (`text_order`). A text
+    time with no format says the next step: a key column keeps its text (`retype` refuses a key) - its format; any
+    other - the column declared datetime."""
+    from utils.time_format import text_order
+
     occurred = plan.driver.occurred_at
-    if occurred.format:
-        raise NotCompiled("a time read by a declared format")
     _cell, kind = _column(kinds, occurred.column, "read.occurred_at")
-    if kind not in (_TIME, "timestamp without time zone", _TEXT):
+    if kind == _TIME:
+        return {"text": None}
+    if kind == "timestamp without time zone":
+        if not occurred.timezone:
+            raise NotCompiled("read.occurred_at: a time without a zone - declare read.occurred_at.timezone")
+        return {"text": None, "naive": True}
+    if kind != _TEXT:
         raise NotCompiled(f"read.occurred_at: a time read from a {kind} column")
+    if not occurred.format:
+        from admin.retype import key_uses
 
-
-def _raw_ref(plan, kinds) -> None:
-    """An atom's `source_raw_ref` names its row by `read.order_by` - columns this compile reads only."""
-    for column in sorted(plan.driver.order_by):
-        _cell, kind = _column(kinds, column, "read.order_by")
-        if kind not in (_TEXT, _INTEGER, _FLOAT):
-            raise NotCompiled(f"read.order_by: a row named by a {kind} column")
+        raise NotCompiled(f"read.occurred_at: {occurred.column} is text - " + (
+            "declare its time format in the read" if key_uses(plan.relation, occurred.column)
+            else f"declare {occurred.column} datetime"))
+    regex, why = text_order(occurred.format)
+    if regex is None:
+        raise NotCompiled(f"read.occurred_at: {why}")
+    return {"text": regex}
 
 
 def _qualifier(kinds, binding, why) -> dict:
@@ -499,7 +443,7 @@ def _qualifier(kinds, binding, why) -> dict:
     _cell, kind = _column(kinds, binding.get("column"), why)
     if kind not in (_TEXT, _INTEGER):
         raise NotCompiled(f"{why}: a qualifier read from a {kind} column")
-    return {"column": binding["column"]}
+    return {"column": binding["column"], "kind": kind}
 
 
 def compile_source(snapshot, plan, kinds, world) -> list:
@@ -516,8 +460,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
     if driver.group_by or driver.mapper.unit_kind not in ("row", "event"):
         raise NotCompiled("a molecule of more than one row (read.group_by or map.unit)")
     context = roleframe.MapperContext(snapshot, plan)
-    _time(plan, kinds)
-    _raw_ref(plan, kinds)
+    clock = _time(plan, kinds)
     kept = [_present(kinds, column) for column in dict.fromkeys(
         (*driver.cursor_columns, *driver.identity,
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
@@ -548,11 +491,10 @@ def compile_source(snapshot, plan, kinds, world) -> list:
         first = {role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
-        filled = [_present(kinds, column) for column in dict.fromkeys(
-            [spec["column"] for spec in said if "column" in spec] + [driver.occurred_at.column])]
+        filled = [_present(kinds, column) for column in dict.fromkeys(spec["column"] for spec in said if "column" in spec)]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
-                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, filled))
+                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, filled, clock))
         for role, binding in named.items():
             bare, keys = ends[role]
             for reference in getattr(snapshot.entities.get(binding["entity_type"]), "references", ()):
@@ -573,7 +515,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                 legs.append(Leg(plan, reference.derivation, bare_name(reference.predicate_id),
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
-                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, filled))
+                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, filled, clock))
     return legs
 
 

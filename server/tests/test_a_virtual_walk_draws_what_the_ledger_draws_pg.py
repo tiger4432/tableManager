@@ -9,6 +9,7 @@ ledger translated from those tables it draws the walk the stored ledger draws.
 """
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -21,9 +22,19 @@ from ledger import backfill, explorer, schema, trace, trace_router, walk_shadow 
 from ledger.setup import load_setup                                 # noqa: E402
 from ledger_api import ledger_subgraph                              # noqa: E402
 from test_ledger_worlds_are_independent_and_meet_in_a_walk import (  # noqa: E402,F401
-    CHANGED, KEPT, _only, _write, fixture_config, fixture_world)
+    CHANGED, KEPT, _only, _timed, _write, fixture_config, fixture_world)
 
 pytestmark = pytest.mark.pg
+
+
+@pytest.fixture(autouse=True)
+def _times_declared(monkeypatch):
+    """The world's tables built with the sources' time columns declared datetime (`_timed`)."""
+    import test_ledger_worlds_are_independent_and_meet_in_a_walk as worlds
+
+    sample = worlds._sample
+    monkeypatch.setattr(worlds, "_sample", lambda name: _timed(sample(name)) if name.startswith("table_config")
+                        else sample(name))
 ROWS = [{"proc_id": "P1", "wafer_id": "W1", "step": "S1", "recipe_id": "RCP-1", "eventtime": "2026-09-30 10:00:00"},
         {"proc_id": "P2", "wafer_id": "W1", "step": "S2", "recipe_id": "RCP-2", "eventtime": "2026-09-30 11:00:00"},
         {"proc_id": "P3", "wafer_id": "W2", "step": "S1", "recipe_id": "RCP-1", "eventtime": "2026-09-30 10:00:00"},
@@ -59,10 +70,12 @@ def _walk(board, engine, **asked):
 
 
 def _drawn(payload):
+    """What both engines draw alike - an edge's `basis` and claim ids are the stored ledger's own (owner 11-07: the read
+    is SQL alone, no byte parity with the stored record)."""
     nodes = sorted(json.dumps({k: n.get(k) for k in ("id", "type", "keys", "attributes")}, sort_keys=True)
                    for n in payload["nodes"])
     edges = sorted(json.dumps({k: e.get(k) for k in ("id", "source", "target", "predicate", "qualifiers",
-                                                      "occurred_at", "basis", "not_current", "worlds")},
+                                                      "occurred_at", "not_current", "worlds")},
                               sort_keys=True, default=str) for e in payload["edges"])
     return nodes, edges, payload.get("truncated")
 
@@ -72,6 +85,7 @@ def _drawn(payload):
 def test_the_virtual_walk_draws_the_walk_the_ledger_draws(board, asked):
     stored, virtual = _walk(board, "stored", **asked), _walk(board, "virtual", **asked)
     assert _drawn(virtual) == _drawn(stored)
+    assert all(re.fullmatch(r"(wafer_process|lot_slot_wafer):[0-9a-f-]{36}", e["basis"]) for e in virtual["edges"])
     assert len(stored["edges"]) >= (1 if asked.get("since") else 3), "canary: the walk crosses both sources"
     assert "engine" not in stored, "the stored answer is today's - no new cell"
     assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"],
