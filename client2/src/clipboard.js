@@ -6,7 +6,7 @@ import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped, cellToSend } fro
 import { newPivotRows } from './grid_pivot.js';
 import { fetchData, sayNotWritten } from './api.js';
 import { elements } from './dom.js';
-import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
+import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn, copiedText } from './grid.js';
 import { pastedImage, uploadImage } from './grid_image_column.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
 import { getLocalTimeString } from './utils.js';
@@ -231,6 +231,13 @@ export function commitDragSelection(api) {
   }
 }
 
+/** A cell's text in a copy - the row's own three as stored, a data cell's value; a time as the grid shows it (copiedText). */
+function copiedCell(data, col) {
+  const cell = ['row_id', 'created_at', 'updated_at'].includes(col) ? data[col] : data.data?.[col];
+  const value = cell && typeof cell === 'object' ? cell.value : cell;
+  return copiedText(col, value === undefined ? '' : value);
+}
+
 export function getRangeSelectedTSV() {
   if (!state.gridApi) return '';
 
@@ -326,18 +333,7 @@ export function getRangeSelectedTSV() {
         return;
       }
 
-      let val = '';
-      if (col === 'row_id') val = rowNode.data.row_id;
-      else if (col === 'created_at') val = rowNode.data.created_at;
-      else if (col === 'updated_at') val = rowNode.data.updated_at;
-      else {
-        const cell = rowNode.data.data?.[col];
-        if (cell && typeof cell === 'object') {
-          val = cell.value !== undefined ? cell.value : '';
-        } else {
-          val = cell !== undefined ? cell : '';
-        }
-      }
+      let val = copiedCell(rowNode.data, col);
 
       if (val === null || val === undefined) {
         val = '';
@@ -713,17 +709,7 @@ export function setupClipboardHandlers() {
 
     selectedNodes.forEach(node => {
       if (!node.data) return;
-      const rowCells = columns.map(col => {
-        if (col === 'row_id') return node.data.row_id;
-        if (col === 'created_at') return node.data.created_at;
-        if (col === 'updated_at') return node.data.updated_at;
-
-        const cell = node.data.data?.[col];
-        if (cell && typeof cell === 'object') {
-          return cell.value !== undefined ? cell.value : '';
-        }
-        return cell !== undefined ? cell : '';
-      });
+      const rowCells = columns.map(col => copiedCell(node.data, col));
       lines.push(rowCells);
     });
 

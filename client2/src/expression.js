@@ -13,7 +13,7 @@
 
 import { isBlank } from './absent.js';
 import { numberOf } from './walk/reach_table.js';
-import { parseServerInstant } from './server_time.js';
+import { parseServerInstant, ZONE_DEFAULT, useZone, productZone, clockOf } from './server_time.js';
 
 /** A refusal in words - what the expression box says. */
 export class ExpressionError extends Error {}
@@ -27,12 +27,9 @@ export class Reads {
 const spelling = (v) => JSON.stringify(v);
 
 // ── dates ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-/** The server's ingestion_settings "expression_time_zone" default (server/expression.py ZONE_DEFAULT). */
-export const ZONE_DEFAULT = 'Asia/Seoul';
-/** The server's setting as the page read it (GET /api/ledger/declaration's expression_time_zone) - one per page, as the
- *  server has one; a run's page.zone before it, ZONE_DEFAULT when neither (lead fe2ba4b1f ①). */
-let pageZone = null;
-export function useZone(name) { pageZone = typeof name === 'string' && name.trim() ? name.trim() : null; }
+// The zone (ZONE_DEFAULT · useZone) and its wall clock (clockOf) are the time writer's (server_time.js): the dates cut
+// here and the times people read are one zone (owner 11-07). A run's page.zone comes before it.
+export { ZONE_DEFAULT, useZone };
 /** The one shape a time is read in - the server's TIME (expression.py) is the same pattern. */
 const TIME = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/;
 const PARTS = Object.freeze({
@@ -42,19 +39,6 @@ const PARTS = Object.freeze({
 });
 const OTHER_PARTS = new Set(['minute', 'mi', 'second', 'ss', 'millisecond', 'ms', 'day of year', 'dayofyear', 'dy',
   'year and week', 'yearandweek', 'yywk', 'isoyear', 'isoweek']);
-const clocks = new Map();
-/** `zone`'s wall clock of an instant (ms): {y, M, d, h, mi, s}. */
-const clockOf = (ms, zone) => {
-  if (!clocks.has(zone)) {
-    clocks.set(zone, new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit',
-      day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', era: 'short' }));
-  }
-  const p = Object.fromEntries(clocks.get(zone).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  const year = Number(p.year);
-  // an era'd year: 1 BC is the year 0 (outside 1 to 9999 - not a time, as the server)
-  return { y: p.era === 'BC' ? 1 - year : year, M: Number(p.month), d: Number(p.day), h: Number(p.hour), mi: Number(p.minute),
-    s: Number(p.second) };
-};
 /** A wall clock as UTC milliseconds - setUTCFullYear, so the years 1 to 99 are themselves (Date.UTC reads 0-99 as 19xx). */
 const utcOf = (w) => { const at = new Date(0); at.setUTCFullYear(w.y, w.M - 1, w.d); at.setUTCHours(w.h || 0, w.mi || 0, w.s || 0, 0); return at.getTime(); };
 /** The zone's offset (whole minutes - an old local mean time's seconds dropped, as the server) at an instant. */
@@ -93,7 +77,7 @@ const pad2 = (n) => String(n).padStart(2, '0');
  *  zone that is none - null. What the screen says a time of a slot of days as (testbed slot.js valueText, lead 10-15). */
 export function dayText(v) {
   let w = null;
-  try { w = wallOf(v, pageZone || ZONE_DEFAULT); } catch (e) { if (!(e instanceof RangeError)) throw e; }
+  try { w = wallOf(v, productZone()); } catch (e) { if (!(e instanceof RangeError)) throw e; }
   return w && !w.h && !w.mi && !w.s && !w.ms ? `${String(w.y).padStart(4, '0')}-${pad2(w.M)}-${pad2(w.d)}` : null;
 }
 /** A time as both calculators spell it: its wall clock and offset, «Z» at offset 0, milliseconds when not 0. */
@@ -771,7 +755,7 @@ export function run(compiled, rows, page = {}) {
   // sheet's cell values by address (A1), for cell references
   // zone: the IANA name dates are cut in (ZONE_DEFAULT when the page gives none); notTime: the rows a date function met
   // a value that is not a time on
-  const zone = page.zone || pageZone || ZONE_DEFAULT;
+  const zone = page.zone || productZone();
   try { clockOf(0, zone); } catch (e) { if (e instanceof RangeError) return { why: `«${zone}» is not a time zone` }; throw e; }
   const ctx = { rows: rows || [], row: null, memo: new Map(), notNumber: new Set(), notTime: new Set(), marked: page.marked,
     types: page.types || {}, cell: page.cell, zone };

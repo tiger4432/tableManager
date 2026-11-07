@@ -43,15 +43,33 @@ export function parseServerInstant(value) {
 
 const pad = (n) => String(n).padStart(2, '0');
 
-/**
- * 보는 쪽 zone 의 벽시계. `Date` 의 `getHours()` 류가 이미 그 zone 이라 변환이 없다 —
- * 변환을 «여기서 또» 하면 두 번 옮겨진다.
- */
+// ── the product's zone (owner 11-07: «yyyy-mm-dd hh:mm:ss», Asia/Seoul, «+9 붙이지 말고 알아서 알아듣게») ──────────
+/** The server's ingestion_settings "expression_time_zone" default (server/expression.py ZONE_DEFAULT). */
+export const ZONE_DEFAULT = 'Asia/Seoul';
+/** The server's setting as the page read it (GET /api/ledger/declaration's expression_time_zone) - one per page, as the
+ *  server has one; ZONE_DEFAULT on a page that does not read it (lead fe2ba4b1f ①). */
+let pageZone = null;
+export function useZone(name) { pageZone = typeof name === 'string' && name.trim() ? name.trim() : null; }
+/** The zone every time a person reads is spelled on, and the calculators cut dates on - not the browser's. */
+export function productZone() { return pageZone || ZONE_DEFAULT; }
+
+const clocks = new Map();
+/** `zone`'s wall clock of an instant (ms): {y, M, d, h, mi, s}. An era'd year: 1 BC is the year 0. */
+export function clockOf(ms, zone) {
+  if (!clocks.has(zone)) {
+    clocks.set(zone, new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit',
+      day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', era: 'short' }));
+  }
+  const p = Object.fromEntries(clocks.get(zone).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  const year = Number(p.year);
+  return { y: p.era === 'BC' ? 1 - year : year, M: Number(p.month), d: Number(p.day), h: Number(p.hour), mi: Number(p.minute),
+    s: Number(p.second) };
+}
+
+/** The product zone's wall clock of an instant, padded - whatever zone the browser is in (owner 11-07). */
 function parts(at) {
-  return {
-    y: at.getFullYear(), M: pad(at.getMonth() + 1), d: pad(at.getDate()),
-    h: pad(at.getHours()), m: pad(at.getMinutes()), s: pad(at.getSeconds()),
-  };
+  const c = clockOf(at.getTime(), productZone());
+  return { y: c.y, M: pad(c.M), d: pad(c.d), h: pad(c.h), m: pad(c.mi), s: pad(c.s) };
 }
 
 /** `YYYY-MM-DD HH:MM:SS` — 이력·상세의 기본. */
@@ -116,17 +134,10 @@ export function localSpan(first, last) {
 }
 
 /**
- * 보는 쪽의 zone 이름(IANA) — 서버에 「날」을 물을 때 싣습니다(총괄 e573a6edf: 실패 요약의 날이 UTC 였음).
- * 못 얻으면 빈 문자열이고, 그때 서버는 UTC 로 답하며 그 사실을 `day_zone` 으로 돌려줍니다.
+ * The zone a request asks its days in (lead e573a6edf: the failure summary's days were UTC) - the product's zone, so a
+ * day and the times beside it are one wall clock (owner 11-07), not the browser's.
  */
-export function viewerZone() {
-  try {
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return typeof zone === 'string' ? zone : '';
-  } catch (err) {
-    return '';
-  }
-}
+export function viewerZone() { return productZone(); }
 
 /**
  * `localShort`, 다만 서버가 «보낸» 글자를 못 읽으면 그 글자 그대로 — `NO_TIME` 은 «안 보낸» 것에만.

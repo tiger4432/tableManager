@@ -9,10 +9,10 @@
  * comment saying 「타임존 재해석 없음」, which was TRUE while the server sent naive strings and
  * became false the day it stopped.
  *
- * 🔴 EVERY ASSERTION HERE IS ZONE-INDEPENDENT. Pinning a literal wall clock would make this file
- *    pass or fail by the runner's TZ rather than by the code — the measuring stick would carry
- *    the answer. So what is asserted is that two spellings of ONE instant agree, and that two
- *    DIFFERENT instants disagree.
+ * 🔴 THE RUNNER'S TZ CARRIES NO ANSWER. The same-instant sections assert agreement, not a wall
+ *    clock. Z (owner 11-07: «yyyy-mm-dd hh:mm:ss», Asia/Seoul, whatever the browser's zone) pins a
+ *    literal Seoul wall clock with the process zone set to UTC and to New York for the asking -
+ *    on a KST runner the browser's own clock would read the same and prove nothing.
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +97,20 @@ function suite(mod) {
   eq('L2 two days name both', / – /.test(localSpan(SERVED, DAY_LATER)), true);
   eq('L3 one unreadable end draws the other', localSpan('x', SERVED), localSpan(SERVED, 'x'));
   eq('L4 nothing readable is no time', localSpan(null, 'x'), NO_TIME);
+
+  console.log(`${LF}-- the product's zone, not the browser's (owner 11-07) --`);
+  const { viewerZone, useZone } = mod;
+  const was = process.env.TZ;
+  const at = (tz, f) => { process.env.TZ = tz; try { return f(); } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; } };
+  const NINE_PAST = '2026-08-14T00:03:00+09:00';
+  eq('Z1 a browser on UTC reads the Seoul wall clock', at('UTC', () => [localStamp(NINE_PAST), localStamp('2026-08-13T15:03:00Z')]),
+    ['2026-08-14 00:03:00', '2026-08-14 00:03:00']);
+  eq('Z2 ...and one on New York the same', at('America/New_York', () => localStamp(NINE_PAST)), '2026-08-14 00:03:00');
+  eq('Z3 the zone a request asks its days in is the product\'s', at('UTC', () => viewerZone()), 'Asia/Seoul');
+  useZone('UTC');
+  const set = [localStamp(NINE_PAST), viewerZone()];
+  useZone(null);
+  eq('Z4 the server\'s setting, when the page read it, is the zone', set, ['2026-08-13 15:03:00', 'UTC']);
 }
 
 const first = await loadWithProbe(SRC, {});
@@ -144,6 +158,19 @@ const MUTANTS = [
     catches: 'S3 nothing sent is still no time',
     from: '  return local === NO_TIME && sent ? String(value) : local;',
     to: '  return local === NO_TIME ? String(value) : local;' },
+  // owner 11-07: the product's zone, not the browser's
+  { id: 'M9', what: 'a time spelled on the browser\'s clock again',
+    catches: 'Z1 a browser on UTC reads the Seoul wall clock',
+    from: '  const c = clockOf(at.getTime(), productZone());',
+    to: '  const c = { y: at.getFullYear(), M: at.getMonth() + 1, d: at.getDate(), h: at.getHours(), mi: at.getMinutes(), s: at.getSeconds() };' },
+  { id: 'M10', what: 'a request asks its days in the browser\'s zone again',
+    catches: 'Z3 the zone a request asks its days in',
+    from: 'export function viewerZone() { return productZone(); }',
+    to: 'export function viewerZone() { return Intl.DateTimeFormat().resolvedOptions().timeZone; }' },
+  { id: 'M11', what: 'the server\'s setting not read - the default always',
+    catches: 'Z4 the server\'s setting',
+    from: 'export function productZone() { return pageZone || ZONE_DEFAULT; }',
+    to: 'export function productZone() { return ZONE_DEFAULT; }' },
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 「그릴 것이 없다」 — 이 파일이 짓는 유일한 글자. 값이 아니다. */',
     to: '/** */' },

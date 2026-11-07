@@ -2,6 +2,7 @@ import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
+import { localStamp, localClock, NO_TIME } from './server_time.js';
 import { widestCell } from './cell_fit.js';
 import { markWork } from './ui_stall.js';
 import { sayStopped } from './write_guard.js';
@@ -249,9 +250,8 @@ export function createTimelineItemDom(log) {
 
   // 🔴 `new Date(undefined)` 는 Invalid Date 이고, 그것을 그리면 화면에
   //    「Invalid Date」라는 «글자»가 나갑니다. 이 부류의 날짜 판입니다.
-  const stamped = log.timestamp ? new Date(log.timestamp) : null;
-  const dateStr = (stamped && !Number.isNaN(stamped.getTime()))
-    ? stamped.toLocaleString() : ABSENT;
+  const stamped = localStamp(log.timestamp);
+  const dateStr = stamped === NO_TIME ? ABSENT : stamped;
 
   // 🔴 이 줄의 값은 «전부 서버가 실어 준 것»이고, 그중 둘은 «운영자가 친 셀 값»입니다
   //    (`old_value` · `new_value`). 이력은 그것을 «그대로» 되비추는 자리라, 이스케이프가 없으면
@@ -567,11 +567,8 @@ export function createGlobalTimelineItemDom(group) {
     && baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
   // `toLocaleTimeString()` writes 「오후 11:31:31」 in this locale, which does not fit 58px and
   // wrapped the cell to two lines. The mockup's `09:31:12` is what a scan needs: fixed width,
-  // no marker to read past. Built from the parts rather than a locale option so the width is
-  // the same on every machine.
-  const stamp = new Date(baseLog.timestamp);
-  const timeStr = [stamp.getHours(), stamp.getMinutes(), stamp.getSeconds()]
-    .map(part => String(part).padStart(2, '0')).join(':');
+  // no marker to read past - on the product's zone (owner 11-07), not the machine's.
+  const timeStr = localClock(baseLog.timestamp);
   // The table a column of its own (owner 10-12 「감사로그 대상 테이블 컬럼 따로 빼」), said once: the target cell
   // keeps the row and its column. 묶음 줄은 표본이면 첫 로그의 표라도 말합니다.
   const targetTable = auditTargetTable(group);
@@ -1123,7 +1120,8 @@ function auditFilterPasses(group, filters) {
   if (filters.when) {
     const stamp = new Date(baseLog.timestamp);
     const now = new Date();
-    if (filters.when === 'today' && stamp.toDateString() !== now.toDateString()) return false;
+    // today on the product's wall clock (owner 11-07), the day the history column shows
+    if (filters.when === 'today' && localStamp(stamp).slice(0, 10) !== localStamp(now).slice(0, 10)) return false;
     if (filters.when === '7d' && now - stamp > 7 * 24 * 60 * 60 * 1000) return false;
   }
   return true;

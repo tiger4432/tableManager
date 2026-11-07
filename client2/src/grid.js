@@ -858,7 +858,8 @@ function numericDisplayValue(val) {
 // 🔴 표시«만» 바꾼다. 그 갈라짐이 이 자리의 전부다:
 //    valueFormatter  AG-Grid 가 «그릴 때»만 읽는다             -> 보는 쪽 zone
 //    valueGetter     서버가 준 글자를 그대로 낸다              -> 편집기 시작값 · valueSetter
-//    clipboard.js    `rowNode.data` 를 «직접» 읽는다(실측)     -> 복사값은 원문
+//    clipboard.js    `copiedText` 를 지난다                    -> 복사도 보이는 글자 (소유자 11-07 이 원문 복사를 뒤집음:
+//                    «yyyy-mm-dd hh:mm:ss» · Asia/Seoul. 붙여 넣으면 서버가 offset 없는 시각을 같은 zone 으로 읽어 같은 순간)
 //    로컬 글자를 «값»으로 만들면, 안 고치고 커밋한 셀이 offset 없는 문자열을 되보내고
 //    순간이 보는 사람의 zone 만큼 «움직인다» — 「자막 단 실패」 부류다
 //
@@ -885,6 +886,11 @@ function timeCellFormatter(params) {
   const val = params ? params.value : undefined;
   const shown = localStamp(val);
   return shown === NO_TIME ? val : shown;
+}
+
+/** What a copy carries for a cell's value - a time column's as the cell shows it, any other's as sent (owner 11-07). */
+export function copiedText(col, value) {
+  return isTimeColumn(col, (state.currentColumnTypes || {})[col] || 'string') ? timeCellFormatter({ value }) : value;
 }
 
 // ── [Virtual join] The filter a JOIN-RESOLVED column gets ───────────────────────────────

@@ -7,7 +7,7 @@
 // A format is drawing alone - changing one computes nothing here.
 
 import { numberOf, valueWords } from '../../walk/reach_table.js';
-import { parseServerInstant } from '../../server_time.js';
+import { parseServerInstant, localMinute } from '../../server_time.js';
 import { timeText, isTimeRead } from '../slot.js';
 import { entityOfId } from '../../rnd_board/api.js';
 import { place, address, letters } from '../../expression.js';
@@ -71,11 +71,9 @@ export function formatValue(value, format, node = null, time = false) {
     }
   }
   if (f === 'yyyy-mm-dd' || f === 'yyyy-mm-dd hh:mm') {
-    const at = parseServerInstant(value);
-    if (at) {
-      const day = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
-      return { text: f === 'yyyy-mm-dd' ? day : `${day} ${pad(at.getHours())}:${pad(at.getMinutes())}` };
-    }
+    // the product's wall clock (owner 11-07) - server_time's minute form, its day the first ten
+    const minute = parseServerInstant(value) ? localMinute(value) : null;
+    if (minute) return { text: f === 'yyyy-mm-dd' ? minute.slice(0, 10) : minute };
   }
   return { text: valueWords(value), why };
 }

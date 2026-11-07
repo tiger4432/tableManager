@@ -10,6 +10,7 @@ import { writeClipboardRich } from '../clipboard_write.js';
 import { fileRetryAsk, fileRetryToast } from '../retry_verdict.js';
 import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
+import { localClock } from '../server_time.js';
 import { initTheme } from '../theme.js';
 import { pollBeat, pollQueue, oneRead, timedRead } from '../queue_poll.js';
 import { WORDS, cancelAsk, countedText, groupFiles, pickQuery, queryOf, sourceLines, tableLines } from './model.js';
@@ -195,7 +196,7 @@ export function seatFileIngestionPage(doc = document) {
       drawProgress(t);
       view.lines = tableLines(t.data, a.data);
       if (!query.table && view.lines.length) query.table = view.lines[0].name;
-      byId('fi-as-of').textContent = `as of ${new Date().toLocaleTimeString('en-GB')}`;
+      byId('fi-as-of').textContent = `as of ${localClock(new Date())}`;
     } catch (e) { say(e.message); }
     await search();
   }

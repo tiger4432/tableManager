@@ -49,7 +49,7 @@ import { IndexTablePanel } from './index_table_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
 import { ChainGraphPanel } from './chain_graph.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO 다 — 자르지 말고 «순간»으로 읽는다.
-import { localShort, NO_TIME, viewerZone } from './server_time.js';
+import { localShort, localClock, NO_TIME, viewerZone } from './server_time.js';
 import { FailureSummary, failureRecordCells, failureSummaryView } from './failure_summary.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
@@ -435,9 +435,7 @@ function shortTxId(txId) {
 
 function markRefreshed() {
   if (!lastRefreshedSpan) return;
-  const now = new Date();
-  const p = n => String(n).padStart(2, '0');
-  lastRefreshedSpan.textContent = `Updated ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+  lastRefreshedSpan.textContent = `Updated ${localClock(new Date())}`;
 }
 
 // 섹션 헤더 카운트 배지 갱신

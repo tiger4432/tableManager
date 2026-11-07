@@ -10,7 +10,7 @@
  *
  * WHAT IT SCORES:
  *   A  the two spellings of ONE instant are drawn IDENTICALLY (the offset is honoured, not cut)
- *   B  the VALUE is the served string -- the editor seeds from it and the copy carries it
+ *   B  the VALUE is the served string -- the editor seeds from it; the copy carries the drawn text (owner 11-07)
  *   C  the same one function draws the editable column and the read-only join column
  *   D  nothing is invented: an empty cell stays empty, an unreadable value keeps its own text
  *
@@ -148,8 +148,10 @@ function suite(M) {
   const copied = getRangeSelectedTSV();
   state.gridApi = null;
   state.selectedCellsMap = {};
-  ok(copied === SERVED,
-    `B2 the COPIED value is the original offset ISO -- got [${copied}]`);
+  // owner 11-07 turned this round: a copy carries what the cell shows, «yyyy-mm-dd hh:mm:ss» on the product's zone - a
+  // paste back is read by the server on that zone, the same instant
+  ok(copied === localStamp(SERVED) && !/[+-]\d\d:\d\d$|Z$|T/.test(copied),
+    `B2 the COPIED value is the drawn time, no offset -- got [${copied}]`);
 
   // ── C: one function for both seats ───────────────────────────────────────────────────
   ok(!!ro && typeof ro.valueFormatter === 'function' && ro.editable === false,

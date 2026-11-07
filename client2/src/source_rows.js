@@ -19,6 +19,7 @@
 //    an empty string would be a silent behaviour change smuggled into an escaping round. It is
 //    reported, not fixed here.
 import { escapeHtml } from './utils.js';
+import { localStamp, NO_TIME } from './server_time.js';
 import { unitText } from './ui_words.js';
 
 /** One cell's row: this source, the value it holds, and whether it is pinned. */
@@ -28,7 +29,8 @@ export function sourceRowHtml(sourceName, sourceVal, { isPinned, writable }) {
   if (sourceVal && typeof sourceVal === 'object') {
     displayVal = sourceVal.value !== undefined ? sourceVal.value : '';
     if (sourceVal.timestamp || sourceVal.updated_by) {
-      const timeStr = sourceVal.timestamp ? new Date(sourceVal.timestamp).toLocaleString() : 'N/A';
+      const shown = localStamp(sourceVal.timestamp);
+      const timeStr = shown === NO_TIME ? 'N/A' : shown;
       const userStr = sourceVal.updated_by || 'system';
       titleAttr = `title="Updated by ${escapeHtml(userStr)} at ${escapeHtml(timeStr)}"`;
     }

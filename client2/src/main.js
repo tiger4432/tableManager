@@ -10,6 +10,7 @@ import { chooseClipboardType } from './smart_paste_choice.js';
 import { PasteBox } from './paste_box.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
+import { localStamp } from './server_time.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
@@ -1178,13 +1179,8 @@ function setupEventListeners() {
       if (!state.currentTable) return;
 
       // Determine default filename
-      const now = new Date();
-      const timestamp = now.getFullYear() +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        String(now.getDate()).padStart(2, '0') + '_' +
-        String(now.getHours()).padStart(2, '0') +
-        String(now.getMinutes()).padStart(2, '0') +
-        String(now.getSeconds()).padStart(2, '0');
+      // yyyymmdd_hhmmss on the product's wall clock (owner 11-07)
+      const timestamp = localStamp(new Date()).replace(/[-:]/g, '').replace(' ', '_');
       const defaultFilename = `${state.currentTable}_extract_${timestamp}.csv`;
 
       let fileHandle = null;
