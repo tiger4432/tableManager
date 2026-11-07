@@ -234,7 +234,7 @@ def _dated(f):
                 ctx.not_time.add(id(ctx.row))
             return None
         return f(moment)
-    return {"kind": "row", "arity": 1, "fn": one, "zoned": True}
+    return {"kind": "row", "arity": 1, "args": ["value"], "fn": one, "zoned": True}
 
 
 def _date_part(part, v, ctx):
@@ -469,30 +469,30 @@ def _geometric(xs, _params):
 
 
 def _fold(fn, **more):
-    return dict(kind="fold", fn=fn, **more)
+    return {"kind": "fold", "fn": fn, "args": ["column"], **more}
 
 
-def _row(arity, fn):
+def _row(arity, fn, args):
     def safe(*args):
         try:
             return fn(*args)
         except (OverflowError, ZeroDivisionError, ValueError):
             return None                         # JavaScript's Infinity or NaN - an empty answer
-    return {"kind": "row", "arity": arity, "fn": safe}
+    return {"kind": "row", "arity": arity, "args": args, "fn": safe}
 
 
 def _num1(f):
     def one(a):
         x = number_of(a)
         return None if x is None else f(x)
-    return _row(1, one)
+    return _row(1, one, ["value"])
 
 
-def _num2(f):
+def _num2(f, args):
     def two(a, b):
         x, y = number_of(a), number_of(b)
         return None if x is None or y is None else f(x, y)
-    return _row(2, two)
+    return _row(2, two, args)
 
 
 def _round(x, d):
@@ -521,6 +521,8 @@ def _times(f):
 #: A fold whose argument is a datetime column answers by these instead (Min · Max, lead 10-13).
 BY_TIME = {"Min": _times(lambda a, b: a < b), "Max": _times(lambda a, b: a > b)}
 
+#: `args`: each argument's name, as the formula's signature line says it (lead 11-07) - a fold's column «...» more
+#: (rowwise) or none at all (none) is read from those keys, not written here: the count has one answer.
 FUNCTIONS = {
     "Count": _fold(lambda items, _p=None: {"value": len(items)}, none=True),
     "CountBig": _fold(lambda items, _p=None: {"value": len(items)}, none=True),
@@ -549,9 +551,10 @@ FUNCTIONS = {
     "IQR": _fold(_numeric(lambda xs, _p: _iqr(xs))),
     "P10": _fold(_numeric(lambda xs, _p: _pct(xs, 0.1))),
     "P90": _fold(_numeric(lambda xs, _p: _pct(xs, 0.9))),
-    "Percentile": _fold(_numeric(lambda xs, p: None if p[0] is None else _pct(xs, p[0] / 100)), params=1),
+    "Percentile": _fold(_numeric(lambda xs, p: None if p[0] is None else _pct(xs, p[0] / 100)), params=1,
+                        args=["column", "percent"]),
     "Percent": _fold(_numeric(lambda xs, p: None if p[0] is None
-                              else min(xs) + (p[0] / 100) * (max(xs) - min(xs))), params=1),
+                              else min(xs) + (p[0] / 100) * (max(xs) - min(xs))), params=1, args=["column", "percent"]),
     "LIF": _fold(_numeric(lambda xs, _p: _q1(xs) - 1.5 * _iqr(xs))),
     "UIF": _fold(_numeric(lambda xs, _p: _q3(xs) + 1.5 * _iqr(xs))),
     "LOF": _fold(_numeric(lambda xs, _p: _q1(xs) - 3 * _iqr(xs))),
@@ -561,45 +564,46 @@ FUNCTIONS = {
     "Outliers": _fold(_numeric(lambda xs, _p: _outliers(xs))),
     "PctOutliers": _fold(_numeric(lambda xs, _p: 100 * _outliers(xs) / len(xs))),
     "GeometricMean": _fold(_numeric(_geometric)),
-    "TrimmedMean": _fold(_numeric(_trimmed), params=1),
-    "NthLargest": _fold(_numeric(_nth(True)), params=1),
-    "NthSmallest": _fold(_numeric(_nth(False)), params=1),
+    "TrimmedMean": _fold(_numeric(_trimmed), params=1, args=["column", "percent"]),
+    "NthLargest": _fold(_numeric(_nth(True)), params=1, args=["column", "n"]),
+    "NthSmallest": _fold(_numeric(_nth(False)), params=1, args=["column", "n"]),
     "L95": _fold(_numeric(lambda xs, _p: None if len(xs) < 2 else _mean(xs) - T95 * _sd(xs) / math.sqrt(len(xs)))),
     "U95": _fold(_numeric(lambda xs, _p: None if len(xs) < 2 else _mean(xs) + T95 * _sd(xs) / math.sqrt(len(xs)))),
     # two columns: a row with either side empty is left out (lead 10-13)
-    "WeightedAverage": _fold(_weighted, pair=True),
-    "Covariance": _fold(_covariance, pair=True),
-    "ValueForMax": _fold(_value_for(max, False), pair=True),
-    "ValueForMin": _fold(_value_for(min, False), pair=True),
-    "LastValueForMax": _fold(_value_for(max, True), pair=True),
-    "LastValueForMin": _fold(_value_for(min, True), pair=True),
+    "WeightedAverage": _fold(_weighted, pair=True, args=["weight", "value"]),
+    "Covariance": _fold(_covariance, pair=True, args=["x", "y"]),
+    "ValueForMax": _fold(_value_for(max, False), pair=True, args=["by", "value"]),
+    "ValueForMin": _fold(_value_for(min, False), pair=True, args=["by", "value"]),
+    "LastValueForMax": _fold(_value_for(max, True), pair=True, args=["by", "value"]),
+    "LastValueForMin": _fold(_value_for(min, True), pair=True, args=["by", "value"]),
     # values
     "Abs": _num1(abs),
     "Ceiling": _num1(math.ceil),
     "Floor": _num1(math.floor),
-    "Round": _num2(_round),
+    "Round": _num2(_round, ["value", "digits"]),
     "Sqrt": _num1(lambda x: None if x < 0 else math.sqrt(x)),
     "Exp": _num1(math.exp),
     "Ln": _num1(lambda x: None if x <= 0 else math.log(x)),
     "Log10": _num1(lambda x: None if x <= 0 else math.log10(x)),
-    "Log": _num2(lambda x, b: None if x <= 0 or b <= 0 or b == 1 else math.log(x) / math.log(b)),
-    "Mod": _num2(lambda a, b: None if b == 0 else a - b * math.floor(a / b)),
-    "Power": _num2(math.pow),
-    "PI": _row(0, lambda: math.pi),
+    "Log": _num2(lambda x, b: None if x <= 0 or b <= 0 or b == 1 else math.log(x) / math.log(b), ["value", "base"]),
+    "Mod": _num2(lambda a, b: None if b == 0 else a - b * math.floor(a / b), ["dividend", "divisor"]),
+    "Power": _num2(math.pow, ["base", "exponent"]),
+    "PI": _row(0, lambda: math.pi, []),
     "Sin": _num1(math.sin),
     "Cos": _num1(math.cos),
     "Tan": _num1(math.tan),
     "ASin": _num1(lambda x: None if abs(x) > 1 else math.asin(x)),
     "ACos": _num1(lambda x: None if abs(x) > 1 else math.acos(x)),
     "ATan": _num1(math.atan),
-    "ATan2": _num2(math.atan2),
-    "If": {"kind": "if"},
+    "ATan2": _num2(math.atan2, ["y", "x"]),
+    "If": {"kind": "if", "args": ["condition", "then", "else"]},
     # dates (lead fe2ba4b1f) - on the zone's wall clock
     "Date": _dated(lambda t: _time_text(t.replace(hour=0, minute=0, second=0, microsecond=0))),
     "DateTime": _dated(_time_text),
     **{name: _dated(f) for name, f in PART_OF.items()},
-    "DatePart": {"kind": "row", "arity": 2, "fn": _date_part, "zoned": True},
-    "ParseDateTime": {"kind": "row", "arity": 2, "fn": _parse_date_time, "zoned": True, "check": _net_format_given},
+    "DatePart": {"kind": "row", "arity": 2, "args": ["part", "value"], "fn": _date_part, "zoned": True},
+    "ParseDateTime": {"kind": "row", "arity": 2, "args": ["text", "format"], "fn": _parse_date_time, "zoned": True,
+                      "check": _net_format_given},
 }
 _BY_NAME = {name.lower(): name for name in FUNCTIONS}
 #: The screen's alone - the page's markings.

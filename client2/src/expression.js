@@ -93,7 +93,7 @@ const PART_OF = Object.freeze({ Year: (w) => w.y, Quarter: (w) => Math.floor((w.
   Day: (w) => w.d, Hour: (w) => w.h, Week: weekOf, DayOfWeek: weekdayOf });
 /** A function of one time: the time on the zone's wall clock, else empty - a value that is not a time is counted (the
  *  run's notTime), an empty one is not. */
-const dated = (f) => ({ kind: 'row', arity: 1, zoned: true,
+const dated = (f) => ({ kind: 'row', arity: 1, args: ['value'], zoned: true,
   fn: (v, ctx) => {
     const w = wallOf(v, ctx.zone);
     if (!w) { if (!isBlank(v)) ctx.notTime.add(ctx.row); return null; }
@@ -244,10 +244,10 @@ const valueFor = (pick, last) => (pairs) => {
   return { value: (last ? hits[hits.length - 1] : hits[0])[1] };
 };
 
-const fold = (fn, more = {}) => ({ kind: 'fold', fn, ...more });
-const row = (arity, fn) => ({ kind: 'row', arity, fn });
-const num1 = (f) => row(1, (a) => { const x = numberOf(a); return x === null ? null : f(x); });
-const num2 = (f) => row(2, (a, b) => { const x = numberOf(a); const y = numberOf(b); return x === null || y === null ? null : f(x, y); });
+const fold = (fn, more = {}) => ({ kind: 'fold', fn, args: ['column'], ...more });
+const row = (arity, fn, args) => ({ kind: 'row', arity, fn, args });
+const num1 = (f) => row(1, (a) => { const x = numberOf(a); return x === null ? null : f(x); }, ['value']);
+const num2 = (f, args) => row(2, (a, b) => { const x = numberOf(a); const y = numberOf(b); return x === null || y === null ? null : f(x, y); }, args);
 
 /** A fold over a datetime column (lead 10-13): instants compared, the row's value answered; a text that is not a time and
  *  an empty value left out; the same instant twice - the one met first. */
@@ -262,6 +262,8 @@ const times = (wins) => (items) => {
 /** A fold whose argument is a datetime column (run's `types`) answers by these instead. */
 const BY_TIME = { Min: times((a, b) => a < b), Max: times((a, b) => a > b) };
 
+// `args`: each argument's name, as the formula's signature line says it (lead 11-07) - a fold's column «...» more
+// (rowwise) or none at all (none) is read from those cells, not written here: the count has one answer.
 export const FUNCTIONS = Object.freeze({
   Count: fold((items) => ({ value: items.length }), { none: true }),
   CountBig: fold((items) => ({ value: items.length }), { none: true }),
@@ -288,8 +290,8 @@ export const FUNCTIONS = Object.freeze({
   IQR: fold(numeric(iqr)),
   P10: fold(numeric((xs) => pct(xs, 0.1))),
   P90: fold(numeric((xs) => pct(xs, 0.9))),
-  Percentile: fold(numeric((xs, [p]) => (p === null ? null : pct(xs, p / 100))), { params: 1 }),
-  Percent: fold(numeric((xs, [p]) => (p === null ? null : Math.min(...xs) + (p / 100) * (Math.max(...xs) - Math.min(...xs)))), { params: 1 }),
+  Percentile: fold(numeric((xs, [p]) => (p === null ? null : pct(xs, p / 100))), { params: 1, args: ['column', 'percent'] }),
+  Percent: fold(numeric((xs, [p]) => (p === null ? null : Math.min(...xs) + (p / 100) * (Math.max(...xs) - Math.min(...xs)))), { params: 1, args: ['column', 'percent'] }),
   LIF: fold(numeric((xs) => q1(xs) - 1.5 * iqr(xs))),
   UIF: fold(numeric((xs) => q3(xs) + 1.5 * iqr(xs))),
   LOF: fold(numeric((xs) => q1(xs) - 3 * iqr(xs))),
@@ -304,9 +306,9 @@ export const FUNCTIONS = Object.freeze({
     const k = Math.floor((xs.length * p) / 100 / 2);
     const kept = sorted(xs).slice(k, xs.length - k);
     return kept.length ? mean(kept) : null;
-  }), { params: 1 }),
-  NthLargest: fold(numeric((xs, [n]) => (n === null || n < 1 ? null : sorted(xs).reverse()[Math.min(Math.floor(n), xs.length) - 1])), { params: 1 }),
-  NthSmallest: fold(numeric((xs, [n]) => (n === null || n < 1 ? null : sorted(xs)[Math.min(Math.floor(n), xs.length) - 1])), { params: 1 }),
+  }), { params: 1, args: ['column', 'percent'] }),
+  NthLargest: fold(numeric((xs, [n]) => (n === null || n < 1 ? null : sorted(xs).reverse()[Math.min(Math.floor(n), xs.length) - 1])), { params: 1, args: ['column', 'n'] }),
+  NthSmallest: fold(numeric((xs, [n]) => (n === null || n < 1 ? null : sorted(xs)[Math.min(Math.floor(n), xs.length) - 1])), { params: 1, args: ['column', 'n'] }),
   L95: fold(numeric((xs) => (xs.length < 2 ? null : mean(xs) - (T95 * sd(xs)) / Math.sqrt(xs.length)))),
   U95: fold(numeric((xs) => (xs.length < 2 ? null : mean(xs) + (T95 * sd(xs)) / Math.sqrt(xs.length)))),
   // two columns: a row with either side empty is left out (lead 10-13)
@@ -314,17 +316,17 @@ export const FUNCTIONS = Object.freeze({
     const ps = pairNums(pairs);
     const w = sum(ps.map(([x]) => x));
     return { value: ps.length && w !== 0 ? sum(ps.map(([x, y]) => x * y)) / w : null };
-  }, { pair: true }),
+  }, { pair: true, args: ['weight', 'value'] }),
   Covariance: fold((pairs) => {
     const ps = pairNums(pairs);
     if (ps.length < 2) return { value: null };
     const mx = mean(ps.map(([x]) => x)); const my = mean(ps.map(([, y]) => y));
     return { value: sum(ps.map(([x, y]) => (x - mx) * (y - my))) / (ps.length - 1) };
-  }, { pair: true }),
-  ValueForMax: fold(valueFor(Math.max, false), { pair: true }),
-  ValueForMin: fold(valueFor(Math.min, false), { pair: true }),
-  LastValueForMax: fold(valueFor(Math.max, true), { pair: true }),
-  LastValueForMin: fold(valueFor(Math.min, true), { pair: true }),
+  }, { pair: true, args: ['x', 'y'] }),
+  ValueForMax: fold(valueFor(Math.max, false), { pair: true, args: ['by', 'value'] }),
+  ValueForMin: fold(valueFor(Math.min, false), { pair: true, args: ['by', 'value'] }),
+  LastValueForMax: fold(valueFor(Math.max, true), { pair: true, args: ['by', 'value'] }),
+  LastValueForMin: fold(valueFor(Math.min, true), { pair: true, args: ['by', 'value'] }),
   // values
   Abs: num1(Math.abs),
   Ceiling: num1(Math.ceil),
@@ -333,29 +335,29 @@ export const FUNCTIONS = Object.freeze({
     const digits = Math.trunc(d);   // only Arg2's integer part (Math «Round»)
     const away = (v) => Math.sign(v) * Math.round(Math.abs(v));   // 0.5 to the higher magnitude
     return digits >= 0 ? away(x * 10 ** digits) / 10 ** digits : away(x / 10 ** -digits) * 10 ** -digits;
-  }),
+  }, ['value', 'digits']),
   Sqrt: num1((x) => (x < 0 ? null : Math.sqrt(x))),
   Exp: num1(Math.exp),
   Ln: num1((x) => (x <= 0 ? null : Math.log(x))),
   Log10: num1((x) => (x <= 0 ? null : Math.log10(x))),
-  Log: num2((x, b) => (x <= 0 || b <= 0 || b === 1 ? null : Math.log(x) / Math.log(b))),
-  Mod: num2((a, b) => (b === 0 ? null : a - b * Math.floor(a / b))),
-  Power: num2((a, b) => a ** b),
-  PI: row(0, () => Math.PI),
+  Log: num2((x, b) => (x <= 0 || b <= 0 || b === 1 ? null : Math.log(x) / Math.log(b)), ['value', 'base']),
+  Mod: num2((a, b) => (b === 0 ? null : a - b * Math.floor(a / b)), ['dividend', 'divisor']),
+  Power: num2((a, b) => a ** b, ['base', 'exponent']),
+  PI: row(0, () => Math.PI, []),
   Sin: num1(Math.sin),
   Cos: num1(Math.cos),
   Tan: num1(Math.tan),
   ASin: num1((x) => (Math.abs(x) > 1 ? null : Math.asin(x))),
   ACos: num1((x) => (Math.abs(x) > 1 ? null : Math.acos(x))),
   ATan: num1(Math.atan),
-  ATan2: num2((y, x) => Math.atan2(y, x)),
-  If: { kind: 'if' },
+  ATan2: num2((y, x) => Math.atan2(y, x), ['y', 'x']),
+  If: { kind: 'if', args: ['condition', 'then', 'else'] },
   // dates (lead fe2ba4b1f) - on the zone's wall clock
   Date: dated((w, ctx) => { const mid = { y: w.y, M: w.M, d: w.d, h: 0, mi: 0, s: 0 }; return timeText({ ...mid, ms: 0, off: offsetOfWall(mid, ctx.zone) }); }),
   DateTime: dated(timeText),
   ...Object.fromEntries(Object.entries(PART_OF).map(([name, f]) => [name, dated(f)])),
-  DatePart: { kind: 'row', arity: 2, zoned: true, fn: datePart },
-  ParseDateTime: { kind: 'row', arity: 2, zoned: true, fn: parseDateTime, check: netFormatGiven },
+  DatePart: { kind: 'row', arity: 2, args: ['part', 'value'], zoned: true, fn: datePart },
+  ParseDateTime: { kind: 'row', arity: 2, args: ['text', 'format'], zoned: true, fn: parseDateTime, check: netFormatGiven },
   // Spotfire's Marked() (lead 10-13): the page's marking - screen only, the markings come in ctx.
   Marked: { kind: 'mark' },
 });

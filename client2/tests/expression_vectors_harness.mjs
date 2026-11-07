@@ -7,6 +7,8 @@
  *   O  every `ours` row the same way (Latest, list values, numbers written as text)
  *   N  the one answer to «is this a number» (walk/reach_table numberOf): sign · digits · point · exponent (lead 10-13)
  *   C  the census: every scored row ran, none of `unsettled` did, and the file is not empty
+ *   F  the functions (lead 11-07): FUNCTIONS' names and each one's args are the file's `functions`, and a call with that
+ *      many arguments is not refused for its count - one more is, unless the fold takes more (rowwise)
  * The file is the server calculator's exam too (lead 0b7d84462): an answer here that differs from it is a defect here.
  *
  * IT IMPORTS ITS SUBJECTS. A mutant is a whole module copy (lib/probe.mjs loadWithProbe).
@@ -131,6 +133,19 @@ function suite(M, quiet = false) {
   const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);
   ok('E1 the rows an operator met a text that is not a number on: counted once each, an empty value not', met.notNumber === 2
     && JSON.stringify(met.values) === JSON.stringify([null, 88.5, null, null, 9]), ascii(met));
+  // The functions (lead 11-07): the file's names and args are this table's; the screen's Marked is the page's.
+  const table = Object.entries(M.expr.FUNCTIONS).filter(([, fn]) => fn.kind !== 'mark');
+  const listed = new Map(FILE.functions.map((f) => [f.name, f.args]));
+  ok('F1 the table\'s names are the file\'s', table.length === listed.size && table.every(([name]) => listed.has(name)),
+    ascii([...table.map(([n]) => n).filter((n) => !listed.has(n)), ...[...listed.keys()].filter((n) => !M.expr.FUNCTIONS[n])]));
+  ok('F2 each function\'s args are the file\'s', table.every(([name, fn]) => JSON.stringify(fn.args) === JSON.stringify(listed.get(name))),
+    ascii(table.filter(([name, fn]) => JSON.stringify(fn.args) !== JSON.stringify(listed.get(name))).map(([n]) => n)));
+  const counted = (name, n) => String(M.expr.compile(`${name}(${Array(n).fill('1').join(', ')})`).why || '').startsWith(`${name} takes `)
+    && / - got [0-9]+$/.test(String(M.expr.compile(`${name}(${Array(n).fill('1').join(', ')})`).why));
+  const miscounted = FILE.functions.filter(({ name, args }) => counted(name, args.length)
+    || (!(M.expr.FUNCTIONS[name] || {}).rowwise && !counted(name, args.length + 1)));
+  ok('F3 as many arguments as args is taken, one more is not (a rowwise fold takes more)', miscounted.length === 0,
+    ascii(miscounted.map((f) => f.name)));
   return { ran, failures, names };
 }
 
@@ -223,6 +238,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (onEdge && own) throw new ExpressionError(', '  if (false) throw new ExpressionError(') },
   { id: 'X26', what: 'a way read as one name - the code before (the row\'s own value named «in_container.size»)', catches: 'O[way.forward]', file: S,
     mutate: (t) => swap(t, '  const way = wayOf(name);\n  if (!way)', '  const way = null;\n  if (!way)') },
+  { id: 'X37', what: 'a function the file does not list', catches: 'F1', file: E,
+    mutate: (t) => swap(t, '  Abs: num1(Math.abs),', '  Abs: num1(Math.abs),\n  Twice: num1((x) => 2 * x),') },
+  { id: 'X38', what: 'an argument named otherwise than the file', catches: 'F2', file: E,
+    mutate: (t) => swap(t, "args: ['part', 'value'], zoned: true, fn: datePart", "args: ['value', 'part'], zoned: true, fn: datePart") },
+  { id: 'X39', what: 'a count the args do not say', catches: 'F3', file: E,
+    mutate: (t) => swap(t, '  PI: row(0, () => Math.PI, []),', '  PI: row(1, () => Math.PI, []),') },
   { id: 'X19', what: 'a numeral is whatever Number() reads (0x10 is 16)', catches: 'N2', file: R,
     mutate: (t) => swap(t, "  if (typeof value !== 'string' || !NUMERAL.test(value.trim())) return null;", "  if (typeof value !== 'string' || !value.trim()) return null;") },
 ];

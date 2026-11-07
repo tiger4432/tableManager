@@ -49,6 +49,10 @@
     "                an exponent (\"29.50\", \" 1 \", \"+2\", \"1e1\", \".5\"); anything else is text (\"29,50\", \"29 mm\", \"0x10\"),",
     "                which a numeric fold leaves out; an empty text is empty.",
     "  out_of_edition  names not built in this edition, and why.",
+    "  functions     every function both calculators build: its name and its arguments' names (`args`), as the formula's",
+    "                signature line says them (lead 11-07). Both tables are held to it - the same names, the same args, and",
+    "                the count of args is the count the calculator takes (a fold's «...» more or none is its own cell, not",
+    "                written here). The screen's Marked is not here.",
     "Grow this file before a calculator grows (lead: a function with no vector is not built).",
     "",
     "DATES (lead fe2ba4b1f): a vector with `zone` (an IANA name) is answered with the dates cut on that zone's wall clock -",
@@ -5086,6 +5090,494 @@
         "\"\""
       ],
       "why": "an empty text is NULL at our write boundary - contracts/blank_predicate owns «is this cell empty»"
+    }
+  ],
+  "functions": [
+    {
+      "name": "Count",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "CountBig",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "UniqueCount",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Sum",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Avg",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Min",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Max",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Median",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Product",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "MeanDeviation",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "MedianAbsoluteDeviation",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "First",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Last",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Latest",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "MostCommon",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "UniqueConcatenate",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "StdDev",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Var",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "StdErr",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Range",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Q1",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Q3",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "IQR",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "P10",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "P90",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Percentile",
+      "args": [
+        "column",
+        "percent"
+      ]
+    },
+    {
+      "name": "Percent",
+      "args": [
+        "column",
+        "percent"
+      ]
+    },
+    {
+      "name": "LIF",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "UIF",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "LOF",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "UOF",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "LAV",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "UAV",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "Outliers",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "PctOutliers",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "GeometricMean",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "TrimmedMean",
+      "args": [
+        "column",
+        "percent"
+      ]
+    },
+    {
+      "name": "NthLargest",
+      "args": [
+        "column",
+        "n"
+      ]
+    },
+    {
+      "name": "NthSmallest",
+      "args": [
+        "column",
+        "n"
+      ]
+    },
+    {
+      "name": "L95",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "U95",
+      "args": [
+        "column"
+      ]
+    },
+    {
+      "name": "WeightedAverage",
+      "args": [
+        "weight",
+        "value"
+      ]
+    },
+    {
+      "name": "Covariance",
+      "args": [
+        "x",
+        "y"
+      ]
+    },
+    {
+      "name": "ValueForMax",
+      "args": [
+        "by",
+        "value"
+      ]
+    },
+    {
+      "name": "ValueForMin",
+      "args": [
+        "by",
+        "value"
+      ]
+    },
+    {
+      "name": "LastValueForMax",
+      "args": [
+        "by",
+        "value"
+      ]
+    },
+    {
+      "name": "LastValueForMin",
+      "args": [
+        "by",
+        "value"
+      ]
+    },
+    {
+      "name": "Abs",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Ceiling",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Floor",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Round",
+      "args": [
+        "value",
+        "digits"
+      ]
+    },
+    {
+      "name": "Sqrt",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Exp",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Ln",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Log10",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Log",
+      "args": [
+        "value",
+        "base"
+      ]
+    },
+    {
+      "name": "Mod",
+      "args": [
+        "dividend",
+        "divisor"
+      ]
+    },
+    {
+      "name": "Power",
+      "args": [
+        "base",
+        "exponent"
+      ]
+    },
+    {
+      "name": "PI",
+      "args": []
+    },
+    {
+      "name": "Sin",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Cos",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Tan",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "ASin",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "ACos",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "ATan",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "ATan2",
+      "args": [
+        "y",
+        "x"
+      ]
+    },
+    {
+      "name": "If",
+      "args": [
+        "condition",
+        "then",
+        "else"
+      ]
+    },
+    {
+      "name": "Date",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "DateTime",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Year",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Quarter",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Month",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Day",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Hour",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "Week",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "DayOfWeek",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "DatePart",
+      "args": [
+        "part",
+        "value"
+      ]
+    },
+    {
+      "name": "ParseDateTime",
+      "args": [
+        "text",
+        "format"
+      ]
     }
   ]
 }

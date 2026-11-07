@@ -3,6 +3,7 @@ screen's calculator's exam (client2/tests/expression_vectors_harness.mjs). A vec
 page's markings is the screen's: the server refuses it by name."""
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -49,6 +50,22 @@ def test_a_vector(vector):
             _near(g, w) for g, w in zip(got, vector["expect_rows"])), (out, vector["expect_rows"])
     else:
         assert "value" in out and _near(out["value"], vector["expect"]), (out, vector["expect"])
+
+
+def test_the_table_says_the_file_s_functions_and_their_args():
+    """Lead 11-07: FUNCTIONS' names and each one's args are the file's `functions` (the screen's table is held to the
+    same list); a call with that many arguments is not refused for its count, one more is unless the fold takes more."""
+    listed = {f["name"]: f["args"] for f in FILE["functions"]}
+    assert set(expression.FUNCTIONS) == set(listed), set(expression.FUNCTIONS) ^ set(listed)
+    assert {n: fn["args"] for n, fn in expression.FUNCTIONS.items()} == listed
+
+    def counted(name, n):
+        why = expression.compile("%s(%s)" % (name, ", ".join(["1"] * n))).get("why") or ""
+        return why.startswith(name + " takes ") and re.search(r" - got [0-9]+$", why) is not None
+
+    miscounted = [name for name, args in listed.items() if counted(name, len(args))
+                  or (not expression.FUNCTIONS[name].get("rowwise") and not counted(name, len(args) + 1))]
+    assert not miscounted, miscounted
 
 
 @pytest.mark.parametrize("text, zone, said", [
