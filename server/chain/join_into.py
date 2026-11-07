@@ -97,29 +97,15 @@ JOIN_CELLS = ("on", "take", "blank")
 BLANK_SKIP = "skip"
 BLANK_WORDS = (BLANK_SKIP,)
 
-#: The cell of a `take` item that gathers EVERY value-table row of a key into one value (owner 10-20 「a 테이블에서
-#: b 테이블로 집계해서 조인」 · 「uniqueconcat 해서 붙이는 게 필요」). The words and the calculation are the gap fill's
-#: (`enrichment.config.AGGREGATION_FUNCTIONS` · `aggregation_record`); a take without it is one row a key, as before.
-TAKE_FN = "fn"
-#: The closed list a take's `fn` picks from - its members ride the chain rule answer (`ledger.admin`) under this name.
-TAKE_FN_LIST = "aggregation_functions"
-
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
-#: of {left, right}) and `_takes` (`take`: a list of names, or of records {from, into, fn, separator}).
-#: A take item is picked by shape, as a gap fill's aggregation is (`rule_shape.DECIDE_CELL_SHAPES`, 총괄 bce8d755a):
-#: a name, or a record whose `fn` is one of `TAKE_FN_LIST`. A cell missing here is a value.
+#: of {left, right}) and `_takes` (`take`: a list of names). A cell missing here is a value.
+#: ⚠️ `take` also reads a {from, into} item; the vocabulary has no union, so the item is drawn
+#:    as a name and the record form stays in the raw editor - named, never refused.
 JOIN_CELL_SHAPES = {
     "on": chain_bindings.list_node("pair", {"kind": "record", "fields": [
         {"key": "left", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
         {"key": "right", "required": False, "node": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)}]}),
-    "take": chain_bindings.list_node("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
-        "name": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT),
-        "record": {"kind": "record", "fields": [
-            {"key": "from", "required": False, "node": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)},
-            {"key": "into", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
-            {"key": TAKE_FN, "required": False, "node": {"kind": "leaf", "hint": "choice", "list": TAKE_FN_LIST}},
-            {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}}]}},
-        "empty": {"name": ""}}),
+    "take": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)),
 }
 
 
@@ -190,6 +176,12 @@ def _takes(spec: dict) -> list:
         elif isinstance(item, dict) and item.get("from"):
             out.append((str(item["from"]), str(item.get("into") or item["from"])))
     return out
+
+
+#: The cell of a `take` item that gathers EVERY value-table row of a key into one value (owner 10-20 「a 테이블에서
+#: b 테이블로 집계해서 조인」 · 「uniqueconcat 해서 붙이는 게 필요」). The words and the calculation are the gap fill's
+#: (`enrichment.config.AGGREGATION_FUNCTIONS` · `aggregation_record`); a take without it is one row a key, as before.
+TAKE_FN = "fn"
 
 
 def _fn_takes(spec: dict) -> dict:
@@ -271,8 +263,16 @@ def old_keys(rule: dict, payload) -> list:
     if not gathers(spec) or str((rule or {}).get("trigger_table") or "") != str(spec.get("right_table") or ""):
         return []
     columns = [right for _left, right, _fold in _pairs(spec)]
-    out = (event_constants.key_left(item or {}, columns) for item in (payload if isinstance(payload, list) else [payload]))
-    return list(dict.fromkeys(key for key in out if key is not None))
+    out = []
+    for item in payload if isinstance(payload, list) else [payload]:
+        old = event_constants.old_values_of(item)
+        if not old.keys() & set(columns):
+            continue
+        data = (item or {}).get("data") or {}
+        out.append(tuple(old[column] if column in old else (
+            data[column].get("value") if isinstance(data.get(column), dict) else data.get(column))
+            for column in columns))
+    return list(dict.fromkeys(out))
 
 
 def take_targets(rule) -> list:

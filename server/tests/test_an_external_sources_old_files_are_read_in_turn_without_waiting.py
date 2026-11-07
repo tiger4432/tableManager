@@ -4,9 +4,9 @@ data root, a sqlite file and a stub API:
   big    40 files of three days ago   -> read without the one-second copy wait
   small  3 files of two days ago      -> taken in turn with big, so read among the first dispatches
   bm     w1/bmap.csv and w2/bmap.csv, the same bytes -> both read (each wafer's own file)
-and a line «External sweep in progress: <source> looked x · dispatched y · z s» while the sweep runs.
-Run 2 (a restart, sweeps every 2 s): small's s0.csv written again (same bytes, a new mtime) at its own path is read
-again; the rest - the bmap copies too - are already read by the checklist: not dispatched, not hashed (소유자 10-21)."""
+and a line «External sweep in progress: <source> k/N candidate(s) through» while the sweep runs.
+Run 2 (a restart, sweeps every 2 s): small's s0.csv written again with the same bytes at its own path is skipped; the
+bmap copies are concluded by tier 1 - not dispatched, not hashed (총괄 10-20)."""
 import ctypes
 import http.server
 import json
@@ -158,7 +158,7 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
                            for r in (logs[0], logs[-1]))
         print("files per second: %.2f (45 files in %.0f s)" % (45 / max(last - first, 1), last - first))
         assert last - first < 0.5 * 45, "a file waited for a copy that cannot be running"
-        progress = re.findall(r"External sweep in progress: (big@\S+) looked (\d+) · dispatched (\d+) · \d+ s", said)
+        progress = re.findall(r"External sweep in progress: (big@\S+) (\d+)/40 candidate\(s\) through", said)
         assert progress, said[-3000:]
 
         # run 2: a restart; s0.csv written again with the same bytes at its own path
@@ -172,14 +172,13 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
 
         said = _run(tmp_path, db, url, eight_seconds_of_sweeps_after_the_first, seconds=90)
         assert swept, said[-3000:]
-        with sqlite3.connect(str(db)) as c:          # s0.csv saved again: read again (소유자 10-21 체크리스트), the rest not
-            assert len(_logs(c)) == 46 and _logs(c)[45][1] == "small", [r[1:4] for r in _logs(c)[45:]]
+        with sqlite3.connect(str(db)) as c:
+            assert len(_logs(c)) == 45, [r[1:4] for r in _logs(c)[45:]]
         assert re.search(r"New file detected: \S+s0\.csv", said), "s0.csv was not looked at again"
-        ended, *later = re.findall(r"External sweep: (\d+) candidate binding\(s\) - (\d+) already read, (\d+) dispatched",
-                                   said)
-        print("after the restart: %s candidates, %s already read, %s dispatched" % ended)
+        [ended] = re.findall(r"External sweep: (\d+) candidate binding\(s\) - (\d+) already concluded .*?(\d+) dispatched",
+                             said)
+        print("after the restart: %s candidates, %s concluded by tier 1, %s dispatched" % ended)
         assert ended == ("45", "44", "1"), ended                         # s0.csv only - it was written again
-        assert later and set(later) == {("45", "45", "0")}, later        # then every sweep: all already read
         assert not re.findall(r"New file detected: \S+bmap\.csv", said)
     finally:
         api.shutdown()

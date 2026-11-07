@@ -11,10 +11,9 @@ from database import models
 from tests.test_a_declared_join_can_be_backfilled_like_any_rule import _rules
 from tests.test_retroactive_admin import RULE_MIXED, retro_env  # noqa: F401
 
-RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm", "rule_rows", "fold_units", "withdraw"]
+RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm", "rule_rows", "fold_units"]
 #: What an operation requires besides its rule, so the rule is what gets judged.
-_REQUIRED_TOO = {"rule_rows": {"transaction": "t", "events": "e"},
-                 "withdraw": {"table": "retro_test_target", "source": "chain_ingestion"}}
+_REQUIRED_TOO = {"rule_rows": {"transaction": "t", "events": "e"}}
 
 
 def _recorded(db):
@@ -136,15 +135,12 @@ NAME_OPS = {
     "fold_file_layers": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_written_notation": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "remove_shell_rows": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
-    "delete_every_row": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_duplicate_rows": ({"table": "no_such_table", "keys": "part_no", "order": "note"},
                             {"table": "retro_test_target", "keys": "part_no", "order": "note"}),
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},
                  {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),
     "ledger_catch_up": ({"world": "no_such_world"}, {"world": "default"}),
-    "retype_column": ({"table": "no_such_table", "column": "v", "type": "number"},
-                      {"table": "retro_test_target", "column": "v", "type": "number"}),
     "ledger_rescope": ({"source": "no_such_source", "scope_column": "row_id",
                         "scope_values": "a"},
                        {"source": "dt_job", "scope_column": "row_id", "scope_values": "a"}),

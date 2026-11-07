@@ -48,10 +48,8 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
     assert [r["id"] for r in ask(until="2026-10-19")["data"]] == [ids[5], ids[4]]
 
     by_folder = ask(table="insp", folder=str(lot_a), group="folder")["groups"]
-    # «waiting» - handed again, not read yet: the folder head's «N waiting» (602e3e555)
-    assert sorted(by_folder, key=lambda g: g["key"]) == [
-        {"key": "w1", "label": "W1", "count": 2, "failed": 0, "waiting": 0},
-        {"key": "w2", "label": "W2", "count": 2, "failed": 2, "waiting": 0}]
+    assert sorted(by_folder, key=lambda g: g["key"]) == [{"key": "w1", "label": "W1", "count": 2, "failed": 0},
+                                                         {"key": "w2", "label": "W2", "count": 2, "failed": 2}]
     by_reason = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", group="reason")["groups"]}
     assert by_reason == {None: (3, 0), "ValueError: line 3": (2, 2)}, by_reason
     by_status = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", name="bmap", group="status")["groups"]}
@@ -121,16 +119,3 @@ def test_a_folder_group_below_a_chosen_folder_is_its_first_folder(client, db_ses
     assert [row["group_key"] for row in spelt["data"]] == ["step1", "step1"]
     assert groups() == sorted(((str(lot / step / ("W%d" % w)), 1, int(w < n)) for step, n in failed.items()
                                for w in range(3)), key=str)                        # no folder: as before
-
-
-def test_a_file_is_found_by_a_part_of_its_folder(client, db_session, tmp_path):
-    """소유자 10-21 「경로는 인식 못 하나?」: two external files of one name, told apart by a folder - Name reads the path."""
-    rows = [_log(db_session, "voids", str(tmp_path / "ext" / "LOTQ7" / "W01" / "voids.json"), "SUCCESS"),
-            _log(db_session, "voids", str(tmp_path / "ext" / "LOTQ8" / "W01" / "voids.json"), "SUCCESS")]
-    db_session.commit()
-
-    got = client.get("/admin/file-ingestion/logs", params={"name": "lotq7", "limit": 50}).json()
-
-    assert [r["id"] for r in got["data"]] == [rows[0].id], got["data"]
-    either = client.get("/admin/file-ingestion/logs", params={"name": "LOTQ8/w01", "limit": 50}).json()
-    assert [r["id"] for r in either["data"]] == [rows[1].id], either["data"]        # either separator

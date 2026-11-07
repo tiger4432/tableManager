@@ -1,23 +1,23 @@
-"""Let already-ingested files be read again — without touching the files.
+"""Let one already-ingested file be read again — without touching the file.
 
 WHY THIS EXISTS
 ---------------
-An EXTERNAL source is read-only by design: the watcher never moves or renames what it finds there, and neither
-should you. Whether a file is read again is the checklist's answer (소유자 10-21): a file log row of the same
-(path, table) carrying the file's (mtime, size) checks it. This lets those keys go - `reread.uncheck`, the same one a
-table's changed reading calls - so the next sweep reads the files again. The files are not read, moved, renamed or
-hashed; only the rows' stamps are emptied (their history stays).
+A managed file is replayed by renaming it to carry ``__force__``.  An EXTERNAL source is
+read-only by design: the watcher never moves or renames what it finds there, and neither
+should you.  That left only two levers, both wrong for one file: turn dedup off globally
+(every file under that tree re-ingests on every sweep, forever, because nothing moves) or
+edit the database by hand.
+
+This is the missing middle.  It clears the ingestion ledger's memory of ONE file, so the
+next sweep treats it as new.  The file is not read, moved, renamed or hashed into
+anything; only the checkpoint row is removed.
 
     python scripts/replay_ingestion.py --path "D:/feeds/WF-001/JOB1_20260818_140000/voids.json"
-    python scripts/replay_ingestion.py --path "..." --path "..." --table void_obs --apply
-    python scripts/replay_ingestion.py --path "..." --now [--table <table>] [--apply]
+    python scripts/replay_ingestion.py --path "..." --apply
 
-`--now` reads the file now as the watcher would have - even one no row names and one the source's pattern did not
-take (총괄 aaf19d0ca): the screen's «Read now», the same function (`reread.read_now`).
-
-Dry run by default: it prints the rows that check the files and changes nothing. Re-ingestion UPDATES rows that
-carry the same business key rather than duplicating them, so a replay of unchanged content lands the same values
-again. One file from the screen is the file screen's Retry.
+Dry run by default: it prints the row it would forget and changes nothing.  Re-ingestion
+UPDATES rows that carry the same business key rather than duplicating them, so a replay
+of unchanged content lands the same values again.
 """
 from __future__ import annotations
 
@@ -32,75 +32,81 @@ for path in (SERVER, os.path.join(SERVER, "parsers")):
         sys.path.insert(0, path)
 
 
+def _rows_for(db, model, filepath: str, signature: str | None, table: str | None):
+    """Every checkpoint row that would make the watcher skip this file.
+
+    Matched by absolute path first, because that is what the operator has in hand.  The
+    content signature is also tried: the same bytes may have been ingested from an older
+    location, and it is that row -- not the path -- the dedup actually consults.
+    """
+    found = {}
+    query = db.query(model).filter(model.filepath == filepath)
+    if table:
+        query = query.filter(model.table_name == table)
+    for row in query.all():
+        found[row.id] = row
+    if signature:
+        query = db.query(model).filter(model.file_signature == signature)
+        if table:
+            query = query.filter(model.table_name == table)
+        for row in query.all():
+            found[row.id] = row
+    return list(found.values())
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--path", required=True, action="append", help="a file to let through again (repeatable)")
+    parser.add_argument("--path", required=True, help="the file to let through again")
     parser.add_argument("--table", help="narrow to one table (a file may feed two)")
-    parser.add_argument("--apply", action="store_true", help="actually let them go; without this nothing changes")
-    parser.add_argument("--now", action="store_true", help="hand each file to the watcher to read now")
+    parser.add_argument("--apply", action="store_true",
+                        help="actually forget it; without this nothing changes")
     args = parser.parse_args(argv)
-    if args.now:
-        return read_now(args)
 
-    from sqlalchemy import literal
-
+    import ingestion.checkpoint
     from database.database import SessionLocal
-    from database.models import FileIngestionLog as Log, path_key
-    from ingestion import reread
+    from database.models import FileIngestionCheckpoint as Model
 
-    paths = [os.path.abspath(path) for path in args.path]
+    filepath = os.path.abspath(args.path)
+    print(f"file      : {filepath}")
+    exists = os.path.exists(filepath)
+    print(f"존재 여부 : {'있음' if exists else '없음 (원장 기록만 지웁니다)'}")
+
+    signature = ingestion.checkpoint.compute_file_signature(filepath) if exists else None
+    print(f"signature : {signature or '(계산 못 함)'}")
+
     db = SessionLocal()
     try:
-        query = db.query(Log).filter(Log.file_mtime.isnot(None),
-                                     path_key(Log.filepath).in_([path_key(literal(path)) for path in paths]))
-        if args.table:
-            query = query.filter(Log.table_name == args.table)
-        rows = query.order_by(Log.id).all()
-        for path in paths:
-            print(f"file      : {path} ({'on the disk' if os.path.exists(path) else 'not on the disk'})")
+        rows = _rows_for(db, Model, filepath, signature, args.table)
         if not rows:
-            print("No row checks these files - the next sweep already reads them.")
-            print("If one still does not come in, the cause is not the checklist (see the source's folder, "
-                  "options.filename and enabled).")
+            print()
+            print("이 파일에 대한 인제션 기록이 없습니다 — 이미 다시 읽힐 상태입니다.")
+            print("그래도 안 들어온다면 원인은 dedup이 아닙니다("
+                  "폴더 모양·options.filename·enabled 를 보십시오).")
             return 0
-        print(f"=== rows that check them: {len(rows)} ===")
+
+        print()
+        print(f"=== 지울 기록 {len(rows)}건 ===")
         for row in rows:
-            print(f"  table {row.table_name:20s} status={row.status:14s} read {row.updated_at or row.created_at}  "
-                  f"{row.filepath}")
+            print(f"  표 {row.table_name:20s} status={row.status:10s} "
+                  f"행 {row.processed_rows or 0:,}  {row.filename}")
+            print(f"      signature={str(row.file_signature)[:40]}…  updated={row.updated_at}")
+
         if not args.apply:
-            print("(dry run - add --apply to let them go)")
+            print()
+            print("(미적용 — --apply 를 붙이면 실제로 지웁니다)")
             return 0
-        unchecked = reread.uncheck(db, table=args.table, paths=paths)
-        print(f"Unchecked {unchecked} row(s). The next sweep (external sources: within 300 s) reads these files again; "
-              f"a row the retry door holds is left to it.")
+
+        for row in rows:
+            db.delete(row)
+        db.commit()
+        print()
+        print(f"지웠습니다 — {len(rows)}건. 다음 스윕(외부 소스는 최대 300초)에서 "
+              f"이 파일을 새 파일로 봅니다.")
+        print("업서트라 같은 business key 행은 늘지 않고 갱신됩니다.")
         return 0
     except Exception:
         db.rollback()
         raise
-    finally:
-        db.close()
-
-
-def read_now(args) -> int:
-    from database.database import SessionLocal
-    from ingestion import reread
-
-    db = SessionLocal()
-    try:
-        for path in args.path:
-            try:
-                said = reread.read_now(db, path, table=args.table, apply=args.apply)
-            except reread.RereadRefused as refused:
-                print(f"refused   : {refused}")
-                continue
-            for owner in said["owners"]:
-                why = "; ".join(owner["why_not"]) or "the watcher takes it"
-                print(f"owner     : {owner['table']} ({owner['source']}) - {why}")
-            print(f"file      : {said['path']} -> "
-                  + (f"handed to the watcher for {said['owner']['table']} (log #{said['log_id']})" if args.apply
-                     else f"{len(said['owners'])} tables read it - add --table" if said["owner"] is None
-                     else f"{said['owner']['table']} would read it (dry run - add --apply)"))
-        return 0
     finally:
         db.close()
 

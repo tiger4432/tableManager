@@ -15,6 +15,14 @@ export const PAUSE_WORDS = Object.freeze({
   pausing: 'Pausing…', resuming: 'Resuming…',
 });
 
+/** What each stop pauses (lead 290e22ac0: the watcher's Pause is the chain's): its routes, its `/health` worker, its words. */
+export const PAUSE_KINDS = Object.freeze({
+  chain: Object.freeze({ pause: PAUSE_ROUTE, resume: RESUME_ROUTE, worker: 'chain', words: PAUSE_WORDS }),
+  watcher: Object.freeze({ pause: '/admin/watcher/pause', resume: '/admin/watcher/resume', worker: 'watcher',
+    words: Object.freeze({ ...PAUSE_WORDS, pause: 'Pause watcher', resume: 'Resume watcher',
+      confirmLine: 'Pause the watcher? No file is read until Resume. Files that come stay on the disk.' }) }),
+});
+
 /**
  * @param {{read: true, paused: {by?, at?, reason?}|null}|{read: false, reason?: string}|null} requested
  * @param {{status?: string, detail?: string}|null} worker  `/health` checks.workers.chain, or null unread
@@ -45,17 +53,21 @@ export function chainPauseView(requested, worker) {
 }
 
 /** The request a button sends — the route is chosen here, beside the view that chose the action. */
-export function pauseRequest(action, reason) {
+export function pauseRequest(action, reason, kind = 'chain') {
+  const routes = PAUSE_KINDS[kind];
   return action === 'resume'
-    ? { path: RESUME_ROUTE, body: {} }
-    : { path: PAUSE_ROUTE, body: { reason: String(reason || '').trim() } };
+    ? { path: routes.resume, body: {} }
+    : { path: routes.pause, body: { reason: String(reason || '').trim() } };
 }
 
 export class ChainPauseControl {
-  /** @param {HTMLElement} mount  @param {{doc?: Document, send: (req) => Promise<{ok: boolean, error?: string}>}} deps */
+  /** @param {HTMLElement} mount
+   *  @param {{doc?: Document, kind?: 'chain'|'watcher', send: (req) => Promise<{ok: boolean, error?: string}>}} deps */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('ChainPauseControl needs a mount element');
     this.doc = deps.doc || mount.ownerDocument;
+    this.kind = deps.kind || 'chain';
+    this.words = PAUSE_KINDS[this.kind].words;
     this.send = deps.send || (async () => ({ ok: false, error: 'No route wired' }));
     this.root = this.doc.createElement('div');
     this.root.className = 'chain-pause';
@@ -108,31 +120,32 @@ export class ChainPauseControl {
     this.drawn = key;
     this.controls.textContent = '';
     const action = this.view.action;
+    const words = this.words;
     if (this.busy) {
-      this._button('btn-primary', this.busy === 'resume' ? PAUSE_WORDS.resuming : PAUSE_WORDS.pausing, () => {});
+      this._button('btn-primary', this.busy === 'resume' ? words.resuming : words.pausing, () => {});
       return;
     }
     if (action === 'resume') {
-      this._button('btn-primary chain-pause-resume', PAUSE_WORDS.resume, () => this._fire('resume'));
+      this._button('btn-primary chain-pause-resume', words.resume, () => this._fire('resume'));
       return;
     }
     const input = this.doc.createElement('input');
     input.className = 'chain-pause-reason';
-    input.placeholder = PAUSE_WORDS.reason;
-    input.setAttribute('aria-label', PAUSE_WORDS.reason);
+    input.placeholder = words.reason;
+    input.setAttribute('aria-label', words.reason);
     input.value = this.reason;
     input.addEventListener('input', () => { this.reason = input.value; });
     this.controls.appendChild(input);
     if (!this.confirming) {
-      this._button('btn-danger chain-pause-go', PAUSE_WORDS.pause, () => this._confirm(true));
+      this._button('btn-danger chain-pause-go', words.pause, () => this._confirm(true));
       return;
     }
     const ask = this.doc.createElement('span');
     ask.className = 'chain-pause-ask';
-    ask.textContent = PAUSE_WORDS.confirmLine;
+    ask.textContent = words.confirmLine;
     this.controls.appendChild(ask);
-    this._button('btn-danger chain-pause-confirm', PAUSE_WORDS.confirm, () => this._fire('pause'));
-    this._button('chain-pause-cancel', PAUSE_WORDS.cancel, () => this._confirm(false));
+    this._button('btn-danger chain-pause-confirm', words.confirm, () => this._fire('pause'));
+    this._button('chain-pause-cancel', words.cancel, () => this._confirm(false));
   }
 
   _confirm(on) {
@@ -148,7 +161,7 @@ export class ChainPauseControl {
     this.render(this.view);
     let answer;
     try {
-      answer = await this.send(pauseRequest(action, this.reason));
+      answer = await this.send(pauseRequest(action, this.reason, this.kind));
     } catch (e) {
       answer = { ok: false, error: (e && e.message) || 'Request failed' };
     }

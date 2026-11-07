@@ -183,8 +183,6 @@ def main(argv=None):
     p.add_argument("table")
     p.add_argument("source")
     p.add_argument("--columns", default=None, help="comma-separated column allowlist")
-    p.add_argument("--rule", default=None,
-                   help="only this chain rule's layers, on the columns outside its target_columns")
     p.add_argument("--apply", action="store_true")
 
     p = sub.add_parser("resolve")
@@ -225,12 +223,6 @@ def main(argv=None):
 
     # 총괄 5eee501eb: the rows left with only the chain's keys - the chain's write seat's judgement.
     p = sub.add_parser("remove-shells")
-    p.add_argument("table")
-    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
-    p.add_argument("--apply", action="store_true")
-
-    # 총괄 4435b9b29: every row of one table, through the grid's delete door - the file checklist kept.
-    p = sub.add_parser("delete-every-row")
     p.add_argument("table")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
     p.add_argument("--apply", action="store_true")
@@ -322,15 +314,6 @@ def main(argv=None):
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
                 print("\n" + retroactive.count(db, "remove_shell_rows", params)["detail"] + "\n-> add --apply to delete")
-        elif args.cmd == "delete-every-row":
-            params = {"table": args.table, "pace": args.pace}
-            if args.apply:
-                s = written("delete_every_row", params)
-                print(f"\ndelete-every-row '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) deleted "
-                      f"in {s['pages']} page(s)"
-                      + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
-            else:
-                print("\n" + retroactive.count(db, "delete_every_row", params)["detail"] + "\n-> add --apply to delete")
         elif args.cmd == "fold-withdraw-events":
             if args.apply:
                 from chain import cell_layer
@@ -349,13 +332,10 @@ def main(argv=None):
                 list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            if args.apply:
-                print(_report_withdraw(written("withdraw", {
-                    "table": args.table, "source": args.source, "columns": cols, "rule": args.rule})))
-            else:
-                written_by, cols = replay.unwritten_scope(args.rule, args.table, cols)
-                print(_report_withdraw(replay.withdraw_source(
-                    db, args.table, args.source, columns=cols, apply=False, log=say, written_by=written_by)))
+            print(_report_withdraw(written("withdraw", {
+                "table": args.table, "source": args.source, "columns": cols})
+                if args.apply else replay.withdraw_source(
+                    db, args.table, args.source, columns=cols, apply=False, log=say)))
     except (replay.ReplayRefused, retroactive.RetroactiveRefused) as e:
         print(f"REFUSED: {e}")
         return 2

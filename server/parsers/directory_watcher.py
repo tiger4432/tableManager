@@ -8,7 +8,6 @@ import threading
 import contextlib
 import contextvars
 import itertools
-import stat as _stat
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -93,9 +92,10 @@ import event_constants
 import validation
 
 
-# [P2] 오프셋 체크포인트 재개 + «이미 읽었나» 체크리스트 (설계 근거·해시 비용 실측은 모듈 docstring)
+# [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
 import ingestion.checkpoint
-from ingestion.checkpoint import CheckpointPlan, compute_file_signature, read_file_stat, stamp_of
+from ingestion import reread
+from ingestion.checkpoint import CheckpointPlan, compute_file_signature, is_force_reingest, mtime_ns_to_datetime, read_file_stat
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
 # come from the payload, not from the schema, so a malformed header row or a parser
@@ -301,9 +301,6 @@ WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "confi
 PERIODIC_SWEEP_INTERVAL_SECONDS = 300
 #: Seconds between two «External sweep in progress» lines of one sweep.
 SWEEP_PROGRESS_SECONDS = 30
-#: An external sweep hands a page on when it holds the checklist's batch or has been gathering this long - a share
-#: whose matching files are few and far apart is not walked to its end before its first file goes (총괄 10-21).
-SWEEP_PAGE_SECONDS = 5
 
 #: 🔴 HOW OFTEN THE SWEEP LOOP BEATS WHILE IT WAITS (S-142 ①), AND WHY IT IS NOT
 #: THE SWEEP INTERVAL. In integrated mode this loop is the watcher's only always-running
@@ -680,12 +677,11 @@ def _new_row_ids(table, results):
 _INGEST_LANE = contextvars.ContextVar("assy_ingest_lane", default=None)
 
 
-def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat=None) -> dict:
+def _file_result(began, tally, skipped_no_key, parse_meta, error=None) -> dict:
     """What a file's read came to, for its completion record (총괄 e390600d6): the write door's own counts (`_FileTally`,
     no second count), the reader, the source, the seconds since `began` (a monotonic time); for a failure its one-line
     reason and the frame it broke in («p.py:7 in parse»). Counts are None when nothing was read yet or the tally
-    stopped counting. `file_stat` - the file as this read found it - checks it (`checkpoint.checked`); a read that
-    came to no answer about the file (it waited out a lock) passes none and stays unchecked."""
+    stopped counting."""
     import traceback
 
     meta = parse_meta or {}
@@ -698,7 +694,6 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
         "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
         "transaction_id": tally.transaction_id if tally is not None else None,
-        "file_mtime": file_stat[0] if file_stat else None, "file_size": file_stat[1] if file_stat else None,
     }
     if tally is not None and tally.silenced is None:
         written = tally.new + tally.changed + tally.unchanged
@@ -728,10 +723,9 @@ class _FileTally:
         self.silenced = None          # why the line stopped counting, if it did
         self.transaction_id = None    # the transaction the file's rows were written under (총괄 10-20)
         self.time_left = {}           # verdict -> values a `time` rule left as written
-        self.maps = self.map_deleted = 0  # allow_replace_map: maps replaced, rows they deleted (총괄 10-21)
 
     def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler,
-                  time_left=None, replaced=None):
+                  time_left=None):
         """🔴 AN OBSERVER DOES NOT KILL WHAT IT OBSERVES - a tally that raises silences the
         file line, says so once, and the chunk goes on."""
         if self.silenced is not None:
@@ -740,9 +734,6 @@ class _FileTally:
             self._add_chunk(summary, rows, sent, new_ids, changed_cells, sampler)
             for verdict, n in (time_left or {}).items():
                 self.time_left[verdict] = self.time_left.get(verdict, 0) + n
-            if replaced is not None:
-                self.maps += 1
-                self.map_deleted += replaced.get("deleted", 0)
         except Exception as exc:                                    # noqa: BLE001
             self.silenced = "%s: %s" % (type(exc).__name__, told(exc))
             logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
@@ -788,7 +779,7 @@ class _FileTally:
         return (
             "[Ingest] %s FILE %s: %d row(s) in %.3f s (%d rows/min) · %s · waited %s"
             " · sent: new %d · changed %d · unchanged %d · cells changed %d"
-            " · side-table rows %d%s%s · STAGES%s · INSIDE THE WRITE%s · DB wait samples %s" % (
+            " · side-table rows %d%s · STAGES%s · INSIDE THE WRITE%s · DB wait samples %s" % (
                 table, filename or "?", self.rows, wall,
                 int(self.rows * 60 / wall) if wall > 0 else 0,
                 "%s lane" % lane[0] if lane else "no lane", waited,
@@ -798,8 +789,6 @@ class _FileTally:
                 " · time rule left as written: no matching format %d, time zone written %d" % (
                     self.time_left.get("unmatched", 0), self.time_left.get("zoned", 0))
                 if self.time_left else "",
-                # allow_replace_map (총괄 10-21): the maps the file replaced and the rows they deleted
-                " · replaced %d map(s), deleted %d row(s)" % (self.maps, self.map_deleted) if self.maps else "",
                 "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
                 or " (none named)",
                 alignment_batch_counts.write_steps_text(
@@ -936,18 +925,6 @@ def _real_folder(folder: str) -> str:
     return known[folder]
 
 
-def _written_relative_path(path: str, root: str) -> str | None:
-    """The POSIX path below `root` as `path` is spelled (`normcase` compared, nothing resolved), or ``None``."""
-    absolute, top = os.path.abspath(path), os.path.abspath(root)
-    try:
-        if os.path.normcase(os.path.commonpath((absolute, top))) != os.path.normcase(top):
-            return None
-    except ValueError:
-        return None
-    rel = os.path.relpath(absolute, top)
-    return None if rel == os.curdir else rel.replace(os.sep, "/")
-
-
 def _safe_relative_path(path: str, root: str) -> str | None:
     """Real-path-contained POSIX relative path, or ``None`` when outside.
 
@@ -974,80 +951,23 @@ def _safe_relative_path(path: str, root: str) -> str | None:
     return rel.replace(os.sep, "/")
 
 
-_GLOB_FLAGS = re.IGNORECASE if os.path.normcase("A") == "a" else 0
-
-
-def _glob_segments(pattern: str) -> tuple:
-    """The pattern as segments: with ``/`` the whole path from the root; without, the name at any depth."""
-    return tuple(pattern.split("/")) if "/" in pattern else ("**", pattern)
-
-
-def _glob_segment(seg: str) -> str:
-    """One segment's regex: ``*`` = within the segment · ``?`` = one non-``/``."""
-    return "".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c) for c in seg)
-
-
 @functools.lru_cache(maxsize=None)
 def _glob_regex(pattern: str):
     """``**`` = any number of whole segments (zero too) · ``*`` = within one segment · ``?`` = one
     non-``/``. With ``/`` the pattern is the whole path from the root; without, the name at any
     depth. Case as the filesystem compares it (``normcase``)."""
-    segments = _glob_segments(pattern)
+    segments = pattern.split("/") if "/" in pattern else ["**", pattern]
     parts = []
     for i, seg in enumerate(segments):
         last = i == len(segments) - 1
         if seg == "**":
             parts.append(".*" if last else "(?:[^/]+/)*")
             continue
-        parts.append(_glob_segment(seg))
+        parts.append("".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c)
+                             for c in seg))
         if not last:
             parts.append("/")
-    return re.compile("".join(parts), _GLOB_FLAGS)
-
-
-@functools.lru_cache(maxsize=None)
-def _glob_segment_regex(seg: str):
-    return re.compile(_glob_segment(seg), _GLOB_FLAGS)
-
-
-def _segments_may_go_on(pattern: tuple, folders: tuple) -> bool:
-    """Can the `pattern` segments still take a file below the `folders` segments."""
-    if not folders:
-        return bool(pattern)
-    if not pattern:
-        return False
-    if pattern[0] == "**":
-        return (len(pattern) == 1 or _segments_may_go_on(pattern[1:], folders)
-                or _segments_may_go_on(pattern, folders[1:]))
-    if len(pattern) == 1:
-        return False                                            # only the file's own name is left
-    return (bool(_glob_segment_regex(pattern[0]).fullmatch(folders[0]))
-            and _segments_may_go_on(pattern[1:], folders[1:]))
-
-
-def _folder_may_hold(options: dict, rel_dir: str) -> bool:
-    """Can a file below the folder `rel_dir` (POSIX, from the root) be one the source takes (`_source_takes`) - the
-    sweep enters only such folders, as a glob does (총괄 10-21, 소유자 「glob 돌리면 뜨는데」). The same segments
-    `_glob_regex` reads; `options.filename` alone is a name at any depth."""
-    patterns = options.get("glob")
-    if patterns is None:
-        return True
-    folders = tuple(rel_dir.split("/"))
-    return any(_segments_may_go_on(_glob_segments(p), folders) for p in patterns)
-
-
-def _dispatch_order(page: list) -> list:
-    """The order a sweep hands one page of a source on - oldest first within the page (소유자 10-20 「오래된 것부터」;
-    the whole source's order would wait for its whole walk, 총괄 10-21). THE one place the order is chosen."""
-    return sorted(page, key=lambda item: item[0])
-
-
-def _within_depth(spec, depth: int) -> bool:
-    """A file `depth` folders below the source's root (its own files are 0) is within the source's `max_depth` (소유자
-    10-21 「와처 max depth 지정하게 해, 적은 경로부터」) - THE one comparison: the judgement (`source_taking`) and the
-    sweep's prune (`sweep_external_sources`) both ask it."""
-    max_depth = spec.get("max_depth")
-    return max_depth is None or depth <= max_depth
+    return re.compile("".join(parts), re.IGNORECASE if os.path.normcase("A") == "a" else 0)
 
 
 def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
@@ -1060,84 +980,14 @@ def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
     return any(_glob_regex(p).fullmatch(rel_path) for p in patterns)
 
 
-#: The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): while `marker` is set, the seat that asks
-#: the checklist (`already_checked`) first stamps the rows from before it off the stat its caller just took - nothing
-#: walks the disk before the watcher stands. The first full sweep that reached every source ends it
-#: (`finish_read_files_fill`): the marker file is written and this never runs again.
-_READ_FILES_FILL = {"marker": None, "held": False, "said": {"stamped": set(), "failed": set(), "changed": set()}}
-_READ_FILES_FILL_LOCK = threading.Lock()
-
-
-def start_read_files_fill(marker: str):
-    """Stamp the rows from before the checklist as the sweeps look - until `marker` is written."""
-    with _READ_FILES_FILL_LOCK:
-        _READ_FILES_FILL.update(marker=marker, held=False, said={"stamped": set(), "failed": set(), "changed": set()})
-
-
-def finish_read_files_fill(reached_all: bool):
-    """A full sweep ended: when it reached every source and stamped every batch, the marker is written and one line
-    says what was stamped; else the next sweep goes on. -> the line, or None."""
-    with _READ_FILES_FILL_LOCK:
-        marker, held = _READ_FILES_FILL["marker"], _READ_FILES_FILL["held"]
-        said = {key: len(ids) for key, ids in _READ_FILES_FILL["said"].items()}
-        if marker is None:
-            return None
-        _READ_FILES_FILL["held"] = False
-        if held or not reached_all:
-            line = ("[Watcher] read files stamped %d so far - the next sweep goes on (%s)"
-                    % (said["stamped"], "a batch was not stamped" if held else "a source was not reached"))
-            logger.warning(line)
-            return line
-        with open(marker, "w", encoding="utf-8") as handle:
-            handle.write(datetime.now().astimezone().isoformat())
-        _READ_FILES_FILL["marker"] = None
-    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
-            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
-    logger.info(line)
-    return line
-
-
-def why_not_taken(spec, file_path: str, rel_path: str) -> str | None:
-    """Why the source does not take the file `rel_path` below its root (as walked or written) - THE words the sweep's
-    source line counts and Read now's preview says (총괄 10-21: one function, one vocabulary): "below max_depth",
-    "name not matched", "outside the root" (its real path), "source not declared" (`spec` None - a log row's source
-    its table no longer declares, 총괄 10-22), or None - taken."""
-    if spec is None:
-        return "source not declared"
-    if not _within_depth(spec, rel_path.count("/")):
-        return "below max_depth"
-    if not _source_takes(spec.get("options") or {}, file_path, rel_path):
-        return "name not matched"
-    if _safe_relative_path(file_path, spec["root"]) is None:
-        return "outside the root"
-    return None
-
-
-class SourceGone(RuntimeError):
-    """A log row names an external source the watcher no longer holds - read under nothing rather than as raws."""
-
-
-def source_taking(specs, file_path: str, named: bool = True):
+def source_taking(specs, file_path: str):
     """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
     when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
-    (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads. `named=False` - a
-    person chose the file for that source (Read now, a Retry; 총괄 10-21): only the real path is asked to be under the
-    root, not the name or the depth."""
-    def takes(spec, rel_path):
-        return (rel_path is not None and (not named or (
-            _within_depth(spec, rel_path.count("/"))
-            and _source_takes(spec.get("options") or {}, file_path, rel_path))))
-
+    (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads."""
     matches = []
     for spec in specs:
-        # The path as written first - no disk call (총괄 10-21: a share's realpath per folder was half a sweep): a
-        # name the source does not take under its root as spelled is not asked of the filesystem. A path spelled
-        # another way (a mapped drive for a share) is asked by its real path as before.
-        written = _written_relative_path(file_path, spec["root"])
-        if written is not None and not takes(spec, written):
-            continue
         rel_path = _safe_relative_path(file_path, spec["root"])
-        if takes(spec, rel_path):
+        if rel_path is not None and _source_takes(spec.get("options") or {}, file_path, rel_path):
             matches.append((len(spec["root"]), spec, rel_path))
     if not matches:
         return None
@@ -1252,17 +1102,6 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         if why:
             errors.append(f"{where}: {why}")
             continue
-        # `recursive` widened into `max_depth` (소유자 10-21): false is 0, true or unwritten is to the end.
-        max_depth = raw.get("max_depth")
-        if max_depth is not None and (type(max_depth) is not int or max_depth < 0):
-            errors.append(f"{where}.max_depth must be a whole number 0 or more (0: the path's own files), "
-                          f"got {max_depth!r}.")
-            continue
-        if max_depth is not None and "recursive" in raw and (recursive is False) != (max_depth == 0):
-            errors.append(f"{where}: recursive {recursive} and max_depth {max_depth} disagree - write max_depth only.")
-            continue
-        if recursive is False:
-            max_depth = 0
         if not isinstance(options, dict):
             errors.append(f"{where}.options must be a JSON object.")
             continue
@@ -1285,7 +1124,7 @@ def validate_external_source_specs(settings: dict, table_config: dict,
             "root": root,
             "table_name": table_name,
             "parser": parser_name,
-            "max_depth": max_depth,
+            "recursive": recursive,
             "options": {**options, "filename": filename},
         }
         valid.append(spec)
@@ -1384,7 +1223,8 @@ def heavy_lane_workers() -> int:
     return val
 
 
-# ── [P2] 체크포인트 재개 설정 ────────────────────────────────
+# ── [P2] 체크포인트 재개 / 해시 dedup 설정 ────────────────────────────────
+DEFAULT_DEDUP_BY_SIGNATURE = True
 DEFAULT_RESUME_FROM_CHECKPOINT = True
 
 
@@ -1402,20 +1242,44 @@ def _bool_setting(key: str, default: bool) -> bool:
     return default
 
 
+def dedup_by_signature_enabled() -> bool:
+    """동일 시그니처 파일 dedup skip 활성 여부 (기본 True).
+
+    False로 두면 같은 내용 파일이 다시 떨어질 때마다 재적재한다(업서트라 결과는 동일하나
+    감사 로그와 처리 시간이 그만큼 반복 발생). **전역 강제 재처리 스위치**로도 쓴다."""
+    return _bool_setting("dedup_by_signature", DEFAULT_DEDUP_BY_SIGNATURE)
+
+
 def resume_from_checkpoint_enabled() -> bool:
     """오프셋 체크포인트 재개 활성 여부 (기본 True). False면 항상 처음부터 적재한다."""
     return _bool_setting("resume_from_checkpoint", DEFAULT_RESUME_FROM_CHECKPOINT)
 
 
-# ── 처리 후 파일 이동 정책 ──────────────────
+# ── [Tier 1] 경로+stat 빠른 스킵 / 처리 후 파일 이동 정책 ──────────────────
+DEFAULT_DEDUP_BY_PATH_STAT = True
 DEFAULT_ARCHIVE_PROCESSED_FILES = True
+
+
+def dedup_by_path_stat_enabled() -> bool:
+    """[Tier 1] `(경로, mtime, size)` 일치만으로 **해시 없이** 스킵할지 (기본 True).
+
+    🔴 **실패 방향**: tier 1은 「mtime과 size가 그대로인 채 내용만 바뀐 파일을 다시
+    읽지 않는 쪽」으로 진다. 도달 가능하다 — mtime을 보존하는 복사 도구가 있고, 같은
+    길이로 같은 마이크로초에 덮어써도 그렇게 된다. 파일을 한 번만 쓰는 fab 피드에서는
+    스윕 39초→1초를 얻는 옳은 거래지만 **판단이지 공짜가 아니다**. 그 판단을 되돌리는
+    스위치가 이것이고, `dedup_by_signature: false`(전역 강제 재처리)는 이것까지
+    같이 끈다 — 그러지 않으면 「전역 강제 재처리 스위치」가 조용히 무력해진다."""
+    if not dedup_by_signature_enabled():
+        return False
+    return _bool_setting("dedup_by_path_stat", DEFAULT_DEDUP_BY_PATH_STAT)
 
 
 def archive_processed_files_enabled() -> bool:
     """처리된 파일을 archives/·err/로 **옮길지** (기본 True = 종전 동작).
 
-    False면 파일은 떨어진 자리에 그대로 남고, 다시 읽지 않는 것은 체크리스트(`checkpoint.checked`)가
-    맡는다. 실패 사실도 `err/`라는 위치가 아니라 그 파일의 `status="FAILED"` 로그 행이 들고 있다."""
+    False면 파일은 떨어진 자리에 그대로 남고, 재처리 방지는 전적으로 원장이 맡는다
+    (tier 1 = 경로+stat, tier 2 = 내용 시그니처). 실패 사실도 `err/`라는 위치가 아니라
+    원장의 `status="FAILED"` 행이 들고 있게 된다."""
     return _bool_setting("archive_processed_files", DEFAULT_ARCHIVE_PROCESSED_FILES)
 
 
@@ -1424,7 +1288,7 @@ def archive_processed_files_enabled() -> bool:
 # structure, but its STRUCTURE IS THE DATA: the folder names carry information
 # (lot, equipment, date, ...). Once a file has finished writing it is dispatched
 # THROUGH THE UNCHANGED PIPELINE AT ITS REAL NESTED LOCATION (event path → lane
-# routing → parser → checkpoint → archives/, err/); once the whole tree is
+# routing → parser → checkpoint/dedup → archives/, err/); once the whole tree is
 # quiet, the directories that end up empty are removed.
 #
 # NOT flattened into raws/ (superseded 2026-07-30). Promoting the files meant
@@ -1547,10 +1411,10 @@ class HeavyIngestionLane:
 
     def _take(self):
         """The oldest waiting job whose table no worker is on, marked running - or None
-        once the lane is stopped."""
+        once the lane is stopped. While the watcher is paused none is taken; they wait."""
         with self._cond:
             while not self._stop_event.is_set():
-                for i, (key, job) in enumerate(self._waiting):
+                for i, (key, job) in enumerate(() if watcher_paused() else self._waiting):
                     if key not in self._running:
                         del self._waiting[i]
                         self._running.add(key)
@@ -2047,13 +1911,16 @@ class IngestionHandler(FileSystemEventHandler):
         # (folder, reason) -> times a folder was found holding files for that reason
         # (`say_what_a_folder_left`). Guarded by _processing_lock.
         self._folder_left_counts = {}
+        # Files whose last attempt waited past the lock timeout: left in place, unsealed, and
+        # the sweep tries them again although their (mtime, size) is one it has tried (③ ㄴ).
+        self.waiting_on_a_lock = set()
         # External roots are read-only contexts for this handler.  They affect
         # parser metadata only; ownership remains raws/-only (`is_managed_source`).
         self._external_sources = {}
-
-    def unregister_external_source(self, source_id: str):
-        """Detach one external-source context - the watcher retired it (switched off, removed or changed)."""
-        self._external_sources.pop(source_id, None)
+        # A modified event is stronger evidence than an unchanged coarse file
+        # stat.  Keep a one-shot bypass so same-size/mtime overwrites still reach
+        # content hashing instead of being hidden by tier 1.
+        self._external_force_hash = set()
 
     def register_external_source(self, spec: dict):
         """Attach one validated external-source context to this table handler."""
@@ -2065,15 +1932,14 @@ class IngestionHandler(FileSystemEventHandler):
                 f"restart is required to change root/parser/options safely.")
         self._external_sources[source_id] = dict(spec)
 
-    def external_source_context(self, file_path: str, source_id: str | None = None, named: bool = True):
+    def external_source_context(self, file_path: str, source_id: str | None = None):
         """Parser context for an external file, or ``None`` when it escapes/root-misses or the
-        source does not take its name (`_source_takes`, unless `named=False` - see `source_taking`) - the one seat
-        every hand-off asks."""
+        source does not take its name (`_source_takes`) - the one seat every hand-off asks."""
         specs = self._external_sources.values()
         if source_id is not None:
             spec = self._external_sources.get(source_id)
             specs = (spec,) if spec is not None else ()
-        taken = source_taking(specs, file_path, named=named)
+        taken = source_taking(specs, file_path)
         if taken is None:
             return None
         spec, rel_path = taken
@@ -2085,24 +1951,10 @@ class IngestionHandler(FileSystemEventHandler):
             "options": dict(spec.get("options") or {}),
         }
 
-    def _parse_meta_for(self, abs_path: str, source: str | None = None) -> dict:
-        """`source` - the external source root a log row names (Read now, a Retry): the file is read under that
-        source whatever its name or depth (총괄 10-21 «와처가 본 것처럼»)."""
+    def _parse_meta_for(self, abs_path: str) -> dict:
         managed_rel = self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
         if managed_rel is not None:
             return {"rel_path": managed_rel}
-        if source and source != "raws":
-            named = [spec["source_id"] for spec in self._external_sources.values()
-                     if os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
-            context = self.external_source_context(abs_path, named[0], named=False) if named else None
-            if context is None:                     # 총괄 10-21: never read as raws under no source
-                owners = [spec["root"] for spec in self._external_sources.values()
-                          if _safe_relative_path(abs_path, spec["root"]) is not None]
-                raise SourceGone(
-                    (f"the source {source} is not in ingestion_settings.json" if not named
-                     else f"{abs_path} is not under the source {source} by its real path")
-                    + f" - owned now by: {', '.join(owners) or 'no source of ' + str(self.table_name)}")
-            return {"rel_path": context["rel_path"], "external_source": context}
         context = self.external_source_context(abs_path)
         if context is None:
             return {"rel_path": None}
@@ -2125,6 +1977,21 @@ class IngestionHandler(FileSystemEventHandler):
         parser_name = external.get("parser") or "workspace"
         canonical_path = os.path.realpath(os.path.abspath(file_path))
         return f"external:{parser_name}:{canonical_path}"
+
+    def mark_external_modified(self, file_path: str):
+        if self.external_source_context(file_path) is None:
+            return False
+        with self._processing_lock:
+            self._external_force_hash.add(os.path.normcase(os.path.abspath(file_path)))
+        return True
+
+    def _consume_external_force_hash(self, file_path: str) -> bool:
+        key = os.path.normcase(os.path.abspath(file_path))
+        with self._processing_lock:
+            if key not in self._external_force_hash:
+                return False
+            self._external_force_hash.discard(key)
+            return True
 
     def _load_legacy_config(self) -> dict:
         """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
@@ -2200,6 +2067,8 @@ class IngestionHandler(FileSystemEventHandler):
     # Agent D v7: Removed on_modified as it causes too many duplicates on Windows
 
     def _handle_event(self, file_path: str):
+        if watcher_paused():
+            return          # left on the disk, untried - the sweep at Resume takes it (총괄 290e22ac0)
         abs_path = os.path.abspath(file_path)
         # [Startup Sweep] 멤버십 검사→add 사이 갭에서 스윕 스레드와 watchdog 스레드가
         # 동시에 통과하던 비원자 check-then-add를 락으로 원자화 (이중 처리 가드).
@@ -2210,7 +2079,13 @@ class IngestionHandler(FileSystemEventHandler):
                 return
             self.processing_files.add(abs_path)
 
-        # 「New file detected」 is said in `_process_with_retry`, past the checklist (S-128).
+        # ⚰️ THE TWO 「New file detected」 LINES MOVED DOWN (S-128).
+        # A read-only external source is never archived, so every 300 s sweep sees the
+        # same files again and `_external_sweep_attempted` is process memory - after a
+        # restart the first sweep re-dispatches all of them. They are then skipped by
+        # `_try_path_stat_skip` without being read, but this line had already announced
+        # each one as NEW. It now lives past that decision, in `_process_with_retry`.
+
         # [Fix] 파일명에서 업로더 정보 추출
         uploader = self._extract_user_from_filename(os.path.basename(abs_path))
 
@@ -2420,7 +2295,7 @@ class IngestionHandler(FileSystemEventHandler):
         written stays: a producer may still be writing into it (owner 10-08).
 
         Files are NOT promoted to raws/. They go through the unchanged existing
-        event path (_handle_event → lane routing → parser → checklist/checkpoint →
+        event path (_handle_event → lane routing → parser → checkpoint/dedup →
         archive), which already takes a path; what changed is that the path handed
         in is nested, so the folder names reach the parser instead of being
         encoded into a filename and decoded back out.
@@ -2460,19 +2335,28 @@ class IngestionHandler(FileSystemEventHandler):
                     st = os.stat(fp)
                 except OSError:
                     continue  # vanished between snapshot and stat
-                # The checklist's stamp off the stat we just took.
+                # Carry the tier-1 key off the stat we just took (same reason as
+                # the sweep: the expensive part is getting to the question).
                 to_process.append((
                     st.st_mtime, fp,
-                    stamp_of(st),
+                    (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
                 ))
             if not to_process:
                 return done["dispatched"]
             to_process.sort(key=lambda x: x[0])  # mtime ascending — the sweep's ordering rule
-            cleared = self.already_checked(
+            # [Tier 1, hoisted] The same batched question the sweep asks, for a reason
+            # that bites HARDER here: this dispatches every file of the tree on every
+            # trigger, and it has no equivalent of the sweep's in-memory (mtime, size)
+            # cache. When files are left in place the tree is never emptied, so each
+            # recheck pass (a sweep interval apart when nothing changed) re-pays
+            # ~92 ms per file — not once per restart, but every cycle, forever.
+            cleared = self.settle_already_terminal(
                 [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
             done["cleared"] += len(cleared)
+            held, _judged = _waiting_held(self, [os.path.abspath(fp) for _m, fp, _s in to_process
+                                                 if os.path.abspath(fp) not in cleared], reread.load_owed())
             for _mtime, fp, _fstat in to_process:
-                if os.path.abspath(fp) in cleared:
+                if os.path.abspath(fp) in cleared or os.path.abspath(fp) in held:
                     continue
                 self._handle_event(fp)
                 done["dispatched"] += 1
@@ -2506,7 +2390,7 @@ class IngestionHandler(FileSystemEventHandler):
                 os.rmdir(dirpath)
             except OSError:
                 removed_all = False
-        settled = f", {done['cleared']} already read" if done["cleared"] else ""
+        settled = f", {done['cleared']} already concluded (tier-1)" if done["cleared"] else ""
         if not done["refused"] and not removed_all and not archive_processed_files_enabled():
             self.say_what_a_folder_left(abs_dir, "kept", (
                 f"kept in place (archive_processed_files=false): dispatched {done['dispatched']} "
@@ -2712,21 +2596,35 @@ class IngestionHandler(FileSystemEventHandler):
     def _process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         abs_path = os.path.abspath(file_path)
         basename = os.path.basename(file_path)
+        self.waiting_on_a_lock.discard(abs_path)
         # [D1] 파일당 1회 스냅샷 — 해석·검증·업서트·로그가 전부 같은 config 스냅샷을 본다.
         # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
         t_name, table_info = self._snapshot_table_context()
 
-        # The checklist, BEFORE the debounce: one stat answers it, and a file this deployment already read costs no
-        # second of waiting (소유자 10-21, `checkpoint.checked`).
+        # [Tier 1] **디바운스보다 먼저** 묻는다. 여기가 요점이다: 해시(파일당 ~1.7ms)보다
+        # 아래의 `time.sleep(delay)` 1초가 훨씬 비싸고, 파일을 옮기지 않으면 스윕이
+        # raws/에 쌓인 파일을 전부 다시 집어 올린다 — 이 박스의 22,626개 트리로 재면
+        # 디바운스만 6시간이 넘는다. stat 한 번으로 결론이 나는 파일에는 디바운스가
+        # 필요 없다: (mtime, size)가 원장과 같다는 것 자체가 「지금 복사 중이 아니다」다.
         file_stat = read_file_stat(abs_path)
         if file_stat is None:
             logger.debug(f"File vanished before processing: {file_path}")
             return
-        if self.already_checked([(abs_path, file_stat)]):
+        force_content_check = self._consume_external_force_hash(abs_path)
+        if force_content_check:
+            logger.debug(
+                f"[{t_name}] External modified event bypassed tier-1 path/stat; "
+                f"content signature will decide: {basename}")
+        if (not force_content_check
+                and self._try_path_stat_skip(abs_path, basename, t_name, file_stat)):
             return
 
-        # 🔴 PAST THE CHECKLIST, SO THE WORD 「New」 IS TRUE (S-128). A checked file is passed in silence: one line
-        # per file every sweep on an unarchived source buries the events somebody is looking for.
+        # 🔴 PAST THE SKIP, SO THE WORD 「New」 IS TRUE (S-128). Above this point a
+        # file may be one this deployment already reached a terminal answer about; below
+        # it, it is genuinely about to be read. The skip itself stays at DEBUG for the
+        # reason `_try_path_stat_skip` measured and wrote down: one INFO line per hit is
+        # 22,626 lines every five minutes on an unarchived source, which buries the
+        # events somebody is actually looking for.
         logger.info(f"New file detected: {abs_path}")
         logger.info(f"[{t_name or self.table_name}] 📥 New file detected: {basename}")
 
@@ -2738,7 +2636,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
             return
         # The debounce may have caught the tail of a copy — re-read the stat so the
-        # stamp the read writes is the file we are about to ingest, not the
+        # value written to the ledger is the file we are about to ingest, not the
         # half-copied one we first saw.
         file_stat = read_file_stat(abs_path) or file_stat
 
@@ -2746,7 +2644,7 @@ class IngestionHandler(FileSystemEventHandler):
         began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
         for attempt in range(retries):
             try:
-                # [P2-B] 파일 시그니처(내용 전체 sha256) — 이어 읽기(재개)의 동일성 키.
+                # [P2-B] 파일 시그니처(내용 전체 sha256) — 재개 동일성 판정과 dedup의 공통 키.
                 # 잠긴 파일은 PermissionError로 전파되어 아래 기존 재시도 경로를 탄다.
                 signature = compute_file_signature(abs_path)
                 # Stage beats. These bracket the steps we can see into; the parse
@@ -2754,6 +2652,12 @@ class IngestionHandler(FileSystemEventHandler):
                 # whole file), which is what sets the stall threshold - see
                 # heartbeat.DEFAULT_STALL_AFTER_SEC.
                 heartbeat.beat(HEARTBEAT_NAME, note=f"hashed {basename}")
+
+                # [P2-B] 동일 내용이 이미 SUCCESS로 적재됐으면 재처리하지 않는다(명시 기록·통지).
+                skipped = self._try_dedup_skip(file_path, basename, t_name, signature,
+                                               file_stat=file_stat)
+                if skipped:
+                    return
 
                 # Pipeline Discovery(우선) → Std Parser 폴백 순으로 행을 해석.
                 # rel_path: the string a declaration sees. Computed ONCE per file,
@@ -2773,6 +2677,10 @@ class IngestionHandler(FileSystemEventHandler):
                 plan = self._plan_checkpoint(
                     signature, basename, abs_path, t_name,
                     effective_total, parse_meta.get("source_kind"),
+                    # `__force__` 파일은 "전부 다시 넣어라"는 뜻이므로 잔여 오프셋을 이어받지 않는다.
+                    force_restart=is_force_reingest(basename),
+                    # [Tier 1] 다음 스윕이 해시 없이 이 파일을 알아보게 하는 열쇠.
+                    file_stat=file_stat,
                 )
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
@@ -2789,7 +2697,7 @@ class IngestionHandler(FileSystemEventHandler):
                 #    was deliberately left where it lies; the ingestion record
                 #    then points at the ORIGINAL path, which is the truth for it.
                 dest_path = self._archive_file(file_path) or abs_path
-                # [P2-A] 파일 완결 확정 — 같은 시그니처의 이어 읽기가 끝났다.
+                # [P2-A] 파일 완결 확정 — 이후 같은 시그니처는 dedup skip 대상이 된다.
                 self._finalize_checkpoint(plan, effective_total)
                 # [F1] 키 결측 스킵은 성공이되 사용자에게 반드시 보여야 하는 정보 —
                 # 완료 콜백의 detail(4번째 인자, 기존 error_msg 슬롯)로 전달되어
@@ -2803,13 +2711,12 @@ class IngestionHandler(FileSystemEventHandler):
                     + (f" ({detail})" if detail else "")
                 )
                 self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail,
-                                            result=_file_result(began, tally, skipped_no_key, parse_meta,
-                                                                file_stat=file_stat))
+                                            result=_file_result(began, tally, skipped_no_key, parse_meta))
                 self._tell_processed(t_name, abs_path, "SUCCESS", detail)
                 return
             except LockWaitedOut as e:
                 # 총괄 10-07 ③ ㄴ: another session's lock, not this file - so it stays where it
-                # lies, unchecked (its row has no stamp), and the next sweep tries again from its last committed chunk.
+                # lies, unsealed, and the next sweep tries again from its last committed chunk.
                 # How many times it has already waited is the row's `retry_count` and the line's.
                 retry = self._lock_waits_before(abs_path)
                 error_msg = "%s (retry %d)" % (e, retry)
@@ -2817,6 +2724,7 @@ class IngestionHandler(FileSystemEventHandler):
                 self._log_ingestion_record(file_path, file_path, t_name, "FAILED", error_msg,
                                            retry_count=retry,
                                            result=_file_result(began, tally, skipped_no_key, parse_meta, e))
+                self.waiting_on_a_lock.add(abs_path)
                 self._tell_processed(t_name, abs_path, "FAILED", error_msg)
                 return
             except PermissionError:
@@ -2833,8 +2741,7 @@ class IngestionHandler(FileSystemEventHandler):
                     dest_path = file_path
                 self._record_failure(t_name, signature, basename, dest_path, error_msg, file_stat)
                 self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name,
-                                            result=_file_result(began, tally, skipped_no_key, parse_meta, e,
-                                                                file_stat=file_stat))
+                                            result=_file_result(began, tally, skipped_no_key, parse_meta, e))
                 self._tell_processed(t_name, abs_path, "FAILED", str(e))
                 return
 
@@ -2844,12 +2751,12 @@ class IngestionHandler(FileSystemEventHandler):
         if not dest_path:
             dest_path = file_path
         # A locked file is a TRANSIENT failure and the file is still where it was,
-        # so its row carries no stamp - unchecked: the next sweep must be
+        # so it is deliberately NOT sealed in the ledger: the next sweep must be
         # allowed to try again once the lock is released.
         self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
         self._tell_processed(t_name, abs_path, "FAILED", error_msg)
 
-    # ── [P2] 체크포인트 재개 / 체크리스트 ────────────────────────────
+    # ── [P2] 체크포인트 재개 / 시그니처 dedup ────────────────────────────
 
     @staticmethod
     @staticmethod
@@ -2902,54 +2809,142 @@ class IngestionHandler(FileSystemEventHandler):
             parts.append(plan.note)
         return " / ".join(parts) if parts else None
 
-    def _stamp_read_files(self, db, t_name, entries):
-        """While the checklist's first start lasts (`start_read_files_fill`): the rows from before it stamped off the
-        stat the caller just took. -> True, or False when they could not be - the caller holds the files this time."""
-        if _READ_FILES_FILL["marker"] is None:
-            return True
-        try:
-            said = ingestion.checkpoint.stamp_read_files(db, t_name, entries)
-        except Exception as e:                                                  # noqa: BLE001 - said, and held
-            db.rollback()
-            with _READ_FILES_FILL_LOCK:
-                _READ_FILES_FILL["held"] = True
-            logger.warning(f"[{t_name}] The read files were not stamped for {len(entries)} file(s) - not read now, "
-                           f"the next sweep stamps them: {told(e)}", exc_info=e)
+    def _try_path_stat_skip(self, abs_path: str, basename: str, t_name: str, file_stat) -> bool:
+        """[Tier 1] 같은 경로·같은 (mtime, size)에 대해 이미 결론이 난 파일을 **해시 없이**
+        건너뛴다. 반환 True = 스킵(호출자는 즉시 반환).
+
+        조용하다 — 그리고 그게 요점이다. tier 1이 적중한다는 것은 「이 파일에 대해
+        이미 로그·통지·원장 기록을 남겼다」는 뜻이고, 파일을 옮기지 않으면 이 적중이
+        **스윕마다 파일 수만큼** 일어난다. 여기서 한 줄씩만 남겨도 22,626줄이 5분마다
+        쌓여 진짜 사건을 덮는다(같은 논리로 foreign source의 반복 스킵도 이미 조용하다).
+        내구성 있는 기록은 이 스킵이 찾아낸 바로 그 원장 행이다.
+
+        강제 재처리 경로는 tier 2와 동일하게 여기서도 먼저 빠져나간다."""
+        if not t_name or not file_stat:
             return False
-        with _READ_FILES_FILL_LOCK:
-            for key, ids in said.items():
-                _READ_FILES_FILL["said"][key].update(ids)
+        if is_force_reingest(basename):
+            return False
+        if not dedup_by_path_stat_enabled():
+            return False
+
+        db = SessionLocal()
+        try:
+            row = ingestion.checkpoint.find_terminal_by_path_stat(
+                db, t_name, abs_path, file_stat)
+        except Exception as e:
+            # 가용성 우선 — 조회 실패는 처리를 막지 않는다(전체 해시 경로로 떨어진다).
+            logger.warning(f"[{t_name}] Tier-1 path/stat lookup failed (falling back to "
+                           f"full hashing): {told(e)}", exc_info=e)
+            return False
+        finally:
+            db.close()
+
+        if row is None:
+            return False
+        logger.debug(
+            f"[{t_name}] ⏭️ [tier1] 경로+stat 일치로 재처리 생략 (status={row.status}, "
+            f"mtime={file_stat[0].isoformat()}, size={file_stat[1]:,}B) — {basename}"
+        )
+        # 🔴 A hit does NOT mean "do nothing". If files are still being moved and
+        # this one is STILL SITTING IN raws/ although we already reached a
+        # terminal answer about it, then its move previously FAILED (a locked
+        # file, a name clash). Returning here would skip the move retry forever
+        # and the file — and, for nested ingestion, its whole directory — would
+        # never leave raws/. Retrying is cheap: a move, with no hash and no parse.
+        # `_archive_file`/`_move_to_err_folder` log their own failures, so this
+        # stays quiet on the (normal) success.
+        if archive_processed_files_enabled() and self.is_managed_source(abs_path):
+            if row.status == ingestion.checkpoint.STATUS_FAILED:
+                self._move_to_err_folder(abs_path)
+            else:
+                self._archive_file(abs_path)
         return True
 
-    def already_checked(self, entries) -> set:
-        """The checklist asked for this handler's table (소유자 10-21): of `[(abs_path, file_stat), ...]`, the paths
-        already read at that (mtime, size) - not dispatched, not read. EVERY seat asks here: the raws/ sweep, the
-        external sweep, the tree walk and the event (one entry). Unreadable checklist -> nothing checked: the files go
-        on to be read (availability first)."""
+    # ── [Tier 1, hoisted] 스윕/트리 워크가 이미 들고 있는 stat으로 «묶어서» 묻기 ──
+
+    def settle_already_terminal(self, entries) -> set:
+        """[Tier 1, HOISTED + BATCHED] Answer «is this file already concluded?» for
+        MANY files with one query per `TIER1_BATCH_SIZE`, and FINISH the ones it
+        clears right here. Returns the set of abs paths that must **not** be
+        dispatched to `_handle_event`.
+
+        `entries`: `[(abs_path, file_stat), ...]`. Both callers (the sweep and the
+        tree walk) already hold the `os.stat`, so this costs no extra syscall.
+
+        WHY IT MOVED. `_try_path_stat_skip` asks the identical question and gets
+        the identical answer — but it sits INSIDE `_process_with_retry`, so every
+        file first pays the whole per-file dispatch to get there: a fresh
+        `SessionLocal()` per file, and `_snapshot_table_context()` re-reading
+        `table_config.json` **from disk** per file (twice, counting
+        `_handle_event`'s own `self.table_name`), plus `dedup_by_path_stat_enabled()`
+        re-reading `ingestion_settings.json`. Measured on this box: **~92 ms per
+        tier-1 HIT**, ≈35 minutes over the 22,626-file tree — while the raw walk
+        that finds those files costs 1.0 s. **None of the 92 ms is the ledger.**
+        This method pays each of those costs ONCE for the whole batch.
+
+        🔴 A CLEARED FILE IS NOT A NO-OP. See `_settle_terminal_hits`: if files
+        are still being moved and a concluded file is STILL in raws/, its move
+        failed, and dropping the retry strands it — and, for nested ingestion, its
+        whole directory — in raws/ forever. That defect was created once already
+        by short-circuiting a tier-1 hit; it is not going to be created again by
+        hoisting one.
+
+        Everything this does NOT clear falls through unchanged, including on
+        error: an unreadable ledger returns the empty set, i.e. every file goes
+        down the existing path exactly as before (availability first, same rule as
+        `_try_path_stat_skip`).
+        """
         if not entries:
             return set()
+        # One settings read for the batch. `dedup_by_signature: false` turns this
+        # off too — that is `dedup_by_path_stat_enabled`'s own contract, inherited
+        # here rather than restated.
+        if not dedup_by_path_stat_enabled():
+            return set()
+        # One config read for the batch. The files that MISS still take their own
+        # per-file snapshot inside `_process_with_retry`, so hot-reload semantics
+        # on the processing path are untouched; all files in one batch belong to
+        # one workspace, so they would have resolved to this same table anyway.
         t_name, _table_info = self._snapshot_table_context()
         if not t_name:
             return set()
-        db = SessionLocal()
+
+        # `__force__` means "ingest it again" — it must leave before the ledger is
+        # consulted, exactly as it does in `_try_path_stat_skip`.
+        askable = [
+            (abs_path, file_stat) for abs_path, file_stat in entries
+            if file_stat and not is_force_reingest(os.path.basename(abs_path))
+        ]
+        if not askable:
+            return set()
+
+        db = SessionLocal()  # ONE session for the whole batch, not one per file
         try:
-            if not self._stamp_read_files(db, t_name, entries):
-                return {filepath for filepath, _stat in entries}
-            statuses = ingestion.checkpoint.checked(db, t_name, entries)
+            found = ingestion.checkpoint.find_terminal_by_path_stat_batch(
+                db, t_name, askable)
+            statuses = {p: row.status for p, row in found.items()}
         except Exception as e:
-            logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
-                           f"{told(e)}", exc_info=e)
+            logger.warning(
+                f"[{t_name}] Batched tier-1 lookup failed for {len(askable)} file(s) "
+                f"(falling back to per-file dispatch, which asks the same question "
+                f"one at a time): {told(e)}", exc_info=e
+            )
             return set()
         finally:
             db.close()
+
+        if not statuses:
+            return set()
         self._settle_terminal_hits(statuses)
         return set(statuses)
 
     def _settle_terminal_hits(self, statuses: dict):
-        """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
+        """The move retry a tier-1 hit owes, done once per batch.
 
-        🔴 A CHECKED FILE IS NOT A NO-OP: dropping this strands it - and, for nested ingestion, its whole directory -
-        in raws/ forever. Quiet on purpose: with files left in place a check happens once per file per sweep.
+        Quiet on purpose, for the reason `_try_path_stat_skip` states: a hit means
+        the log, the notification and the ledger row already exist, and with files
+        left in place a hit happens **once per file per sweep** — one line each
+        would bury real events under 22,626 of them every 5 minutes.
         """
         if not archive_processed_files_enabled():
             # Retention mode: a concluded file is MEANT to stay where it landed,
@@ -2992,8 +2987,98 @@ class IngestionHandler(FileSystemEventHandler):
         finally:
             db.close()
 
+    def _try_dedup_skip(self, file_path: str, basename: str, t_name: str, signature: str | None,
+                        file_stat=None) -> bool:
+        """[P2-B] 동일 시그니처가 «이 경로»에서 이미 결론 났으면 재처리를 건너뛴다(`concluded_here`) —
+        같은 내용이어도 다른 경로의 파일은 읽는다(소유자 10-20 ㄱ).
+
+        **무음 skip 금지**: 로그 + FileIngestionLog(status="SKIPPED", 사유 문장) +
+        완료 콜백(detail 포함)으로 세 곳에 남긴다. 파일은 archives/로 옮겨
+        스윕이 같은 파일을 무한히 다시 집어 올리지 않게 한다.
+
+        강제 재처리 경로(스킵하지 않음):
+          1) 파일명에 `__force__` 토큰 (사용자 명시 의사)
+          2) ingestion_settings.json `dedup_by_signature: false` (전역 스위치)
+          3) 관리자 재시도(process_archived_file_sync) — 애초에 이 함수를 타지 않는다
+
+        반환 True = 스킵 처리 완료(호출자는 즉시 반환해야 함)."""
+        if not signature or not t_name:
+            return False
+        if is_force_reingest(basename):
+            logger.info(
+                f"[{t_name}] 🔁 Force re-ingestion requested by filename token "
+                f"('{ingestion.checkpoint.FORCE_REINGEST_TOKEN}') — dedup skip bypassed: {basename}"
+            )
+            return False
+        if not dedup_by_signature_enabled():
+            return False
+
+        db = SessionLocal()
+        try:
+            done = ingestion.checkpoint.find_checkpoint(db, t_name, signature)
+            here = ingestion.checkpoint.concluded_here(db, done, os.path.abspath(file_path), file_stat)
+        except Exception as e:
+            # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
+            logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {told(e)}", exc_info=e)
+            return False
+        finally:
+            db.close()
+
+        if not here:
+            return False
+        if done.status == ingestion.checkpoint.STATUS_FAILED:
+            # Quiet like tier 1: the FAILED row written when it failed here is the record.
+            logger.debug(f"[{t_name}] ⏭️ [tier2] same content already FAILED at this path and "
+                         f"the file has not changed since - {basename}")
+            return True
+
+        # [Tier 1 feed] 이 경로의 답인데 원장 행이 다른 사본을 가리키거나 stat 이 낡았다 — 원장에 남긴다.
+        # 남기지 않으면 이 파일은 재기동마다 tier 1을 miss해 영원히 다시 해시된다.
+        # 채택 규칙(공존 사본 ping-pong 회피)은 `adopt_new_location` 참조.
+        if file_stat:
+            db = SessionLocal()
+            try:
+                fresh = ingestion.checkpoint.find_completed_ingestion(db, t_name, signature)
+                ingestion.checkpoint.adopt_new_location(
+                    db, fresh, os.path.abspath(file_path), file_stat)
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"[{t_name}] Could not record the new location of an already "
+                               f"ingested file (it will be re-hashed next sweep): {told(e)}", exc_info=e)
+            finally:
+                db.close()
+
+        reason = (
+            f"[dedup-skip] 동일 내용 파일이 이미 적재 완료됨 — 재처리 생략 "
+            f"(기존 적재: '{done.filename}', {done.processed_rows:,}행, "
+            f"signature={signature[:23]}…). 강제 재처리하려면 파일명에 "
+            f"'{ingestion.checkpoint.FORCE_REINGEST_TOKEN}'를 포함하거나 "
+            f"ingestion_settings.json의 dedup_by_signature를 false로 두십시오."
+        )
+        if not self.is_managed_source(file_path) or not archive_processed_files_enabled():
+            # A file that is NOT going to be moved out of the way will be found by
+            # every later sweep, so this skip repeats forever by construction. One
+            # FileIngestionLog row + one callback per sweep per file would bury
+            # every real event under unbounded noise, so the repeat is quiet:
+            # the durable record is the SUCCESS row written by the first
+            # ingestion, keyed by the same content signature this skip matched.
+            # Two ways to get here now: a foreign (read-only) source, and the
+            # retention mode that leaves managed files where they land.
+            why = ("foreign source" if not self.is_managed_source(file_path)
+                   else "files are not archived (archive_processed_files=false)")
+            logger.debug(f"[{t_name}] ⏭️ {reason} — {basename} ({why}, repeat skip)")
+            return True
+        logger.warning(f"[{t_name}] ⏭️ {reason} — {basename}")
+        dest_path = self._archive_file(file_path)
+        self._log_ingestion_record(file_path, dest_path or file_path, t_name, "SKIPPED", reason)
+        # The real status (총괄 69aad666e, reversing the old "SUCCESS" here): the receiver no
+        # longer builds a SUCCESS / failure sentence - the screen reads SKIPPED as skipped.
+        self._tell_processed(t_name, file_path, "SKIPPED", reason)
+        return True
+
     def _plan_checkpoint(self, signature, basename, abs_path, t_name,
-                         total_rows, source_kind, force_restart: bool = False):
+                         total_rows, source_kind, force_restart: bool = False,
+                         file_stat=None):
         """[P2-A] 체크포인트 행 준비 + 재개 오프셋 결정. 실패해도 인제션은 계속된다
         (체크포인트 비활성 = P1과 동일 동작 — 단, 그 사실을 note로 남긴다)."""
         if not signature or not t_name:
@@ -3005,6 +3090,7 @@ class IngestionHandler(FileSystemEventHandler):
             return ingestion.checkpoint.plan_ingestion(
                 db, t_name, signature, basename, abs_path,
                 total_rows, source_kind, force_restart=force_restart,
+                file_stat=file_stat,
             )
         except Exception as e:
             db.rollback()
@@ -3026,8 +3112,8 @@ class IngestionHandler(FileSystemEventHandler):
             ingestion.checkpoint.mark_done(db, plan, processed_rows=processed_rows)
         except Exception as e:
             db.rollback()
-            # DONE 미기록 = 그 내용의 다음 Retry 가 남은 오프셋에서 이어 읽는다(업서트라 무해).
-            logger.warning(f"Failed to finalize ingestion checkpoint: {told(e)}", exc_info=e)
+            # DONE 미기록 = 다음에 같은 파일이 오면 dedup되지 않고 재적재된다(업서트라 무해).
+            logger.warning(f"Failed to finalize ingestion checkpoint (dedup will not apply): {told(e)}", exc_info=e)
         finally:
             db.close()
 
@@ -3189,15 +3275,13 @@ class IngestionHandler(FileSystemEventHandler):
     def _process_archived_file_sync(self, log_entry, db, uploader, filepath,
                                     t_name, table_info):
         began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
-        # The door reads without asking the checklist - a person chose this file - and its row then checks it.
-        file_stat = read_file_stat(os.path.abspath(filepath))
         try:
-            # [P2] 관리자 재시도는 **명시적 재처리 의사**이므로 체크리스트를 묻지 않는다.
+            # [P2] 관리자 재시도는 **명시적 재처리 의사**이므로 dedup skip을 적용하지 않는다.
             # 다만 중단된 적재(IN_PROGRESS)를 이어받는 것은 여전히 이득이므로 체크포인트는 쓴다:
             #   - IN_PROGRESS(중단됨) → 기록된 오프셋에서 재개
             #   - DONE(이미 완료) → 사용자가 굳이 다시 눌렀으므로 0부터 전량 재적재
             signature = compute_file_signature(filepath)
-            parse_meta = self._parse_meta_for(os.path.abspath(filepath), source=log_entry.source)
+            parse_meta = self._parse_meta_for(os.path.abspath(filepath))
             rows, total_rows, skipped_no_key = self._resolve_rows(
                 filepath, t_name=t_name, table_info=table_info, meta=parse_meta
             )
@@ -3208,6 +3292,11 @@ class IngestionHandler(FileSystemEventHandler):
                 signature, os.path.basename(filepath), os.path.abspath(filepath), t_name,
                 effective_total, parse_meta.get("source_kind"),
                 force_restart=self._retry_should_restart(t_name, signature),
+                # The retry path is a THIRD writer of the tier-1 key. Without this
+                # it would blank nothing (R4: absent, not NULL) but would also
+                # leave the ledger pointing at the pre-retry location, so a later
+                # sweep re-hashes a file an operator just told us about.
+                file_stat=read_file_stat(os.path.abspath(filepath)),
             )
             dropped = None
             if has_rows:
@@ -3224,8 +3313,7 @@ class IngestionHandler(FileSystemEventHandler):
                                           self._grid_refusal(), dropped)  # [F1] + [P2] + 0행
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
-            for column, value in _file_result(began, tally, skipped_no_key, parse_meta,
-                                              file_stat=file_stat).items():
+            for column, value in _file_result(began, tally, skipped_no_key, parse_meta).items():
                 setattr(log_entry, column, value)
             db.commit()
             self._tell_processed(t_name, filepath, "SUCCESS", detail)
@@ -3238,8 +3326,7 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.status = "FAILED"
             log_entry.error_message = error_msg
             log_entry.retry_count += 1
-            for column, value in _file_result(began, tally, skipped_no_key, parse_meta, e,
-                                              file_stat=file_stat).items():
+            for column, value in _file_result(began, tally, skipped_no_key, parse_meta, e).items():
                 setattr(log_entry, column, value)
             db.commit()
             self._tell_processed(t_name, filepath, "FAILED", str(e))
@@ -3282,7 +3369,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         The guard lives here, at the two move primitives, and not at their call
         sites: the same defect otherwise recurs once per caller (success archive,
-        checked-file move, err move, retry paths) — the recurrence trap the
+        dedup-skip archive, err move, retry paths) — the recurrence trap the
         lesson file records for /internal/events senders.
 
         Containment is result-based, not a string prefix (lesson file).
@@ -3296,7 +3383,8 @@ class IngestionHandler(FileSystemEventHandler):
         logger.info(
             f"[{self.table_name}] 🔒 Source left untouched ({action} skipped) — "
             f"'{file_path}' lies outside this workspace's raws/ and is read-only. "
-            f"Its log row's stamp answers 'already read?' without moving anything."
+            f"Its content signature is recorded, so dedup still answers "
+            f"'have I seen this' without moving anything."
         )
         return True
 
@@ -3306,7 +3394,7 @@ class IngestionHandler(FileSystemEventHandler):
         Sits at the same two move primitives as `_refuse_move_of_foreign_source`
         and for the same stated reason: put the guard at the call sites instead
         and the identical defect recurs once per caller (success archive,
-        checked-file move, err move, retry paths).
+        dedup-skip archive, err move, retry paths).
 
         Quiet on purpose — this fires once per processed file, forever, and it
         is the CONFIGURED behaviour, not an exception to it. What replaces the
@@ -3876,12 +3964,11 @@ class IngestionHandler(FileSystemEventHandler):
                         except Exception:
                             _sampler = None
 
-                        _time_left, _replaced = {}, ({} if map_columns else None)
+                        _time_left = {}
                         with alignment_batch_counts.stage("apply"):
                             try:
                                 results, changed_cells, created_logs, deleted_row_ids = \
                                     crud.apply_batch_updates(db, t_name, batch_obj,
-                                                             replace_report=_replaced,
                                                              notation_report=_time_left)
                             except crud.CellRefused as refused:
                                 # The write names the chunk's row; the operator reads the file's.
@@ -3994,7 +4081,7 @@ class IngestionHandler(FileSystemEventHandler):
                                          depth=len(chunk), table=t_name,
                                          chunk=chunk_index)
                     file_tally.add_chunk(t_name, _summary, len(chunk), len(items), new_row_ids,
-                                         changed_cells, _sampler, _time_left, _replaced)
+                                         changed_cells, _sampler, _time_left)
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
@@ -4083,9 +4170,44 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         # Managed raws/ deliberately ignores modified storms because the file is
         # moved away after one pass.  External files stay in place and are often
         # overwritten at the same path, so modified is a required signal here.
-        # The handler's processing lock and the checklist (a changed stamp) absorb duplicate event bursts.
+        # The handler's processing lock, stability wait, path-stat gate and
+        # content signature dedup absorb duplicate event bursts.
         if not event.is_directory:
+            self.ingestion_handler.mark_external_modified(event.src_path)
             self.dispatch_path(event.src_path)
+
+
+def watcher_paused():
+    """Whether the watcher's Pause is on (총괄 290e22ac0) - the chain's control file shape, by the name "watcher" (read
+    every call, so it holds across a restart and a Resume reaches a running watcher)."""
+    from chain import control
+
+    return control.paused("watcher") is not None
+
+
+def _waiting_held(handler, paths, owed):
+    """`reread.hold_waiting` for the handler's table on its own session - both sweeps and the tree walk pass here before
+    they read (총괄 290e22ac0). `owed`: `reread.load_owed()`. On an error, while the table owes a sweep every path is
+    held (a mass read is what this stops), else none (read as before). -> (the paths held, whether it judged)."""
+    if not paths:
+        return set(), True
+    table = handler.table_name
+    db = SessionLocal()
+    try:
+        return reread.hold_waiting(db, table, paths, owed.get(table)), True
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"[{table}] the waiting files were not judged ({len(paths)} file(s)) - "
+                       f"{'none read this time' if owed.get(table) else 'read as before'}: {told(e)}", exc_info=e)
+        return (set(paths) if owed.get(table) else set()), False
+    finally:
+        db.close()
+
+
+def _tried_already(memo, key, signature, handler, abs_path):
+    """The one rule both sweeps skip by (총괄 10-07 ③): a file tried at this (mtime, size) is
+    not tried again - unless that try waited past the lock timeout, which was not the file."""
+    return memo.get(key) == signature and abs_path not in handler.waiting_on_a_lock
 
 
 def _say_what_stalled_files_wait_on():
@@ -4127,11 +4249,17 @@ class WorkspaceWatcher:
         # 기존 이벤트 처리 경로(_handle_event)를 그대로 재사용하기 위한 레지스트리.
         self.handlers_by_raw_path = {}
         self._sweep_lock = threading.Lock()  # 스윕 동시 실행(기동+주기 등) 직렬화
+        # path → (mtime, size): 동일 시그니처 재시도 차단(처리 실패 잔류 파일 무한 루프 방지)
+        self._sweep_attempted = {}
         # source_id -> {spec, handler, event_handler, scheduled}.  External
         # sources are never provisioned or mutated; unavailable roots remain in
         # this registry so the periodic sweep can recover when they reappear.
         self.external_targets = {}
         self._external_sweep_lock = threading.Lock()
+        self._external_sweep_attempted = {}
+        self._readings_lock = threading.Lock()
+        self._reading_stamps = None                 # read at the first notice_changed_readings
+        self._owed_unjudged = False                 # a sweep's waiting judgement failed - its table keeps owing
         self._external_availability = {}
         self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
         self._stop_event = threading.Event()
@@ -4157,8 +4285,8 @@ class WorkspaceWatcher:
             self._external_availability[spec["source_id"]] = False
             return False
         try:
-            target["watch"] = self.observer.schedule(
-                target["event_handler"], root, recursive=spec["max_depth"] != 0)
+            self.observer.schedule(
+                target["event_handler"], root, recursive=spec["recursive"])
         except Exception as e:
             logger.warning(
                 f"External source event registration failed for {root} -> "
@@ -4171,38 +4299,10 @@ class WorkspaceWatcher:
         logger.info(
             f"Watching external read-only source: {root} -> {spec['table_name']} "
             f"(parser={spec['parser'] or 'workspace scripts/'}, "
-            f"max_depth={'to the end' if spec['max_depth'] is None else spec['max_depth']})")
+            f"recursive={spec['recursive']})")
         if was is False:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
-
-    def _retire_external(self, source_id: str, why: str):
-        """One binding out: its handler forgets it (events not taken), its watch unscheduled. Switched on again,
-        its sweep reads what the checklist does not hold as read - the files that came while it was off."""
-        target = self.external_targets.pop(source_id, None)
-        if target is None:
-            return
-        spec = target["spec"]
-        target["handler"].unregister_external_source(source_id)
-        if target.get("watch") is not None:
-            try:
-                self.observer.unschedule(target["watch"])
-                self.watch_count -= 1
-            except Exception as e:                                  # noqa: BLE001 - the handler no longer takes them
-                logger.warning(f"External source {source_id}: its watch was not unscheduled: {told(e)}")
-        self._external_unmatched_said.discard(source_id)
-        logger.warning(f"External source {why} - no longer read as it was: {spec['root']} -> {spec['table_name']} "
-                       f"({spec.get('options') or {}}); a file being read finishes")
-
-    def refresh_external_sources(self):
-        """ingestion_settings.json was saved (총괄 10-21): the bindings as it declares them now - retired, changed or
-        new, no restart - and a new or changed one swept. -> the source ids that stood."""
-        with self._sync_lock:
-            added = self._register_external_sources(load_global_table_config())
-        if added:
-            self._ensure_observer_running()
-            self.sweep_external_sources_async(added, reason="external-source-saved")
-        return added
 
     def raws_root_for(self, table_name: str, table_config: dict | None = None) -> str:
         """The raws/ this watcher watches for `table_name` - the key of `handlers_by_raw_path`,
@@ -4230,18 +4330,15 @@ class WorkspaceWatcher:
         for error in errors:
             logger.error(f"External source config rejected: {error}")
 
-        # 🔴 [총괄 10-21, 소유자 「외부 저장소 별로 끄기」 · 「받는 파일을 바꿨는데 voids.json 이 계속 돎」] A binding
-        #    switched off, removed or changed (path · glob/filename · parser) is retired here - no restart: its events
-        #    and its sweep stop, a file it is reading is read to its end - and a changed one stands again below.
-        wanted = {spec["source_id"]: spec for spec in specs}
-        for source_id in [sid for sid, target in list(self.external_targets.items())
-                          if wanted.get(sid) != target["spec"]]:
-            self._retire_external(source_id, "changed" if source_id in wanted else "switched off or removed")
-
         added = []
         for spec in specs:
             source_id = spec["source_id"]
-            if source_id in self.external_targets:
+            existing = self.external_targets.get(source_id)
+            if existing is not None:
+                if existing["spec"] != spec:
+                    logger.error(
+                        f"External source config changed for {source_id}; the running "
+                        f"binding is unchanged. Restart the watcher to apply it.")
                 continue
             try:
                 raws_root = self.raws_root_for(spec["table_name"], table_config)
@@ -4401,6 +4498,59 @@ class WorkspaceWatcher:
                 self._ensure_periodic_sweep_running()
             return added
 
+    def notice_changed_readings(self):
+        """🔴 [총괄 10-20 ab951f09b · 290e22ac0] Each watched table's reading (`reread.reading_of`: its table_config
+        entry, its external sources, its plugins) against the one kept - the one place it is compared. A table whose
+        reading changed, or that is new once anything was kept, owes its next full sweep (`reread.owe`): the files that
+        sweep finds stand WAITING, and its failed files stay failed, said in one line. A box that never kept a reading
+        only keeps the first. A table_config that reads as nothing (absent, mid-write) is no reading; an
+        ingestion_settings.json there that reads as nothing (mid-write) keeps each table's external part as kept.
+        -> the tables that owe from now."""
+        from ingestion import settings as ingestion_settings
+
+        with self._readings_lock:
+            handlers = list(self.handlers_by_raw_path.values())
+            table_config = load_global_table_config() if handlers else {}
+            if not table_config:
+                return []
+            if self._reading_stamps is None:
+                self._reading_stamps = reread.load_reading_stamps()
+            kept = self._reading_stamps
+            declared = ingestion_settings.read_ingestion_settings()
+            unread = not declared and os.path.exists(ingestion_settings.INGESTION_SETTINGS_PATH)
+            sources = declared.get("external_sources") or []
+            now = {}
+            for handler in handlers:
+                table = handler._resolve_table_name(table_config)
+                if table:
+                    now[table] = reread.reading_of(table, table_config.get(table), sources, handler.scripts_path)
+                    if unread and table in kept:
+                        now[table]["external source"] = kept[table].get("external source")
+            changed = {table: reading for table, reading in now.items() if kept.get(table) != reading}
+            if not changed:
+                return []
+            owing = {table: reread.changed_parts(kept.get(table), reading)
+                     for table, reading in changed.items()} if kept else {}
+            if owing:
+                reread.owe(owing, datetime.now().isoformat(sep=" ", timespec="seconds"))
+                db = SessionLocal()
+                try:
+                    for table, why in sorted(owing.items()):
+                        reread.say_failed_after_a_changed_reading(db, table, why)
+                finally:
+                    db.close()
+            self._reading_stamps = {**kept, **changed}
+            reread.keep_reading_stamps(self._reading_stamps)
+            return sorted(owing)
+
+    def _notice_and_owed(self):
+        """A sweep's first step: the readings heard, then what is owed (`reread.load_owed`)."""
+        try:
+            self.notice_changed_readings()
+        except Exception as e:
+            logger.warning(f"[Watcher] the tables' readings were not compared before this sweep: {told(e)}", exc_info=e)
+        return reread.load_owed()
+
     def sweep_existing_files(self, raw_paths=None) -> int:
         """[Startup Sweep] 감시 대상 raws/ '직속' 기존 파일을 mtime 오름차순으로,
         기존 watchdog 이벤트 처리 경로(IngestionHandler._handle_event)와 동일하게 처리한다.
@@ -4409,15 +4559,22 @@ class WorkspaceWatcher:
           방치하던 결함의 안전망. err/·archives/ 등은 raws/ 형제 폴더라 열거 대상이 아니다.
           raws/ 직속 하위 디렉토리는 이 스윕이 안 본다 — `recheck_subfolders`(자기 스레드,
           이 잠금 밖) 몫이다.
-        - 이미 읽은 파일(그 (mtime, size) 로 체크된 것)은 `_handle_event`에 넘기기 «전»에
-          `already_checked`가 **묶어서** 묻고 여기서 끝낸다 — 처리 실패로 raws/에 남은 파일도
-          그 실패 행이 체크한다. 파일이 바뀌면(mtime 이나 size) 다시 읽는다. 파일마다 한 단계
-          더 들어가서 물으면 파일당 ~92ms(세션 + `table_config.json` 재독, 22,626 파일 ≈35분)다.
+        - 동일 (mtime, size) 시그니처로 이미 시도한 파일은 재시도하지 않는다 — 처리 실패로
+          raws/에 잔류한 파일이 주기 스윕마다 무한 재시도되는 루프 방지. 파일이 갱신되어
+          시그니처가 바뀌면 다시 시도한다.
         - _handle_event가 중복 진입 가드·존재 확인·디바운스·재시도·아카이브/에러 이동·
           FileIngestionLog 기록을 모두 수행하므로 처리 의미론은 이벤트 경로와 동일하다.
+        - **[Tier 1, hoisted]** 이미 결론이 난 파일은 `_handle_event`에 넘기기 «전»에
+          `settle_already_terminal`이 **묶어서** 원장에 묻고 여기서 종결한다. 같은 답을
+          한 단계 더 들어가서 얻으면 파일당 세션 1개 + `table_config.json` 디스크 재독
+          2회를 낸다(이 박스 실측 파일당 ~92ms, 22,626 파일 ≈35분 — 그중 원장은 0).
+          걸러지지 않은 파일은 종전 경로 그대로 내려간다.
 
         raw_paths: None이면 등록된 전체 raws/, 아니면 해당 절대경로 목록만.
-        반환: `_handle_event`로 디스패치한 파일 수 (체크된 파일은 제외 — 그 수는 스윕 로그 한 줄에)."""
+        반환: `_handle_event`로 디스패치한 파일 수 (tier 1이 여기서 종결한 파일은 제외 —
+        그 수는 스윕 로그 한 줄에 함께 남는다).
+        Before the dispatch every file passes `_waiting_held` (총괄 290e22ac0); a Pause stops it, the rest untried."""
+        owed = self._notice_and_owed()
         with self._sweep_lock:
             if raw_paths is None:
                 targets = list(self.handlers_by_raw_path.items())
@@ -4425,14 +4582,17 @@ class WorkspaceWatcher:
                 wanted = {os.path.abspath(p) for p in raw_paths}
                 targets = [(p, h) for p, h in self.handlers_by_raw_path.items() if p in wanted]
 
-            # (mtime, file_path, abs_path, handler, stamp)
+            # (mtime, file_path, abs_path, handler, sweep_signature, tier1_stat)
             candidates = []
+            seen_paths = set()
+            owed_trees = []      # (handler, a subfolder) of a table owing a sweep - judged below, read by the tree walk
             for raw_path, handler in targets:
                 try:
                     names = os.listdir(raw_path)
                 except OSError as e:
                     logger.warning(f"Sweep: cannot list {raw_path}: {e}")
                     continue
+                owes = bool(owed) and handler.table_name in owed
                 for name in names:
                     fp = os.path.join(raw_path, name)
                     try:
@@ -4440,42 +4600,104 @@ class WorkspaceWatcher:
                         # never this lock's: one slow file here held every collector's
                         # subfolders (총괄 2f487efb5).
                         if not os.path.isfile(fp):
+                            if owes and os.path.isdir(fp):
+                                owed_trees.append((handler, fp))
                             continue
                         st = os.stat(fp)
                     except OSError:
                         continue  # 열거 중 이동/삭제된 파일
-                    # The stamp off the stat we ALREADY took — the point of asking here, not one dispatch deeper.
+                    seen_paths.add(fp)
+                    sig = (st.st_mtime, st.st_size)
+                    if _tried_already(self._sweep_attempted, fp, sig, handler, os.path.abspath(fp)):
+                        continue
+                    # The tier-1 key comes off the stat we ALREADY took — the
+                    # whole point of asking here rather than one dispatch deeper.
                     candidates.append((
-                        st.st_mtime, fp, os.path.abspath(fp), handler,
-                        stamp_of(st),
+                        st.st_mtime, fp, os.path.abspath(fp), handler, sig,
+                        (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
                     ))
+
+            # 처리 완료(이동)된 파일의 시그니처는 정리해 무한 성장 방지
+            for stale in [p for p in self._sweep_attempted
+                          if p not in seen_paths and not os.path.exists(p)]:
+                self._sweep_attempted.pop(stale, None)
 
             candidates.sort(key=lambda c: c[0])
 
+            # [Tier 1, hoisted] Ask the ledger about ALL of them here, batched,
+            # before anything enters the per-file dispatch pipeline. A file that
+            # is already concluded costs a share of one query instead of a
+            # `SessionLocal()`, two disk reads of `table_config.json` and a
+            # settings read of its own — ~92 ms each, ≈35 min over this box's
+            # 22,626-file tree, paid on the first sweep after every restart.
+            # A file this does NOT clear is dispatched below unchanged.
             cleared = set()
             by_handler = {}
-            for _m, _fp, abs_fp, handler, fstat in candidates:
+            for _m, _fp, abs_fp, handler, _sig, fstat in candidates:
                 by_handler.setdefault(handler, []).append((abs_fp, fstat))
             for handler, entries in by_handler.items():
                 if self._stop_event.is_set():
                     break  # shutdown: the dispatch loop below breaks too
-                cleared |= handler.already_checked(entries)
+                try:
+                    cleared |= handler.settle_already_terminal(entries)
+                except Exception as e:
+                    # Never let the fast path decide whether files get processed:
+                    # an empty `cleared` means everything takes the old route.
+                    logger.warning(
+                        f"Sweep: batched tier-1 lookup failed for "
+                        f"{os.path.basename(os.path.dirname(handler.workspace_path))}"
+                        f"/{os.path.basename(handler.workspace_path)} "
+                        f"({len(entries)} file(s)) — dispatching them individually: {told(e)}"
+                    )
+            held = self._held_of(by_handler, cleared, owed)
+            self._hold_owed_trees(owed_trees, owed)
 
             processed = 0
-            for _mtime, fp, abs_fp, handler, _fstat in candidates:
-                if self._stop_event.is_set():
+            for _mtime, fp, abs_fp, handler, sig, _fstat in candidates:
+                if self._stop_event.is_set() or watcher_paused():
                     break
-                if abs_fp in cleared:
+                self._sweep_attempted[fp] = sig
+                if abs_fp in cleared or abs_fp in held:
                     continue
                 handler._handle_event(fp)
                 processed += 1
-            if processed or cleared:
+            if processed or cleared or held:
                 logger.info(
                     f"🧹 Sweep: {len(candidates)} candidate file(s) in raws/ — "
-                    f"{len(cleared)} already read, "
+                    f"{len(cleared)} already concluded (tier-1, batched), {len(held)} waiting, "
                     f"{processed} dispatched."
                 )
             return processed
+
+    def _hold_owed_trees(self, trees, owed):
+        """A table owing a sweep has its raws/ subfolders' files judged here too - the tree walk reads them on its own
+        thread, maybe after this sweep settles what was owed (총괄 290e22ac0). Only judged: the tree walk reads."""
+        for handler, tree in trees:
+            entries = []
+            for top, _dirs, files in os.walk(tree):
+                for name in files:
+                    path = os.path.abspath(os.path.join(top, name))
+                    try:
+                        st = os.stat(path)
+                    except OSError:
+                        continue
+                    entries.append((path, (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size))))
+            try:
+                cleared = handler.settle_already_terminal(entries)
+            except Exception as e:
+                cleared = set()
+                logger.warning(f"Sweep: tier-1 lookup failed for {tree} ({len(entries)} file(s)): {told(e)}")
+            _said, judged = _waiting_held(handler, [path for path, _stat in entries if path not in cleared], owed)
+            self._owed_unjudged = self._owed_unjudged or not judged
+
+    def _held_of(self, by_handler, cleared, owed):
+        """Each handler's files not cleared, through `_waiting_held` -> the paths held."""
+        held = set()
+        for handler, entries in by_handler.items():
+            said, judged = _waiting_held(handler, [path for path, _stat in entries if path not in cleared], owed)
+            held |= said
+            self._owed_unjudged = self._owed_unjudged or not judged
+        return held
 
     def sweep_external_sources(self, source_ids=None) -> int:
         """Recursively poll configured read-only sources and dispatch changed files.
@@ -4483,7 +4705,9 @@ class WorkspaceWatcher:
         The cache key includes the binding id, not only the absolute filename:
         one ``voids.json`` deliberately feeds both ``inspection_run`` and
         ``void_obs`` and each table must reach its own ledger verdict.
+        Before the dispatch every file passes `_waiting_held` (총괄 290e22ac0); a Pause stops it, the rest untried.
         """
+        owed = self._notice_and_owed()
         with self._external_sweep_lock, one_sweep():
             if source_ids is None:
                 targets = list(self.external_targets.items())
@@ -4492,7 +4716,8 @@ class WorkspaceWatcher:
                 targets = [item for item in self.external_targets.items()
                            if item[0] in wanted]
 
-            why_not, pages = {}, {}
+            candidates = []
+            seen_keys = set()
             for source_id, target in targets:
                 spec = target["spec"]
                 root = spec["root"]
@@ -4508,134 +4733,127 @@ class WorkspaceWatcher:
                         f"External source available again: {root} -> {spec['table_name']}")
                 self._external_availability[source_id] = True
                 self._try_schedule_external(target)
-                why_not[source_id] = dict.fromkeys(
-                    ("looked", "outside the root", "name not matched", "not a file", "stat failed",
-                     "folders not matching", "folders below max_depth", "folders not listed", "already read",
-                     "dispatched"), 0)
-                pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
 
-            began = said_at = time.monotonic()
-
-            def said(force=False):
-                """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
-                nonlocal said_at
-                if not force and time.monotonic() - said_at < SWEEP_PROGRESS_SECONDS:
-                    return
-                for source_id, why in why_not.items():
-                    logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
-                                f"{why['dispatched']} · {time.monotonic() - began:.0f} s")
-                said_at = time.monotonic()
-
-            # Sources in turn, file by file (소유자 10-20: one share's thousands of old files held every source behind
-            # it for minutes) - over a page of each, handed on as soon as it is walked (총괄 10-21: a deep share's whole
-            # walk held its first file).
-            live = list(pages)
-            while live and not self._stop_event.is_set():
-                turns = []
-                for source_id in list(live):
-                    page = next(pages[source_id], None) if source_id in self.external_targets else None
-                    if page is None:
-                        live.remove(source_id)          # walked to its end, or retired while this sweep ran
+                if spec["recursive"]:
+                    iterator = (
+                        os.path.join(dirpath, filename)
+                        for dirpath, _dirnames, filenames in os.walk(root)
+                        for filename in filenames
+                    )
+                else:
+                    try:
+                        iterator = (os.path.join(root, name) for name in os.listdir(root)
+                                    if os.path.isfile(os.path.join(root, name)))
+                    except OSError as e:
+                        logger.warning(f"External sweep cannot list {root}: {e}")
                         continue
-                    handler = self.external_targets[source_id]["handler"]
-                    cleared = handler.already_checked([(abs_path, file_stat) for _m, abs_path, file_stat in page])
-                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s in page if abs_path in cleared)
-                    turns.append([(source_id, handler, abs_path) for _m, abs_path, _s in _dispatch_order(page)
-                                  if abs_path not in cleared])
-                for turn in itertools.zip_longest(*turns):
-                    for item in turn:
-                        if item is None or self._stop_event.is_set():
+
+                looked = taken = 0
+                for file_path in iterator:
+                    looked += 1
+                    if not target["event_handler"].accepted_path(file_path):
+                        continue
+                    taken += 1
+                    try:
+                        if not os.path.isfile(file_path):
                             continue
-                        source_id, handler, abs_path = item
-                        if source_id not in self.external_targets:
-                            continue                    # retired while this sweep ran (총괄 10-21)
+                        stat = os.stat(file_path)
+                    except OSError:
+                        continue
+                    abs_path = os.path.abspath(file_path)
+                    cache_key = (source_id, abs_path)
+                    seen_keys.add(cache_key)
+                    signature = (stat.st_mtime, stat.st_size)
+                    if _tried_already(self._external_sweep_attempted, cache_key, signature,
+                                      target["handler"], abs_path):
+                        continue
+                    candidates.append((
+                        stat.st_mtime, source_id, abs_path, target["handler"],
+                        signature,
+                        (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size)),
+                    ))
+                unmatched = looked > 0 and taken == 0
+                if unmatched and source_id not in self._external_unmatched_said:
+                    options = spec.get("options") or {}
+                    logger.warning(f"External source {source_id}: {looked} file(s) under the root, none matched "
+                                   f"{options.get('glob') or options.get('filename')}")
+                    self._external_unmatched_said.add(source_id)
+                elif not unmatched:
+                    self._external_unmatched_said.discard(source_id)
+
+            # Bound the cache when a producer removes old work directories.
+            active_ids = {source_id for source_id, _target in targets}
+            for cache_key in list(self._external_sweep_attempted):
+                source_id, path = cache_key
+                if source_id in active_ids and cache_key not in seen_keys and not os.path.exists(path):
+                    self._external_sweep_attempted.pop(cache_key, None)
+
+            candidates.sort(key=lambda item: item[0])
+            cleared = set()
+            by_handler = {}
+            for _mtime, _source_id, abs_path, handler, _sig, file_stat in candidates:
+                by_handler.setdefault(handler, []).append((abs_path, file_stat))
+            for handler, entries in by_handler.items():
+                if self._stop_event.is_set():
+                    break
+                try:
+                    for path in handler.settle_already_terminal(entries):
+                        cleared.add((handler, path))
+                except Exception as e:
+                    logger.warning(
+                        f"External sweep tier-1 lookup failed for {handler.table_name} "
+                        f"({len(entries)} file(s)); dispatching individually: {told(e)}")
+            held = self._held_of(by_handler, {path for _handler, path in cleared}, owed)
+
+            # Sources in turn, each in its mtime order (소유자 10-20: one share's thousands of old files held every
+            # source behind it for minutes). A line per source every SWEEP_PROGRESS_SECONDS while it runs.
+            queues = {}
+            for item in candidates:
+                queues.setdefault(item[1], []).append(item)
+            total = {source_id: len(items) for source_id, items in queues.items()}
+            done = dict.fromkeys(total, 0)
+            said, said_at = dict(done), time.monotonic()
+            processed = 0
+            for turn in itertools.zip_longest(*queues.values()):
+                if self._stop_event.is_set() or watcher_paused():
+                    break
+                for item in turn:
+                    if item is None:
+                        continue
+                    _mtime, source_id, abs_path, handler, signature, _file_stat = item
+                    self._external_sweep_attempted[(source_id, abs_path)] = signature
+                    done[source_id] += 1
+                    if (handler, abs_path) not in cleared and abs_path not in held:
                         handler._handle_event(abs_path)
-                        why_not[source_id]["dispatched"] += 1
-                        said()
-            processed = sum(why["dispatched"] for why in why_not.values())
-            already = sum(why["already read"] for why in why_not.values())
-            if processed or already:
+                        processed += 1
+                    if time.monotonic() - said_at >= SWEEP_PROGRESS_SECONDS:
+                        for moved in [s for s in done if done[s] != said[s]]:
+                            logger.info(f"External sweep in progress: {moved} {done[moved]}/{total[moved]} candidate(s) through")
+                        said, said_at = dict(done), time.monotonic()
+            if candidates or cleared:
                 logger.info(
-                    f"External sweep: {processed + already} candidate binding(s) - "
-                    f"{already} already read, "
+                    f"External sweep: {len(candidates)} candidate binding(s) - "
+                    f"{len(cleared)} already concluded (tier-1, batched), {len(held)} waiting, "
                     f"{processed} dispatched; source files left untouched.")
-            # 🔴 Each source, each sweep (총괄 10-21 「외장 파일마다 왜 안 넘겼나를 사유별 수로」): what the walk saw and
-            #    why a file was not handed on - one restart says it, no log digging.
-            for source_id, why in why_not.items():
-                reasons = " · ".join(f"{name} {n}" for name, n in why.items()
-                                     if name not in ("looked", "first not listed"))
-                logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
-                            + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
             return processed
 
-    def _external_pages(self, source_id, target, why, said):
-        """A source's files, walked as its pattern and max_depth allow (the folders no file of it can be in are not
-        entered) and stat'd once - in pages of the checklist's batch, each yielded as soon as it is walked. `why`
-        counts what was not handed on; `said` is called as the walk goes."""
-        spec = target["spec"]
-        root, options = spec["root"], spec.get("options") or {}
-        unlisted, page, page_began = [], [], time.monotonic()
-        for dirpath, dirnames, filenames in os.walk(root, onerror=unlisted.append):
-            rel = os.path.relpath(dirpath, root)
-            base = "" if rel == "." else rel.replace(os.sep, "/") + "/"
-            if dirnames and not _within_depth(spec, base.count("/") + 1):
-                why["folders below max_depth"] += len(dirnames)
-                dirnames[:] = []
-            kept = [name for name in dirnames if _folder_may_hold(options, base + name)]
-            why["folders not matching"] += len(dirnames) - len(kept)
-            dirnames[:] = kept
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
-                why["looked"] += 1
-                said()
-                if not target["event_handler"].accepted_path(file_path):
-                    # Which way it was refused - for the line only; the judgement is `accepted_path`'s.
-                    reason = why_not_taken(spec, file_path, base + filename) or "outside the root"
-                    why[reason] = why.get(reason, 0) + 1
-                    continue
-                try:
-                    stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
-                except OSError:
-                    why["stat failed"] += 1
-                    continue
-                if not _stat.S_ISREG(stat.st_mode):
-                    why["not a file"] += 1
-                    continue
-                page.append((stat.st_mtime, os.path.abspath(file_path),
-                             stamp_of(stat)))
-                if (len(page) >= ingestion.checkpoint.CHECKED_BATCH_SIZE
-                        or time.monotonic() - page_began >= SWEEP_PAGE_SECONDS):
-                    yield page
-                    page, page_began = [], time.monotonic()
-        if page:
-            yield page
-        why["folders not listed"] = len(unlisted)
-        if unlisted:
-            why["first not listed"] = told(unlisted[0])
-        taken = why["looked"] - why["outside the root"] - why["name not matched"]
-        if why["looked"] and not taken and source_id not in self._external_unmatched_said:
-            logger.warning(f"External source {source_id}: {why['looked']} file(s) under the root, none matched "
-                           f"{options.get('glob') or options.get('filename')}")
-            self._external_unmatched_said.add(source_id)
-        elif taken:
-            self._external_unmatched_said.discard(source_id)
-
     def _sweep_safely(self, raw_paths=None, reason=""):
-        reached = True
+        """Both sweeps. A full one (`raw_paths` None) that judged every file settles what was owed when it began
+        (`reread.settle_owed`) - its tables' files found then stand WAITING, and later ones are read."""
+        seen, self._owed_unjudged, swept = self._notice_and_owed(), False, True
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
-            reached = False
+            swept = False
             logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
         if raw_paths is None:
             try:
                 self.sweep_external_sources()
             except Exception as e:
-                reached = False
+                swept = False
                 logger.error(f"External source sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
-            finish_read_files_fill(reached and not self._stop_event.is_set()
-                                   and all(self._external_availability.get(source_id)
-                                           for source_id in self.external_targets))
+            if swept and seen and not self._owed_unjudged and not self._stop_event.is_set():
+                reread.settle_owed(seen)
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
@@ -4691,7 +4909,9 @@ class WorkspaceWatcher:
         no event (the observer is not recursive), so this is how it is found. A tree worker
         (`request_tree_ingest`) is asked for when the folder changed since the last one started, or
         a sweep interval has passed since - a folder whose files stay (archive off, a locked file)
-        is walked here, not passed through the checklist every look (총괄 2f487efb5). Returns workers started."""
+        is walked here, not passed through tier-1 every look (총괄 2f487efb5). Returns workers started.
+        The readings are heard first, so a tree there when one changed is judged before it is walked (총괄 290e22ac0)."""
+        self._notice_and_owed()
         started, present = 0, set()
         for raw_path, handler in list(self.handlers_by_raw_path.items()):
             try:

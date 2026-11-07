@@ -1620,7 +1620,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
                 existing_keys.add((t_name, f_id))
     return existing_keys
 
-from admin.audit_cache import audit_cache, in_group
+from admin.audit_cache import audit_cache
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
@@ -1808,14 +1808,13 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     }
                 break
                 
-    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면) - a group, so a replay's pages too
-    in_tx = in_group(models.AuditLog.transaction_id, tx_id)
-    total_count = db.query(models.AuditLog).filter(in_tx).count()
+    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
+    total_count = db.query(models.AuditLog).filter(models.AuditLog.transaction_id == tx_id).count()
     if total_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
         
     db_logs = db.query(models.AuditLog)\
-                .filter(in_tx)\
+                .filter(models.AuditLog.transaction_id == tx_id)\
                 .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc())\
                 .limit(limit)\
                 .all()
@@ -2681,7 +2680,7 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
         refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
-            in_group(models.AuditLog.transaction_id, transaction_id)
+            models.AuditLog.transaction_id == transaction_id
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
@@ -3369,7 +3368,7 @@ def export_table_csv(
         refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
-            in_group(models.AuditLog.transaction_id, transaction_id)
+            models.AuditLog.transaction_id == transaction_id
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
@@ -4833,8 +4832,6 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
 # 대기열 목록이 «훑는» 행 수의 상한. 목록은 진단용이고, 이 수를 넘겨 읽어야 답이 갈리는
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
 _QUEUE_LIST_CAP = 200
-# 최근 실패 목록의 그룹 수 상한(총괄 3de34d292). 잘렸는지는 `recent_failures_listed.capped` 가 말한다.
-_RECENT_FAILURES_CAP = 20
 
 # ⚰️ [판정 652] 아래 독스트링이 「네 선언」이라 적고 `virtual_join_rules` 를 넷째로 댔다.
 #    그 문법은 은퇴했고 이 화면도 그 사분면을 더 안 그린다 — `chain.graph` 의 `_quarter` 는
@@ -4930,12 +4927,12 @@ def chain_dry_run(payload: dict = Body(...)):
     return result
 
 
-class ChainPauseRequest(BaseModel):
+class PauseRequest(BaseModel):
     reason: str = ""
 
 
 @app.post("/admin/chain/pause", dependencies=[Depends(require_admin_token)])
-def pause_chain(body: ChainPauseRequest, request: Request, db: Session = Depends(get_db)):
+def pause_chain(body: PauseRequest, request: Request, db: Session = Depends(get_db)):
     """The emergency stop (총괄 3840af307 ㄱ): the chain takes no new group, a running one is
     rewound at its next stage and its query cancelled now. Nothing queued is lost. Held
     across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pids}}`."""
@@ -4957,6 +4954,30 @@ def resume_chain():
     """Lift the emergency stop; the chain takes its queue again on its next tick."""
     from chain import control as chain_control
     chain_control.resume()
+    return {"paused": None}
+
+
+@app.post("/admin/watcher/pause", dependencies=[Depends(require_admin_token)])
+def pause_watcher(body: PauseRequest, request: Request):
+    """The watcher's stop (총괄 290e22ac0), the chain's shape: no file is taken out - a file being read is read to its
+    end - and the ones that come stay on the disk. Held across restarts until Resume. -> `{paused: {by, at, reason}}`."""
+    from chain import control as chain_control
+    by = sso.who(request, request.headers.get("X-User") or "operator")
+    return {"paused": chain_control.pause(by, body.reason, "watcher")}
+
+
+@app.get("/admin/watcher/pause", dependencies=[Depends(require_admin_token)])
+def get_watcher_pause():
+    """Whether the watcher's pause is REQUESTED; `/health` says `paused` once the watcher takes it."""
+    from chain import control as chain_control
+    return {"paused": chain_control.paused("watcher")}
+
+
+@app.post("/admin/watcher/resume", dependencies=[Depends(require_admin_token)])
+def resume_watcher():
+    """Lift the watcher's stop; it sweeps what came meanwhile on its next tick."""
+    from chain import control as chain_control
+    chain_control.resume("watcher")
     return {"paused": None}
 
 
@@ -5078,21 +5099,11 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                 "outbox_id": row.id})
     # 잡 이름(op)은 «소급 실행 표»가 답한다 — 통제 행이 없는 잡(체인 재실행)도 있다
     run_ids = [line.run for line in lines if line.run]
-    runs, replayed = {}, {}
-    for r in (db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op, models.RetroactiveRun.params)
-              .filter(models.RetroactiveRun.run_id.in_(run_ids)).all() if run_ids else ()):
-        runs[r.run_id] = r.op
-        # a replay's line runs its one rule (`only_rule`)
-        if r.op in event_constants.CHAIN_OWNED_RETROACTIVE_OPS:
-            replayed[r.run_id] = (json.loads(r.params) if r.params else {}).get("rule")
-    # a replay's pages - the last committed, the last staged, the rows through the first (fc1e1e385); null before it
-    from sqlalchemy import bindparam, text
-    from chain import replay as chain_replay
-    # a read-only answer: it asks whether the columns are there and adds none (`replay._cursor_start` does)
-    pages = {r[0]: {"done": r[1], "staged": r[2], "rows_done": r[3]} for r in (db.execute(text(
-        "SELECT run_id, cursor_page, staged_page, cursor_rows FROM retroactive_runs WHERE run_id IN :ids "
-        "AND cursor_page IS NOT NULL").bindparams(bindparam("ids", expanding=True)), {"ids": run_ids})
-        if run_ids and models.ensure_run_columns(db.get_bind(), add=False) else ())}
+    runs = {}
+    if run_ids:
+        runs = {r.run_id: r.op for r in (db.query(models.RetroactiveRun.run_id,
+                                                 models.RetroactiveRun.op)
+                                         .filter(models.RetroactiveRun.run_id.in_(run_ids)).all())}
 
     def _age(dt):
         if dt is None:
@@ -5108,36 +5119,16 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     running, paused = running_seat.chain_lines_running(), chain_control.paused()
     retrying = [line.key for line in lines if line.max_retry]
     last_failure = {}
-    for key, said, stage in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string(),
-                                      outbox.payload[event_constants.LAST_FAILURE_STAGE].as_string())
-                             .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
-                             .order_by(outbox.id.desc()).all() if retrying else ()):
-        last_failure.setdefault(key, {event_constants.LAST_FAILURE: said, event_constants.LAST_FAILURE_STAGE: stage})
-    chain_rules = chain_worker.loaded_chain_rules() if lines else []
-
-    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
-    #    `now_running` reads. `activity.view` turns either loop into the same shape.
-    from chain import activity
-    sight = running_seat.chain_sight()
-    shape = activity.view(sight["instants"], now=now_utc.timestamp())
-
-    def _rule_on_line(name, facts):
-        """One of a line's rules (3de34d292): the one its group runs now - its rows in and seconds so far, from the
-        claim (`work_facts`) - else its last run's rows in and out (the [ChainRule] line's), None when its last
-        evaluation did not run it."""
-        now = (facts or {}).get("rule_run")
-        if now is not None and now.get("rule") == name:
-            return {"rule": name, "rows_in": now.get("rows_in"), "rows_out": now.get("rows_out"),
-                    "running_seconds": now.get("running_seconds")}
-        last = shape["rule_outcomes"].get(name) or {}
-        return {"rule": name, "rows_in": last.get("last_rows_in"), "rows_out": last.get("last_rows_out"),
-                "running_seconds": None}
+    for key, said in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string())
+                      .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
+                      .order_by(outbox.id.desc()).all() if retrying else ()):
+        last_failure.setdefault(key, said)
+    chain_rules = chain_worker.loaded_chain_rules() if retrying else []
 
     waiting_transactions = []
     for line in lines:
         d = detail[line.key]
         is_run = bool(line.run)
-        line_rules = chain_worker.rules_of_line(d["tables"], chain_rules, replayed.get(line.run))
         is_row = not is_run and line.key == f"{event_constants.QUEUE_ROW_KEY_PREFIX}{line.first_id}"
         waiting_transactions.append({
             # 줄의 신원 셋 중 하나만 찬다 — 잡(run_id) · 트랜잭션 · 그 행 하나
@@ -5153,8 +5144,6 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # 같은 판정을 줄에도. 화면이 event_type 을 보고 «스스로» 정하면 그 판정의 사본이 생긴다.
             "owners": sorted({event_constants.outbox_owner(t) for t in d["event_types"]}),
             **({"retroactive": d["retroactive"]} if d["retroactive"] else {}),
-            **({"pages": pages.get(line.run)} if is_run else {}),
-            "rules": [_rule_on_line(name, running.get(line.key)) for name in line_rules],
             "max_retry": int(line.max_retry or 0),
             "waiting_seconds": _age(line.created_at),
             "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
@@ -5163,36 +5152,14 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # {"state", "why"} - the grid queue's rows carry the same (총괄 248ae20cd)
             "chain_state": event_constants.chain_state_of(
                 False, "RETRYING" if line.max_retry else "PENDING", retry_count=int(line.max_retry or 0),
-                attempts_cap=(chain_worker.group_attempts_cap(line_rules, chain_rules) if line.max_retry else None),
-                payload=last_failure.get(line.key),
+                attempts_cap=(chain_worker.group_attempts_cap(
+                    [r.get("name") for r in chain_rules if r.get("trigger_table") in d["tables"]], chain_rules)
+                    if line.max_retry else None),
+                payload={event_constants.LAST_FAILURE: last_failure.get(line.key)},
                 waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
             # the slot process running it - killing that pid stops this line only (총괄 19f6a9277)
             "slot_pid": (running.get(line.key) or {}).get("pid"),
         })
-
-    # ── 최근 실패 — 실패 목록(/admin/outbox/failed)의 모집단(`failure_clause`)과 그룹 열쇠 그대로 (총괄 3de34d292) ──
-    # Newest first over `idx_outbox_failed`, a page at a time until one group past the cap; each group says its
-    # quarantine record once (the same on each of its events).
-    recent_failures, seen_groups, before = [], set(), None
-    while len(recent_failures) <= _RECENT_FAILURES_CAP:
-        page = (db.query(outbox.id, outbox.event_uuid, outbox.processed_at,
-                         outbox.payload["transaction_id"].as_string(), outbox.payload["error_log"])
-                .filter(event_constants.failure_clause(outbox), *(() if before is None else (outbox.id < before,)))
-                .order_by(outbox.id.desc()).limit(100).all())
-        for row_id, row_uuid, failed_at, tx, record in page:
-            group = tx or f"single_{row_uuid}"
-            if group in seen_groups:
-                continue
-            seen_groups.add(group)
-            record = record if isinstance(record, dict) else {}
-            recent_failures.append({
-                "transaction_id": group, "rules": record.get("rules"), "tables": record.get("tables"),
-                "stage": record.get("stage"), "rows_in": record.get("rows_in"), "rows_out": record.get("rows_out"),
-                "rows": record.get("rows"), "failure": event_constants.failure_cause(record.get("reason")),
-                "failed_at": to_local_str(failed_at) if failed_at is not None else None})
-        if len(page) < 100:
-            break
-        before = page[-1].id
 
     owners = {}
     for event_type, rows_of_type, oldest_of_type in by_type:
@@ -5243,8 +5210,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 대기 수가 같고, 그 둘을 가르는 것은 맵퍼를 «돌리는 프로세스»만 압니다.
     # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
-    # the sight and its shape are read above, once - the lines' rules read them too
+    from chain import activity
+    from runtime import running as running_seat
+    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
+    #    `now_running` reads. `activity.view` turns either loop into the same shape.
+    sight = running_seat.chain_sight()
     loop_seen_via, loop_seen_age, loop_log = sight["via"], sight["age"], sight["log"]
+    shape = activity.view(sight["instants"], now=now_utc.timestamp())
 
     return {
         # 🔴 이 수들이 「지금」이 아니라 «그때»의 것이다. 새로 고치지 않은 화면은 오래된
@@ -5284,15 +5256,6 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "cap": _QUEUE_LIST_CAP,
             "capped": bool(lines) and int(lines[0].lines_total) > len(lines),
         },
-        "recent_failures": recent_failures[:_RECENT_FAILURES_CAP],
-        "recent_failures_listed": {"cap": _RECENT_FAILURES_CAP,
-                                   "capped": len(recent_failures) > _RECENT_FAILURES_CAP},
-        # cut replays - no events wait, so no line above: «Interrupted · Resume», × closes (총괄 fc1e1e385)
-        "interrupted_runs": [
-            {"run_id": cut["run_id"], "rule": cut["rule"], "state": cut["state"], "pages": cut["pages"],
-             "cut_at": to_local_str(cut["finished_at"]) if cut["finished_at"] is not None else None,
-             "resume": {"run_id": cut["run_id"]}, "cancel": {"key": cut["run_id"]}}
-            for cut in chain_replay.interrupted_runs(db)],
         # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
         # 그 오독이 바로 이 라우트가 없애려는 부류다.
         "not_measured": {
@@ -5673,23 +5636,16 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
     #    lines, and a two-day-old burst read as 「now」. One GROUP BY; no payload is loaded.
     #    Unfiltered: the summary is the whole section even when `data` is one line's rows.
-    lines_of_summary = (db.query(
-        outbox.table_name, outbox.event_type, day_of, func.count(), func.min(outbox.created_at),
-        func.max(outbox.created_at), func.max(outbox.retry_count), func.max(outbox.id))
-        .filter(event_constants.failure_clause(outbox))
-        .group_by(outbox.table_name, outbox.event_type, day_of)
-        .order_by(func.max(outbox.created_at).desc()).all())
-    # each line's newest failure, as its one sentence (`failure_cause`) - the word a retrying line says it with (3de34d292)
-    newest = [line[-1] for line in lines_of_summary]
-    newest_reason = dict(db.query(outbox.id, outbox.payload[("error_log", "reason")].as_string())
-                         .filter(outbox.id.in_(newest)).all()) if newest else {}
     summary = [{
         "table_name": name, "event_type": kind, "day": on_day,
         "count": int(n), "first_at": to_local_str(first), "last_at": to_local_str(last),
         "retry_max": int(retry_max or 0),
-        "last_failure": (event_constants.failure_cause(newest_reason[last_id])
-                         if newest_reason.get(last_id) else None),
-    } for name, kind, on_day, n, first, last, retry_max, last_id in lines_of_summary]
+    } for name, kind, on_day, n, first, last, retry_max in db.query(
+        outbox.table_name, outbox.event_type, day_of, func.count(), func.min(outbox.created_at),
+        func.max(outbox.created_at), func.max(outbox.retry_count))
+        .filter(event_constants.failure_clause(outbox))
+        .group_by(outbox.table_name, outbox.event_type, day_of)
+        .order_by(func.max(outbox.created_at).desc()).all()]
 
     return {
         "status": "success",
@@ -5774,11 +5730,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         for filepath, spelled_path, state, reason in query.with_entities(
                 model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
             key, label = key_of(filepath, spelled_path, state, reason)
-            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,   # its first row's
+            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,  # its first row's
                                             "waiting": 0})
             entry["count"] += 1
             entry["failed"] += state == "FAILED"
-            entry["waiting"] += state == "PENDING_RETRY"            # handed again, not read yet (총괄 10-21)
+            entry["waiting"] += state == reread.WAITING_STATUS
         said["groups"] = list(groups.values())
     return said
 
@@ -7427,21 +7383,6 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"The run list could not be read: {e}")
 
 
-@app.post("/admin/retroactive/runs/{run_id}/resume",
-          dependencies=[Depends(require_admin_token)])
-def resume_retroactive_run(run_id: str, request: Request, db: Session = Depends(get_db)):
-    """Resume on a cut replay's line (총괄 fc1e1e385): a new run that continues it from the page after its last
-    committed one (`chain.replay.resume_run`). A run that is not cut is refused with why."""
-    from admin import retroactive
-    from chain import replay
-
-    try:
-        return replay.resume_run(db, run_id, by=_who_stops(request))
-    except retroactive.RetroactiveRefused as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 @app.post("/admin/retroactive/runs/{run_id}/cancel",
           dependencies=[Depends(require_admin_token)])
 def cancel_retroactive_run(run_id: str, request: Request, db: Session = Depends(get_db)):
@@ -7495,28 +7436,6 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
                        + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
 
 
-@app.post("/admin/file-ingestion/read-now", dependencies=[Depends(require_admin_token)])
-def read_file_now(path: str, table: str = None, preview: bool = False, db: Session = Depends(get_db)):
-    """One file read now as if the watcher saw it (총괄 aaf19d0ca, 소유자 「그냥 와처 인식한 걸로 하면 되잖아」): the table
-    that owns its folder, its row handed to the Retry door under that source. `preview`: who owns it and why the
-    watcher did not pick it - nothing written."""
-    from ingestion import reread
-
-    table = None if crud.is_blank_value(table) else str(table).strip()
-    if not preview and os.getenv("DECOUPLED") != "True":
-        raise HTTPException(status_code=409, detail="reading a file now needs the watcher process")
-    try:
-        said = reread.read_now(db, str(path).strip(), table=table, apply=not preview)
-    except reread.RereadRefused as refused:
-        raise HTTPException(status_code=409, detail=str(refused))
-    owner = said["owner"]
-    return {"status": "preview" if preview else "success", **said,
-            "message": (f"{len(said['owners'])} tables read it - choose one" if owner is None
-                        else f"{os.path.basename(said['path'])} handed to the watcher for {owner['table']}" if not preview
-                        else f"{owner['table']} reads it" + (" - " + "; ".join(owner["why_not"])
-                                                            if owner["why_not"] else ""))}
-
-
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, statuses: str = None,
@@ -7551,7 +7470,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         raise HTTPException(status_code=400, detail="table (read from the disk into a table) and read_by (the files "
                                                     "a table read) are two re-reads - give one")
     chosen = None
-    missing, not_taken, not_taken_files = [], {}, []
+    missing = []
     if into is not None:
         # 총괄 10-20: into a table - by the disk, as that table's handler takes files; the poller reads them there
         refused = (f"table {into!r} is not declared" if into not in crud.TABLE_CONFIG
@@ -7573,9 +7492,6 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
             # Failed files keep today's answer.
             picked, missing = await asyncio.to_thread(lambda: reread.split_missing(reread.one_per_file(picked)))
-        if log_id is None:
-            # 총괄 dd0f2818c: a bulk Retry picks what the declaration takes now; one file named by its row is read as asked
-            picked, not_taken, not_taken_files = await asyncio.to_thread(reread.taken_now, picked)
     failed_logs = [log for log, _rel in picked]
     by_state = {}
     for log in failed_logs:
@@ -7584,7 +7500,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     said = {"folder": folder, "count": len(failed_logs), "by_state": dict(sorted(by_state.items())),
             "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
             "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]],
-            "not_taken": not_taken, "not_taken_files": not_taken_files, "limit": reread.max_files()}
+            "limit": reread.max_files()}
     if chosen is not None:
         said.update(table=into, walked=chosen["walked"], not_taken=chosen["not_taken"],
                     not_taken_files=chosen["not_taken_files"], folders=chosen["folders"], took=chosen["took"])
@@ -7596,10 +7512,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                             else f"No {what}{where}")}
     if not failed_logs:
         return {"status": "success", **said, "message": f"No {what} ingestion logs found."}
-    # 총괄 10-11 ㄱ (소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」): over the declared cap, nothing is handed -
-    # when this request would read them. Handed to the watcher (DECOUPLED), the cap is its pace (총괄 10-21).
-    refused = (reread.over_the_limit(len(failed_logs), said["limit"]) if os.getenv("DECOUPLED") != "True"
-               else None)
+    # 총괄 10-11 ㄱ (소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」): over the declared cap, nothing is handed
+    refused = reread.over_the_limit(len(failed_logs), said["limit"])
     if refused:
         raise HTTPException(status_code=409, detail=refused)
 

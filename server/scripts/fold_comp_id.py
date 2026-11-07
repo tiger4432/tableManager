@@ -31,14 +31,10 @@ def fold(conn, table, ask=input, say=print) -> int:
         say("Not a table name: %r" % table)
         return 2
     say("Connected. Checking the retroactive queue ...")
-    # the gate every retroactive run passes - not a copy of it (총괄 1ff4dcc6c ②)
-    from sqlalchemy.orm import Session
-    from admin import retroactive
-
-    with Session(bind=conn) as session:
-        busy = retroactive.gate_refusal(session)
+    busy = conn.execute(text("SELECT run_id, op FROM retroactive_runs WHERE state IN ('running', 'cancel_requested')")).all()
     if busy:
-        say("A retroactive run holds the queue: %s - stop it first with stop_retroactive.bat" % busy)
+        say("A retroactive run holds the queue: %s - stop it first with stop_retroactive.bat" % ", ".join(
+            "%s (%s)" % (r[1], r[0]) for r in busy))
         return 1
     checks, moves, writes = [], None, []
     for stmt in statements(table):

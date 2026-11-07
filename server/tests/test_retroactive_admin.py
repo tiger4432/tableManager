@@ -215,14 +215,12 @@ class TestInventory:
         # ⚰️ `reread_files` (976defaac) retired the same night - the retry door reads them (a4d135a06).
         # `remove_shell_rows` the same night - rows left with only the chain's keys (5eee501eb).
         # `fold_units` joined on 2026-10-11 - a fold rule's answer written by pages (fold-units).
-        # `delete_every_row` joined on 2026-10-22 - every row of a table, the file checklist kept (4435b9b29).
-        # `retype_column` joined on 2026-10-22 - a column the declaration retyped, converted (총괄 aa8ff1af5).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
             "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
-            "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
-            "remove_shell_rows", "fold_units", "retype_column"}
+            "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events",
+            "remove_shell_rows", "fold_units"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.
@@ -266,7 +264,7 @@ class TestInventory:
         ops = {o["op"]: o for o in client.get("/admin/retroactive/operations").json()
                ["operations"]}
         assert [p["name"] for p in ops["withdraw"]["params"]] == \
-            ["table", "source", "columns", "rule"]
+            ["table", "source", "columns"]
         # withdraw takes no --limit and no --chunk-size on the CLI either; a
         # parameter here that the operation does not have would be a lie the
         # client would render as a control.
@@ -1466,7 +1464,7 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
                 continue
             if not any(word in haystack for word in spellings(param["name"])):
                 missing.append(f"{op}.{param['name']}")
-    assert no_cli == ["chain_replay.cascade", "chain_replay.continued_from"]
+    assert no_cli == ["chain_replay.cascade"]
     assert not missing, (
         "these parameters exist on the operation but appear nowhere in its cli line or "
         f"cli_only, so the promise is false for them: {missing}")

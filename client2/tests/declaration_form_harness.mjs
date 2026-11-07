@@ -17,7 +17,6 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { makeDoc, makeNode, walk } from './lib/board_dom.mjs';
@@ -33,9 +32,16 @@ const FILES = {
 
 const doc = makeDoc('light');
 globalThis.document = doc;
-// The adder's Enter and paste go in through `click` (adderInput), and a fold counts its rows with `childElementCount` -
-// spellings the shared stub does not have (its `closest` it has, lead 10-21). They are added on THIS harness's nodes only.
+// The adder's Enter and paste go in through `closest` and `click` (adderInput), and a fold counts its rows with
+// `childElementCount` - spellings the shared stub does not have. They are added on THIS harness's nodes only - the shared stub's thirty-nine other users stay as they are.
+const matchesSel = (n, sel) => {
+  const c = /^\.([A-Za-z0-9_-]+)$/.exec(sel);
+  if (c) return String(n.className || '').split(/\s+/).includes(c[1]);
+  const a = /^\[([A-Za-z0-9_-]+)="(.*)"\]$/.exec(sel);
+  return Boolean(a && n.attrs && n.attrs[a[1]] === a[2]);
+};
 const withDom = (n) => {
+  n.closest = function closest(sel) { for (let at = this; at; at = at.parentNode) if (at.attrs && matchesSel(at, sel)) return at; return null; };
   n.click = function click() { return this.dispatch('click', {}); };
   Object.defineProperty(n, 'childElementCount', { get() { return this.children.length; } });
   return n;
@@ -121,21 +127,10 @@ function viewSuite(M) {
     `V6 every datalist id carries the form's prefix [${ids.join(' ')}]`);
   const table = walk(boxAt(form, 'col') || makeNode(doc, 'div')).find((n) => has(n, 'oe-form-column__table'));
   ok(table && String(table.textContent) === 'T.', `V7 a column cell says its table before its box [${table && table.textContent}]`);
-  // Every control in a tree row's value cell is the one value box (lead 10-21): a one-of's picker, a choice, a word.
-  const BOXED = { kind: 'record', fields: [
-    { key: 'word', required: true, node: LEAF },
-    { key: 'pick', required: true, node: { kind: 'leaf', hint: 'choice', list: 'modes' } },
-    { key: 'shape', required: true, node: { kind: 'oneOf', hint: 'choice', branches: { l: LEAF, r: { kind: 'record', fields: [{ key: 'z', required: true, node: LEAF }] } } } }] };
-  const bform = M.view.renderSkeletonForm(viewContext(M), BOXED, '', { word: 'w', pick: 'l', shape: { r: { z: 'q' } } }, 0, 'b');
-  const controls = walk(bform).filter((n) => has(n, 'oe-node-value')).flatMap((c) => c.children)
-    .filter((n) => n.tagName === 'SELECT' || n.tagName === 'INPUT' || has(n, 'oe-form-suggested'))
-    .map((n) => (has(n, 'oe-form-suggested') ? n.children.find((k) => k.tagName === 'INPUT') : n));
-  ok(controls.length >= 4 && controls.every((n) => n && has(n, 'oe-box')),
-    `V10 every control in a row's value cell is the value box [${controls.map((n) => (n ? `${n.tagName}:${has(n, 'oe-box')}` : '-')).join(' ')}]`);
   const folded = M.view.renderAuthoringRow({ path: 'p', label: 'P', state: 'answered', tier: 'constrained_input',
     value: ['run_uid', 'lot'], refusals: [], candidates: null }, [], null, true);
-  const shown = walk(folded).filter((n) => has(n, 'oe-folded-value')).map((n) => String(n.textContent));
-  ok(same(shown, ['run_uid, lot']), `V8 a plan row's folded list reads as its words in its one box, not its JSON [${shown}]`);
+  const shown = walk(folded).filter((n) => has(n, 'chip')).map((n) => String(n.textContent));
+  ok(same(shown, ['run_uid', 'lot']), `V8 a plan row's folded list reads as its chips, not its JSON [${shown}]`);
 }
 
 // ── A: ontology_path ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -165,10 +160,6 @@ function pathSuite(M) {
 
 // ── S: ontology_skeleton ─────────────────────────────────────────────────────────────────────────────────────────
 function skelSuite(M) {
-  const lv = (hint, typed) => M.skel.leafValue({ kind: 'leaf', hint }, typed);
-  const said = [lv('number', ' 7 '), lv('number', ''), lv('number', 'x'), lv('flag', true), lv('flag', false), lv('free', 7), lv('choice', 'b')];
-  ok(same(said, [7, null, undefined, true, false, '7', 'b']) && said[2] === undefined,
-    `S4 leafValue: a number a number, nothing typed null, not a number nothing; a flag a boolean; the rest text [${JSON.stringify(said)}]`);
   const row = FIX.root.fields.find((f) => f.key === 'rows').node.of;
   const optional = { kind: 'record', fields: [{ key: 'pick', required: false, node: { kind: 'leaf', hint: 'choice', list: 'ones' } }] };
   ok(same(M.skel.emptyOf(row, {}, 0, LISTS), { pick: 'only' }) && same(M.skel.emptyOf(row, {}), {})
@@ -247,17 +238,6 @@ function panelSuite(M) {
   const caret = k1 ? walk(k1.children[0]).find((n) => attr(n, 'data-action') === 'toggle-field') : null;
   ok(caret && attr(caret, 'aria-expanded') === 'true' && walk(k1).some((n) => has(n, 'decl-field-refusal')),
     'P5 a refused cell inside a folded member opens it, and its mark stands beside it');
-  const lineOf = (tag) => tag && tag.parentNode && tag.parentNode.parentNode;
-  const line = lineOf(walk(r.host).find((n) => has(n, 'decl-field-refusal')));
-  const kin = line && line.parentNode ? line.parentNode.children : [];
-  ok(line && has(line, 'oe-node-row') && has(line, 'is-refusal') && kin.indexOf(line) > 0 && has(kin[kin.indexOf(line) - 1], 'oe-node-row'),
-    'P9 the refusal is a row of its own, right under its cell\'s row (lead 10-21 ③)');
-  const again = { name: 'alpha', refusal: { code: 'bad_x', path: 'rules.alpha.deep.k1.x', message: 'no' } };
-  r.panel._markShort(r.panel._formBox, again, []);
-  r.panel._markShort(r.panel._formBox, again, []);
-  const lines = walk(r.host).filter((n) => has(n, 'is-refusal'));
-  ok(lines.length === 1 && lines.every((n) => walk(n).some((t) => has(t, 'decl-field-refusal'))),
-    `P10 marked again, the old refusal goes with its row - no empty line is left [${lines.length}]`);
 
   // Enter and a paste at an adder
   const w = panelOf(M, FIX, copy(DOC));
@@ -286,100 +266,6 @@ function panelSuite(M) {
     `P8 one edit and the head says Unsaved; edited back to the server's text, it no longer does [${clean} ${edited} ${marks()}]`);
 }
 
-// ── L: every leaf of the three skeletons writes the JSON type its hint names (lead c7e7f7913, owner 10-21 «rows_per_run
-//    은 숫자인데 문자로 들어가네»). The skeleton is the form's one contract: the leaves are read from the server's own files,
-//    not listed here. Each leaf is held in a document of its own, drawn by the panel with every fold open, typed into
-//    through its control, and the text on the left read back. ──
-const SERVER = path.join(HERE, '..', '..', 'server');
-// Each form's root: the table's, the chain rule's two grammars, and one ledger declaration per section of the bundle.
-const FORMS = (M) => {
-  const read = (file) => JSON.parse(readFileSync(path.join(SERVER, file), 'utf8'));
-  const table = read('table_skeleton.json'), chain = read('chain_skeleton.json');
-  const ledger = read(path.join('ledger', 'ledger_skeleton.json'));
-  return [['table', table.root, table.defs], ['chain', chain.root, chain.defs], ['chain unified', chain.unified_root, chain.defs],
-    ...ledger.root.fields.filter((f) => f.node.kind === 'map')
-      .map((f) => [`ledger ${f.key}`, M.skel.declarationShape(ledger, f.key), ledger.defs])];
-};
-const WANT = { number: 'number', flag: 'boolean' };
-function leavesOf(root, defs) {
-  const out = [];
-  const go = (node, at, gates, seen, branch = false) => {
-    while (node && node.use) { if (seen.has(node.use)) return; seen = new Set([...seen, node.use]); node = defs[node.use]; }
-    if (!node) return;
-    const step = (k) => (at ? `${at}.${k}` : k);
-    if (node.kind === 'leaf') out.push({ at, node, gates, branch });
-    else if (node.kind === 'record') {
-      for (const f of node.fields || []) go(f.node, step(f.key), f.when ? [...gates, [step(f.when.field), f.when.is]] : gates, seen);
-    } else if (node.kind === 'map') go(node.of, node.keyed_by === 'index' ? `${at}[0]` : step('k'), gates, seen);
-    else if (node.kind === 'oneOf') {
-      for (const [k, b] of Object.entries(node.branches || {})) go(b, node.pick === 'shape' ? at : step(k), gates, seen, node.pick !== 'shape');
-    }
-  };
-  go(root, '', [], new Set());
-  return out;
-}
-const stepsOf = (at) => at.split(/\.|\[(\d+)\]/).filter((s) => s !== undefined && s !== '').map((s) => (/^\d+$/.test(s) ? Number(s) : s));
-function putAt(doc, at, value) {
-  const steps = stepsOf(at);
-  let here = doc;
-  steps.forEach((s, i) => {
-    if (i === steps.length - 1) { here[s] = value; return; }
-    if (here[s] === null || typeof here[s] !== 'object') here[s] = typeof steps[i + 1] === 'number' ? [] : {};
-    here = here[s];
-  });
-  return doc;
-}
-const readAt = (doc, at) => stepsOf(at).reduce((v, s) => (v === null || v === undefined ? v : v[s]), doc);
-
-function leafSuite(M) {
-  for (const [form, root, defs = {}] of FORMS(M)) {
-    const leaves = leavesOf(root, defs);
-    // A choice is drawn from its list: each list the leaves name holds two words here.
-    const lists = { ...LISTS, ...Object.fromEntries(leaves.filter((l) => l.node.list).map((l) => [l.node.list, ['a', 'b']])) };
-    const wrong = [], undrawn = [];
-    for (const { at, node, gates, branch } of leaves) {
-      // As a person meets it: a record's field not yet written (its parent there), a list's or a map's member as «+»
-      // made it - the empty word. A list of words is typed at its adder, so there it starts empty.
-      const drawn = (doc) => {
-        const host = makeNode(globalThis.document, 'div');
-        const panel = new M.panel.RawRegistryPanel(host, { doc: globalThis.document, lists }, SPEC);
-        // Drawn once (a new form starts its own fold record), then every fold open, then drawn again.
-        panel.render(payloadFor({ root, defs }, doc));
-        panel._formFold = { expandedFields: new Proxy({}, { get: () => true, has: () => true }) };
-        panel.render(payloadFor({ root, defs }, doc));
-        return host;
-      };
-      const base = () => { const d = {}; for (const [g, is] of gates) putAt(d, g, is); return d; };
-      const parent = at.replace(/(\.[^.[\]]+|\[\d+\])$/, '');
-      let doc = base();
-      if (branch || typeof stepsOf(at).pop() === 'number' || /\.k$/.test(at)) putAt(doc, at, '');
-      else if (parent !== at) putAt(doc, parent, readAt(doc, parent) || {});
-      let host = drawn(doc);
-      const typed = node.hint === 'number' ? '7' : node.hint === 'choice' ? 'b' : 'w';
-      const c = walk(host).find((n) => (n.tagName === 'INPUT' || n.tagName === 'SELECT')
-        && (attr(n, 'data-value') === at || attr(n, 'data-path') === at) && /^edit-shape(-flag)?$/.test(attr(n, 'data-action') || ''));
-      if (c) {
-        if (node.hint === 'flag') c.checked = true; else c.value = typed;
-        c.dispatch('change', {});
-      } else if (/\[0\]$/.test(at)) {
-        doc = putAt(base(), parent, []);
-        host = drawn(doc);
-        const adder = walk(host).find((n) => has(n, 'oe-form-new-id') && attr(n, 'data-for') === parent);
-        if (!adder) { undrawn.push(`${at}(${node.hint})`); continue; }
-        adder.value = typed;
-        adder.dispatch('change', {});
-      } else { undrawn.push(`${at}(${node.hint})`); continue; }
-      let held = null;
-      try { held = JSON.parse(walk(host).find((n) => has(n, 'decl-raw')).value); } catch (e) { held = null; }
-      const got = held ? readAt(held, at) : undefined;
-      if (typeof got !== (WANT[node.hint] || 'string')) wrong.push(`${at}(${node.hint})=${JSON.stringify(got)}`);
-    }
-    ok(leaves.length > 0 && wrong.length === 0,
-      `L1 ${form}: each of ${leaves.length} leaves writes its hint's JSON type [${wrong.length} wrong${wrong.length ? `: ${wrong.slice(0, 6).join(' ')}` : ''}]`);
-    if (!quiet && undrawn.length) console.log(`       ${form}: ${undrawn.length} leaves not drawn from a document holding them alone: ${undrawn.join(' ')}`);
-  }
-}
-
 async function score(which, mutate, tag) {
   const M = {};
   try {
@@ -391,11 +277,9 @@ async function score(which, mutate, tag) {
     return { pass: 0, fail: 1 };
   }
   const before = { pass, fail };
-  const suites = { view: viewSuite, path: pathSuite, skel: skelSuite, panel: panelSuite, leaf: leafSuite };
-  // The leaf suite drives the panel, the skeleton and the path writers together.
-  const leafRuns = ['skel', 'panel', 'path'];
+  const suites = { view: viewSuite, path: pathSuite, skel: skelSuite, panel: panelSuite };
   try {
-    for (const [key, run] of Object.entries(suites)) if (!which || key === which || (key === 'leaf' && leafRuns.includes(which))) run(M);
+    for (const [key, run] of Object.entries(suites)) if (!which || key === which) run(M);
   } catch (e) {
     if (!quiet) console.log(`  BAD  threw: ${e && e.stack}`);
     fail++;
@@ -405,20 +289,16 @@ async function score(which, mutate, tag) {
 
 const DEFECTS = [
   ['view', 'a list of words is drawn as member rows again',
-    (s) => s.replace('  if (isChipList(context, shape, value) && !context.planRow(path)) {', '  if (false) {')
-      .replace('  if (isChipList(context, node, value) && valueFits(node, value)) return renderChips', '  if (false) return renderChips')],
+    (s) => s.replace('  if (isChipList(context, shape) && !context.planRow(path)) {', '  if (false) {')
+      .replace('  if (isChipList(context, node) && valueFits(node, value)) return renderChips', '  if (false) return renderChips')],
   ['view', 'a gated list of records is drawn as a table',
     (s) => s.replace("      return !field.when && shape && shape.kind === 'leaf';", "      return shape && shape.kind === 'leaf';")],
   ['view', 'two forms share one datalist id', (s) => s.replace("${context.listPrefix || 'oe'}-dl-", 'oe-dl-')],
   ['view', 'a folded record drops its count',
     (s) => s.replace("  return words.length ? `${words.join(' · ')} · ${count}` : '';", "  return words.join(' · ');")],
-  ['view', "a one-of's picker stretches on its own class again",
-    (s) => s.replace("      h, { action: 'edit-shape-branch', path, label: name, cls: 'oe-box' }),", "      h, { action: 'edit-shape-branch', path, label: name }),")],
-  ['view', 'a word box sized by its own class again',
-    (s) => s.replace("  const input = h('input', 'oe-field-input oe-box');\n  // 🔴 A NUMBER", "  const input = h('input', 'oe-field-input');\n  // 🔴 A NUMBER")],
   ['view', 'a column cell hides its table', (s) => s.replace('  if (!table) return control;', '  return control;')],
   ['view', "a plan row's folded list is its JSON again",
-    (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],
+    (s) => s.replace("    for (const word of words || []) shown.append(h('span', 'chip', String(word)));", '')],
   ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
   ['path', 'a switched gate keeps the shut branch in the document', (s) => s.replace('      delete record[field.key];\n', '')],
@@ -427,20 +307,12 @@ const DEFECTS = [
       '  return undefined;')],
   ['panel', 'two panels of a registry share list ids',
     (s) => s.replace('    this._listPrefix = `${spec.cls}-${Math.random().toString(36).slice(2, 8)}`;', '    this._listPrefix = spec.cls;')],
-  ['panel', 'the refusal back inside its cell\'s value column',
-    (s) => s.replace("  if (own) node.insertBefore(lineRow(Number(own.dataset.depth) || 0, tag, 'is-refusal'), own.nextSibling || null);\n  else node.appendChild(tag);",
-      '  (slot || node).appendChild(tag);')],
-  ['panel', 'marked again, the old refusal leaves its empty line',
-    (s) => s.replace("      const gone = line && ` ${line.className || ''} `.includes(' is-refusal ') ? line : tag;", '      const gone = tag;')],
   ['panel', 'a refused cell stays folded shut',
     (s) => s.replace('[refusedAt(view, spec), ...missingRequired(root, value, this._defs)].filter(Boolean)', '[]')],
   ['panel', 'a paste at an adder is a plain paste', (s) => s.replace("        box.addEventListener('paste', adderInput);\n", '')],
   ['panel', 'the adder keeps what it took', (s) => s.replace("          if (typed) typed.value = '';\n", '')],
   ['panel', 'the panel never switches a gate', (s) => s.replace('          updated = switched.document;\n', '')],
   ['panel', 'the head says Unsaved only on the next draw', (s) => s.replace('    this.draftOf = String(key || \'\');\n    this._sayUnsaved();\n', '    this.draftOf = String(key || \'\');\n')],
-  ['skel', 'a number leaf writes its text again', (s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
-  ['panel', 'the panel writes what the box holds again',
-    (s) => s.replace("action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);", "action === 'edit-shape-flag' ? Boolean(el.checked) : el.value) && (action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);")],
   ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists);", "named ? named.value : '');")],
 ];
 const CONTROLS = [

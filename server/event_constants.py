@@ -161,8 +161,6 @@ CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_RUNNING, CHAIN_STATE_
 #: The payload key a group's failure leaves on its events while they wait to be tried again -
 #: the one line `retrying` shows (a quarantined group's whole record is `error_log`).
 LAST_FAILURE = "last_failure"
-#: Beside it, the stage the group was in when it failed - its claim's, the word a running line shows (3de34d292).
-LAST_FAILURE_STAGE = "last_failure_stage"
 
 #: 통지가 «확정»됐나 — 체인 상태와 «다른 축»이다. 둘을 한 값으로 접으면
 #: 「돌았는데 아직 안 알려졌다」가 「돌았다」에 묻힌다. 그 행은 스윕이 다시 쏜다.
@@ -211,15 +209,15 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
         if payload.get(CANCEL_MARK):
             return said(CHAIN_STATE_SET_ASIDE, by=payload[CANCEL_MARK], reason=payload.get(CANCEL_REASON))
         if status == "FAILED":
-            record = payload.get("error_log") if isinstance(payload.get("error_log"), dict) else {}
             return said(CHAIN_STATE_FAILED, failure=failure_cause(
-                record.get("reason") if record else payload.get("error_log")), stage=record.get("stage"))
+                (payload.get("error_log") or {}).get("reason") if isinstance(payload.get("error_log"), dict)
+                else payload.get("error_log")))
         return said(CHAIN_STATE_DONE, **({} if status == "SUCCESS" else {"unexpected_status": status}))
     if paused is not None:
         return said(CHAIN_STATE_PAUSED, by=paused.get("by"), at=paused.get("at"), reason=paused.get("reason"))
     if running is not None:
         why = {"stage": running.get("stage"), "moved_seconds": running.get("moved_seconds"),
-               "elapsed_seconds": running.get("elapsed_seconds"), "rule_run": running.get("rule_run")}
+               "elapsed_seconds": running.get("elapsed_seconds")}
         if str(running.get("stage") or "").startswith(CHAIN_WAITING_FOR):
             return said(CHAIN_STATE_WAITING_FOR_TABLE, table=running["stage"][len(CHAIN_WAITING_FOR):], **why)
         if running.get("stalled"):
@@ -227,7 +225,7 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
         return said(CHAIN_STATE_RUNNING, **why)
     if status == "RETRYING":
         return said(CHAIN_STATE_RETRYING, attempt=retry_count, cap=attempts_cap,
-                    last_failure=payload.get(LAST_FAILURE), stage=payload.get(LAST_FAILURE_STAGE))
+                    last_failure=payload.get(LAST_FAILURE))
     return said(CHAIN_STATE_WAITING, waiting_seconds=waiting_seconds,
                 **({} if status in ("PENDING", None) else {"unexpected_status": status}))
 
@@ -579,9 +577,6 @@ WRITTEN_BY_KEY = "written_by"
 #: [RUN] The retroactive run (`retroactive_runs.run_id`) whose work this event is - one job is one
 #: line in the queue whatever transactions its operations wrote in (총괄 b3a4334db). Absent = no run.
 RUN_KEY = "run_id"
-#: [PART] Between a group's name and the one commit of it a label names - `chain_replay_<run>·<event>` is one page
-#: of run <run> (총괄 ㄴ 10-21). The worker's grouping writes it; the history folds on it (`audit_cache.group_of`).
-GROUP_PART = "·"
 
 
 def run_of(payload):
@@ -601,17 +596,6 @@ def channel_of(payload):
 def replay_of(payload) -> bool:
     """Was this event staged by a replay run to wake its rule?"""
     return isinstance(payload, dict) and payload.get(REPLAY_KEY) is True
-
-
-#: [PAGE] The replay page an event is (fc1e1e385): `{"n", "end", "rows", "part", "parts"}` - its number in the run's
-#: pages, where it ends (`chain.replay` resumes after it), its rows, and which of the page's events this is.
-REPLAY_PAGE_KEY = "replay_page"
-
-
-def replay_page_of(payload):
-    """The replay page an event is (`REPLAY_PAGE_KEY`), or None - an event staged before the key has none."""
-    page = payload.get(REPLAY_PAGE_KEY) if isinstance(payload, dict) else None
-    return page if isinstance(page, dict) and isinstance(page.get("n"), int) else None
 
 
 def cascade_of(payload) -> bool:
@@ -947,17 +931,6 @@ def old_values_of(payload) -> dict:
     """{column: value before the event} of one expanded payload, or {}."""
     value = payload.get(OLD_VALUES_KEY) if isinstance(payload, dict) else None
     return value if isinstance(value, dict) else {}
-
-
-def key_left(payload, columns):
-    """The key this row LEFT on `columns` - its old values over its data - or None when the event changed none of them
-    (총괄 옛 키: an edit moved it off, a deletion took it). Raw values, one tuple."""
-    old = old_values_of(payload)
-    if not old.keys() & set(columns):
-        return None
-    data = payload.get("data") or {}
-    return tuple(old[column] if column in old else (
-        data[column].get("value") if isinstance(data.get(column), dict) else data.get(column)) for column in columns)
 
 
 def is_collapsed_payload(payload) -> bool:

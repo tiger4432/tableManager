@@ -22,66 +22,6 @@ const boxHead = (el, words, side) => {
   return h;
 };
 
-export class ReadNowPart {
-  /** «Read now» (총괄 aaf19d0ca): a path, who reads it and why the watcher did not - the server's words - and a button
-   * per owner. @param {{doc, onCheck: (path) => Promise<answer>, onRead: (path, table) => Promise<void>}} deps */
-  constructor(mount, deps) {
-    this.mount = mount;
-    this.deps = deps;
-    this.el = maker(deps.doc || mount.ownerDocument);
-    this.path = '';
-    this.answer = null;
-    this.refused = '';
-  }
-
-  render() {
-    const el = this.el;
-    const root = el('section', 'fi-box fi-readnow');
-    root.append(boxHead(el, WORDS.readNowTitle));
-    const form = el('form', 'fi-readnow__form fi-pad');
-    const label = el('label', 'fi-field fi-grow2');
-    label.append(el('span', 'fi-label', WORDS.readNowPath));
-    const input = el('input', 'fi-input fi-mono');
-    input.value = this.path;
-    input.spellcheck = false;
-    label.append(input);
-    const check = el('button', 'fi-btn', WORDS.check);
-    check.type = 'submit';
-    form.append(label, check);
-    form.addEventListener('submit', (e) => { e.preventDefault(); this.path = input.value.trim(); if (this.path) this.check(); });
-    root.append(form);
-    if (this.refused) {
-      const why = el('div', 'fi-why fi-readnow__said');
-      why.append(el('span', 'fi-why__title', WORDS.notRead), el('span', '', this.refused));
-      root.append(why);
-    }
-    for (const owner of (this.answer && this.answer.owners) || []) {
-      const line = el('div', 'fi-readnow__owner');
-      const words = owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken;
-      const said = el('span', '', words);
-      said.dataset.tone = owner.why_not.length ? 'warn' : 'ok';
-      const read = el('button', 'fi-btn fi-btn--primary', WORDS.readNow);
-      read.type = 'button';
-      read.dataset.table = owner.table;
-      read.addEventListener('click', () => this.deps.onRead(this.answer.path, owner.table));
-      line.append(el('span', 'fi-mono', owner.table), el('span', 'fi-meta fi-path', owner.source), said, read);
-      root.append(line);
-    }
-    this.mount.replaceChildren(root);
-  }
-
-  async check() {
-    try {
-      this.answer = await this.deps.onCheck(this.path);
-      this.refused = '';
-    } catch (e) {
-      this.answer = null;
-      this.refused = e.message;
-    }
-    this.render();
-  }
-}
-
 export class TableListPart {
   /** @param {{doc, onPick: (name) => void}} deps */
   constructor(mount, deps) {
@@ -124,7 +64,10 @@ export class TableListPart {
       const ok = el('span', 'fi-num', WORDS.ok(t.ok)); ok.dataset.tone = 'ok';
       const failed = el('span', 'fi-num', WORDS.failed(t.failed)); failed.dataset.tone = 'danger';
       counts.append(ok, failed, el('span', 'fi-meta fi-num', WORDS.running(t.running)));
-      if (t.waiting) counts.append(el('span', 'fi-meta fi-num', WORDS.waiting(t.waiting)));
+      if (t.waiting) {
+        const waiting = el('span', 'fi-num', WORDS.waiting(t.waiting)); waiting.dataset.tone = 'warn';
+        counts.append(waiting);
+      }
       b.append(top, counts, el('span', 'fi-meta', WORDS.last(t.last)));
       b.addEventListener('click', () => this.deps.onPick(t.name));
       return b;
@@ -194,30 +137,19 @@ export class SearchPart {
 }
 
 export class FilesPart {
-  /** «Read all again»: every file read there - failed, read and archived alike - through the Retry door (총괄 10-21). */
-  readAll(folder) {
-    const b = this.el('button', 'fi-btn fi-readall', WORDS.readAll);
-    b.type = 'button';
-    b.addEventListener('click', () => this.deps.onReadAll(folder));
-    return b;
-  }
-
-  /** @param {{doc, onPick: (log) => void, onMore: () => void, onDrill: (folder) => void, onRetryFolder: (group) => void,
-   *            onReadAll: (folder) => void}} deps - onReadAll(null): the table the search names, whole */
+  /** @param {{doc, onPick: (log) => void, onMore: () => void, onDrill: (folder) => void, onRetryFolder: (group) => void}} deps */
   constructor(mount, deps) {
     this.mount = mount;
     this.deps = deps;
     this.el = maker(deps.doc || mount.ownerDocument);
   }
 
-  /** @param {{groups, shown: string, picked: number|null, more: boolean, table: string}} view */
+  /** @param {{groups, shown: string, picked: number|null, more: boolean}} view */
   render(view) {
     const el = this.el;
     const root = el('section', 'fi-box fi-files');
     root.setAttribute('aria-label', 'Files');
-    const top = boxHead(el, WORDS.files, view.shown);
-    if (view.table) top.append(this.readAll(null));
-    root.append(top);
+    root.append(boxHead(el, WORDS.files, view.shown));
     const files = (view.groups || []).reduce((n, g) => n + g.files.length, 0);
     if (!files) {
       root.append(el('div', 'fi-say fi-pad', WORDS.noFiles));
@@ -246,17 +178,20 @@ export class FilesPart {
           drill.addEventListener('click', () => this.deps.onDrill(g.folder));
           line.append(drill);
         } else line.append(el('span', 'fi-mono', g.label));
-        if (g.count !== null) line.append(el('span', 'fi-meta fi-num', WORDS.groupSummary(g.count, g.failed, g.waiting)));
-        if (g.folder) {
-          const acts = el('span', 'fi-group__acts');
-          if (g.failed > 0) {
-            const retry = el('button', 'fi-btn fi-btn--danger fi-group__retry', WORDS.retryFailed(g.failed));
-            retry.type = 'button';
-            retry.addEventListener('click', () => this.deps.onRetryFolder(g));
-            acts.append(retry);
-          }
-          acts.append(this.readAll(g.folder));
-          line.append(acts);
+        if (g.count !== null) line.append(el('span', 'fi-meta fi-num', WORDS.groupSummary(g.count, g.failed)));
+        if (g.folder && g.failed > 0) {
+          const retry = el('button', 'fi-btn fi-btn--danger fi-group__retry', WORDS.retryFailed(g.failed));
+          retry.type = 'button';
+          retry.addEventListener('click', () => this.deps.onRetryFolder(g));
+          line.append(retry);
+        }
+        if (g.folder && g.waiting > 0) {
+          // files found when the table's reading changed - read only when pressed (lead 290e22ac0)
+          const waiting = el('span', 'fi-num fi-group__waiting', WORDS.waiting(g.waiting)); waiting.dataset.tone = 'warn';
+          const read = el('button', 'fi-btn fi-group__read', WORDS.read);
+          read.type = 'button';
+          read.addEventListener('click', () => this.deps.onRetryFolder(g, 'WAITING'));
+          line.append(waiting, read);
         }
         td.append(line);
         tr.append(td);

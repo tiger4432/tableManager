@@ -266,16 +266,6 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             "config_not_object", "table_config.json",
             "table_config.json is not a JSON object")
 
-    # A column declared a type the database does not hold yet keeps the database's type in the file; its conversion,
-    # queued below, writes the declared one when the column holds it (admin.retype, lead aa8ff1af5).
-    from admin import retype
-    from database.database import engine
-    try:
-        declaration, held = retype.hold(engine, table, declaration)
-    except retype.RetypeRefused as refused:
-        raise _table_config_refusal("retype_refused", f"tables.{table}.column_types.{refused.column}",
-                                    str(refused)) from None
-
     merged = dict(document)
     merged[table] = declaration
     # The whole result, through the product's OWN parse rules, before anything is written.
@@ -287,22 +277,8 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             f"It holds a value that cannot be saved: {exc}") from exc
 
     backup = _atomic_write(path, merged)
-    retypes = [retype.queue(table, *one) for one in held]
     return {"ok": True, "table": table, "base": file_fingerprint(path),
-            "backup": backup, "tables": len(merged), "retypes": retypes,
-            "note": " · ".join(one["said"] for one in retypes)}
-
-
-def set_column_type(table: str, column: str, declared: str) -> str:
-    """The column conversion's one write to table_config.json (admin.retype): the file read again, that ONE cell set,
-    the save's atomic write - every other cell is the file's as it is now. Returns the backup path."""
-    path = table_config_path()
-    document = _read_json(path, {})
-    entry = document.get(table) if isinstance(document, dict) else None
-    if not isinstance(entry, dict):
-        raise ValueError("table_config.json declares no table %r" % table)
-    entry.setdefault("column_types", {})[column] = declared
-    return _atomic_write(path, document)
+            "backup": backup, "tables": len(merged)}
 
 
 def _table_config_refusal(code: str, path: str, message: str):
@@ -341,14 +317,6 @@ def grammar_of(rule):
     if not isinstance(rule, dict):
         return None
     return "unified" if isinstance(rule.get("derive"), dict) else "flat"
-
-
-def _chain_lists() -> dict:
-    """{list name: members} of the chain skeleton's `choice` leaves - from the readers' own constants."""
-    from chain import join_into
-    from chain.enrichment import config
-
-    return {join_into.TAKE_FN_LIST: list(config.AGGREGATION_FUNCTIONS)}
 
 
 def chain_rule_raw_view(name: str = None) -> dict:
@@ -396,8 +364,6 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # rule would be absent at the only moment it is needed.
         "skeleton": chain_bindings.skeleton(),
         # ⚰️ the `run_in` closed list rode here for the skeleton's leaf - retired (총괄 72f419bd1)
-        # the closed lists the skeleton's `choice` leaves name, by that name: a join take's fn (총괄 bce8d755a)
-        "lists": _chain_lists(),
         # 🔴 [판정 513] A NEW RULE IS WRITTEN IN THE UNIFIED GRAMMAR, AND THE SERVER SAYS SO.
         # This cell used to be set only inside `if name is not None`, so the one call a screen
         # makes when it is about to CREATE a rule carried no grammar - and `chain_rule_panel`

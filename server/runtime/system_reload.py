@@ -42,11 +42,8 @@ FULL = "full"
 #: line (`runtime.maintenance_line`), which read the rows too.
 CHAIN_WORKER, WATCHER, SCHEDULER = "chain", "watcher", "scheduler"
 API, INDEX_LINE = "api", "index_line"
-#: A retroactive run, between its pages (`admin.retroactive._checkpoint`, 총괄 1ff4dcc6c ⑤) - it writes through the
-#: write door too.
-RETROACTIVE = "retroactive"
 #: Who each scope is for.
-SCOPE_READERS = ((SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API, RETROACTIVE})),)
+SCOPE_READERS = ((SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API})),)
 
 
 def publish_reload(db: Session, scope=None, **said):
@@ -73,17 +70,6 @@ def latest_reload_id(db: Session) -> int:
 
     return db.query(func.max(models.DatabaseOutbox.id)).filter(
         models.DatabaseOutbox.event_type == "SYSTEM_RELOAD").scalar() or 0
-
-
-def reload_mark() -> int:
-    """`latest_reload_id` on a session of its own - a slot's and a retroactive run's mark as they start."""
-    from database.database import SessionLocal
-
-    session = SessionLocal()
-    try:
-        return latest_reload_id(session)
-    finally:
-        session.close()
 
 
 def reloads_after(db: Session, after_id: int) -> list:

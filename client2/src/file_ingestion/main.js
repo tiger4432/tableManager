@@ -3,6 +3,7 @@
 import '../tokens.css';
 import '../base.css';
 import './file_ingestion.css';
+import '../chain_pause.css';
 import { API_BASE } from '../config.js';
 import { adminFetch } from '../admin_token.js';
 import { showToast } from '../utils.js';
@@ -10,9 +11,10 @@ import { writeClipboardRich } from '../clipboard_write.js';
 import { fileRetryAsk, fileRetryToast } from '../retry_verdict.js';
 import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
+import { ChainPauseControl, chainPauseView } from '../chain_pause.js';
 import { initTheme } from '../theme.js';
 import { WORDS, groupFiles, queryOf, tableLines } from './model.js';
-import { DetailPart, FilesPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
+import { DetailPart, FilesPart, SearchPart, TableListPart } from './parts.js';
 
 const NO_TOKEN = 'Admin token needed - open Admin once on this browser';
 
@@ -26,11 +28,10 @@ async function read(path) {
   return res.json();
 }
 
-async function act(path, sentence = false) {
+async function act(path) {
   const res = await adminFetch(`${API_BASE}${path}`, { method: 'POST' });
   const body = await res.json().catch(() => ({}));
-  const detail = body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : '';
-  if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : sentence && detail ? detail : `${res.status}${detail ? ` · ${detail}` : ''}`);
+  if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : `${res.status}${body.detail ? ` · ${typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)}` : ''}`);
   return body;
 }
 
@@ -45,39 +46,20 @@ export function seatFileIngestionPage(doc = document) {
     doc, onPick: (log) => { view.picked = log; draw(); },
     onMore: () => { view.page += 1; list(true); },
     onDrill: (folder) => { query.folder = folder; search(); },
-    onRetryFolder: (g) => handAgain(g.folder, false),
-    onReadAll: (folder) => handAgain(folder || query.folder, true),
-  });
-  // «Retry N failed» and «Read all again»: the files this table read (read_by, B 1107c5a8e) under the folder - none: the
-  // whole table - through the one Retry door, every state with `all` (총괄 10-21); the preview's number asked first
-  async function handAgain(folder, all) {
-    const p = new URLSearchParams({ read_by: query.table || '' });
-    if (folder) p.set('folder', folder);
-    if (all) p.set('statuses', INCLUDE_STATUSES);
-    const q = queryOf(query);
-    for (const key of ['since', 'until']) if (q.has(key)) p.set(key, q.get(key));
-    try {
-      const seen = await act(`/admin/file-ingestion/retry-failed?${p}&preview=true`);
-      if (!seen.count) { showToast(seen.message || 'Nothing to read', 'info'); return; }
-      const where = folder || query.table;
-      if (!doc.defaultView.confirm(all ? WORDS.readAllAsk(seen.count, where) : WORDS.retryAsk(seen.count, where))) return;
-      const done = await act(`/admin/file-ingestion/retry-failed?${p}`);
-      showToast(done.message || `${seen.count} handed again`, 'success');
-      await list(false);
-    } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
-  }
-
-  // «Read now» (총괄 aaf19d0ca): who reads the path and why the watcher did not, then one owner's button hands it over
-  const readNow = new ReadNowPart(byId('fi-readnow'), {
-    doc,
-    onCheck: (path) => act(`/admin/file-ingestion/read-now?${new URLSearchParams({ path, preview: 'true' })}`, true),
-    onRead: async (path, table) => {
-      if (!doc.defaultView.confirm(WORDS.readNowAsk(path, table))) return;
+    // «Retry N failed» · «Read» N waiting (lead 290e22ac0): the files this table read under that folder in that state
+    // (read_by, B 1107c5a8e), the preview's number asked first
+    onRetryFolder: async (g, statuses) => {
+      const p = new URLSearchParams({ read_by: query.table, folder: g.folder });
+      if (statuses) p.set('statuses', statuses);
+      const q = queryOf(query);
+      for (const key of ['since', 'until']) if (q.has(key)) p.set(key, q.get(key));
       try {
-        const done = await act(`/admin/file-ingestion/read-now?${new URLSearchParams({ path, table })}`, true);
-        showToast(done.message, 'success');
-        query.table = table;
-        await search();
+        const seen = await act(`/admin/file-ingestion/retry-failed?${p}&preview=true`);
+        if (!seen.count) { showToast(seen.message || 'Nothing to retry', 'info'); return; }
+        if (!doc.defaultView.confirm((statuses ? WORDS.readAsk : WORDS.retryAsk)(seen.count, g.folder))) return;
+        const done = await act(`/admin/file-ingestion/retry-failed?${p}`);
+        showToast(done.message || `${seen.count} handed again`, 'success');
+        await list(false);
       } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
     },
   });
@@ -104,6 +86,30 @@ export function seatFileIngestionPage(doc = document) {
     },
   });
 
+  // the watcher's Pause (lead 290e22ac0) - the chain's part, its watcher instance
+  const pause = new ChainPauseControl(byId('fi-pause'), { doc, kind: 'watcher', send: sendPause });
+  async function readPause() {
+    let requested, worker = null;
+    try {
+      requested = { read: true, paused: (await read('/admin/watcher/pause')).paused || null };
+    } catch (e) { requested = { read: false, reason: e.message }; }
+    try {
+      const health = await (await fetch(`${API_BASE}/health`)).json();
+      worker = (((health || {}).checks || {}).workers || {}).watcher || null;
+    } catch (e) { /* the line says the request alone */ }
+    pause.render(chainPauseView(requested, worker));
+  }
+  async function sendPause({ path, body }) {
+    try {
+      const res = await adminFetch(`${API_BASE}${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const said = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: `${res.status}${said.detail ? ` · ${said.detail}` : ''}` };
+    } catch (e) { return { ok: false, error: e.message }; }
+    await readPause();
+    return { ok: true };
+  }
+
   function draw() {
     const picked = view.picked && view.rows.find((r) => r.id === view.picked.id);
     view.picked = picked || null;
@@ -112,7 +118,6 @@ export function seatFileIngestionPage(doc = document) {
     const groups = groupFiles(view.rows, query.group, view.groups, query.folder);
     const match = view.total ? countNumberText(view.total) : '0';
     files.render({ groups, picked: view.picked ? view.picked.id : null, more: !!view.total && view.rows.length < view.total.total,
-      table: query.table,
       shown: WORDS.shown(view.rows.length, groups.filter((g) => g.head).length, match) });
     detail.render(view.picked);
   }
@@ -150,7 +155,7 @@ export function seatFileIngestionPage(doc = document) {
   }
 
   draw();
-  readNow.render();
+  readPause();
   start();
   return { query, view, search };
 }

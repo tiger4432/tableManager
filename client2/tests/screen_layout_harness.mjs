@@ -27,14 +27,13 @@
 // --mutate: the five that leaked on 10-08/09, and the ledger table's hand widths (owner 10-09), are built back one at a
 // time (vite, a temp folder) and each must be red.
 //   node client2/tests/screen_layout_harness.mjs [--mutate] [--only <entry.html>] [--shots <dir>]
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
-import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(HERE, '..');
@@ -70,49 +69,20 @@ const STATES = JSON.parse(readFileSync(path.join(FIX, 'chain_states.json'), 'utf
 // row's table has a long name.
 const LONG_TABLE = 'wafer_process_inspection_result_by_lot_and_slot';
 const tableOf = (i) => (i === 0 ? LONG_TABLE : 'dt_log');
-// The worker's statement-limit sentence (_said_timeout), on a retrying line of both queues and on the failed list's line
-// and record (lead 903053c14, owner 10-21 «빨간 글씨 600 s 나오고 끝»).
-const TIMEOUT = '[rules=lot_slot_join target=dt_wafer] statement timeout · 600 s · stage write:dt_wafer - one statement '
-  + 'of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it';
-const TIMED_OUT = { state: 'retrying', why: { attempt: 1, cap: 2, stage: 'write:dt_wafer', last_failure: TIMEOUT } };
-// Each line's rules (3de34d292): a running line's rule its rows in and seconds, the timed-out line's its last run's rows.
-const RULES_OF = (state) => [state === TIMED_OUT ? { rule: 'lot_slot_join', rows_in: 19000, rows_out: 20000, running_seconds: null }
-  : state.state === 'running' ? { rule: 'dt_log_to_dt_map', rows_in: 500, rows_out: null, running_seconds: 72 }
-  : { rule: 'dt_log_to_dt_map', rows_in: null, rows_out: null, running_seconds: null }];
-const LINES = [...STATES.map((s) => s.chain_state), TIMED_OUT];
 const QUEUE = {
   '/outbox/queue/rows': {
     generated_at: '2026-10-08 20:00:00', clock: 'server', rules_known: ['dt_log_to_dt_map'],
     listed: { cap: 200, next_cursor: null }, population: 'processed_chain=false',
-    rows: LINES.map((state, i) => ({ outbox_id: 300 + i, event_type: 'EDIT', table_name: tableOf(i), created_at: '2026-10-08 19:59:00',
-      waiting_seconds: 60, owner: 'chain', chain_state: state, broadcast_state: 'pending',
+    rows: STATES.map((s, i) => ({ outbox_id: 300 + i, event_type: 'EDIT', table_name: tableOf(i), created_at: '2026-10-08 19:59:00',
+      waiting_seconds: 60, owner: 'chain', chain_state: s.chain_state, broadcast_state: 'pending',
       rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] })),
   },
   '/admin/chain/queue': {
-    waiting: LINES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
+    waiting: STATES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
     loop_seen_via: 'this_process', generated_at: '2026-10-08T20:00:00+09:00', now_running: [],
-    waiting_transactions: LINES.map((state, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
-      waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: state, slot_pid: 4242, rules: RULES_OF(state) })),
-    recent_failures: [
-      { transaction_id: 'tx-timeout-0000-0000', rules: ['lot_slot_join'], tables: ['dt_wafer'], stage: 'write:dt_wafer', rows_in: 19000,
-        rows_out: 20000, rows: 19000, failure: TIMEOUT, failed_at: '2026-10-21 17:00:00' },
-      { transaction_id: 'single_e-2', rules: null, tables: null, stage: null, rows_in: null, rows_out: null, rows: null,
-        failure: 'ValueError: no wafer', failed_at: '2026-10-21 16:40:00' }],
-    recent_failures_listed: { cap: 20, capped: false },
+    waiting_transactions: STATES.map((s, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
+      waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: s.chain_state, slot_pid: 4242 })),
   },
-  '/admin/outbox/failed': (() => {
-    const at = '2026-10-21T17:00:00+09:00';
-    const record = { failed_at: at, reason: TIMEOUT, rules: ['lot_slot_join'], tables: ['dt_wafer'], rows: 19000, row: null };
-    return { status: 'success', total: 1, page: 1, limit: 10, oldest_failed_at: at, day_zone: 'Asia/Seoul',
-      summary: [
-        { table_name: 'dt_wafer', event_type: 'EDIT', day: '2026-10-21', count: 19000, first_at: '2026-10-21T16:50:00+09:00',
-          last_at: at, retry_max: 1, last_failure: TIMEOUT },
-        { table_name: 'dt_log', event_type: 'CREATE', day: '2026-10-20', count: 2, first_at: at, last_at: at, retry_max: 0 }],
-      data: [{ transaction_id: 'tx-timeout-0000-0000', table_names: ['dt_wafer'], event_types: ['EDIT'], retry_count: 1,
-        attempts_this_round: 1, failed_at: at, events: [{ id: 1, event_uuid: 'e-1', event_type: 'EDIT', table_name: 'dt_wafer',
-          payload: { transaction_id: 'tx-timeout-0000-0000', error_log: record }, status: 'FAILED', retry_count: 1,
-          attempts_this_round: 1, created_at: at, processed_at: at }] }] };
-  })(),
 };
 // The main grid's Ledger column (lead 10-12): the recorded table is declared a source of the operating world and its rows
 // carry ledger_rows - the first changed in another world, the second taken by no world read with one world not read - so
@@ -210,32 +180,7 @@ const withPhotos = (a) => {
     attributes: { ...(n.attributes || {}), photo: Number(n.keys.x) % 2 ? [`d${n.keys.x}-${n.keys.y}-a`, `d${n.keys.x}-${n.keys.y}-b`] : `d${n.keys.x}-${n.keys.y}-a` },
     records: { ...(n.records || {}), photo: [{ column_type: 'image' }] } })) } };
 };
-// The main grid's gallery (lead 3589216b9): while its states run, dt_log is read with an image column «photo» - a picture on
-// every row but every seventh - and its rows and count narrowed by the grid's filters the way the server narrows them.
-const GALLERY = { on: false };
-const DT_LOG_ROWS = '/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true';
-const galleryAnswer = (u) => {
-  if (u.pathname === '/tables/dt_log/schema') {
-    const a = ANSWERS['/tables/dt_log/schema'];
-    const b = bodyOf(a);
-    return { ...a, body: { ...b, columns: [...b.columns.slice(0, -3), 'photo', ...b.columns.slice(-3)], column_types: { ...b.column_types, photo: 'image' } } };
-  }
-  if (u.pathname !== '/tables/dt_log/data' && u.pathname !== '/tables/dt_log/data/count') return null;
-  const a = ANSWERS[DT_LOG_ROWS];
-  const b = bodyOf(a);
-  const filters = JSON.parse(u.searchParams.get('filters') || '{}');
-  const valueOf = (row, col) => { const c = row.data && row.data[col]; return c && typeof c === 'object' ? c.value : c; };
-  const rows = b.data.map((row, i) => ({ ...row, data: { ...row.data, photo: { ...(row.data.c_bn || {}), value: i % 7 === 3 ? null : `photo/${i}.png` } } }))
-    .filter((row) => Object.entries(filters).every(([col, f]) => {
-      const v = valueOf(row, col);
-      if (f.type === 'blank') return v === null || v === undefined || String(v).trim() === '';
-      return f.type === 'equals' ? String(v) === String(f.filter) : true;
-    }));
-  if (u.pathname.endsWith('/count')) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: Object.keys(filters).length ? rows.length : bodyOf(ANSWERS['/tables/dt_log/data/count']).total } };
-  return { ...a, body: { ...b, data: rows } };
-};
 const answerOf = (u) => {
-  if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
   const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
@@ -244,79 +189,18 @@ const answerOf = (u) => {
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
   // The declaration form is one grid (lead 10-21, form D): on the sample page a 40-letter name three levels down is
-  // whole in its cell, and every row's value stands at one x. At the stacked width the rows have no columns.
+  // whole in its cell, and every row's value and state stand at one x. At the stacked width the rows have no columns.
   { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'names whole, columns in line',
     at: 'sample-decl-form', expr: `(() => {
   const rows = [...document.querySelectorAll('#sample-decl-form .oe-node-row')].filter((r) => r.getClientRects().length);
   if (rows.length < 6) return 'the sample form drew ' + rows.length + ' rows';
   const cut = [...document.querySelectorAll('#sample-decl-form .oe-node-name')].find((e) => e.scrollWidth > e.clientWidth + 1);
   if (cut) return '«' + cut.textContent + '» ' + cut.clientWidth + ' of ' + cut.scrollWidth + ' px';
-  const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains('oe-node-value'))).filter(Boolean)
-    .map((c) => Math.round(c.getBoundingClientRect().left)));
-  if (xs.size !== 1) return 'oe-node-value at ' + [...xs].join(' · ') + ' px';
-  return null;
-})()` },
-  // The form's rows (lead 10-21, skill §0-bis): every row a whole number of row steps (a box and a step) high and the
-  // chip lines it holds that many, no gap between rows, every first box one box high at one x with its text at one x,
-  // a one-line row's name and box (and the box's text) on the row's middle within 1 px, and a row's word beside its
-  // box, never over it (order da59efbb7, owner «require 뱃지랑 input ui 겹치는거»).
-  { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', expr: `(() => {
-  const rows = [...document.querySelectorAll('#sample-decl-form .oe-node-row')].filter((r) => r.getClientRects().length);
-  const css = getComputedStyle(document.documentElement);
-  const box = parseFloat(css.getPropertyValue('--control-h-small')), unit = box + parseFloat(css.getPropertyValue('--space-2'));
-  const R = (e) => e.getBoundingClientRect(), mid = (b) => (b.top + b.bottom) / 2, say = (e) => '«' + e.textContent.trim().slice(0, 24) + '»';
-  const probe = document.createElement('div');
-  probe.style.width = 'var(--oe-box-w)';
-  document.querySelector('#sample-decl-form .oe-skeleton-form').append(probe);
-  const boxW = R(probe).width;
-  probe.remove();
-  if (!(boxW > 0)) return 'the box width token reads ' + boxW;
-  const textOf = (e) => { const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) if (t.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(t); return g.getBoundingClientRect(); } return null; };
-  const seen = { chips: 0, folded: 0, deep: 0, word: 0, table: 0 }, lefts = new Set(), texts = new Set();
-  const tables = [...document.querySelectorAll('#sample-decl-form .oe-node-table')].filter((t) => t.getClientRects().length);
-  for (const t of tables) {
-    const n = Math.round(R(t).height / unit);
-    if (n < 1 || Math.abs(R(t).height - n * unit) > 0.5) return 'table ' + say(t) + ' ' + R(t).height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
+  for (const cell of ['oe-node-value', 'oe-node-state']) {
+    const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains(cell))).filter(Boolean)
+      .map((c) => Math.round(c.getBoundingClientRect().left)));
+    if (xs.size !== 1) return cell + ' at ' + [...xs].join(' · ') + ' px';
   }
-  // A row that opens a top-level block stands below its divider: the block's margin, its line and its padding (lead 10-21).
-  const divider = (r) => { const n = r.parentElement; if (!n || n.firstElementChild !== r) return 0; const s = getComputedStyle(n);
-    const line = parseFloat(s.borderTopWidth) || 0; return line ? parseFloat(s.marginTop) + line + parseFloat(s.paddingTop) : 0; };
-  let prev = null;
-  for (const r of rows) {
-    const rb = R(r), k = Math.round(rb.height / unit);
-    if (k < 1 || Math.abs(rb.height - k * unit) > 0.5) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
-    const under = prev && tables.find((t) => Math.abs(R(t).top - R(prev).bottom) <= 0.5 && Math.abs(R(t).bottom - rb.top) <= 0.5);
-    seen.table += under ? 1 : 0;
-    if (prev && !under && Math.abs(rb.top - R(prev).bottom - divider(r)) > 0.5) return 'row ' + say(r) + ' ' + (rb.top - R(prev).bottom).toFixed(1) + ' px below the row above';
-    prev = r;
-    const cell = r.querySelector(':scope > .oe-node-value'), b = cell && cell.firstElementChild;
-    const chips = b && b.classList.contains('oe-chips') ? b : null;
-    const lines = chips ? new Set([...chips.children].map((c) => Math.round(R(c).top))).size : 1;
-    if (k !== lines) return 'row ' + say(r) + ' ' + k + ' steps high for ' + lines + ' line(s)';
-    seen.chips += chips && lines > 1 ? 1 : 0; seen.folded += r.classList.contains('is-folded') ? 1 : 0; seen.deep += Number(r.dataset.depth) >= 3 ? 1 : 0;
-    if (!b) continue;
-    const first = chips ? chips.firstElementChild : b, fb = R(first), fs = getComputedStyle(first);
-    if (Math.abs(fb.height - box) > 0.5) return 'box ' + say(first) + ' ' + fb.height.toFixed(1) + ' px high, not ' + box;
-    if (first.classList.contains('oe-box') && Math.abs(fb.width - Math.min(boxW, R(cell).width)) > 0.5) return 'box ' + say(first) + ' ' + fb.width.toFixed(1) + ' px wide, not ' + boxW.toFixed(1);
-    lefts.add(Math.round(fb.left));
-    texts.add(Math.round(fb.left + parseFloat(fs.borderLeftWidth) + parseFloat(fs.paddingLeft)));
-    const word = cell.querySelector(':scope > .oe-tier');
-    if (word) {
-      seen.word += 1;
-      const wb = R(word);
-      if (wb.left < fb.right - 0.5 && wb.right > fb.left + 0.5) return 'the word ' + say(word) + ' over its box ' + say(first) + ' by ' + (fb.right - wb.left).toFixed(1) + ' px';
-    }
-    const glyphs = textOf(first);
-    if (glyphs && Math.abs(mid(glyphs) - mid(fb)) > 1) return 'the text of ' + say(first) + ' ' + (mid(glyphs) - mid(fb)).toFixed(1) + ' px off its box middle';
-    if (k > 1) continue;
-    for (const c of [r.querySelector(':scope > .oe-node-label .oe-node-name'), first].filter(Boolean)) {
-      if (Math.abs(mid(R(c)) - mid(rb)) > 1) return say(c) + ' ' + (mid(R(c)) - mid(rb)).toFixed(1) + ' px off its row middle';
-    }
-  }
-  if (lefts.size !== 1) return 'boxes start at ' + [...lefts].join(' · ') + ' px';
-  if (texts.size !== 1) return 'box text starts at ' + [...texts].join(' · ') + ' px';
-  if (!seen.chips || !seen.folded || !seen.deep || !seen.word || !seen.table) return 'the sample form lacks ' + Object.keys(seen).filter((n) => !seen[n]).join(', ') + ' (else this proves nothing)';
   return null;
 })()` },
   // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
@@ -455,20 +339,6 @@ const PICKERS_IN_VIEW = `(async () => {
   return out.length ? out.join(' | ') : null;
 })()`;
 // The right-most column's filter took its letter and the grid asked a read filtered by that column (lead 72b2d7f8f).
-// The side panel's lit tab is the pane it shows (owner 10-21 「탭은 글로벌인데 가끔 대기열 따로 있네」): after the row pick
-// under Queue, a queue beat, a row picked on the open queue and a table switched from it.
-for (const after of ['row picked, Queue tab', 'Queue tab, a beat later', 'a row picked under the Queue tab', 'table switched from the Queue tab',
-  'the first table again']) {
-  CELLS.push({ entry: 'index.html', after, rule: 'lit tab shows its pane', at: 'history-sidebar', expr: `(() => {
-  const paneOf = { 'tab-global': 'timeline-container', 'tab-row': 'timeline-container', 'tab-reference': 'reference-view', 'tab-queue': 'queue-view' };
-  const lit = [...document.querySelectorAll('.history-sidebar .history-tabs > .tab-btn.active')].map((b) => b.id);
-  const shown = ['timeline-container', 'reference-view', 'queue-view']
-    .filter((id) => { const p = document.getElementById(id); return p && getComputedStyle(p).display !== 'none'; });
-  if (lit.length !== 1) return 'tabs lit: ' + (lit.join(' ') || 'none');
-  if (shown.length !== 1 || shown[0] !== paneOf[lit[0]]) return 'tab «' + lit[0] + '» lit, pane shown: ' + (shown.join(' ') || 'none');
-  return '';
-})()` });
-}
 CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'filter typed', at: 'ag-floating-filter', expr: `(() => {
   const t = window.__filterTyped;
   if (!t) return 'the right-most filter was never typed';
@@ -625,95 +495,6 @@ CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at
 })()` });
 // The Retroactive tab's contents (owner 10-11 R): a chip a card, and a press brings that card to the tab's top - the last
 // ones as far as the tab scrolls; the header's own press (folding) not taken.
-// The chain form (lead after a2b7f6e14 · owner 10-21 「선언에 체인 칼럼 타겟 없는데」): target_columns stands on the first
-// screen, not under Advanced, in either grammar; a take record's fn picks from the four the rule answer carries.
-const TARGET_COLUMNS_FIRST = `(() => {
-  const box = document.querySelector('.chain-rule-form [data-path="target_columns"]');
-  if (!box) return 'target_columns is not drawn';
-  if (box.closest('.chain-rule-advanced')) return 'target_columns is under Advanced';
-  return box.getClientRects().length ? null : 'target_columns is drawn hidden';
-})()`;
-for (const after of ['Chain, a join whose take holds a record', 'Chain, a flat rule']) {
-  CELLS.push({ entry: 'admin.html', after, rule: 'contents', at: 'target_columns', expr: TARGET_COLUMNS_FIRST });
-}
-CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rule: 'contents', at: 'derive.join.take', expr: `(() => {
-  const words = (at) => { const s = document.querySelector('select[data-value="' + at + '"]');
-    return s ? [...s.options].map((o) => o.value).filter(Boolean).join(',') : 'no picker'; };
-  const want = 'count,min,max,unique_concat';
-  for (const at of ['derive.join.take[1].fn', 'derive.join.take[2].fn']) if (words(at) !== want) return at + ' offers ' + words(at);
-  const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
-  return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
-})()` });
-// The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
-// lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
-// the grid's filter.
-CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'board adds up', at: 'gallery-board', expr: `(() => {
-  const grid = document.querySelector('#gallery-host .gallery-board__grid');
-  if (!grid) return 'no board drawn';
-  const lines = new Map();
-  for (const c of grid.querySelectorAll('.gallery-cell')) lines.set(c.dataset.line, (lines.get(c.dataset.line) || 0) + Number(c.querySelector('.gallery-cell__n').textContent.replace(/,/g, '')));
-  const totals = [...grid.querySelectorAll('.gallery-board__total')].map((n) => Number(n.textContent.replace(/,/g, '')));
-  const sums = [...lines.values()];
-  const held = Number(((document.querySelector('#gallery-host .gallery-count') || {}).textContent || '').replace(/,/g, '').match(/^\\d+/));
-  const cols = new Set([...grid.querySelectorAll('.gallery-cell')].map((c) => c.dataset.column)).size;
-  if (lines.size < 2 || cols < 4) return lines.size + ' lines, ' + cols + ' columns drawn';
-  if (sums.join() !== totals.join()) return 'cells add up to ' + sums.join(' · ') + ', totals ' + totals.join(' · ');
-  if (totals.reduce((a, b) => a + b, 0) !== held) return 'totals ' + totals.reduce((a, b) => a + b, 0) + ' of ' + held + ' rows held';
-  if (grid.querySelectorAll('.gallery-board__col').length !== cols + 1) return grid.querySelectorAll('.gallery-board__col').length + ' column heads for ' + cols + ' columns';
-  return null;
-})()` });
-// A cell's thumbnail fills its share of the cell, its ratio kept (lead 10-22): the picture is read at 160 px and a share
-// at the column's cap is wider - a picture held at its own size stood small in its box.
-CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'thumbs fill', at: 'gallery-cell__thumb', expr: `(() => {
-  const imgs = [...document.querySelectorAll('#gallery-host .gallery-cell__thumb img')].filter((i) => i.complete && i.naturalWidth > 0);
-  if (!imgs.length) return 'no thumbnail loaded';
-  for (const i of imgs) {
-    const box = i.closest('.gallery-cell__thumb').getBoundingClientRect();
-    const r = i.getBoundingClientRect();
-    if (Math.abs(r.width - box.width) > 1 && Math.abs(r.height - box.height) > 1) return 'a ' + i.naturalWidth + ' x ' + i.naturalHeight + ' picture drawn ' + Math.round(r.width) + ' x ' + Math.round(r.height) + ' in a ' + Math.round(box.width) + ' x ' + Math.round(box.height) + ' box';
-  }
-  return null;
-})()` });
-CELLS.push({ entry: 'index.html', after: 'Gallery, a cell opened and a tile pressed', rule: 'opened cell tiles', at: 'gallery-open', expr: `(() => {
-  const words = ((document.querySelector('#gallery-host .gallery-open__n') || {}).textContent || '').replace(/,/g, '');
-  const m = words.match(/^(\\d+) rows?(?: · (\\d+) without image)?$/);
-  if (!m) return 'the opened head says «' + words + '»';
-  const want = Number(m[1]) - Number(m[2] || 0);
-  const scroll = document.querySelector('#gallery-host .gallery-scroll');
-  if (scroll) { scroll.scrollTop = scroll.scrollHeight; scroll.dispatchEvent(new Event('scroll')); }
-  const tiles = document.querySelectorAll('#gallery-host .gallery-tile').length;
-  const side = document.querySelector('#gallery-host .gallery-side');
-  if (tiles !== want && tiles < 12) return tiles + ' tiles for ' + want + ' rows with a picture';
-  if (!side || side.hidden) return 'no side panel after a tile pressed';
-  return null;
-})()` });
-CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
-  const chips = [...document.querySelectorAll('.filter-chip-label')].map((n) => n.textContent.toLowerCase());
-  for (const col of ['c_bn', 'core_lot']) if (!chips.some((t) => t.includes(col))) return 'no «' + col + '» filter on the grid: ' + JSON.stringify(chips);
-  const cells = document.querySelectorAll('#gallery-host .gallery-cell:not(.is-empty)').length;
-  if (cells !== 1) return cells + ' cells with rows after the grid was filtered to one';
-  return null;
-})()` });
-// A failure sentence is the server's, whole (lead 903053c14): the failed list's line, the queue's timeout line and the
-// newest failed groups say it as sent, and it reads to its end or to three lines with the whole of it in its title -
-// never one line cut; a line's rules say their rows (3de34d292).
-CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'reason whole', at: 'fail-summary__reason', expr: `(() => {
-  const want = ${JSON.stringify(TIMEOUT)};
-  const line = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__reason')];
-  const why = [...document.querySelectorAll('#chain-queue-mount .queue-line-state-why')].filter((e) => e.textContent.includes('timeout'));
-  const recent = [...document.querySelectorAll('#chain-queue-mount .chain-queue-failure')].filter((e) => e.textContent.includes('timeout'));
-  if (line.length !== 1 || why.length !== 1 || recent.length !== 1) return line.length + ' failed-list sentences, ' + why.length + ' queue timeout whys, ' + recent.length + ' recent failures';
-  const rules = [...document.querySelectorAll('#chain-queue-mount .chain-queue-rule')].map((e) => e.textContent);
-  for (const said of ['lot_slot_join · in 19,000 · out 20,000', 'dt_log_to_dt_map · in 500 · running 1m 12s']) if (!rules.includes(said)) return 'no rule line «' + said + '»: ' + JSON.stringify(rules.slice(0, 3));
-  for (const [el, whole] of [[line[0], want], [why[0], 'attempt 1/2 · write:dt_wafer · ' + want], [recent[0], want]]) {
-    if (el.textContent.trim() !== whole || el.getAttribute('title') !== whole) return '«' + el.textContent.trim().slice(0, 48) + '» drawn, title «' + (el.getAttribute('title') || '').slice(0, 24) + '»';
-    const s = getComputedStyle(el);
-    const lines = Math.round(el.clientHeight / (parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.2));
-    if (el.scrollWidth > el.clientWidth + 1) return '«' + whole.slice(0, 24) + '» cut at its side, ' + lines + ' line(s)';
-    if (el.scrollHeight > el.clientHeight + 1 && lines < 3) return '«' + whole.slice(0, 24) + '» cut at ' + lines + ' line(s)';
-  }
-  return null;
-})()` });
 CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
   const chips = [...document.querySelectorAll('#retroactive-sub .retro-toc')];
   const cards = [...document.querySelectorAll('#retroactive-body article.retro-op')];
@@ -1043,38 +824,19 @@ function removeFolder(dir, what) {
   try { rmSync(dir, { recursive: true, force: true }); } catch (err) { console.log(`${what} folder not removed: ${dir} ${err.code || err.message}`); }
 }
 
-// What listens on a port, by process name - for the sentence a Chrome that did not answer leaves (lead 10-22).
-const holderOf = (port) => {
-  try {
-    return execFileSync('powershell', ['-NoProfile', '-Command', `$c = Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | `
-      + `Select-Object -First 1; if ($c) { (Get-Process -Id $c.OwningProcess).ProcessName + ' pid ' + $c.OwningProcess } else { 'nothing' }`], { encoding: 'utf8' }).trim();
-  } catch (err) { return `not read (${err.message.split('\n')[0]})`; }
-};
-
-// The OS picks the DevTools port (port 0) and Chrome writes it into its profile's DevToolsActivePort (lead 10-22): with a
-// random port of 9300-9799 two runs on one box could meet - a port held by anything else left «did not answer», one held
-// by another run's Chrome handed this run THAT Chrome's page. The page asked for carries this run's own mark.
 async function openChrome() {
   if (!existsSync(CHROME)) throw new Error(`no Chrome at ${CHROME} - the screens cannot be opened`);
+  const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'screens-'));
   folders.push(profile);
-  const start = `data:text/html,screens-${process.pid}-${path.basename(profile)}`;
-  const proc = spawn(CHROME, ['--headless=new', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-    '--window-size=1920,950', start], { stdio: 'ignore' });
-  const written = path.join(profile, 'DevToolsActivePort');
-  let port = null;
+  const proc = spawn(CHROME, ['--headless=new', '--hide-scrollbars', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
+    '--window-size=1920,950', 'about:blank'], { stdio: 'ignore' });
   let target;
   for (let i = 0; i < 75 && !target; i += 1) {
     await sleep(200);
-    if (!port && existsSync(written)) port = Number(readFileSync(written, 'utf8').split(/\r?\n/)[0]) || null;
-    if (!port) continue;
     try { target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page'); } catch { /* not up yet */ }
   }
-  if (!target) {
-    proc.kill();
-    throw new Error(`Chrome did not answer on its DevTools port - ${port ? `port ${port}, held by ${holderOf(port)}` : 'no port written in 15 s'}`);
-  }
-  if (target.url !== start) { proc.kill(); throw new Error(`the DevTools page on port ${port} is not this run's: ${target.url.slice(0, 80)}`); }
+  if (!target) { proc.kill(); throw new Error('Chrome did not answer on its DevTools port'); }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((ok) => ws.addEventListener('open', ok));
   let id = 0;
@@ -1203,10 +965,7 @@ function screensLib(TOL) {
       if (el.scrollWidth - el.clientWidth <= 1 && el.scrollHeight - el.clientHeight <= 1) continue;
       // Held more than it shows; cut is where a glyph's box crosses the box it is drawn in (screen px, any zoom).
       const [dx, dy] = textBeyond(el);
-      // A sentence held to three lines or more with the whole of it in its title is cut at its bottom on purpose (lead
-      // 10-21, 903053c14: a reason or a why, the rest in the tooltip) - never at its side.
-      const clamped = parseInt(s.webkitLineClamp, 10) >= 3 && (el.getAttribute('title') || '').trim() === el.textContent.trim();
-      if (dx > 1 || (dy > 1 && !clamped)) {
+      if (dx > 1 || dy > 1) {
         lines.push({ rule: 'clip', path: pathOf(el), what: [dx > 1 && `${Math.round(dx)} px of text past its side`, dy > 1 && `${Math.round(dy)} px past its top or bottom`]
           .filter(Boolean).join(', ') + `: «${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)}»` });
       }
@@ -1291,10 +1050,7 @@ function screensLib(TOL) {
     const boxed = (e) => isControl(e) && !e.matches('textarea, input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"], input[type="color"], input[type="hidden"]')
       && !e.parentElement.closest('button, [role="button"]') && !e.closest('[class^="ag-"], [class*=" ag-"]')
       && !/^vertical/.test(css(e).writingMode) && drawsBox(e);
-    // A control that holds a picture (a gallery tile, a board cell) is a card: its height is its picture's and its words
-    // stand at its top or under it - neither the size of a word control nor its middle.
-    const card = (e) => !!e.querySelector('img, canvas');
-    for (const b of all.filter((e) => isButton(e) && e.textContent.trim() && !card(e))) {
+    for (const b of all.filter((e) => isButton(e) && e.textContent.trim())) {
       // a vertical pill (a left tray's axis) runs along its words - its height is its length, not its size
       if (/^vertical/.test(css(b).writingMode)) continue;
       const r = b.getBoundingClientRect();
@@ -1324,7 +1080,7 @@ function screensLib(TOL) {
       }
       return bottom > top ? { top, bottom } : null;
     };
-    for (const c of all.filter((e) => boxed(e) && !card(e))) {
+    for (const c of all.filter(boxed)) {
       const r = c.getBoundingClientRect();
       if (r.height < 4) continue;
       let off;
@@ -1353,13 +1109,13 @@ function screensLib(TOL) {
     };
     const layer = (e) => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (/fixed|absolute/.test(css(a).position)) return a; return null; };
     const told = new Set();
-    for (const c of all.filter((e) => boxed(e) && !card(e))) {
+    for (const c of all.filter(boxed)) {
       const r = c.getBoundingClientRect();
       if (r.height < 4) continue;
       const at = lineOf(c, r);
       if (!at || told.has(at.bar)) continue;
       const mine = face(c);
-      const other = at.near.find((x) => x.control && boxed(x.el) && !card(x.el) && x.box.height >= 4 && layer(x.el) === layer(c) && Math.abs(face(x.el) - mine) > 1);
+      const other = at.near.find((x) => x.control && boxed(x.el) && x.box.height >= 4 && layer(x.el) === layer(c) && Math.abs(face(x.el) - mine) > 1);
       if (!other) continue;
       told.add(at.bar);
       lines.push({ rule: 'heights', path: pathOf(c), what: `«${label(c)}» ${Math.round(mine)} px high beside «${label(other.el)}» ${Math.round(face(other.el))} px on one line` });
@@ -1513,10 +1269,6 @@ const until = async (chrome, test, most = 10000) => {
   if (!held) waitsRunOut.push(`waited ${most} ms and it never held: ${test}`);
   return held;
 };
-// A box of the gallery's bar by its word, set to a value.
-const GALLERY_PICK = (word, value) => `(() => { const l = [...document.querySelectorAll('#gallery-host .gallery-pick')]
-  .find((p) => (p.querySelector('.gallery-pick__word') || {}).textContent === ${JSON.stringify(word)}); const s = l && l.querySelector('select');
-  if (!s) return false; s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
 const GRID_LOADED = `/^Loaded/.test((document.querySelector('#performance-log') || {}).textContent || '')`;
 const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(words)} && !x.disabled);
   if (b) b.click(); return Boolean(b); })()`);
@@ -1836,78 +1588,6 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
-    // The gallery's board (lead 3589216b9) on dt_log with its picture column: Rows by c_bn, Columns by core_lot (12 values).
-    ['Gallery, rows by columns', async (c, log) => {
-      GALLERY.on = true;
-      // each size starts from no choice kept (+ Column below would add a box per size)
-      await evaluate(c, "window.__galleryFrom = (document.getElementById('table-select') || {}).value; try { localStorage.removeItem('gallery:dt_log'); } catch (e) {} true");
-      for (const name of ['ledger_events', 'dt_log']) {
-        await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
-          sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-        await sleep(900);
-        await settle(c, log);
-        await until(c, GRID_LOADED);
-      }
-      await until(c, "!(document.getElementById('gallery-toggle-btn') || {}).hidden");
-      await evaluate(c, "document.getElementById('gallery-toggle-btn').click(); true");
-      await sleep(400);
-      await evaluate(c, GALLERY_PICK('Rows by', 'c_bn'));
-      await evaluate(c, GALLERY_PICK('Columns by', 'core_lot'));
-      await sleep(800);
-    }],
-    ['Gallery, nine a cell', (c) => evaluate(c, GALLERY_PICK('Show', '9')).then(() => sleep(800))],
-    ['Gallery, a cell opened and a tile pressed', async (c) => {
-      await evaluate(c, "(() => { const cell = document.querySelectorAll('#gallery-host .gallery-cell:not(.is-empty)')[1]; if (cell) cell.click(); return Boolean(cell); })()");
-      await sleep(500);
-      await evaluate(c, "(() => { const t = document.querySelector('#gallery-host .gallery-tile'); if (t) t.click(); return Boolean(t); })()");
-      await sleep(600);
-    }],
-    ['Gallery, + Column', (c) => evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-add'); if (b) b.click(); return Boolean(b); })()").then(() => sleep(800))],
-    ['Gallery, filtered to a cell', async (c, log) => {
-      await evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-open__filter'); if (b) b.click(); return Boolean(b); })()");
-      await sleep(900);
-      await settle(c, log);
-      await until(c, GRID_LOADED);
-      await sleep(600);
-    }],
-    ['Gallery left, the first table again', async (c, log) => {
-      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__galleryFrom) return false;
-        sel.value = window.__galleryFrom === 'dt_log' ? 'ledger_events' : window.__galleryFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-      await sleep(900);
-      await settle(c, log);
-      await until(c, GRID_LOADED);
-      GALLERY.on = false;
-      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === window.__galleryFrom) return true;
-        sel.value = window.__galleryFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-      await sleep(900);
-      await settle(c, log);
-      await until(c, GRID_LOADED);
-    }],
-    // The Queue tab open for one beat of its poll and a little more.
-    ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
-      .then(() => sleep(QUEUE_POLL_MS + 1500))],
-    ['a row picked under the Queue tab', (c) => evaluate(c, `(() => {
-      const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell');
-      if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
-      return true; })()`).then(() => sleep(600))],
-    // Another table from the dropdown, the Queue tab still open (the switch that left the Queue pane under Global).
-    ['table switched from the Queue tab', async (c, log) => {
-      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
-        window.__firstTable = sel.value;
-        sel.value = sel.value === 'dt_log' ? 'ledger_events' : 'dt_log';
-        sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-      await sleep(900);
-      await settle(c, log);
-      await until(c, GRID_LOADED);
-    }],
-    // Back to the table the page opened on: the filters, the row pick and the header panels after it are that table's.
-    ['the first table again', async (c, log) => {
-      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__firstTable) return false;
-        sel.value = window.__firstTable; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-      await sleep(900);
-      await settle(c, log);
-      await until(c, GRID_LOADED);
-    }],
     // One filter at a time, each one's load waited out: typed together, which half-set the grid's debounce sent
     // depended on the clock and the answers held only some (application QA 4bd46df68: red in one run of four).
     ['three filters', async (c, log) => {
@@ -1993,42 +1673,6 @@ const DRIVE = {
     // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
     ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
       .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
-    // The chain form opened on a rule (lead after a2b7f6e14 · owner 10-21): a join whose take holds a record - its rows,
-    // the fn picker, then + and record on a third item - and a flat rule; both with target_columns on the first screen.
-    // The rules are the captured take_record_probe and dt_log_to_dt_map.
-    ['Chain, a flat rule', async (c) => {
-      await evaluate(c, "location.hash = '#chain'; true");
-      await until(c, "!!document.querySelector('select.chain-rule-picker')");
-      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'dt_log_to_dt_map'"]);
-      await until(c, "!!document.querySelector('[data-path=\"target_table\"]')");
-      await evaluate(c, `(() => { const at = document.querySelector('[data-path="target_columns"]');
-        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
-    }],
-    ['Chain, a join whose take holds a record', async (c) => {
-      await evaluate(c, "location.hash = '#chain'; true");
-      await until(c, "!!document.querySelector('select.chain-rule-picker')");
-      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'take_record_probe'"]);
-      await until(c, "!!document.querySelector('[data-path=\"derive.join.take\"]')");
-      // a folded toggle is oe-field-folded on a field and oe-node-folded on a row
-      const unfold = (at) => evaluate(c, `(() => {
-        const fold = document.querySelector('button[data-action="toggle-field"][data-value="${at}"]');
-        if (fold && /folded/.test(fold.className)) fold.click(); return Boolean(fold); })()`);
-      await unfold('derive.join.take');
-      await until(c, "!!document.querySelector('[data-path=\"derive.join.take[1]\"]')");
-      await unfold('derive.join.take[1]');
-      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[1].fn\"]')");
-      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
-        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
-    }],
-    ['Chain, + then record on the take', async (c) => {
-      await evaluate(c, `(() => { const add = document.querySelector('button[data-action="form-append"][data-value="derive.join.take"]');
-        if (add) add.click(); return Boolean(add); })()`);
-      await until(c, "!!document.querySelector('select[data-action=\"edit-shape-branch\"][data-value=\"derive.join.take[2]\"]')");
-      await choose(c, 'select[data-action="edit-shape-branch"][data-value="derive.join.take[2]"]', [0, "x.value === 'record'"]);
-      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
-      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
-        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
-    }],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -2122,10 +1766,6 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
   // A panel left inside the header is placed in the header's zoomed px (10-08).
-  // A table switch lights Global and leaves the Queue pane shown (owner 10-21) - the tab marked, its pane not asked.
-  { name: 'a table switch lights Global over the Queue pane', entry: 'index.html', rule: 'lit tab shows its pane', at: 'history-sidebar',
-    says: /pane shown: queue-view/, file: 'src/api.js', edits: [["  pickHistoryTab('global');\n",
-      "  state.activeHistoryTab = 'global';\n  for (const b of elements.tabGlobalBtn.parentNode.children) b.classList.toggle('active', b === elements.tabGlobalBtn);\n"]] },
   { name: 'Replay chain panel placed inside the zoomed header', entry: 'index.html', rule: 'panel', at: 'redo-panel', says: /under/,
     file: 'src/dropdown.js', edits: [['    doc.body.appendChild(panel);\n', '']] },
   // Options and Menu hung from their buttons by CSS inside the header: narrowed by its zoom, their rows in two (10-09).
@@ -2154,34 +1794,11 @@ const MUTANTS = [
     file: 'src/style.css', edits: [['70px 62px 96px 96px 110px minmax(72px, 1fr)', '70px 62px 74px 96px 110px minmax(72px, 1fr)']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
-  // The gallery's board (lead 3589216b9): it rolls inside its own box; a shut gallery is not laid out; the chip strip
-  // folded again when the header gives it another width while the gallery holds the grid's place.
-  { name: 'the board sets the page width', entry: 'index.html', rule: 'overflow', at: 'page',
-    file: 'src/gallery.css', edits: [['max-height: 60%; overflow: auto; contain: inline-size;', 'max-height: 60%; overflow: auto;']] },
-  { name: 'a shut gallery laid out under the grid', entry: 'index.html', rule: 'clip', at: '', says: /px past its top or bottom: «AssyManager/,
-    file: 'src/gallery.css', edits: [['.gallery-host[hidden] { display: none; }', '']] },
-  { name: 'a thumbnail held at its own size', entry: 'index.html', rule: 'thumbs fill', at: 'gallery-cell__thumb',
-    file: 'src/gallery.css', edits: [['.sf-thumb__img { display: block; width: 100%; height: 100%; object-fit: contain; }',
-      '.sf-thumb__img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }']] },
-  { name: 'the chip strip not folded again when the header gives it another width', entry: 'index.html', rule: 'clip', at: 'filter-chips',
-    file: 'src/grid.js', edits: [['    chipBarWatch.observe(bar);', '']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
     file: 'src/base.css', edits: [
       [':where(.queue-line-state) { display: flex; flex-direction: column; align-items: flex-start;', ':where(.queue-line-state) { display: flex; align-items: center;'],
-      [':where(.reason-lines) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;',
-        ':where(.reason-lines) { display: block;'],
-      ['  overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
-        '  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }']] },
-  { name: 'the admin queue why held to one line again', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
-    file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }',
-      '    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }\n    .chain-queue-table .queue-line-state-why { -webkit-line-clamp: 1; line-clamp: 1; }']] },
-  { name: 'a recent failure breaks its words anywhere', entry: 'admin.html', rule: 'words', at: 'td > div.refusal.reason-lines',
-    file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }', '    .chain-queue-table .chain-queue-failure { }']] },
-  { name: 'the failed line says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
-    file: 'src/failure_summary.js', edits: [["l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';"]] },
-  { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
-    file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
-      "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },
+      [':where(.queue-line-state-why) { white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
+        ':where(.queue-line-state-why) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }']] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
@@ -2259,32 +1876,10 @@ const MUTANTS = [
       '  height: var(--control-h);\n  padding: 6px var(--space-3) 0;\n  font-family: var(--font-head);']] },
   { name: 'the name column back at its base width, a long name cut', entry: 'sample.html', rule: 'names whole, columns in line',
     at: 'sample-decl-form', says: /a_forty_letter_name_of_a_declared_column/, file: 'src/ontology_explorer.css',
-    edits: [['  grid-template-columns: max-content minmax(0, 1fr);', '  grid-template-columns: calc(var(--space-6) * 5) minmax(0, 1fr);']] },
-  { name: 'a row padded again, its height off the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /not a whole number/, file: 'src/ontology_explorer.css',
-    edits: [['  margin: 0; padding: 0;\n', '  margin: 0; padding: 3px 0;\n']] },
-  { name: 'the row\'s word drawn over its box again', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /over its box/, file: 'src/ontology_explorer.css',
-    edits: [['.oe-node-value > .oe-tier { flex: none; }', '.oe-node-value > .oe-tier { flex: none; margin-left: calc(var(--space-6) * -2); }']] },
-  { name: 'a table under its row padded off the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /table .* not a whole number/, file: 'src/ontology_explorer.css',
-    edits: [['  padding: 0 0 0 calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));',
-      '  padding: var(--space-1) 0 0 calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));']] },
-  { name: 'a value box stretched to its cell again', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /px wide, not/, file: 'src/ontology_explorer.css',
-    edits: [['width: 100%; max-width: var(--oe-box-w);', 'width: 100%; max-width: none;']] },
-  { name: 'chip lines closer than the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /not a whole number|steps high/, file: 'src/ontology_explorer.css',
-    edits: [['  padding-block: var(--space-1);', '']] },
-  { name: 'the row sets its boxes at its top', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /off its row middle/, file: 'src/ontology_explorer.css',
-    edits: [['  align-items: center; min-width: 0;', '  align-items: start; min-width: 0;']] },
-  { name: 'a summary text a step left of the values', entry: 'sample.html', rule: 'rows one height, boxes at one x',
-    at: 'sample-decl-form', says: /box text starts at/, file: 'src/ontology_explorer.css',
-    edits: [['  padding: 0 var(--space-3); border: 1px solid transparent;', '  padding: 0; border: 1px solid transparent;']] },
+    edits: [['    minmax(var(--oe-label-w, 288px), max-content) minmax(0, 1fr)', '    var(--oe-label-w, 288px) minmax(0, 1fr)']] },
   { name: 'a chip of its own height beside the small field', entry: 'sample.html', rule: 'heights', at: 'sample-actions',
-    file: 'src/base.css', edits: [['  box-sizing: border-box;\n  height: var(--control-h-small);\n  padding: 0 var(--space-3);',
-      '  box-sizing: border-box;\n  height: 22px;\n  padding: 0 var(--space-3);']] },
+    file: 'src/base.css', edits: [['  box-sizing: border-box;\n  height: var(--control-h-small);\n  padding: 0 0 0 var(--space-3);',
+      '  box-sizing: border-box;\n  height: 22px;\n  padding: 0 0 0 var(--space-3);']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',

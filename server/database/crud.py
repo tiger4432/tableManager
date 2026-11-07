@@ -577,11 +577,7 @@ def version_gate_verdict(table_name, config, row, is_new, update_item):
     if incoming is None:
         return False, REASON_VERSION_UNORDERABLE
 
-    return _version_order(incoming, parse_version_key(getattr(row, version_col, None), col_type))
-
-
-def _version_order(incoming, stored):
-    """`(applied, reason)` for two `parse_version_key` keys - a row's, or a map's (its rows' greatest)."""
+    stored = parse_version_key(getattr(row, version_col, None), col_type)
     if stored is None:
         # Adoption. A row written before the column existed has nothing to regress to,
         # and refusing it would wedge the table behind a manual backfill forever. Named
@@ -595,28 +591,6 @@ def _version_order(incoming, stored):
     if incoming[1] == stored[1]:
         return False, REASON_VERSION_SAME
     return False, REASON_VERSION_OLDER
-
-
-def map_version_verdict(config, items, stored_values):
-    """Per-MAP verdict for a map replace (소유자 10-21 「맵교체랑 섞이면 맵단위로 버전관리」): `(applied, reason)`.
-    A map's version is the greatest of its rows' - the incoming items', the stored rows' (`stored_values`). Not
-    asked: a table with no version column · a batch with no item (a scope emptied) · a person's batch."""
-    version_col = config.get("version_column")
-    if not version_col or not items or all(item.source_name == "user" for item in items):
-        return True, None
-    col_type = config.get("column_types", {}).get(version_col, "string")
-    incoming = [parse_version_key(item.updates.get(version_col), col_type) for item in items
-                if not is_blank_value(item.updates.get(version_col))]
-    if not incoming:
-        return False, REASON_VERSION_MISSING
-    if None in incoming or len({key[0] for key in incoming}) > 1:
-        return False, REASON_VERSION_UNORDERABLE
-    stored = [key for key in (parse_version_key(value, col_type) for value in stored_values) if key is not None]
-    if not stored:
-        return True, NOTE_ROW_VERSION_ABSENT if stored_values else None
-    if len({key[0] for key in stored}) > 1:
-        return False, REASON_VERSION_UNORDERABLE
-    return _version_order(max(incoming), max(stored))
 
 
 def log_version_gate_summary(table_name, version_col, source_name, stats):
@@ -722,15 +696,12 @@ SOURCE_PRIORITY = {
 USER_SOURCE = "user"
 
 
-def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
+def can_mean_emptied(source_name: str) -> bool:
     """Can this writer MEAN 「I emptied this cell」? (S-243, 판정 405)
 
     🔴 TWO WRITERS CAN, AND THE SET IS CLOSED BY CONSTRUCTION. A person clearing a cell
     (rank 0) and the chain asserting that a matched right row IS empty (판정 f3c04dee).
-    Everything else that arrives blank means 「아직 입력하지 않은 것」 and makes no layer -
-    except a write that REPLACES A MAP WHOLE (`replaces_map`: a `replace_map` batch, a file of a table declaring
-    `allow_replace_map`): its rows are its statement of the map, so a cell it names blank is emptied, as the chain's
-    replace already did (총괄 10-21, 소유자 「기존 값 그대로 있음」). A cell the file does not name is not in its rows.
+    Everything else that arrives blank means 「아직 입력하지 않은 것」 and makes no layer.
 
     🔴 POSITIVELY, NEVER BY BLACKLIST - the reason is twenty lines above this one: file
     parsers write under the INGESTED FILENAME, so the set of automatic source names is
@@ -741,7 +712,7 @@ def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
     already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
     and the writing come to disagree about what they are counting.
     """
-    return replaces_map or layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
+    return layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
 
 
 def merged_layer_name(name: str, tag: str) -> str:
@@ -1771,7 +1742,7 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
 
 
 def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None,
-                           ingested_at_by_source: dict = None, ranks: dict = None):
+                           ingested_at_by_source: dict = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
 
     🔴 THE ORDER IS EXPLICIT AND TOTAL, AND IT HAS TO BE. This used to be
@@ -1818,15 +1789,10 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
         return val, manual_priority_source
 
-    # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
-    ranks = {} if ranks is None else ranks
-
     def _rank(name):
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
-        if name not in ranks:
-            ranks[name] = get_source_priority(name, table_name)
         return (
-            ranks[name],                             # 1. declared ranking
+            get_source_priority(name, table_name),   # 1. declared ranking
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
@@ -3096,7 +3062,7 @@ def nokey_value(file_signature: str, first_ingested_at, file_row: int) -> str:
     (총괄 4311a51ed · 1ce3305f3 - two files begun in the same second would otherwise share the
     time part, and rows whose ring parts meet would merge).
 
-    NOTHING RANDOM: the same file (its content signature, the resume's own identity) and the
+    NOTHING RANDOM: the same file (its content signature, the dedup's own identity) and the
     same row give the same value, so a Retry finds the rows the first load made."""
     moment = first_ingested_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     offset = int(hashlib.sha256(str(file_signature).encode("utf-8")).hexdigest(), 16)
@@ -3866,10 +3832,7 @@ def apply_row_update_internal(
     batch_now: Any = None,
     # [file-layer fold] Per-batch accumulator of `(table, row, column, source)` layers a file
     # write made redundant (`file_layer_fold`). None = do not fold.
-    cell_sources_to_delete: set = None,
-    plan: dict = None,
-    # The batch replaces a map whole (`batch.replace_map`): a blank cell it names empties it (`can_mean_emptied`).
-    replaces_map: bool = False
+    cell_sources_to_delete: set = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
@@ -3889,9 +3852,8 @@ def apply_row_update_internal(
     # filter, which is the only way the prefetch can see a key that does not exist yet
     # in the payload. The call stays here too: it is idempotent (the item already has a
     # key by now, so this returns immediately) and it keeps this function correct on its
-    # own terms rather than on its caller's. A batch that already did says so in `plan` (총괄 249b43409).
-    if not (plan or {}).get("keys_assembled"):
-        assemble_composite_business_key(table_name, update_item)
+    # own terms rather than on its caller's.
+    assemble_composite_business_key(table_name, update_item)
 
     row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name,
                                      probed_identity=probed_identity)
@@ -3903,8 +3865,8 @@ def apply_row_update_internal(
     # the write would actually land on, however it was keyed) and before a single cell is
     # touched. A refusal returns an EMPTY changed_cols, so no value moves, no CellSource
     # is upserted, no audit log is written and nothing is broadcast as changed.
-    gate_applied, gate_reason = version_gate_verdict(          # a row of a map judged whole: not asked again
-        table_name, config, row, is_new or (plan or {}).get("map_judged", False), update_item)
+    gate_applied, gate_reason = version_gate_verdict(
+        table_name, config, row, is_new, update_item)
     if gate_reason is not None and version_stats is not None:
         counts = version_stats.setdefault("counts", {})
         counts[gate_reason] = counts.get(gate_reason, 0) + 1
@@ -3929,9 +3891,6 @@ def apply_row_update_internal(
         if col_name in system_cols: continue
         old_values_snapshot[col_name] = getattr(row, col_name, None)
 
-    # `plan` - what a batch worked out once for all its rows; alone, this row works it out itself
-    loadable = plan["loadable"] if plan else loadable_columns(config)
-    unmapped = plan["unmapped"] if plan else {}
     for col_name, val in update_item.updates.items():
         if col_name in system_cols:
             # [Drop report] A discard too, and it was the ONE silent branch nobody had
@@ -3946,7 +3905,7 @@ def apply_row_update_internal(
         # The one answer, so this path and the watcher's cannot drift (S-119). The
         # type dict below answers a DIFFERENT question - what this column IS, not whether
         # it may be written - so it is read where it is used, not used as a filter.
-        if col_name not in loadable:
+        if col_name not in loadable_columns(config):
             # Drop behaviour is deliberately unchanged: rejecting the write would turn a
             # lagging config into an outage. Only the silence is fixed.
             # ⚠️ Despite the name this COUNTS every drop and re-announces at each power
@@ -3960,9 +3919,7 @@ def apply_row_update_internal(
                                      col_name, DROP_UNDECLARED_COLUMN)
             continue
 
-        if col_name not in unmapped:
-            unmapped[col_name] = bool(unmapped_columns(table_name, (col_name,)))
-        if unmapped[col_name]:
+        if unmapped_columns(table_name, (col_name,)):
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_UNMAPPED_COLUMN)
@@ -3995,7 +3952,7 @@ def apply_row_update_internal(
         # ⚠️ AND THE EXISTING LAYER IS LEFT ALONE, not deleted. 「Not entered」 is not
         # 「withdraw what you said before」 - so yesterday's value stays, and removing it is
         # the business of a person, of `withdraw_source` (R2), or of `replace_map`.
-        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name):
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_ABSENT_NOT_WRITTEN)
@@ -4137,8 +4094,7 @@ def apply_row_update_internal(
         if update_item.source_name == "user":
             manual_pin = None # 수동 값 입력 시 핀 초기화
             
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
-                                                  ranks=plan["ranks"] if plan else None)
+        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
         old_val = old_values_snapshot.get(col_name)
         
         # 6. cell_overwrites 마킹
@@ -4419,23 +4375,8 @@ def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids,
     return len(unprimed)
 
 
-def map_keys_said(table_name: str, row_ids, values, limit: int = 5) -> str:
-    """The first `limit` of `row_ids` as an operator reads them (총괄 10-21, 소유자 「로그 띄워 지워진 것」): each row's
-    key inside its map - composite_key_source less map_key_columns, «base_x=3 base_y=4» - from `values` ({row_id: its
-    values}); its row_id when the table names no such key. «…» past the limit."""
-    cfg = TABLE_CONFIG.get(table_name, {})
-    inside = [c for c in (cfg.get("composite_key_source") or []) if c not in (cfg.get("map_key_columns") or [])]
-    said = []
-    for row_id in list(row_ids)[:limit]:
-        cells = values.get(row_id) or {}
-        said.append(" ".join("%s=%s" % (c, key_part(table_name, c, cells.get(c))) for c in inside)
-                    if inside and cells else str(row_id))
-    return ", ".join(said) + (" …" if len(row_ids) > limit else "")
-
-
-def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
-    """Delete map rows and their cell metadata, and TELL THE OUTBOX. `said` (a list): the deleted rows' keys are put
-    on it as one text (`map_keys_said`), from the values read before the delete - for the replace line.
+def purge_map_rows(db, table_model, table_name: str, row_ids):
+    """Delete map rows and their cell metadata, and TELL THE OUTBOX.
 
     🔴 THE ONE WRITE THE OUTBOX COULD NOT SEE. Every other write in this system reaches
     `database.stage_event` through SQLAlchemy's `before_flush`, which walks
@@ -4481,8 +4422,6 @@ def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
     # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
     # With each row's values as its old values (총괄 옛 키).
     values = {row.row_id: row_values(row) for row in rows}
-    if said is not None:
-        said.append(map_keys_said(table_name, row_ids, values))
     stage_collapsed_event(db, "DELETE", table_name, row_ids,
                           old=[values.get(row_id, {}) for row_id in row_ids])
 
@@ -5316,8 +5255,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # [adopt] Row ids inside the scope a replace_map write declares. Empty for every
         # other write path, which is what makes the adoption check below a no-op there.
         replace_scope_row_ids = set()
-        # a map replace on a version-gated table: the map judged whole, its rows not asked again (map_version_verdict)
-        map_judged, map_note = False, None
 
         if batch.replace_map:
             # [U6] The purge scope comes from ONE shared resolver (also called by the API
@@ -5340,23 +5277,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             ]
 
             from sqlalchemy import and_
-            _cfg = TABLE_CONFIG.get(table_name, {})
-            map_version_col = _cfg.get("version_column")
-            matching_rows = db.query(table_model.row_id, *([getattr(table_model, map_version_col)] if map_version_col
-                                                           else [])).filter(and_(*meta_conditions)).all()
+            matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
             purged_row_ids = [r[0] for r in matching_rows if r[0]]
-            # 🔴 The map is one version (소유자 10-21): judged here, before the purge or the diff deletes anything.
-            #    Refused, the map is neither written nor deleted - the VersionGate line says it in its words.
-            map_applied, map_note = map_version_verdict(_cfg, batch.updates, [r[1] for r in matching_rows]
-                                                        if map_version_col else [])
-            if not map_applied:
-                log_version_gate_summary(table_name, map_version_col, source_val,
-                                         {"rows": len(batch.updates), "counts": {map_note: len(batch.updates)}})
-                if replace_report is not None:
-                    replace_report.update(filters=scope_filters, deleted=0, mode="refused", reason=map_note)
-                db.commit()
-                return [], [], [], []
-            map_judged = bool(map_version_col and batch.updates)
 
             # [scope diff] Only a DECLARED scope may be diffed.
             #
@@ -5378,6 +5300,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # was not matched at all until 총괄 5c0a86cec (every push a fresh row); it is
             # now, but the diff stays on composite-keyed maps - all seven shipped map
             # tables declare one, so this excludes no real map.
+            _cfg = TABLE_CONFIG.get(table_name, {})
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
 
             # [adopt] The ids this write DECLARED it was operating on - the whole scope,
@@ -5392,11 +5315,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 # claim is removed after the loop - see [scope diff] there.
                 purged_row_ids = []
 
-            purged_keys = []
             if purged_row_ids:
                 # One helper for both purge sites, so the outbox event cannot be added to
                 # one branch and forgotten on the other. See `purge_map_rows`.
-                purge_map_rows(db, table_model, table_name, purged_row_ids, said=purged_keys)
+                purge_map_rows(db, table_model, table_name, purged_row_ids)
                 db.flush()
 
             if replace_report is not None:
@@ -5419,7 +5341,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
                 f"Mode: {'diff' if use_diff else 'purge'} | Filters: {scope_filters} | "
                 f"Rows In Scope: {len(replace_scope_row_ids)} | "
-                f"Purged Old Rows: {len(purged_row_ids)}{' (%s)' % purged_keys[0] if purged_keys else ''} | "
+                f"Purged Old Rows: {len(purged_row_ids)} | "
                 f"Incoming Active Cells: {len(batch.updates)}"
             )
 
@@ -5602,8 +5524,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # a version column, so an ordinary table pays one dict lookup for the whole batch.
         version_col = TABLE_CONFIG.get(table_name, {}).get("version_column")
         version_stats = {"rows": len(batch.updates)} if version_col else None
-        if map_note is not None and version_stats is not None:
-            version_stats["counts"] = {map_note: len(batch.updates)}
 
         # [Drop report] Allocated for EVERY batch, not only when a report was requested,
         # because the phantom-row guard below reads it and that guard is not optional.
@@ -5619,9 +5539,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # item 2 then fills, and that row is not a phantom.
         rows_with_content = set()
 
-        # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
-        plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
-                "unmapped": {}, "ranks": {}, "map_judged": map_judged}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
@@ -5641,9 +5558,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         probed_identity=probed_identity,
                         drop_stats=drop_stats,
                         batch_now=batch_now,
-                        cell_sources_to_delete=cell_sources_to_delete,
-                        plan=plan,
-                        replaces_map=bool(batch.replace_map)
+                        cell_sources_to_delete=cell_sources_to_delete
                     )
                     prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                     unique_results[row.row_id] = (row, is_new or prev_is_new)
@@ -5801,17 +5716,15 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         if batch.replace_map and use_diff:
             claimed_row_ids = set(unique_results.keys()) | set(deleted_row_ids)
             removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
-            removed_keys = []
             if removed_row_ids:
-                purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)
+                purge_map_rows(db, table_model, table_name, removed_row_ids)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
             deleted_row_ids = list(deleted_row_ids) + removed_row_ids
             logger.info(
                 f"🔄 [Map Diff] Table: '{table_name}' | TX: {tx_id} | "
                 f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(claimed_row_ids)} | "
-                f"Written: {len(unique_results)} | "
-                f"Removed: {len(removed_row_ids)}{' (%s)' % removed_keys[0] if removed_keys else ''}"
+                f"Removed: {len(removed_row_ids)}"
             )
 
         serialized_logs = []
@@ -5946,7 +5859,7 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
             for row in new_rows:
                 log_dict = create_audit_log(
                     db, table_name, row.row_id, "CREATE",
-                    None, "row created", "system", user_name,
+                    None, "새 행 생성됨", "system", user_name,
                     transaction_id=tx_id,
                     business_key=row.business_key_val,
                     add_to_cache=False
@@ -6013,7 +5926,7 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
     for row in rows or []:
         logs.append(create_audit_log(
             db, table_name, row.row_id, ROW_DELETION_COLUMN,
-            None, "row deleted", "system", user_name,
+            None, "행 삭제됨", "system", user_name,
             transaction_id=transaction_id,
             business_key=getattr(row, "business_key_val", None),
             add_to_cache=False))

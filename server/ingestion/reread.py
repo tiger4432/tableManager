@@ -5,8 +5,7 @@ files, or with `statuses` files that went in - a re-read with today's parser.
 
 The reading is always the watcher's: a row marked PENDING_RETRY is claimed by `run_watcher`'s
 poller and read by `retry_one` on the table's own handler - from where the file lies (its
-archive, or the external path it was read from), with the parser as it is now, the checklist not asked - and its
-row then checks the file.
+archive, or the external path it was read from), with the parser as it is now, dedup skipped.
 ⚰️ The retroactive «Re-read files» (976defaac) is retired: it put a run, the operations gate and a
 wait page by page on top of this mark, and did not run in production (총괄 a4d135a06).
 """
@@ -26,10 +25,8 @@ REREAD_STATUS = "PENDING_RETRY"
 RETRY_STATUSES = ("FAILED",)
 #: Rows one mark commits.
 MARK_PAGE = 1000
-#: Files the watcher reads again in one turn of its retry poller unless ingestion_settings.json says
-#: `reread_max_files` - the rest wait (PENDING_RETRY) for its next turns (총괄 10-21: a pace, not a refusal). Read in
-#: the request (not DECOUPLED), it is still the most one retry may hand over (총괄 10-11 ㄱ). 25: the busiest minute of
-#: this box's watcher - 25 SUCCESS rows (file_ingestion_logs by updated_at minute, median 2).
+#: Files one retry may hand over unless ingestion_settings.json says `reread_max_files` (총괄 10-11 ㄱ): the busiest
+#: minute of this box's watcher - 25 SUCCESS rows (file_ingestion_logs by updated_at minute, median 2).
 REREAD_MAX_FILES_KEY = "reread_max_files"
 REREAD_MAX_FILES_DEFAULT = 25
 #: Entries one walk of a folder may look at before it is refused (총괄 10-20 ④) - a re-read into a table picks files
@@ -42,13 +39,17 @@ STOOD_BY_REREAD = "STOOD"
 OUTSIDE_SOURCES = "outside the table's source folders"
 NOT_MATCHED = "not matched by the source's glob or filename"
 BEING_READ = "being read now"
+#: A file a sweep found right after its table's reading changed (a setting, a script, an external source coming up) - not
+#: read until someone presses Read on the file page, the retry door with statuses=WAITING (소유자 10-21 운영 마비 「막 도는
+#: 거 막아」 · 「고친 것만 선택적 읽기」, 총괄 290e22ac0). New files after that sweep are read as ever.
+WAITING_STATUS = "WAITING"
 
 
 #: The table_config cells that do not change how a table's files are read (lead 10-20 ab951f09b): the schema screen,
 #: search and the layer ranking. Every other cell - today's and tomorrow's - is part of the reading.
 NOT_READING = ("display_columns", "search_columns", "source_priority")
-#: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a plugin fixed
-#: while the watcher was down still hands its table's failed files at the start (lead 10-20).
+#: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a reading
+#: changed while the watcher was down is still heard at the start (lead 10-20).
 READING_STAMPS_FILENAME = "watcher_reading_stamps.json"
 
 
@@ -123,8 +124,9 @@ def times_of(since, until):
 
 def logs_query(db, statuses=None, table=None, folder=None, since=None, until=None, log_id=None, name=None):
     """The file log rows a re-read or a search names - one filter for both (총괄 e390600d6). `statuses` None: any;
-    `folder` as `_under_folder` reads it; `name` a part of the file's path, any case - an external file's name is often
-    the same everywhere (voids.json) and what tells it apart is a folder (소유자 10-21 「경로는 인식 못 하나?」)."""
+    `folder` as `_under_folder` reads it; `name` a part of the file name, any case."""
+    from sqlalchemy import func
+
     from database import crud, models
 
     model = models.FileIngestionLog
@@ -142,9 +144,8 @@ def logs_query(db, statuses=None, table=None, folder=None, since=None, until=Non
     if not crud.is_blank_value(folder):
         query = query.filter(_under_folder(model.filepath, folder))   # not the whole table into memory (총괄 10-11)
     if not crud.is_blank_value(name):
-        other = "/" if os.sep == "\\" else "\\"
-        part = str(name).strip().lower().replace(other, os.sep).replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        query = query.filter(models.path_key(model.filepath).like("%" + part + "%", escape="!"))
+        part = str(name).strip().lower().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        query = query.filter(func.lower(model.filename).like("%" + part + "%", escape="!"))
     return query
 
 
@@ -186,75 +187,9 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     return picked
 
 
-def taken_now(picked):
-    """`picked` [(log, rel)] kept to the files the declaration takes now (소유자 10-22 「지금 선언이랑 안 맞는 거 빼면 안
-    됨?」): a row read under one of its table's external sources (its `source`) is asked `source_taking` as a sweep asks
-    it, and one naming a source its table no longer declares is not taken ("source not declared"); a raws row passes.
-    THE filter the hand-off on a changed reading, a bulk Retry and the watcher's start ask - a Read now and a one-file
-    Retry do not. Rows are not touched.
-    -> (kept, {why_not_taken: count}, the first names not taken)."""
-    from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, source_taking, why_not_taken
-
-    kept, not_taken, names, specs_of = [], {}, [], {}
-    with one_sweep():
-        for log, rel in picked:
-            if log.table_name not in specs_of:
-                specs_of[log.table_name] = {os.path.normcase(os.path.abspath(spec["root"])): spec
-                                            for spec in (table_sources(log.table_name)[1] if log.table_name else ())}
-            if not (log.source and log.source != "raws" and log.filepath):
-                kept.append((log, rel))
-                continue
-            path = os.path.abspath(log.filepath)
-            spec = specs_of[log.table_name].get(os.path.normcase(os.path.abspath(log.source)))
-            if spec is not None and source_taking([spec], path) is not None:
-                kept.append((log, rel))
-                continue
-            below = (None if spec is None
-                     else _written_relative_path(path, spec["root"]) or _safe_relative_path(path, spec["root"]))
-            why = why_not_taken(spec, path, below) if spec is None or below is not None else None
-            why = why or "outside the root"
-            not_taken[why] = not_taken.get(why, 0) + 1
-            names.append(log.filename)
-    return kept, dict(sorted(not_taken.items())), names[:5]
-
-
-def delete_not_taken(db):
-    """The waiting rows (`REREAD_STATUS`) the declaration does not take now (`taken_now`), deleted with their marks -
-    the watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」). A row claimed meanwhile is no longer
-    waiting and is not touched: each page deletes only rows still waiting. -> [(table, deleted, {why: count})]."""
-    from sqlalchemy import exists
-
-    from database import models
-
-    model = models.FileIngestionLog
-    by_table = {}
-    for log, rel in select_logs(db, (REREAD_STATUS,)):
-        by_table.setdefault(log.table_name, []).append((log, rel))
-    said = []
-    for table, picked in sorted(by_table.items(), key=lambda item: str(item[0])):
-        kept, not_taken, _names = taken_now(picked)
-        kept_ids = {log.id for log, _rel in kept}
-        ids = [log.id for log, _rel in picked if log.id not in kept_ids]
-        deleted = 0
-        for start in range(0, len(ids), MARK_PAGE):
-            page = ids[start:start + MARK_PAGE]
-            deleted += (db.query(model).filter(model.id.in_(page), model.status == REREAD_STATUS)
-                        .delete(synchronize_session=False))
-            (db.query(models.FileRereadMark)
-             .filter(models.FileRereadMark.log_id.in_(page), ~exists().where(model.id == models.FileRereadMark.log_id))
-             .delete(synchronize_session=False))
-            db.commit()
-        if ids:
-            said.append((table, deleted, not_taken))
-    return said
-
-
 def reading_of(table, entry, sources, scripts_dir):
     """What decides how `table`'s files are read, as {part: stamp} - its table_config entry without `NOT_READING`, its
-    external sources (`table_name` is the table) without `enabled` - switching a source off and on is no new reading,
-    its files left meanwhile are read and the rest stay checked (총괄 10-21) - and without `max_depth`: a deeper reach
-    finds files not read yet, a shallower one leaves nothing to read again - and each plugin file in its scripts
-    folder (mtime_ns, size)."""
+    external sources (`table_name` is the table) and each plugin file in its scripts folder (mtime_ns, size)."""
     import hashlib
     import json
 
@@ -262,9 +197,8 @@ def reading_of(table, entry, sources, scripts_dir):
         return hashlib.sha1(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
     parts = {"table_config": digest({k: v for k, v in (entry or {}).items() if k not in NOT_READING}),
-             "external source": digest(sorted(({k: v for k, v in s.items() if k not in ("enabled", "max_depth")}
-                                               for s in sources or ()
-                                               if isinstance(s, dict) and s.get("table_name") == table), key=digest))}
+             "external source": digest(sorted((s for s in sources or () if isinstance(s, dict)
+                                               and s.get("table_name") == table), key=digest))}
     try:
         names = sorted(n for n in os.listdir(scripts_dir) if n.endswith(".py") and n != "__init__.py")
     except OSError:
@@ -278,70 +212,116 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def uncheck(db, table=None, paths=None, folders=None):
-    """The checklist's keys let go (소유자 10-21): the rows of `table` (any table when None) - of `paths`, or under
-    `folders` (as `_under_folder` reads them) - lose their stamp, so the sweeps read those files again where they look.
-    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked."""
-    from sqlalchemy import literal, or_
-
-    from database import models
-
-    model = models.FileIngestionLog
-    query = db.query(model).filter(model.file_mtime.isnot(None), model.status != REREAD_STATUS)
-    if table is not None:
-        query = query.filter(model.table_name == table)
-    if paths is not None:
-        query = query.filter(models.path_key(model.filepath).in_([models.path_key(literal(path)) for path in paths]))
-    if folders is not None:
-        query = query.filter(or_(*[_under_folder(model.filepath, folder) for folder in folders]))
-    unchecked = query.update({model.file_mtime: None, model.file_size: None}, synchronize_session=False)
-    db.commit()
-    return unchecked
+def changed_parts(before, now):
+    """What of a table's reading changed, one word list - "new" for a table not kept before."""
+    if not before:
+        return "new"
+    return ", ".join(sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part)))
 
 
-def hand_on_a_changed_reading(db, table, before, now, folders=()):
-    """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    handed to the retry door (`mark_for_reread`) - those the declaration takes now (`taken_now`; the rest are
-    counted, not handed) - whatever folder holds them, and its read files still in place - under
-    `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
-    「옮겨진 건 하지 마」). No cap: the watcher reads at its own pace. Other tables are not touched. -> the line to say
-    (the caller adds what its sweeps dispatched), or None."""
-    changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
-    if not changed:
+def say_failed_after_a_changed_reading(db, table, why):
+    """The table's failed files are not handed again by themselves (총괄 290e22ac0 - they were, ab951f09b, and a script
+    change read a whole share): one line with their count, Retry failed on the file page picks them. -> the line, or None."""
+    failed = logs_query(db, RETRY_STATUSES, table).count()
+    if not failed:
         return None
-    kept, not_taken, _names = taken_now(select_logs(db, RETRY_STATUSES, table=table))
-    logs = [log for log, _rel in kept]
-    mark_for_reread(db, logs)
-    unchecked = uncheck(db, table=table, folders=list(folders)) if folders else 0
-    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) unchecked, %d failed file(s) handed again%s"
-            % (table, ", ".join(changed), unchecked, len(logs),
-               "".join(" · not taken now: %s %d" % item for item in not_taken.items())))
+    line = "[Watcher] %s: its reading changed (%s) - %d failed file(s) wait - Retry failed on the file page" % (
+        table, why, failed)
+    logger.warning(line)
+    return line
 
 
-def load_reading_stamps():
-    """{table: reading} as last kept, {} when there is none or it cannot be read."""
+#: The tables whose next full sweep stands its files WAITING: {table: {"at", "why"}} - kept before the stamps, so a stop
+#: between the two hears the change again (총괄 290e22ac0).
+WAITING_OWED_FILENAME = "watcher_waiting_owed.json"
+_OWED_LOCK = threading.Lock()
+
+
+def _load_kept(name):
+    """A dict kept in the config directory, {} when there is none or it cannot be read."""
     import json
 
     import paths
 
     try:
-        with open(paths.config_path(READING_STAMPS_FILENAME), encoding="utf-8") as handle:
+        with open(paths.config_path(name), encoding="utf-8") as handle:
             kept = json.load(handle)
         return kept if isinstance(kept, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def keep_reading_stamps(stamps):
-    """Write {table: reading} whole (a temporary file, then a replace)."""
+def _keep(name, value):
+    """Write a dict whole (a temporary file, then a replace)."""
     import json
 
     import paths
 
-    path = paths.config_path(READING_STAMPS_FILENAME)
+    path = paths.config_path(name)
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
-        json.dump(stamps, handle, ensure_ascii=False, sort_keys=True)
+        json.dump(value, handle, ensure_ascii=False, sort_keys=True)
     os.replace(path + ".tmp", path)
+
+
+def load_reading_stamps():
+    """{table: reading} as last kept."""
+    return _load_kept(READING_STAMPS_FILENAME)
+
+
+def keep_reading_stamps(stamps):
+    _keep(READING_STAMPS_FILENAME, stamps)
+
+
+def load_owed():
+    """{table: {"at", "why"}} - the tables whose next full sweep stands its files WAITING."""
+    return _load_kept(WAITING_OWED_FILENAME)
+
+
+def owe(tables, at):
+    """`tables` ({table: why}) owe a full sweep from `at` on - a table already owing keeps its first `at`."""
+    with _OWED_LOCK:
+        owed = load_owed()
+        for table, why in tables.items():
+            owed[table] = {"at": owed.get(table, {}).get("at") or at, "why": why}
+        _keep(WAITING_OWED_FILENAME, owed)
+
+
+def settle_owed(seen):
+    """A full sweep stood its tables' files: each table it saw owing (`seen`, as `load_owed` gave it) owes no more -
+    one that owed again since keeps owing."""
+    with _OWED_LOCK:
+        owed = load_owed()
+        left = {table: entry for table, entry in owed.items() if seen.get(table) != entry}
+        if left != owed:
+            _keep(WAITING_OWED_FILENAME, left)
+
+
+def hold_waiting(db, table, paths, owed=None):
+    """The one judgement every sweep makes before it reads (총괄 290e22ac0): of `paths` (the files of `table` it would
+    read), the ones it must not - each whose newest row is WAITING, and while `table` owes a sweep (`owed`, its reading
+    just changed) each it would have read, stood WAITING with the change in its reason. A file being read (PENDING ·
+    PENDING_RETRY) is left to that read. -> the paths held."""
+    from database import models
+
+    rows = _newest_rows_of(db, table, paths)
+    held, stood = set(), 0
+    for path in paths:
+        log = rows.get(os.path.normcase(os.path.abspath(path)))
+        state = log.status if log is not None else None
+        if state == WAITING_STATUS:
+            held.add(path)
+        elif owed and state not in ("PENDING", REREAD_STATUS):
+            db.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table,
+                                           status=WAITING_STATUS, retry_count=0,
+                                           reason="its reading changed (%s) at %s - Read to read it"
+                                                  % (owed.get("why"), owed.get("at"))))
+            held.add(path)
+            stood += 1
+    if stood:
+        db.commit()
+        logger.warning("[Watcher] %s: %d file(s) found after its reading changed (%s) wait - Read on the file page",
+                       table, stood, owed.get("why"))
+    return held
 
 
 class RereadRefused(ValueError):
@@ -473,83 +453,6 @@ def stand_rows(db, table, picked, folder=None):
         db.add(models.FileRereadMark(log_id=row.id, status_before=STOOD_BY_REREAD, folder=folder))
     db.commit()
     return logs, stood
-
-
-def read_now_owners(db, path):
-    """Who would read the file `path` and why the watcher did not (소유자 10-21 「이거 강제로 못 돌리냐고 · 그냥 와처 인식한
-    걸로 하면 되잖아」): every table whose raws folder holds it, every external source whose root holds it by its real
-    path - each with what the watcher's own judgement says (`_within_depth` · `_source_takes` · the checklist).
-    -> {"path", "on_disk", "owners": [{"table", "source", "why_not": [sentences]}]}."""
-    from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, why_not_taken
-    from ingestion import checkpoint
-
-    path = os.path.abspath(path)
-    config, specs = validated_sources()
-    on_disk = os.path.isfile(path)
-    owners = []
-    with one_sweep():
-        for table in sorted(config):
-            if _safe_relative_path(path, table_sources(table)[0]) is not None:
-                owners.append({"table": table, "source": "raws", "why_not": []})
-        for spec in specs:
-            rel = _written_relative_path(path, spec["root"]) or _safe_relative_path(path, spec["root"])
-            if rel is None:
-                continue
-            why = why_not_taken(spec, path, rel)
-            owners.append({"table": spec["table_name"], "source": spec["root"], "why_not": [why] if why else []})
-    stat = checkpoint.read_file_stat(path) if on_disk else None
-    for owner in owners:
-        if stat is not None and checkpoint.checked(db, owner["table"], [(path, stat)]):
-            owner["why_not"].append("already read")
-    return {"path": path, "on_disk": on_disk, "owners": owners}
-
-
-def read_now(db, path, table=None, apply=False):
-    """Read the file `path` now as the watcher would have (총괄 aaf19d0ca): the owner `read_now_owners` finds (one, or
-    the `table` named) - its newest row for the file, else one stood (`stand_rows`), handed to the Retry door
-    (`mark_for_reread`) carrying the source it is read under. Refused (RereadRefused) when the file is not on the disk,
-    nothing reads its folder, or more than one table does and none is named. -> the owners' answer, with "owner" and,
-    applied, "log_id"."""
-    from sqlalchemy import literal
-
-    from database import models
-
-    said = read_now_owners(db, path)
-    path = said["path"]
-    if not said["on_disk"]:
-        raise RereadRefused(f"{path} is not on the disk this server sees - check the path")
-    owners = [owner for owner in said["owners"] if table is None or owner["table"] == table]
-    if not owners:
-        raise RereadRefused(
-            f"No table reads {path}" + (f" into {table}" if table else "") + ": it is under no raws folder and no "
-            "external source root - add an external source for its folder in ingestion_settings.json")
-    if len({owner["table"] for owner in owners}) > 1:
-        if not apply:
-            said["owner"] = None
-            return said
-        raise RereadRefused(f"{len(owners)} tables read {path} ({', '.join(owner['table'] for owner in owners)}) "
-                            "- choose one")
-    owner = owners[-1]                              # an external source over a raws folder: the one the row names
-    said["owner"] = owner
-    if not apply:
-        return said
-    if "outside the root" in owner["why_not"]:
-        raise RereadRefused(f"{path} is outside the root of {owner['source']} by its real path (a junction or link "
-                            "leads out) - read it from where it really is")
-    model = models.FileIngestionLog
-    row = (db.query(model).filter(model.table_name == owner["table"],
-                                  models.path_key(model.filepath) == models.path_key(literal(path)))
-           .order_by(model.id.desc()).first())
-    if row is not None and row.status == "PENDING":
-        raise RereadRefused(f"{path} is being read now (log #{row.id})")
-    if row is None:
-        _logs, (row,) = stand_rows(db, owner["table"], [(None, None, path)])
-    else:
-        mark_for_reread(db, [row])
-    row.source = owner["source"]
-    db.commit()
-    said["log_id"] = row.id
-    return said
 
 
 def top_folder(rel):

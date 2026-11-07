@@ -15,6 +15,7 @@
    PENDING        run_watcher.py:330
    PENDING_RETRY  run_watcher.py:258 · main.py:5616
    SKIPPED        parsers/directory_watcher.py:2025
+   WAITING        reread.hold_waiting (총괄 290e22ac0 - a sweep right after a table's reading changed)
 
 ⚠️ `ALL` 은 «여기 없다». 그건 상태가 아니라 「거르지 않음」이고, 한 이름에 두 뜻을 담는 순간
    「상태 다섯」과 「고를 수 있는 것 여섯」이 갈라진다.
@@ -29,4 +30,5 @@ FILE_INGESTION_STATUS_VOCABULARY = (
     "PENDING",
     "PENDING_RETRY",
     "SKIPPED",
+    "WAITING",
 )

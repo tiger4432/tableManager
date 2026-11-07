@@ -381,11 +381,6 @@ class FileIngestionLog(Base):
     # The transaction the file's read wrote under (총괄 10-20) - every audit log row of that read carries it; a re-read
     # writes its own. Null on rows written before it and on files skipped without a read.
     transaction_id = Column(String(64), nullable=True)
-    # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
-    # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
-    # before these, a table whose reading changed (`reread.hand_on_a_changed_reading` empties its rows).
-    file_mtime = Column(DateTime(timezone=True), nullable=True)
-    file_size = Column(BigInteger, nullable=True)
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
@@ -454,10 +449,9 @@ class RetroactiveRun(Base):
     runner = Column(String(160), nullable=True)
     # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.
     last_progress_at = Column(DateTime(timezone=True), nullable=True)
-    # ⚠️ phase · phase_at (the run's stage, `RunControl.tell`) and a replay's cursor (`RUN_CURSOR_COLUMNS`) are
-    # columns of this table and NOT of this model: mapped, an INSERT names them (deferred leaves only the SELECT, QA
-    # 10-14 on 2.0.49) and every run row's writer breaks on a database they are not yet added to.
-    # `ensure_run_columns` adds them; their writers and readers spell them in SQL.
+    # ⚠️ phase · phase_at (the run's stage, `RunControl.tell`) are columns of this table and NOT of this model: mapped,
+    # an INSERT names them (deferred leaves only the SELECT, QA 10-14 on 2.0.49) and every run row's writer breaks on a
+    # database they are not yet added to. `ensure_run_phase_columns` adds them; `tell` writes and `runs` reads them.
     finished_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
@@ -471,57 +465,32 @@ class RetroactiveRun(Base):
     )
 
 
-class ReplayNamedMap(Base):
-    """A whole replay's maps (총괄 c67aa93bb ㄴ) - each map or job its rule's batches named while the run's events ran,
-    and one tally row (`scope` `chain.replay.TALLY`) whose `rows` counts the staged rows the rule ran on. Written in
-    the group's own transaction, read once when the run ends (`chain.replay.sweep_finished_replays`), then deleted."""
-
-    __tablename__ = "replay_named_maps"
-
-    run_id = Column(String(32), primary_key=True)
-    rule = Column(String(200), primary_key=True)
-    scope = Column(String, primary_key=True)        # sorted JSON {column: value}
-    rows = Column(Integer, nullable=True)
-
-
-#: A replay run's cursor (fc1e1e385, `chain.replay`): the last page whose processing committed, where it ends, the
-#: rows through it, the last page staged, and the run that continues it.
-RUN_CURSOR_COLUMNS = {"cursor_page": "INTEGER", "cursor_end": "VARCHAR(64)", "cursor_rows": "INTEGER",
-                      "staged_page": "INTEGER", "continued_by": "VARCHAR(32)"}
-
-
-def ensure_run_columns(engine, add=True):
-    """`retroactive_runs`' unmapped columns - `phase` · `phase_at`, the run's stage, and a replay's cursor
-    (`RUN_CURSOR_COLUMNS`) - on a database without them. ONE SEAT: each writer asks here before it writes; a
-    read-only door asks with `add` False and reads nothing of them when they are not there. Looked up first, so a
-    database that has them takes no lock - once a process and database, after which it asks nothing.
-    -> whether they are there."""
-    if engine in _RUN_COLUMNS:
-        return True
+def ensure_run_phase_columns(engine):
+    """`retroactive_runs.phase` · `phase_at`, the run's stage (`RetroactiveRun` does not map them), on a database
+    without them. ONE SEAT: their writer (`RunControl.tell`) asks here before it writes; their reader (`runs`) reads
+    them null where they are not. Looked up first, so a database that has them takes no lock - once a process and
+    database, after which it asks nothing."""
+    if engine in _PHASE_COLUMNS:
+        return
     from sqlalchemy import inspect
 
-    postgres = engine.dialect.name == "postgresql"
-    kinds = dict({"phase": "VARCHAR(200)", "phase_at": "TIMESTAMPTZ" if postgres else "TIMESTAMP"},
-                 **RUN_CURSOR_COLUMNS)
-    with engine.connect() as conn:
-        have = {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}
-    missing = [name for name in kinds if name not in have]
-    if missing and not add:
-        return False
-    if missing:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        missing = [name for name in ("phase", "phase_at")
+                   if name not in {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}]
+        if missing:
+            postgres = engine.dialect.name == "postgresql"
             if postgres:
                 conn.execute(text("SET LOCAL lock_timeout = '5s'"))
             for name in missing:
+                kind = "VARCHAR(200)" if name == "phase" else ("TIMESTAMPTZ" if postgres else "TIMESTAMP")
                 conn.execute(text("ALTER TABLE retroactive_runs ADD COLUMN %s%s %s"
-                                  % ("IF NOT EXISTS " if postgres else "", name, kinds[name])))
-        logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
-    _RUN_COLUMNS.add(engine)
-    return True
+                                  % ("IF NOT EXISTS " if postgres else "", name, kind)))
+            logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
+    _PHASE_COLUMNS.add(engine)
 
 
-#: The databases `ensure_run_columns` found or made the columns on, in this process.
-_RUN_COLUMNS = weakref.WeakSet()
+#: The databases `ensure_run_phase_columns` found or made the two columns on, in this process.
+_PHASE_COLUMNS = weakref.WeakSet()
 
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
@@ -542,7 +511,7 @@ class FileRereadMark(Base):
 
 
 class FileIngestionCheckpoint(Base):
-    """[P2] 파일 인제션 오프셋 체크포인트 — 이어 읽기(재개)의 원장.
+    """[P2] 파일 인제션 오프셋 체크포인트 + 해시 dedup 원장.
 
     설계 결정 — 왜 `file_ingestion_logs`에 컬럼을 추가하지 않았는가:
       1) `Base.metadata.create_all`은 **기존 테이블에 컬럼을 추가하지 않는다**. 운영 DB에
@@ -560,9 +529,19 @@ class FileIngestionCheckpoint(Base):
     [확장성] (table_name, file_signature) UNIQUE 인덱스 단일 조회 — 파일 1건당 1행이므로
     1,000만 행 데이터에서도 이 테이블은 '처리한 파일 수' 규모로만 자란다.
 
-    ⚰️ `file_mtime` · `file_size` · `idx_fic_path_stat` (2026-08-13 tier 1 의 조회 키) — 소유자 10-21 체크리스트가
-    «이미 읽었나»를 `file_ingestion_logs` 의 도장(`checkpoint.checked`)으로 갈음해, 이 둘은 쓰지도 읽지도 않는다.
-    칸과 인덱스는 스키마에 남았다(지우는 것은 DDL). `filepath` 는 이어 읽기가 묻는 마지막 위치로 남는다.
+    ── `filepath` 승격 (2026-08-13, SCHEMA_CANON R6) ──────────────────────────
+    R6의 사고 예시가 바로 이 컬럼이었다: **저장은 되는데 아무도 그걸로 묻지 않는**
+    표식. 처리된 파일을 옮기지 않기로 하면서 그 표식이 **열쇠가 된다** — 그래서 R6이
+    요구하는 세 가지를 «선언»으로 같이 정한다.
+
+    | | |
+    |---|---|
+    | **인덱스** | `idx_fic_path_stat (table_name, filepath, file_mtime, file_size)`. tier-1 조회가 이 인덱스만으로 판정된다 |
+    | **NULL 계약** | 셋 다 `nullable=True`를 **유지**한다. NULL은 「모름」이고, SQL `=`는 NULL에 참이 될 수 없으므로 **NULL 행은 tier 1에 절대 걸리지 않는다** = 전체 해시로 떨어진다(안전한 방향). 이 컬럼들이 없던 시절에 적힌 행이 정확히 그 경우다. NOT NULL로 조이지 않는 이유: 운영에 NULL 행이 하나라도 있으면 `SET NOT NULL`이 실패해 마이그레이션이 멈추는데, 얻는 것은 이미 `=`가 주는 보장뿐이다 |
+    | **유일성 계약** | **UNIQUE 아니다.** 유일 키는 여전히 `(table_name, file_signature)` 하나다. 한 경로는 시간이 지나며 여러 내용을 담을 수 있으므로 `(table_name, filepath)`에 UNIQUE를 걸면 정당한 갱신이 충돌한다. 그래서 tier-1 조회는 여러 행을 만날 수 있고, **전순서로 하나를 고른다**(R7) |
+
+    `file_size`는 R1대로 **수량**이라 수치형(`BigInteger`)이 맞다 — 종전에는 시그니처
+    **문자열** 안에 갇혀 있어서 질의가 불가능했다. `file_mtime`은 R5대로 `timestamptz`.
     """
 
     __tablename__ = "file_ingestion_checkpoints"
@@ -575,6 +554,7 @@ class FileIngestionCheckpoint(Base):
     # 시그니처와 절대 충돌하지 않는다.
     file_signature = Column(String(120), nullable=False)
     filename = Column(String, nullable=True)
+    # [Tier 1] 승격된 조회 키. 위 표의 NULL/유일성 계약이 이 세 컬럼에 함께 적용된다.
     filepath = Column(String, nullable=True)
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
@@ -585,7 +565,7 @@ class FileIngestionCheckpoint(Base):
     # 커밋이 완료된 행 수 = 다음 실행의 재개 오프셋 (청크 커밋과 **같은 트랜잭션**에서 갱신)
     processed_rows = Column(Integer, nullable=False, default=0)
     chunk_index = Column(Integer, nullable=False, default=0)
-    # "IN_PROGRESS"(재개 대상) | "DONE"(완료 — Retry 는 0 부터) | "FAILED"(종결·비성공)
+    # "IN_PROGRESS"(재개 대상) | "DONE"(dedup 대상) | "FAILED"(종결·비성공)
     # FAILED가 필요한 이유: 종전에 「실패」는 **파일의 위치**(err/)로만 표현됐고,
     # 파일을 옮기지 않는 모드에서는 그 표현 수단이 사라진다.
     status = Column(String(20), nullable=False, default="IN_PROGRESS")
@@ -601,11 +581,12 @@ class FileIngestionCheckpoint(Base):
               info={"purpose": "one checkpoint per table and file content",
                     "serves": "resuming an ingestion, skipping a file already done"}),
         Index("idx_fic_signature", "file_signature", "status",
-              info={"purpose": "checkpoints of one file content", "serves": "a Retry's restart judgement"}),
-        # ⚰️ unread since the checklist (소유자 10-21) - see the class docstring; left in the schema.
+              info={"purpose": "checkpoints of one file content", "serves": "ingestion dedup"}),
+        # [Tier 1] 해시 없이 「이 파일은 이미 결론이 났다」를 묻는 조회. NOT UNIQUE —
+        # 위 클래스 도크스트링의 유일성 계약 참조.
         Index("idx_fic_path_stat", "table_name", "filepath", "file_mtime", "file_size",
-              info={"purpose": "none since the checklist (소유자 10-21) - left in the schema",
-                    "serves": "nothing"}),
+              info={"purpose": "a file already concluded, asked without hashing it",
+                    "serves": "watcher's skip of an unchanged file"}),
     )
 
 
@@ -1257,18 +1238,6 @@ FRAMEWORK_COLUMNS = (
 )
 
 
-def sql_type_of(type_str):
-    """The SQL type a declared column type is mapped as - a new table's column, a column a reload adds and one it
-    retypes all take it here."""
-    from sqlalchemy import DateTime, Float, String
-
-    if type_str == "number":
-        return Float()
-    if type_str == "datetime":
-        return DateTime(timezone=True)
-    return String()
-
-
 def init_dynamic_models(config_dict: dict, engine=None):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
@@ -1278,20 +1247,15 @@ def init_dynamic_models(config_dict: dict, engine=None):
     🔴 `engine` IS THE PROCESS'S, AND A HOT-SWAP THAT ADDED A COLUMN EMPTIES ITS COMPILED CACHE
     (총괄 791c0f45e 2). A query shape compiled before the swap was served from that cache as
     the old SELECT, so the grid read the new column empty in every row until a restart while
-    the table held the values (74101b158). A reload that adds or retypes nothing clears nothing.
-
-    🔴 A COLUMN THE DECLARATION RETYPED IS RETYPED HERE TOO (owner 10-21 «double 칸에 character»). The model's
-    column type is what the array writers cast to (`crud.array_params`); a reload that kept the old one sent
-    `CAST(.. AS VARCHAR[])` into a column the database held as double precision, and every UPDATE of the table
-    failed until a restart.
+    the table held the values (74101b158). A reload that adds nothing clears nothing.
     """
     # `Boolean` left with the three graph-sync columns on 2026-08-31 - nothing in
     # this function builds one any more, and `"boolean"` is not a declarable type.
-    from sqlalchemy import Table, Column, String, DateTime, Index
+    from sqlalchemy import Table, Column, String, DateTime, Float, Index
     from sqlalchemy.sql import func
     from sqlalchemy.orm import class_mapper
     
-    changed = False
+    added = False
     for table_name, table_cfg in config_dict.items():
         col_types = table_cfg.get("column_types", {})
         
@@ -1304,15 +1268,18 @@ def init_dynamic_models(config_dict: dict, engine=None):
             for col_name, type_str in col_types.items():
                 if col_name in FRAMEWORK_COLUMNS:
                     continue
-                sql_type = sql_type_of(type_str)
                 if col_name not in table_obj.columns:
+                    if type_str == "number":
+                        sql_type = Float
+                    elif type_str == "datetime":
+                        sql_type = DateTime(timezone=True)
+                    else:
+                        sql_type = String
+                        
                     col_obj = Column(col_name, sql_type, nullable=True)
                     table_obj.append_column(col_obj)
                     mapper.add_property(col_name, _mapped(col_obj))
-                    changed = True
-                elif repr(table_obj.columns[col_name].type) != repr(sql_type):
-                    table_obj.columns[col_name].type = sql_type
-                    changed = True
+                    added = True
             continue
             
         # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들
@@ -1423,7 +1390,12 @@ def init_dynamic_models(config_dict: dict, engine=None):
             # silently drop a column the view genuinely selects.
             if col_name in FRAMEWORK_COLUMNS and not is_view:
                 continue
-            sql_type = sql_type_of(type_str)
+            if type_str == "number":
+                sql_type = Float
+            elif type_str == "datetime":
+                sql_type = DateTime(timezone=True)
+            else:
+                sql_type = String
             if is_view:
                 columns.append(Column(col_name, sql_type, nullable=True,
                                       primary_key=(col_name in key_names)))
@@ -1495,7 +1467,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
         mapper_registry.map_imperatively(dynamic_class, table_obj,
                                          properties={column.key: _mapped(column) for column in table_obj.columns})
         DYNAMIC_TABLES[table_name] = dynamic_class
-    if changed and engine is not None:
+    if added and engine is not None:
         engine.clear_compiled_cache()
 
 

@@ -28,7 +28,6 @@ import { makeDoc, makeNode, walk } from './lib/board_dom.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PANEL = path.join(HERE, '..', 'src', 'raw_registry_panel.js');
 const PATHS = path.join(HERE, '..', 'src', 'ontology_path.js');
-const CHAIN = path.join(HERE, '..', 'src', 'chain_rule_panel.js');
 const SKELETON = JSON.parse(readFileSync(
   path.join(HERE, '..', '..', 'server', 'chain_skeleton.json'), 'utf8'));
 
@@ -85,15 +84,6 @@ function suite(M) {
   const on = () => (((p.raw() || {}).derive || {}).join || {}).on;
 
   // C -- the fold opens, and the items are inputs
-  // A press lands on what is inside the head - its caret, its name - not on the button (lead 10-21: in Chrome neither
-  // opened the chain form's fold).
-  for (const [part, at] of [['caret', 'oe-node-caret'], ['name', 'oe-node-name']]) {
-    const q0 = mountPanel(M, JOIN);
-    const head = q0.btn('toggle-field', 'derive.join.on');
-    const inner = head ? walk(head).find((n) => n !== head && cls(n).includes(at)) : null;
-    if (inner) inner.dispatch('click');
-    ok(Boolean(inner) && Boolean(q0.boxAt('derive.join.on[0]')), `C1${part === 'caret' ? 'a' : 'b'} a press on the head's ${part} opens it`);
-  }
   ok(!p.inputAt('derive.join.on[0].left'), 'C0 before: the pair list is folded -- its items are not drawn');
   ok(p.click('toggle-field', 'derive.join.on') && Boolean(p.boxAt('derive.join.on[0]')),
     'C1 its toggle opens it: the item row (a table row, form D) is drawn');
@@ -106,36 +96,6 @@ function suite(M) {
   ok(takes.join(',') === 'c3,c4', `C3 the column list shows its two items, as chips (form D) [${takes.join(' / ')}]`);
   const flag = p.inputAt('key.unique');
   ok(flag && flag.type === 'checkbox' && flag.checked === true, 'C4 key.unique is a ticked checkbox');
-
-  // T -- a take record {from, into, fn, separator} is drawn as one, its fn from the list the answer carries
-  const FNS = ['count', 'min', 'max', 'unique_concat'];
-  const TAKES = { ...JOIN, derive: { join: { ...JOIN.derive.join,
-    take: ['c3', { from: 'c4', into: 'c5', fn: 'unique_concat' }] } } };
-  const t = mountPanel(M, TAKES);
-  t.panel.setLists({ aggregation_functions: FNS });
-  t.panel.render(payloadFor(TAKES));
-  t.click('toggle-field', 'derive.join.take');
-  if (!t.inputAt('derive.join.take[1].from')) t.click('toggle-field', 'derive.join.take[1]');
-  const from1 = t.inputAt('derive.join.take[1].from');
-  const fnSel = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[1].fn');
-  const fnWords = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION').map((k) => (k.attrs || {}).value ?? k.textContent)
-    .filter((v) => v !== '') : [];
-  ok(from1 && from1.value === 'c4', `T1 the record's from is its own input [${from1 && from1.value}]`);
-  const fnHeld = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION' && (k.selected || (k.attrs || {}).selected != null))
-    .map((k) => (k.attrs || {}).value ?? k.textContent) : [];
-  ok(fnWords.join(',') === FNS.join(',') && fnHeld.join(',') === 'unique_concat',
-    `T2 its fn picks from the answer's list, held on unique_concat [${fnWords.join(',')} = ${fnHeld.join(',')}]`);
-  const take = () => (((t.raw() || {}).derive || {}).join || {}).take;
-  t.click('form-append', 'derive.join.take');
-  const picker = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-action'] === 'edit-shape-branch'
-    && n.attrs['data-value'] === 'derive.join.take[2]');
-  if (picker) { picker.value = 'record'; picker.dispatch('change'); }
-  const fnNew = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[2].fn');
-  if (fnNew) { fnNew.value = 'count'; fnNew.dispatch('change'); }
-  const third = (take() || [])[2];
-  ok(Boolean(picker) && third && typeof third === 'object' && third.fn === 'count'
-     && (take() || [])[1].fn === 'unique_concat',
-    `T3 "+", then record, then fn count writes a record into the take list [${JSON.stringify(take())}]`);
 
   // D -- editing one item keeps a list a list
   // The input AS IT STANDS ON SCREEN now, not the one grabbed before `take` opened: D scores the
@@ -214,37 +174,16 @@ function suitePaths(P) {
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
-// TC -- the columns a rule writes stand on the first screen, not under Advanced (owner 10-21), in either grammar
-const { RawRegistryPanel } = await import('../src/raw_registry_panel.js');
-function suiteFirst(C) {
-  const before = { pass, fail };
-  const FLAT = { name: 'r_flat', trigger_table: 't_a', target_table: 't_b', mapper: 'm.f' };
-  for (const [grammar, declaration] of [['unified', JOIN], ['flat', FLAT]]) {
-    const host = makeNode(doc, 'div');
-    new RawRegistryPanel(host, { doc }, C.CHAIN_RULE_REGISTRY).render({ ...payloadFor(declaration), grammar });
-    const all = walk(host);
-    const box = all.find((n) => n.attrs && n.attrs['data-path'] === 'target_columns');
-    const later = all.find((n) => cls(n).includes('chain-rule-advanced'));
-    ok(Boolean(box) && Boolean(later) && !walk(later).includes(box),
-      `TC1 ${grammar}: a rule with no target_columns draws the cell on the first screen [${box ? 'drawn' : 'not drawn'}`
-      + `${box && later && walk(later).includes(box) ? ', under Advanced' : ''}]`);
-  }
-  return { pass: pass - before.pass, fail: fail - before.fail };
-}
-
 // -- base --------------------------------------------------------------------------------
 const base0 = { pass, fail };
 suite(await import('../src/raw_registry_panel.js'));
 suitePaths(await import('../src/ontology_path.js'));
-suiteFirst(await import('../src/chain_rule_panel.js'));
 const base = { pass: pass - base0.pass, fail: fail - base0.fail };
 
 // -- mutants -----------------------------------------------------------------------------
 const DEFECTS = [
   [PANEL, suite, 'the chain panel stops receiving clicks on its form, as before 09-24',
     (s) => s.replace("        box.addEventListener('click', act);", '')],
-  [PANEL, suite, 'a press inside a head reaches no control, as after ef2f9501f',
-    (s) => s.replace("event.target.closest ? event.target.closest('[data-action]') : null", 'event.target')],
   [PANEL, suite, 'the form context is handed an empty fold record, as it used to be',
     (s) => s.replace('spec, value, this._formFold.expandedFields,', 'spec, value, {},')],
   [PANEL, suite, 'what "+" added is not opened',
@@ -259,8 +198,6 @@ const DEFECTS = [
     (s) => s.replace('const held = asList(node, getAtPath(', 'const held = ((n, v) => v)(node, getAtPath(')],
   [PATHS, suitePaths, 'an index step into a word is not lifted, so edit and "-" do nothing',
     (s) => s.replace('    next = setAtPath(next, steps.slice(0, depth), [held]) || next;\n', '')],
-  [CHAIN, suiteFirst, 'target_columns back under Advanced',
-    (s) => s.replace("firstScreen: ['target_table', 'target_columns', 'mapper'],", "firstScreen: ['target_table', 'mapper'],")],
 ];
 const CONTROLS = [
   [PANEL, suite, 'a local rename', (s) => s.replace(/\bheld3\b/g, 'parsed3')],

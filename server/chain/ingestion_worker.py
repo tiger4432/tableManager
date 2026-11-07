@@ -150,10 +150,6 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
     return await asyncio.to_thread(do_post)
 
 
-#: [Reliability F1] The undelivered sweep's least interval (s) - the window a refusal opens (`internal_event_client`).
-SWEEP_INTERVAL = internal_event_client.SWEEP_INTERVAL
-
-
 # [C-3] Outbox 보관 정책 (사용자 확정: 7일)
 #   처리 완료(processed_chain=true)된 outbox 행을 7일 경과 후 주기적으로 삭제한다.
 #   보존 기준은 created_at — 정상 운영에서 이벤트는 생성 후 수 초 내 처리되므로 생성시점 ≈ 처리시점이며,
@@ -261,23 +257,16 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
     - 계측: timing(dict)이 있으면 tx당 1줄 [Latency] INFO 로그로 구간별 ms를 남긴다(SLO 검증용).
     실패는 로깅만 하고 삼킨다(처리 성공/재시도에 영향 없음).
     """
-    pending_broadcasts = list(pending_broadcasts)
-    for at, (event_ids, messages, timing) in enumerate(pending_broadcasts):
+    for event_ids, messages, timing in pending_broadcasts:
         all_ok = True
         for m in messages:
-            # within a refusal's window nothing is sent - its groups' rows wait for the sweep (총괄 4ee0a1946 · 10-21)
-            if not internal_event_client.api_may_send():
-                all_ok = False
-                break
             try:
                 ok = await post_event_async("/internal/events/broadcast", m)
+                if not ok:
+                    all_ok = False
             except Exception as e:
-                ok = False
-                logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {told(e)}")
-            if not internal_event_client.api_took(ok, sum(len(ids or ()) for ids, _m, _t in pending_broadcasts[at:]),
-                                                  logger, "Chain Worker"):
                 all_ok = False
-                break
+                logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {told(e)}")
         # 그룹의 모든 메시지가 전달 확정된 경우에만 broadcast_at 스탬프(전달 마킹).
         if all_ok and event_ids:
             try:
@@ -294,8 +283,6 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
                 f"mapper={timing['mapper_ms']:.0f}ms commit={timing['commit_ms']:.0f}ms "
                 f"notify={notify_ms:.0f}ms total={total_ms:.0f}ms ok={all_ok}"
             )
-        if not all_ok:
-            break
 
 #: [DEPTH] The chain-rules DOCUMENT as last loaded, for the settings that sit beside
 #: `rules` rather than inside a rule. Kept here instead of re-opening the file: a second
@@ -511,13 +498,6 @@ def group_id(event, rules):
     if keys:
         return "group_by:" + "|".join(keys)
     transaction_id = payload.get("transaction_id")
-    if transaction_id and event_constants.replay_of(payload):
-        # 🔴 A REPLAY PAGE IS ITS OWN GROUP (총괄 ㄴ 안 1, 10-21): one run's pages share `replay_<run>`, so the
-        #    pull that completes a transaction drew up to 20k rows into one group and one commit. Each page now
-        #    drains and commits alone; the label is `chain_replay_<run>·<event>` - this reverses ㉡ (총괄 09-23
-        #    「one run, one label」, a page per commit is a label per page). The history folds them back to one
-        #    line per run (`audit_cache.group_of`).
-        return "%s%s%s" % (transaction_id, event_constants.GROUP_PART, event.event_uuid)
     return transaction_id if transaction_id else f"single_{event.event_uuid}"
 
 
@@ -591,26 +571,14 @@ def group_attempts_cap(rule_names, rules):
     return min(caps) if caps else max_group_attempts(None, _RULES_DOCUMENT)
 
 
-def rules_of_line(tables, rules, only_rule=None):
-    """The rules a queue line wakes - the one its replay names, else those its tables trigger. The queue's attempts
-    cap and its `rules` ask this one (3de34d292)."""
-    if only_rule:
-        return [str(only_rule)]
-    return [r.get("name") for r in rules if r.get("trigger_table") in tables]
-
-
 #: The one sentence of a recorded failure - its seat is beside the chain state (총괄 248ae20cd).
 failure_cause = event_constants.failure_cause
 
 
 class NamedFailure(str):
-    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown - and, from its group's
-    claim, the stage it failed in and the named rule's rows in that run (`_failed_at`)."""
+    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown."""
     rules = None
     tables = None
-    stage = None
-    rows_in = None
-    rows_out = None
 
 
 def named_failure(rules, tables, text) -> NamedFailure:
@@ -655,9 +623,6 @@ def _failure_record(events, error_reason, tx_id, attempts_cap) -> dict:
                                        "attempt(s)." % (tx_id, attempts_cap))),
         "rules": getattr(error_reason, "rules", None),
         "tables": getattr(error_reason, "tables", None),
-        "stage": getattr(error_reason, "stage", None),
-        "rows_in": getattr(error_reason, "rows_in", None),
-        "rows_out": getattr(error_reason, "rows_out", None),
         "rows": len(row_ids),
         "row": named or None,
     }
@@ -1207,7 +1172,7 @@ def _is_trigger_event(event, rule=None) -> bool:
        비우나」에 답한다 — 같은 낱말 두 물음이라 상수를 빌려 쓰면 DELETE 가 조용히 체인을 돌린다.
     """
     if event.event_type == "DELETE":
-        return chain_bindings.takes_deletions(rule)
+        return bool((rule or {}).get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY))
     return event.event_type in ("CREATE", "EDIT")
 
 
@@ -1926,8 +1891,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         gone_ids = set(gone)
                         results = [(row, is_new) for row, is_new in results
                                    if identity_of(row).identity[0] not in gone_ids]
-                        cell_layer.delete_shells(db, target_table, gone)
+                        crud.delete_rows_batch(db, target_table, gone, cell_layer.SHELL_DELETER)
                         deleted_row_ids = list(deleted_row_ids or []) + gone
+                        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left",
+                                    target_table, len(gone))
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
@@ -2382,7 +2349,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
                             raise ValueError("chain map metadata update requires a non-empty map_id")
                         map_metadata_updates.append(requested)
-                mine = []
                 if target_payload["batches"]:
                     # Either permission opens the envelope - the reader asks it of a batch
                     # that is not a write-back - and its per-batch checks then require the
@@ -2396,7 +2362,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         batch = dt_map_derivation.normalize_scoped_batch(
                             requested, rule, target_table)
                         scoped_batches.append(batch)
-                        mine.append(batch)
                         # A scoped batch writes its table - this target, or the trigger
                         # table written back (총괄 2dd93d4a9 1) - so a failure in it names
                         # this rule (총괄 a4cb623e0 ②) and its write carries this
@@ -2406,10 +2371,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             rule_shape.declaration_of(rule))
                         if rule.get("name") not in table_contributors[batch[0]]:
                             table_contributors[batch[0]].append(rule.get("name"))
-                if run:
-                    # a whole replay keeps the maps its rule's batches named (총괄 c67aa93bb ㄴ)
-                    from chain import replay as _replay
-                    _replay.record_named(db, run, rule, trigger_events, mine)
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
@@ -2437,9 +2398,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
 
     return True, None, broadcast_messages
 
-
-#: How often the worker asks whether a whole replay ended (`replay.sweep_finished_replays`).
-REPLAY_SWEEP_SECONDS = 5.0
 
 #: The chain group norm (운영 규격): 1,000 rows in at most this many seconds. A group slower in
 #: proportion to its rows says where its time went - the one threshold (총괄 248ae20cd).
@@ -2623,9 +2581,6 @@ def _claimed_group_sync(tx_id, events, db, rules):
             with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
                                   on_wait=_waiting_for_a_table, on_held=_holding_the_tables):
                 answer = _process_chain_transaction_group_sync(tx_id, events, db, rules)
-        except table_locks.NotHeld as not_held:
-            # a table not got within the limit comes back as the group's answer, for the batch to rewind (④)
-            return False, str(not_held), []
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
@@ -2635,22 +2590,8 @@ def _claimed_group_sync(tx_id, events, db, rules):
         if answer[0]:
             return answer
         claim = _group_claim()
-        return False, _failed_at(_said_timeout(answer[1], claim.get("stage"),
-                                               time.time() - claim.get("started", time.time())), claim), answer[2]
-
-
-def _failed_at(error, claim):
-    """The group's failure with what its claim knows (3de34d292): the stage it was in, and - when it names one rule -
-    that rule's rows_in / rows_out from its activity record, only if the record is this group's (written after the
-    claim began); else None, as for a failure naming several rules."""
-    failure = NamedFailure(str(error))
-    failure.rules, failure.tables = getattr(error, "rules", None), getattr(error, "tables", None)
-    failure.stage = claim.get("stage")
-    if len(failure.rules or ()) == 1:
-        run = activity.registry.instants()["outcomes"].get(failure.rules[0]) or {}
-        if (run.get("at") or 0) >= claim.get("started", float("inf")):
-            failure.rows_in, failure.rows_out = run.get("rows_in"), run.get("rows_out")
-    return failure
+        return False, _said_timeout(answer[1], claim.get("stage"),
+                                    time.time() - claim.get("started", time.time())), answer[2]
 
 
 def _waiting_for_a_table(table, pid):
@@ -3081,14 +3022,6 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                "%d event(s) stay queued until Resume",
                                tx_id, len(events_in_tx))
                 break
-            # 🔴 A TABLE NOT HELD WITHIN THE LIMIT IS REWOUND, NOT FAILED (총괄 1ff4dcc6c ④) - no attempt charged,
-            #    nothing set aside; the rest of this batch waits too, so a line keeps its order and the slot is free.
-            if not success and str(error_reason or "").startswith(table_locks.NOT_HELD):
-                with alignment_batch_counts.stage("rollback"):
-                    db.rollback()
-                logger.warning("[Chain] tx '%s': %s - rewound, runs again; its %d event(s) stay queued",
-                               tx_id, error_reason, len(events_in_tx))
-                break
 
             if success:
                 _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
@@ -3102,10 +3035,6 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # is most of the remainder or none of it is exactly what could not be
                 # read off the line before, and naming the unnamed is what found the
                 # 0.875 s hook in the first place.
-                # a replay page's run cursor, in this commit - a page that does not commit does not move it (fc1e1e385)
-                with alignment_batch_counts.stage("replay cursor"):
-                    from chain import replay as _replay
-                    _replay.advance_cursors(db, events_in_tx)
                 with alignment_batch_counts.stage("mark processed"):
                     event_ids = [event.id for event in events_in_tx]
                     deleted = _deleted_rows_of(events_in_tx)
@@ -3218,9 +3147,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         # what `retrying` shows on the queue - the line this failure ends with
                         # (총괄 248ae20cd); the whole record is the quarantine's
                         event.payload = dict(get_payload_dict(event) or {},
-                                             **{event_constants.LAST_FAILURE: failure_cause(error_reason),
-                                                event_constants.LAST_FAILURE_STAGE: getattr(error_reason, "stage",
-                                                                                             None)})
+                                             **{event_constants.LAST_FAILURE: failure_cause(error_reason)})
                         retrying_count += 1
 
                 deleted = _deleted_rows_of(events_in_tx) if isolate_group else {}
@@ -3360,18 +3287,13 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     for tgt in sorted(refresh_targets):
         # change_count 0 은 «표준 계약 필드»(정보성). 스윕 복구는 테이블 전체 새로고침 신호다.
         msg = event_constants.batch_refresh_message(tgt, 0)
-        # within a refusal's window this round sends nothing - the next is SWEEP_INTERVAL away (총괄 4ee0a1946 · 10-21)
-        if not internal_event_client.api_may_send():
-            all_ok = False
-            break
         try:
             ok = await post_event_async("/internal/events/broadcast", msg)
+            if not ok:
+                all_ok = False
         except Exception as ex:
-            ok = False
-            logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {told(ex)}")
-        if not internal_event_client.api_took(ok, len(stale_ids), logger, "Chain Worker"):
             all_ok = False
-            break
+            logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {told(ex)}")
 
     if not all_ok:
         # 일부 발사 실패 → broadcast_at을 확정하지 않고 다음 스윕에서 재시도(eventual delivery 유지).
@@ -3574,15 +3496,13 @@ def _retract_deleted_rows(db, deleted):
             _retract_what_those_rows_fed(db, table, row_ids)
 
 
-def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, ask_shells=True, **scope):
+def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, **scope):
     """Withdraw what `row_ids` of `from_table` fed, then one EDIT per row that lost a layer. `why` is
     「deleted」 or 「edited」; an edit passes the rule that ran (`declarations`) and narrows the
     withdrawal (`scope`: `table` · `columns` · `keep`, see `cell_layer.withdraw_by_origin`).
     「blank」 passes the `layers` it found in place of origins: a recount that came back blank takes back the layer
     its rule wrote there (`_withdraw_blanks` · `cell_layer.cells_written_by`).
-    A row the withdrawal left a shell goes (`cell_layer.shells`, 총괄 69b8b029c) and is not told - but not for a blank
-    recount (`ask_shells=False`): its write is not done, and the write seat asks after it.
-    -> the withdrawal's stats, `rows_deleted` the shells that went."""
+    -> the withdrawal's stats."""
     from chain import cell_layer
     from database import crud
     from database.context import written_by
@@ -3594,11 +3514,6 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
     with written_by(declarations):
         layers = cell_layer.cells_stamped_by(db, row_ids) if layers is None else layers
         stats = cell_layer.withdraw_layers(db, layers, apply=True, **scope)
-        gone = set()
-        if ask_shells:
-            for target, (_columns, ids) in sorted(stats["lost_a_layer"].items()):
-                gone.update(cell_layer.delete_shells(db, target, cell_layer.shells(db, target, sorted(ids))))
-        stats["rows_deleted"] = len(gone)
         # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
         #   cell, so no edit event left and a rule that counts layers (the hold recount)
         #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
@@ -3608,15 +3523,13 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
         told = 0
         with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id, cell_layer.R1_SOURCE_NAME):
             for target, (columns, ids) in sorted(stats["lost_a_layer"].items()):
-                kept = sorted(set(ids) - gone)
-                if kept:
-                    stage_collapsed_event(db, "EDIT", target, kept, sorted(columns))
-                    told += len(kept)
+                stage_collapsed_event(db, "EDIT", target, sorted(ids), sorted(columns))
+                told += len(ids)
             db.commit()
     logger.info("[ChainRetract] table=%s %s_rows=%d groups=%d cells_withdrawn=%d "
-                "protected_skipped=%d rows_told=%d rows_deleted=%d", from_table, why, len(row_ids),
+                "protected_skipped=%d rows_told=%d", from_table, why, len(row_ids),
                 stats.get("groups", 0), stats.get("cells_withdrawn", 0),
-                stats.get("protected_skipped", 0), told, len(gone))
+                stats.get("protected_skipped", 0), told)
     return stats
 
 
@@ -3648,7 +3561,7 @@ def _withdraw_blanks(db, table, blanks):
         if not found:
             continue
         stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in found}), "blank",
-                                   declarations=(writer,), layers=found, ask_shells=False)
+                                   declarations=(writer,), layers=found)
         lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
     return lost
 
@@ -4133,46 +4046,6 @@ def start_replay_if_queued(db):
     return nxt
 
 
-def release_dead_replays(db):
-    """A chain-owned run left in flight by a chain worker that died (총괄 fc1e1e385 「넣다 죽은 리플레이」): its runner
-    judged gone (`heartbeat.runner_state`, the judgement × asks) is released by the × door's own answer
-    (`retroactive.request_cancel` - `failed`, the reason on the row), so it shows cut (`replay.interrupted_runs`) with
-    Resume and nobody has to press × first. Asked while this worker runs no replay itself. -> the runs released."""
-    from admin import retroactive
-    from database import models
-
-    R = models.RetroactiveRun
-    released = []
-    for run_id, runner in (db.query(R.run_id, R.runner)
-                           .filter(R.op.in_(event_constants.CHAIN_OWNED_RETROACTIVE_OPS),
-                                   R.state.in_(retroactive.IN_FLIGHT_STATES)).all()):
-        if retroactive._runner_state(runner) == "orphaned":
-            retroactive.request_cancel(db, run_id)
-            released.append(run_id)
-    return released
-
-
-def reload_at_boundary(reader, seen):
-    """A boundary's reload (총괄 1ff4dcc6c ⑤): the declaration files this process's watcher saw change, and the
-    SYSTEM_RELOAD rows past `seen` as `reader` takes them (`reload_rules`) - a slot between batches, a retroactive run
-    between pages. The rows are read first: a read that raises leaves the files' changes for the next boundary.
-    -> (anything applied, the last row seen)."""
-    from database import config_watcher
-    from database.database import SessionLocal
-    from runtime import system_reload
-
-    session = SessionLocal()
-    try:
-        rows = system_reload.reloads_after(session, seen)
-    finally:
-        session.close()
-    applied = bool(config_watcher.apply_pending())
-    work = system_reload.reload_for(reader, rows) if rows else None
-    if work:
-        reload_rules(work)
-    return applied or bool(work), (rows[-1].id if rows else seen)
-
-
 def reload_rules(work):
     """What a SYSTEM_RELOAD does to the rules THIS process runs - `SCOPE_JOIN_KEYS` forgets the join keys;
     `FULL` (the Reload button) reads every declaration, mapper and dynamic model again. The chain loop and every
@@ -4515,6 +4388,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # [Reliability F1] 통지 미확정 교정 행 안전망 스윕도 매 루프가 아니라 최소 간격(초)으로만 수행한다.
     last_sweep_ts = 0.0
     head_watch = QueueHeadWatch()
+    SWEEP_INTERVAL = 5.0
 
     # [C-3] outbox 보관 정책(7일) purge — 기동 직후 1회(다운타임 백로그 소화) + 이후 1시간 주기.
     #   전달 기한이 없는 유지보수 작업이므로 백그라운드 태스크(to_thread)로 발사해 폴링 루프를 막지 않는다
@@ -4526,7 +4400,6 @@ async def start_chain_ingestion_worker(db_session_factory):
     listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
     #: 지금 이 프로세스에서 도는 리플레이 태스크. 게이트가 아니라 «앞문»이다.
     replay_task = None
-    sweep_task, sweep_at = None, 0.0
 
     async def idle_wait():
         """The ONE place this loop yields when a tick did no work (S-252).
@@ -4673,7 +4546,6 @@ async def start_chain_ingestion_worker(db_session_factory):
                     replay_task = None
                 if replay_task is None:
                     try:
-                        release_dead_replays(db)
                         queued_replay = start_replay_if_queued(db)
                     except Exception as sweep_err:                     # noqa: BLE001
                         # 훑기가 드레인을 멈출 수는 없다.
@@ -4684,13 +4556,6 @@ async def start_chain_ingestion_worker(db_session_factory):
                                     queued_replay.get("run_id"))
                         replay_task = asyncio.create_task(
                             asyncio.to_thread(_execute_retroactive, queued_replay))
-                # 총괄 c67aa93bb ㄴ: a whole replay that ended is judged once - off this loop, like the run itself
-                if (sweep_task is None or sweep_task.done()) and time.monotonic() - sweep_at >= REPLAY_SWEEP_SECONDS:
-                    if sweep_task is not None and not sweep_task.cancelled() and sweep_task.exception() is not None:
-                        logger.error("[ReplaySweep] judging failed: %s", told(sweep_task.exception()))
-                    from chain import replay as _replay
-                    sweep_task = asyncio.create_task(asyncio.to_thread(_replay.sweep_finished_replays, logger.info))
-                    sweep_at = time.monotonic()
 
                 # 🔴 THE LINES RUN IN SLOTS (총괄 19f6a9277): this loop gives each open slot a line
                 #    it may run (`chain.slots`), reaps a slot that died and sizes the pool. It runs

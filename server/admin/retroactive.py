@@ -246,8 +246,8 @@ def _count_withdraw(db, params, scan_limit):
 
     table = params["table"]
     source = params["source"]
-    written_by, columns = replay.unwritten_scope(params.get("rule"), table, params.get("columns"))
-    c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
+    columns = params.get("columns")
+    c = replay.count_withdrawable(db, table, source, columns=columns)
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
@@ -266,13 +266,11 @@ def _count_withdraw(db, params, scan_limit):
             f"(manual_priority_source) and will not be touched. At most {affected} "
             f"are in scope for withdrawal - the number of cells whose VISIBLE value "
             f"actually changes can be smaller (where the source underneath holds the "
-            f"same value, the display stays as it is). At most {c['rows_emptied']} row(s) "
-            f"are left with no layer and are deleted as shells."
+            f"same value, the display stays as it is)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
-            "rows_emptied": c["rows_emptied"],
             "why_upper_bound": (
                 "The number in scope shrinks in only two ways: (1) the row was "
                 "already deleted and only its cell_sources remain, (2) the value "
@@ -734,49 +732,13 @@ def _checkpoint(control):
     """
     if control is None:
         return None
-    seen = [_reload_mark()]
 
     def hook(processed=None, total=None):
         control.progress(processed, total)
-        seen[0] = _reload_between_pages(seen[0])
         return control.stop_requested()
 
     hook.step = control.step
     return hook
-
-
-def _reload_mark():
-    """Where a run's reloads start - the newest SYSTEM_RELOAD row now; None when it cannot be read (the first page
-    boundary then reads it)."""
-    from runtime import system_reload
-
-    try:
-        return system_reload.reload_mark()
-    except Exception as exc:                                     # noqa: BLE001
-        logger.warning("[Retroactive] the reload mark could not be read - the first page boundary reads it: %s",
-                       told(exc))
-        return None
-
-
-def _reload_between_pages(seen):
-    """At a page boundary, the declarations this process saw change and the Reload button's rows - the slot's own
-    boundary reload (`ingestion_worker.reload_at_boundary`, 총괄 1ff4dcc6c ⑤). The run's own `rule` dict, read at its
-    start, stays as it was. A reload that does not read is said and tried at the next page - the run goes on.
-    -> the last row seen."""
-    from chain import ingestion_worker
-    from runtime import system_reload
-
-    if seen is None:
-        return _reload_mark()
-    try:
-        applied, seen = ingestion_worker.reload_at_boundary(system_reload.RETROACTIVE, seen)
-    except Exception as exc:                                     # noqa: BLE001
-        logger.warning("[Retroactive] the declarations were not read again at this page - the next page tries: %s",
-                       told(exc))
-        return seen
-    if applied:
-        logger.info("[Retroactive] declarations read again at a page boundary")
-    return seen
 
 
 def _rescope(db, params, control, key_range=None):
@@ -1042,7 +1004,6 @@ def _run_chain_replay(db, params, log, control=None):
                                business_keys=params.get("business_keys"),
                                row_ids=params.get("row_ids"),
                                pace=params.get("pace"),
-                               continued_from=params.get("continued_from"),
                                **_given(params, "limit", "chunk_size"))
     _final_progress(control, s.get("rows_scanned"), s)
     # 🔴 THIS RUN NO LONGER WRITES, SO IT MUST NOT REPORT WRITES. It hands the rows to the
@@ -1054,8 +1015,7 @@ def _run_chain_replay(db, params, log, control=None):
     # ⚠️ THE WORKER'S SIDE OF THE NUMBER IS READ WHERE THE WORKER REPORTS IT - the queue and
     #    the chain log, under the same `chain_<tx>` label every other change uses.
     return {"rows_staged": s["rows_staged"], "events_staged": s["events_staged"],
-            "rows_scanned": s["rows_scanned"], "pages_failed": s.get("pages_failed", 0),
-            "pages": s.get("pages"), "first_page": s.get("first_page")}
+            "rows_scanned": s["rows_scanned"]}
 
 
 def _scope(params):
@@ -1243,13 +1203,12 @@ def _send_broadcasts(messages):
 def _run_withdraw(db, params, log, control=None):
     from chain import replay
 
-    written_by, columns = replay.unwritten_scope(params.get("rule"), params["table"], params.get("columns"))
     s = replay.withdraw_source(db, params["table"], params["source"],
-                                     columns=columns, apply=True, log=log,
-                                     checkpoint=_checkpoint(control), written_by=written_by)
+                                     columns=params.get("columns"), apply=True, log=log,
+                                     checkpoint=_checkpoint(control))
     _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")), s)
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
-            "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"], "rows_deleted": s["rows_deleted"]}
+            "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
 
 
 def _count_fold_file_layers(db, params, scan_limit):
@@ -1457,46 +1416,6 @@ def _count_remove_shell_rows(db, params, scan_limit):
                    + (f" For example {shown}." if shown else "")),
         "extra": {key: s[key] for key in ("rows_read", "rows_to_delete", "sample")},
     }
-
-
-def _count_delete_every_row(db, params, scan_limit):
-    import chain_bindings
-    from chain import cell_layer, replay
-    from database import models
-
-    table = params["table"]
-    s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
-    kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
-                                                      models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
-            .distinct().count())
-    taking = sorted("%s -> %s" % (rule.get("name"), rule.get("target_table")) for rule in replay.load_rules()
-                    if rule.get("trigger_table") == table and chain_bindings.takes_deletions(rule))
-    return {
-        "affected": s["rows_to_delete"],
-        "absence": ABSENCE_TRULY_NONE if not s["rows_to_delete"] else None,
-        "affected_label": "rows to delete",
-        "count_kind": COUNT_EXACT,
-        "scanned": s["rows_read"],
-        "scan_limit": scan_limit,
-        "truncated": False,
-        "detail": (f"Every row of '{table}' - {s['rows_to_delete']} - goes as a grid delete does: its layers and a "
-                   f"history line with each; {kept} of them hold a person's value, which goes too. Cannot be undone. "
-                   f"The file checklist is kept - to read the files again use 'Read all again' on the file page. "
-                   + (f"Rules that take deletions from '{table}' do not run on these: {', '.join(taking)} - "
-                      f"replay them afterwards if their tables should follow." if taking
-                      else f"No rule takes deletions from '{table}'.")),
-        "extra": {"rows_read": s["rows_read"], "rows_to_delete": s["rows_to_delete"], "rows_with_person": kept,
-                  "rules_taking_deletions": taking, "sample": s["sample"]},
-    }
-
-
-def _run_delete_every_row(db, params, log, control=None):
-    from chain import replay
-
-    s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
-                                checkpoint=_checkpoint(control))
-    _final_progress(control, s["rows_deleted"], s)
-    return {key: s[key] for key in ("rows_deleted", "rows_to_delete", "rows_read", "pages", "stopped")}
 
 
 def _run_remove_shell_rows(db, params, log, control=None):
@@ -1767,44 +1686,6 @@ def _count_collector_backfill(db, params, scan_limit):
     }
 
 
-def _count_retype_column(db, params, scan_limit):
-    from sqlalchemy import text
-    from admin import retype
-
-    table, column = params["table"], params["column"]
-    physical = retype.family(db.get_bind(), table, column)
-    cell = retype.CELLS.get((physical, params["type"]))
-    values = retype.bad_values(db, table, column, cell) if cell else None
-    do, said = retype.verdict(params["type"], physical, values, retype.key_uses(table, column) if cell else ())
-    rows = db.execute(text('SELECT count(*) FROM "%s"' % table.replace('"', '""'))).scalar() if physical else 0
-    return {
-        "affected": rows if do == retype.CONVERT else 0,
-        "absence": None if do == retype.CONVERT else ABSENCE_TRULY_NONE,
-        "affected_label": "rows to convert",
-        "count_kind": COUNT_EXACT,
-        "scanned": rows,
-        "scan_limit": scan_limit,
-        "truncated": False,
-        "detail": ("%s.%s is %s in the database; declared %s. %s" % (
-            table, column, physical, params["type"],
-            said or ("The column is converted with its indexes in one transaction, est. lock %s s (box rate)"
-                     % retype.lock_estimate(db, table) if do == retype.CONVERT else "Nothing to convert."))),
-        "extra": {"family": physical, "verdict": do, "bad_values": list(values or ())},
-    }
-
-
-def _retype_types():
-    from admin import retype
-
-    return sorted({declared for _family, declared in retype.CELLS})
-
-
-def _run_retype_column(db, params, log, control=None):
-    from admin import retype
-
-    return retype.convert(db, params["table"], params["column"], params["type"], log, _checkpoint(control))
-
-
 def _run_collector_backfill(db, params, log, control=None):
     """One day at a time: fill the script with that day's window, run it, wait until its
     file has passed the ingestion queue, then the next day. A day whose file fails stops
@@ -1881,7 +1762,7 @@ def _day_refused(day, what):
 
 def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
     """True once the file has passed the ingestion queue, False when a stop was asked while
-    waiting. A file that FAILED stops the run by name. Asked of the checklist (`checkpoint.checked`),
+    waiting. A file that FAILED stops the run by name. Asked of the file checkpoint ledger,
     by the path and stat the collector wrote."""
     import os
     import time
@@ -1890,9 +1771,10 @@ def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
 
     where, stat = os.path.abspath(written), checkpoint.read_file_stat(written)
     while True:
-        status = checkpoint.checked(db, table, [(where, stat)]).get(where)
+        row = checkpoint.find_terminal_by_path_stat(db, table, where, stat)
+        status = row.status if row is not None else None
         db.rollback()                      # the next look reads what has committed since
-        if status in ("SUCCESS", checkpoint.STATUS_FAILED):
+        if status is not None:
             if status == checkpoint.STATUS_FAILED:
                 raise _day_refused(day, "the file collected for %s (KST) failed to ingest (%s)"
                                    % (day, os.path.basename(written)))
@@ -1922,11 +1804,6 @@ def _judge_withdraw(params):
             f"'a human typed this'. There is no supported way to remove a human's value "
             f"from here - edit the cell instead.")
     _judge_table(params)
-    from chain import replay
-    try:
-        replay.unwritten_scope(params.get("rule"), params["table"], params.get("columns"))
-    except replay.ReplayRefused as e:
-        raise RetroactiveRefused(str(e)) from None
 
 
 def _judge_enrichment_backfill(params):
@@ -2055,10 +1932,7 @@ OPERATIONS = {
                    _p("cascade", required=False, kind="bool", form=False,
                       cli="grid click only - owner 09-27",
                       help="let what this replay writes wake the opted-in chain rules, "
-                           "as the chain does - only the grid's click replay sends it"),
-                   _p("continued_from", required=False, form=False, cli="Resume on a cut run's line only",
-                      help="the cut replay run this one resumes - its pages after that run's last committed "
-                           "page (POST /admin/retroactive/runs/{run_id}/resume writes it)")],
+                           "as the chain does - only the grid's click replay sends it")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "judge": _judge_chain_replay,
@@ -2079,17 +1953,15 @@ OPERATIONS = {
         "what_is_missing": "a wrong value an old rule wrote still wins the priority stack",
         "params": [_p("table"), _p("source"),
                    _p("columns", required=False, kind="csv",
-                      help="comma-separated column allowlist"),
-                   _p("rule", required=False,
-                      help="only this chain rule's layers, on the columns outside its target_columns")],
+                      help="comma-separated column allowlist")],
         "count": _count_withdraw,
         "run": _run_withdraw,
         "judge": _judge_withdraw,
-        "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
-        # It deletes a source's CLAIM, not the cell: the revealed value is recomputed and
-        # written, and every changed cell gets an AuditLog entry naming the withdrawn source.
-        # A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
-        "deletes": "cell_sources rows (one source's claim on a cell), and the rows left with no layer",
+        "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> --apply",
+        # It deletes a source's CLAIM, not the cell and not the row: the revealed
+        # value is recomputed and written, and every changed cell gets an AuditLog
+        # entry naming the withdrawn source.
+        "deletes": "cell_sources rows (one source's claim on a cell)",
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
@@ -2289,8 +2161,7 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
-                               "(crud.delete_rows_batch); a stop "
+        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
@@ -2320,27 +2191,6 @@ OPERATIONS = {
                             "withdrawing old marks queues retroactive-channel edit events, which wake no rule. "
                             "Replay the copy rule next (setup step 6)"),
     },
-    "delete_every_row": {
-        "label": "Delete every row of a table",
-        "what_is_missing": "a table to start again - every row goes; reading its files again is «Read all again»",
-        "params": [_p("table"), _pace_param()],
-        "count": _count_delete_every_row,
-        "run": _run_delete_every_row,
-        "judge": _judge_table,
-        "cli": "server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] --apply",
-        # 총괄 4435b9b29 (소유자 10-21 「다시 로드랑 지우기 분리해」): remove_shell_rows' paging, judged «every row».
-        "deletes": "every row of the table, with its cell layers and a history line each",
-        "reads_as": "number",
-        "cancellable": True,
-        "restartable": True,
-        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
-                               "(crud.delete_rows_batch); a stop "
-                               "lands between pages and a re-run finds only what is left"),
-        "cli_only": [],
-        "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
-                            "taken back; the deletion wakes no rule - replay the rules that take deletions "
-                            "from this table if their tables should follow. The file checklist is not touched"),
-    },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
         "what_is_missing": "rows the chain filled whose sources are all gone - only the chain's keys are left",
@@ -2355,8 +2205,7 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
-                               "(crud.delete_rows_batch); a stop "
+        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
@@ -2529,27 +2378,6 @@ OPERATIONS = {
         "commit_granularity": ("one day at a time - the day's file is ingested (the file "
                                "checkpoint says DONE) before the next day runs; a stop lands "
                                "between days, and a failed day stops the run and names it"),
-        "cli_only": [],
-    },
-    "retype_column": {
-        "label": "Convert a column's type",
-        "what_is_missing": "a column the table declaration names a number that the database still holds as text",
-        "downstream_note": ("The table is locked while it converts; afterwards the declaration says the new type "
-                            "and every process reads the column as it"),
-        "params": [_p("table"), _p("column"),
-                   _p("type", help="the declared type", choices=lambda: sorted(_retype_types()))],
-        "count": _count_retype_column,
-        "run": _run_retype_column,
-        "judge": _judge_table,
-        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
-                "'retype_column', {'table': '<table>', 'column': '<column>', 'type': 'number'})\""),
-        "deletes": None,
-        "reads_as": "number",
-        "cancellable": True,
-        "restartable": True,
-        "commit_granularity": ("one transaction - the values checked, the indexes reading the column dropped, "
-                               "the column converted, those indexes built again; then the declaration's one cell. A "
-                               "stop lands before the transaction begins; once it has, it ends"),
         "cli_only": [],
     },
 }
@@ -3185,7 +3013,7 @@ class RunControl:
 
             session = self._session()
             try:
-                models.ensure_run_columns(session.get_bind())
+                models.ensure_run_phase_columns(session.get_bind())
                 session.execute(text("UPDATE retroactive_runs SET phase = :phase, phase_at = :at WHERE run_id = :run"),
                                 {"phase": phase[:200], "run": self.run_id,
                                  "at": datetime.now(timezone.utc) - timedelta(seconds=now - since)})
@@ -3614,7 +3442,7 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
     return out
 
 
-def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = None) -> dict:
+def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
     """Queue the run and return. Does NOT execute anything.
 
     Same mechanism as `POST /admin/auto-update/run-now`: one `DatabaseOutbox` row.
@@ -3630,8 +3458,7 @@ def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = N
 
     spec = operation(op)
     params = validate(op, params)
-    # `run_id` given: a caller that names the run in the same commit (`chain.replay.resume_run`)
-    run_id = run_id or uuid.uuid4().hex[:12]
+    run_id = uuid.uuid4().hex[:12]
     # 🔴 NO INVENTED AUTHOR. "admin" is a word that reads like a person, and writing it
     # ANSWERS "who asked for this" with something nobody said. The column is nullable;
     # absent stays absent, and the screen decides how to show that.
@@ -3700,7 +3527,7 @@ def gate_refusal(db):
     """
     blocking = in_flight(db)
     if not blocking:
-        return _replay_still_waiting(db)
+        return None
     # 🔴 「취소해라」만으로는 «그 취소가 안전한지»를 못 읽는다 (소유자 2026-09-23
     #    「qued replay waiting ~~~ 계속 뜨는데 어케함」). runner 가 살아 있으면 취소는 «도는
     #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푸는» 유일한 길이다 — 판단이
@@ -3725,29 +3552,6 @@ def gate_refusal(db):
     return ("run_id=%s op=%s is %s, %s (runner=%s is alive — cancelling stops work that "
             "is actually running) — %s"
             % (run_id, op, blocking["moving"], last, blocking.get("runner"), where))
-
-
-def _replay_still_waiting(db):
-    """A replay run is `done` once it has staged its pages, while the chain still runs them (C 간섭 ②, 총괄
-    1ff4dcc6c): the gate stays closed until they have run - every retroactive run waits, whatever table it writes.
-    -> the sentence, or None. Reads the waiting rows only (`idx_outbox_unprocessed`)."""
-    from sqlalchemy import func
-
-    from database import models
-
-    outbox = models.DatabaseOutbox
-    run_of = outbox.payload[event_constants.RUN_KEY].as_string()
-    waiting = (db.query(run_of, func.count(), func.min(outbox.table_name))
-               .filter(outbox.processed_chain == False,                       # noqa: E712 - the index's spelling
-                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True,  # noqa: E712
-                       run_of.isnot(None))
-               .group_by(run_of).order_by(func.min(outbox.id)).first())
-    if waiting is None:
-        return None
-    run_id, events, table = waiting
-    return ("run_id=%s chain_replay has staged its pages, and %d of its event(s) on %s still wait in the chain "
-            "queue - every retroactive run, on any table, waits until they have run. × on that queue line stops them "
-            "(POST /admin/chain/queue/cancel {\"key\": \"%s\"})" % (run_id, events, table, run_id))
 
 
 #: The lock every claim takes (총괄 f453968fe ⓒ). Checking the gate and writing the running

@@ -99,12 +99,12 @@ import {
 // WebSocket down with it.
 const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
-import { pickHistoryTab } from './history_tabs.js';
+import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 import { OutboxQueuePanel } from './outbox_queue_panel.js';
 import { pollBeat, pollQueue, timedRead, readAgeWords, oneRead } from './queue_poll.js';
 import { onBroadcast } from './websocket.js';
 import { seatGallery } from './gallery_seat.js';
-import { installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
+import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
   installGlobalListeners,
@@ -587,7 +587,13 @@ function setupEventListeners() {
 
   // History Tabs
   elements.tabGlobalBtn.addEventListener('click', () => {
-    pickHistoryTab('global');
+    hideReferenceView();
+    // The reference tab is in this set too. Every switch here names its siblings one
+    // by one, and the fourth tab was added to the row without being added to the
+    // lists — harmless while it was hidden by default, two highlighted tabs now that
+    // a rule-bearing table selects it.
+    activateHistoryTab(elements.tabGlobalBtn);
+    state.activeHistoryTab = 'global';
     loadHistory();
   });
 
@@ -596,12 +602,16 @@ function setupEventListeners() {
   // five places in timeline.js, so removing the branch is a different change from taking the
   // tab off the screen, and doing both at once would make the second one hard to undo.
   elements.tabCellBtn?.addEventListener('click', () => {
-    pickHistoryTab('cell');
+    hideReferenceView();
+    activateHistoryTab(elements.tabCellBtn);
+    state.activeHistoryTab = 'cell';
     loadHistory();
   });
 
   elements.tabRowBtn.addEventListener('click', () => {
-    pickHistoryTab('row');
+    hideReferenceView();
+    activateHistoryTab(elements.tabRowBtn);
+    state.activeHistoryTab = 'row';
     loadHistory();
   });
 
@@ -645,7 +655,9 @@ function setupEventListeners() {
     busy: queueRead.busy, read: queueRead.ask, waiting: () => { if (queuePanel) drawQueue(...queueDrawn); } }));
   if (elements.tabQueueBtn) {
     elements.tabQueueBtn.addEventListener('click', () => {
-      pickHistoryTab('queue');
+      activateHistoryTab(elements.tabQueueBtn);
+      showHistoryPane(elements.queueView);
+      state.activeHistoryTab = 'queue';
       queueRead.ask();
     });
   }

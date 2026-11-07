@@ -16,7 +16,6 @@ for path in (server_dir, parsers_dir):
 
 import directory_watcher
 from database import crud
-from ingestion.checkpoint import read_file_stat
 from directory_watcher import (
     ExternalSourceEventHandler,
     IngestionHandler,
@@ -258,15 +257,12 @@ def test_recursive_sweep_dispatches_same_file_once_per_table_and_keeps_source(
     file_path = _write_voids(external)
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: _specs(external))
 
-    calls, read = [], set()
-
-    def a_read(self, path):                     # a read stamps (table, path, stat) - what the checklist then answers
-        calls.append((self.table_name, os.path.abspath(path)))
-        read.add((self.table_name, os.path.abspath(path), read_file_stat(path)))
-
-    monkeypatch.setattr(IngestionHandler, "_handle_event", a_read)
-    monkeypatch.setattr(IngestionHandler, "already_checked",
-                        lambda self, entries: {p for p, stat in entries if (self.table_name, p, stat) in read})
+    calls = []
+    monkeypatch.setattr(
+        IngestionHandler, "_handle_event",
+        lambda self, path: calls.append((self.table_name, os.path.abspath(path))),
+    )
+    monkeypatch.setattr(IngestionHandler, "settle_already_terminal", lambda self, entries: set())
 
     watcher = WorkspaceWatcher(str(workspace))
     watcher.discover_and_watch()
@@ -306,6 +302,8 @@ def test_modified_event_is_enabled_only_for_external_adapter(tmp_path, monkeypat
     adapter.dispatch(DirModifiedEvent(str(external)))
     adapter.dispatch(FileModifiedEvent(str(file_path)))
     assert calls == [str(file_path)]
+    assert handler._consume_external_force_hash(str(file_path)) is True
+    assert handler._consume_external_force_hash(str(file_path)) is False
 
 
 def test_external_relative_path_is_the_parser_metadata(tmp_path):
@@ -512,7 +510,7 @@ def test_disabled_entries_are_counted_at_registration(tmp_path, monkeypatch, cap
     settings = _specs(external)
     settings["external_sources"][1]["enabled"] = False
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: settings)
-    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: set())
+    monkeypatch.setattr(IngestionHandler, "settle_already_terminal", lambda self, entries: set())
 
     watcher = WorkspaceWatcher(str(workspace))
     with caplog.at_level("INFO", logger="Watcher.DirectoryWatcher"):

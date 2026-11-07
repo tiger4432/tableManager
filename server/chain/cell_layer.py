@@ -53,7 +53,7 @@ PROTECTED_SOURCES = frozenset({"user"})
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
 
-def _claimed_filter(table_name: str, source_name: str, columns: list = None, written_by=None):
+def _claimed_filter(table_name: str, source_name: str, columns: list = None):
     """The predicate for "cells `source_name` claims on `table_name`".
 
     Extracted so `count_withdrawable` and `withdraw_source` cannot answer
@@ -75,8 +75,6 @@ def _claimed_filter(table_name: str, source_name: str, columns: list = None, wri
     conds = [models.CellSource.table_name == table_name, named]
     if columns:
         conds.append(models.CellSource.column_name.in_(list(columns)))
-    if written_by:      # one rule's layers - the declaration that wrote them (`replay.unwritten_scope`)
-        conds.append(models.CellSource.updated_by.in_(list(written_by)))
     return conds
 
 def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
@@ -197,19 +195,6 @@ def shells(db, table_name: str, row_ids) -> list:
                    for column, name, value in by_row.get(row.row_id, ())):
                 found.append(row.row_id)
     return found
-
-
-def delete_shells(db, table_name: str, gone) -> list:
-    """The rows `gone` (`shells`' answer), deleted by the grid's door - their layers and a history line go with them,
-    one DELETE that wakes no rule - and said once. Every seat that takes layers back asks `shells` and hands its answer
-    here; a chain write asks after its recount (총괄 69b8b029c, 소유자 10-21 「체인 껍데기는 여전함」). -> `gone`."""
-    from database import crud
-
-    for i in range(0, len(gone), DEFAULT_CHUNK_SIZE):
-        crud.delete_rows_batch(db, table_name, gone[i:i + DEFAULT_CHUNK_SIZE], SHELL_DELETER)
-    if gone:
-        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left", table_name, len(gone))
-    return gone
 
 
 def _resolve_cell(table_name: str, col_types: dict, row, col: str,
@@ -382,7 +367,7 @@ def resolve_target(table_name: str, columns: list = None):
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                    checkpoint=None, written_by=None) -> dict:
+                    checkpoint=None) -> dict:
     """[R2] Retract `source_name`'s claim on cells, revealing the layer beneath.
 
     For each affected cell: delete that one `cell_sources` row, recompute
@@ -413,8 +398,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    source claims few rows the whole run pages the whole table, 3.0-4.4x longer and 6.3x at most (1M rows, 9M
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
     cs = models.CellSource
-    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by))
+    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(*_claimed_filter(table_name, source_name, columns))
     asked = [chunk_size]
 
     class _Asked:
@@ -438,19 +422,8 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
-    touched = set()
-
-    def read_and_keep(size):
-        page = read(size)
-        if page is not None:
-            touched.update(page[0])
-        return page
-    stats.update(_withdraw_cells(db, table_name, target, read_and_keep, apply=apply, chunk_size=chunk_size,
+    stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
                                  log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))
-    # a row this withdrawal left a shell goes, as any withdrawal's does (총괄 69b8b029c)
-    stats["rows_deleted"] = len(delete_shells(db, table_name, shells(db, table_name, sorted(touched)))) if apply else 0
-    if apply:
-        db.commit()
     return stats
 
 

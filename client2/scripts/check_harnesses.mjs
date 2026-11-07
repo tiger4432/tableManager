@@ -318,7 +318,7 @@ const FLOORS = new Map([
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
-  ['chain_queue_panel_harness.mjs', 257],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
+  ['chain_queue_panel_harness.mjs', 239],   // 238 -> 239: the age the screen hands it, its first line - QA2 (owner 10-11 Q)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -1288,7 +1288,7 @@ const FLOORS = new Map([
   ['run_lines_harness.mjs', 24],
   // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
   // Floor is the count it reports on the commit that introduces it.
-  ['failure_summary_harness.mjs', 32],
+  ['failure_summary_harness.mjs', 28],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of
@@ -1774,10 +1774,10 @@ const FLOORS = new Map([
   // else's early return goes silent precisely where that guard bites, which is how a queue that
   // had a hook still stopped being redrawn.
   ['broadcast_hook_seat_harness.mjs', 7],
-  // `history_tabs_harness` holds ONE seat for the side panel's tab: the lit tab, the shown pane and the
-  // tab state change only through pickHistoryTab (a table switch lit Global over the Queue pane, owner
-  // 10-21). Every tab to every tab, and a scan that nothing outside the seat sets the three.
-  ['history_tabs_harness.mjs', 24],
+  // `history_tabs_harness` holds ONE seat for the active-tab mark: five sites used to list their
+  // siblings by hand, and a fourth tab that joined the row but not those lists lit two tabs at
+  // once. Its core assertion adds a tab WITHOUT touching any list.
+  ['history_tabs_harness.mjs', 9],
   // New 2026-09-24 (owner: 「당장 고쳐 1순위」). A value the skeleton's node cannot hold -- a list
   // at a leaf, a string where it says list -- is SHOWN, never drawn as an empty box, and gets no
   // control whose first keystroke would overwrite it. P3 is the Lead's census run through the
@@ -1859,7 +1859,7 @@ const FLOORS = new Map([
   // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
   // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
-  ['gallery_harness.mjs', 28],
+  ['gallery_harness.mjs', 18],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

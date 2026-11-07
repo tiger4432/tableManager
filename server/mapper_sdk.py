@@ -606,78 +606,34 @@ def _stamped_updates(out, table, *, source_name, updated_by) -> dict:
     return result
 
 
-def removal_columns(rule, table):
-    """`(came_as, keys)` - the columns an incoming row names its map or job by, and the target's columns its batch is
-    scoped by: the two job columns (`allow_retraction`), else the target's map identity on both sides."""
-    import chain_bindings
-    import dt_map_derivation
-
-    if rule.get("allow_retraction"):
-        trigger = str(rule.get("trigger_table") or "")
-        return ([chain_bindings.resolve_column(rule, "trigger_job_column", trigger, "the job of an incoming row")],
-                [chain_bindings.resolve_column(rule, "target_job_column", table, "the job a written cell carries")])
-    keys = dt_map_derivation.identity_columns(table)
-    return keys, keys
-
-
-def _with_the_whole_maps(db, rule, table, payloads, rows_in):
-    """`rows_in` and the rows there are now of each map or job an incoming row is IN or LEFT - a deletion's, an edit's
-    that moved its key (`event_constants.key_left`), an edit's that kept it - read from the trigger table, so a rule that
-    answers for whole maps is handed the whole map whichever way its rows came (총괄 c67aa93bb ㄱ-a; f2 10-21: an edit
-    inside a map handed that row alone, and the map was replaced by it). A row comes once: an incoming row is not read
-    again. A map no row holds now adds none, and is still named (`left`, to `_removal_batches`): its batch then empties
-    it. -> `(rows_in, left)`."""
-    import event_constants
-    import outbox_expand
-    from sqlalchemy import tuple_
-    from database import crud, models
-
-    came_as, _keys = removal_columns(rule, table)
-    listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
-    left = {key for key in (event_constants.key_left(p, came_as) for p in listed if isinstance(p, dict))
-            if key is not None and not any(crud.is_blank_value(v) for v in key)}
-    held = set()
-    if all(column in rows_in.columns for column in came_as):
-        held = {key for key in rows_in[list(came_as)].astype(object).itertuples(index=False, name=None)
-                if all(_present(v) for v in key)}
-    model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
-    if not (left or held) or model is None:
-        return rows_in, left
-    seen = set(rows_in["row_id"].dropna()) if "row_id" in rows_in.columns else set()
-    columns = [getattr(model, column) for column in came_as]
-    target = columns[0] if len(columns) == 1 else tuple_(*columns)
-    values = sorted({key[0] for key in left | held} if len(columns) == 1 else left | held, key=str)
-    names = outbox_expand._data_columns(model)
-    more = []
-    for i in range(0, len(values), 1000):
-        for row in db.query(model).filter(target.in_(values[i:i + 1000])):
-            if row.row_id not in seen:
-                seen.add(row.row_id)
-                more.append(outbox_expand._synthesize_payload(row, names, {}))
-    return (pd.concat([rows_in, payloads_to_df(more)], ignore_index=True) if more else rows_in), left
-
-
-def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by, left=()) -> dict:
+def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> dict:
     """The rule's removal flag as the scoped batches the seat reads (ed70c3970 ② · 717f60124).
 
     소유자: 「@mapper 맵퍼를 쓰는 규칙에 allow_retraction: true 를 적으면, 그 출처(target_job_column)가
     이번에 안 낸 셀이 지워진다」 · 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」.
     One retract batch per job, or one replace_map batch per map. The jobs and maps are read from
     the INCOMING rows as well as the result - one that produced nothing this time is still
-    named, and its old cells are what its batch removes (the half guard still judges that). And the maps an incoming
-    row LEFT (`left`, `_with_the_whole_maps` - whose rows there are now the frame already holds). A job
+    named, and its old cells are what its batch removes (the half guard still judges that). A job
     the frame lists under `UNREAD_JOBS` gets no batch (`allow_retraction`) - one line says how many
     kept their old cells.
     """
     import chain_bindings
+    import dt_map_derivation
 
     refusals = chain_bindings.sdk_mapper_refusals(rule)
     if refusals:
         raise MapperContractError(" ".join(why for _code, why in refusals))
     unread = {str(job) for job in ((out.attrs.get(UNREAD_JOBS) if out is not None else None) or ())}
     out = out if out is not None else pd.DataFrame()
+    trigger = str(rule.get("trigger_table") or "")
     by_job = bool(rule.get("allow_retraction"))
-    came_as, keys = removal_columns(rule, table)
+    if by_job:
+        came_as = [chain_bindings.resolve_column(rule, "trigger_job_column", trigger,
+                                                 "the job of an incoming row")]
+        keys = [chain_bindings.resolve_column(rule, "target_job_column", table,
+                                              "the job a written cell carries")]
+    else:
+        keys = came_as = dt_map_derivation.identity_columns(table)
     if not out.empty:
         _require_columns(out, keys, rule)
     # ⚠️ LINEAR IN THE ROWS. `df_to_updates` gives one item per row in row order, so it runs ONCE
@@ -691,8 +647,7 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by, left
                                                                               name=None)):
             at.setdefault(key, []).append(position)
     named = {}
-    for frame, columns in ((rows_in, came_as), (pd.DataFrame(sorted(left, key=str), columns=came_as), came_as),
-                           (out, keys)):
+    for frame, columns in ((rows_in, came_as), (out, keys)):
         if frame.empty or any(c not in frame.columns for c in columns):
             continue
         for values in frame[list(columns)].itertuples(index=False, name=None):
@@ -785,11 +740,6 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"is decided from that table's declaration, so there is nothing to "
                     f"decide it from.")
             rows_in = payloads_to_df(payloads)
-            import chain_bindings
-
-            left = ()
-            if chain_bindings.removes_whole_maps(rule):
-                rows_in, left = _with_the_whole_maps(db, rule, table, payloads, rows_in)
             if "row_id" in rows_in.columns:
                 rows_in[ORIGIN_MARK] = rows_in["row_id"]
             out = fn(rows_in, db)
@@ -800,7 +750,7 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"envelope yourself means this decorator is not the thing you want.")
             if (rule or {}).get("allow_retraction") or (rule or {}).get("allow_replace_map"):
                 return _removal_batches(rule, table, rows_in, out, source_name=source_name,
-                                        updated_by=updated_by or fn.__name__, left=left)
+                                        updated_by=updated_by or fn.__name__)
             if out is None:
                 return {"updates": []}
             return _stamped_updates(out, table, source_name=source_name,
