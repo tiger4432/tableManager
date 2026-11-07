@@ -97,6 +97,10 @@ def _patch_apply_batch_updates(monkeypatch, num_rows, num_logs):
         return results, [("r0", "v")], created_logs, []
 
     monkeypatch.setattr(crud, "apply_batch_updates", fake_apply)
+    # the write is a double on a table no model holds - the settle after it (owner 11-06 step 2) reads that table,
+    # so it answers as an answer that left nothing out would: nothing withdrawn, no row lost
+    from chain import ingestion_worker
+    monkeypatch.setattr(ingestion_worker, "_settle_or_fail", lambda *args, **kwargs: (0, set(), []))
 
 
 @pytest.mark.anyio

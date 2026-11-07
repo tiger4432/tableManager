@@ -2074,6 +2074,10 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
     ranks = {} if ranks is None else ranks
 
+    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
+    # one sits on the cell, the chain's layers there order by time as before
+    unowned = any(layer_ranks_as(name) == CHAIN_SOURCE and not layer_owner(name) for name in sources)
+
     def _rank(name):
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
         if name not in ranks:
@@ -2086,7 +2090,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
             # 11-06 step 2 1ㄱ, lead 11-07). One rule's layers, a file's or a person's: as before.
             0 if said is not None else 1,      # 1b. a rule that says its priority before one that does not
             said if said is not None else 0,   # 1c. the smaller priority
-            owner[0] if owner else "",         # 1d. the rule's name
+            owner[0] if owner and not unowned else "",   # 1d. the rule's name
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides

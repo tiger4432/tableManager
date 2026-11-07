@@ -3790,6 +3790,8 @@ def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True) -
 
 def _rows_not_in(db, table, row_ids, results):
     """[(row, False)] for these row ids that `results` - a write's `(row, is_new)` - does not hold."""
+    if not row_ids:
+        return []
     from sqlalchemy import inspect as identity_of
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import models
