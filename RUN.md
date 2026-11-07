@@ -6,6 +6,7 @@
 > 무엇     같은 시각의 원자 둘은 주어 · 목적어 · 술어 · 원천 행 순으로 가름(READ_ORDER), id 는 마지막
 >          엣지가 보여 주는 원자 · records 순서 · fan-out 의 앞 N · 허브 구성원이 stored 와 virtual 에서 같아짐
 >          저장 답은 «시각이 같은» 자리에서만 바뀜 — 그 밖은 그대로
+>          읽는 순서의 글자 칸은 C 정렬(COLLATE "C") — 어떤 DB 정렬 규칙이어도 같은 원자를 읽음
 > 돌릴 것  server 폴더에서  python -m ledger walk-shadow
 > 답의 뜻  bins.tie_split  동률인데 두 engine 이 다른 원자를 그린 엣지 수. 0 이어야 함 — 0 이 아니면 그 줄 그대로 총괄에게
 > 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k virtual_walk_draws

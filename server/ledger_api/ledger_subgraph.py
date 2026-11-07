@@ -706,17 +706,22 @@ EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(
 
 #: 🔴 THE READ'S ORDER (lead 11-07, owner «가상 읽기 중심으로»): newest first, a time two atoms share split by the
 #: atoms' own content, the id last - an id splits nothing two engines spell alike (the stored ledger's uuid7, a virtual
-#: read's md5). The reader's SQL and `_read_order_key` spell this one list - the key orders an edge's records and a
-#: name's value (`_newest_records`, `_read_attribute`); an edge's drawn atom, a fan-out's first N and a hub's members
-#: are the SQL's (the first read). ⚠️ Two spellings: SQL compares jsonb as its text under the database collation,
-#: the key compares `_canonical` by code point - a tie on the payload may sort apart.
+#: read's md5). Two spellings, two jobs (lead 11-07 ㄴ):
+#:   the SQL (`_read_order_cells`)  bounds what is READ - the LIMIT, a fan-out's first N, the frontier, a hub's members;
+#:                                  every text C-collated, so the read set is no installation's collation
+#:   the key (`_read_order_key`)    decides what is SHOWN - an edge's atom (`add_edge`), its records
+#:                                  (`_newest_records`), a name's value (`_read_attribute`)
+#: The jsonb text the SQL compares is PostgreSQL's spelling, the key's `_canonical`'s - the two may sort a tie apart,
+#: and nothing shown rests on the SQL's.
 READ_ORDER = ("occurred_at", "subject_type", "subject_keys", "object_payload", "predicate", "source_raw_ref", "id")
 _JSON_CELLS = frozenset({"subject_keys", "object_payload"})
+_TEXT_CELLS = frozenset({"subject_type", "predicate", "source_raw_ref"})
 
 
 def _read_order_cells(prefix=""):
-    """The read's order as SQL cells - a jsonb cell as its text, which PostgreSQL spells one way for equal values."""
-    return ["%s%s%s" % (prefix, name, "::text" if name in _JSON_CELLS else "") for name in READ_ORDER]
+    """The read's order as SQL cells - a jsonb cell as its text, every text C-collated."""
+    return ["%s%s%s" % (prefix, name, '::text COLLATE "C"' if name in _JSON_CELLS
+                        else ' COLLATE "C"' if name in _TEXT_CELLS else "") for name in READ_ORDER]
 
 
 def _read_order_key(atom):
@@ -1939,6 +1944,10 @@ def _edge(edge_type, source, target, *, original_predicate=None,
         "basis": None, "qualifiers": {},
         "cardinality": cardinality,
     }
+
+
+#: An edge's cells its shown atom fills (`_claim_edge`) - the ones `add_edge` swaps for an atom first in the key.
+_SHOWN_CELLS = ("claim_id", "occurred_at", "source_who", "basis", "qualifiers", "not_current")
 
 
 def _claim_edge(atom, source_id, target_id, edge_type, cardinalities=None):
@@ -3405,21 +3414,32 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         return True
 
     order = _in_picked_order(getattr(lookup, "worlds", ()))
+    #: edge id, (edge id, world) -> the read order key of the atom it shows (`_read_order_key`, lead 11-07 ㄴ)
+    shown = {}
 
     def add_edge(row, read_key, free=False):
         nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
+        said = row["by_world"][0]
         if row["id"] in edges:
             # 🔴 ONE RELATION, EACH WORLD THAT SAYS IT (총괄 ee0f66e7b): the edge keeps its id and
-            # gains the other world's evidence - the world is where the relation came from. A
-            # world said twice keeps its first, as an edge always did.
-            held, said = edges[row["id"]], row["by_world"][0]
+            # gains the other world's evidence - the world is where the relation came from. The edge
+            # and each world show the atom first in the key, whatever order the reads brought them.
+            held = edges[row["id"]]
             if said["world"] not in held["worlds"]:
                 held["worlds"].append(said["world"])
                 held["by_world"].append(said)
                 held["worlds"].sort(key=order)
                 held["by_world"].sort(key=lambda each: order(each["world"]))
+                shown[row["id"], said["world"]] = read_key
+            elif read_key > shown[row["id"], said["world"]]:
+                held["by_world"] = [said if each["world"] == said["world"] else each for each in held["by_world"]]
+                shown[row["id"], said["world"]] = read_key
+            if read_key > shown[row["id"]]:
+                held.pop("not_current", None)
+                held.update({cell: row[cell] for cell in _SHOWN_CELLS if cell in row})
+                shown[row["id"]] = read_key
             # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - once each
             edge_records[row["id"]].setdefault(row["claim_id"], (read_key, row["claim_id"], row["records"][0]))
             return True
@@ -3429,6 +3449,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 return False
             budgeted_edges += 1
         edges[row["id"]] = row
+        shown[row["id"]] = shown[row["id"], said["world"]] = read_key
         edge_records[row["id"]] = {row["claim_id"]: (read_key, row["claim_id"], row["records"][0])}
         return True
 

@@ -8,8 +8,8 @@ Each atom one side has and the other has not goes in one bin:
   stored-only  a stored atom whose row is gone from the table
   real         a stored atom of a row still in the table that the virtual read does not make - the compile is wrong
   time         a difference that shows only with --since / --until
-and `tie_split` counts the edges whose newest atoms share their time and whose drawn atom differs between the two
-reads - 0 since the read's order splits a tie by the atoms' content (`ledger_subgraph.READ_ORDER`, lead 11-07); it
+and `tie_split` counts the edges whose newest atoms share their time and whose shown atom (first in
+`ledger_subgraph._read_order_key`, lead 11-07) differs between the two reads - 0 when both read the same atoms; it
 replaced `tie` (the ties themselves, whichever atom each read drew). Exit 1 when `real` is not 0."""
 from __future__ import annotations
 
@@ -36,15 +36,19 @@ def _edge(key) -> tuple:
 
 
 def _read(lookup, seeds, follow):
-    """(the atoms read, counted; seconds; each edge's first atom in the read's order - the one it draws)."""
+    """(the atoms read, counted; seconds; each edge's atom first in `_read_order_key` - the one it shows)."""
+    from ledger_api.ledger_subgraph import _read_order_key
+
     started = time.perf_counter()
     atoms, cut = lookup.claims_for_entities(seeds, "both", EVERY, follow=follow)
     if cut:
         raise RuntimeError("a read was cut at %d atoms - the bins would count the cap" % EVERY)
-    keys = [_atom_key(atom) for atom in atoms]
-    drawn = {}
-    for key in keys:
-        drawn.setdefault(_edge(key), key)
+    keys, drawn, first = [], {}, {}
+    for atom in atoms:
+        key, order = _atom_key(atom), _read_order_key(atom)
+        keys.append(key)
+        if _edge(key) not in first or order > first[_edge(key)]:
+            first[_edge(key)], drawn[_edge(key)] = order, key
     return Counter(keys), round(time.perf_counter() - started, 3), drawn
 
 

@@ -131,5 +131,6 @@ def test_the_newest_records_stay_whatever_order_they_were_fetched_in(monkeypatch
     assert [i for i in lookup.handed if i in measured][:2] == measured[:2], "CANARY: handed oldest first"
     edge, node = _edge(body), _node(body)
     assert ([r["claim_id"] for r in edge["records"]], edge["records_more"]) == ([tied[-2].id, ATOMS[3].id], 3)
+    assert edge["claim_id"] == tied[-2].id, "the atom an edge shows is the read order's first, not the fetch's"
     assert ([r["value"] for r in node["records"]["product"]], node["records_more"]["product"]) == (["D", "C"], 2)
     assert node["attributes"]["product"] == "D", "the value a name holds is the read order's first, not the fetch's"

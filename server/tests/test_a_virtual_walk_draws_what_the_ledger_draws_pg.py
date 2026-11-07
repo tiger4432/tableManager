@@ -150,6 +150,37 @@ def test_a_member_two_hubs_reach_at_one_time_joins_the_same_hub_on_both_engines(
     assert hubs["stored"] == hubs["virtual"], hubs
 
 
+def test_a_read_cut_at_a_tie_keeps_the_same_atom_under_any_collation(world):
+    """Lead 11-07 ㄴ: two wafers processed with one recipe at one instant, keys «a1» and «B1» - a read cut at 1 keeps
+    the one first in the C order (the key's, `_read_order_key`) on both engines, whatever the database's collation
+    (a linguistic one puts «B1» first)."""
+    import notation_norm
+
+    with world["engine"].begin() as conn:
+        conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.key_number_sql())
+    with open(os.path.join(paths.config_path("ontology"), "ledger_config.json"), "w", encoding="utf-8") as fh:
+        json.dump(_only(CHANGED, KEPT), fh)
+    trace_router._COMPILED.clear()
+    _write(world, "wafer_process", [{"proc_id": "P" + wafer, "wafer_id": wafer, "recipe_id": "RCP-T",
+                                     "eventtime": "2026-09-30 10:00:00"} for wafer in ("B1", "a1")])
+    backfill.run(world["engine"], source=CHANGED)
+    raw = world["engine"].raw_connection()
+    try:
+        names = schema.require_world(None)
+        legs, _ = trace_router._compiled(raw, (names,))
+        seed = [("recipe", {"recipe": "RCP-T"})]
+        for lookup in (ledger_subgraph.SqlEvidenceLookup(raw, worlds=(names,)),
+                       ledger_subgraph.VirtualEvidenceLookup(raw, [leg for leg in legs if leg.source == CHANGED],
+                                                            worlds=(names,))):
+            whole, _ = lookup.claims_for_entities(seed, "both", 10, follow=["processed_with"])
+            assert len(whole) == 2, "canary: both wafers are read"
+            atoms, cut = lookup.claims_for_entities(seed, "both", 1, follow=["processed_with"])
+            assert cut and [atom.subject_keys for atom in atoms] == [{"wafer": "a1"}], type(lookup).__name__
+    finally:
+        raw.rollback()
+        raw.close()
+
+
 def test_a_virtual_walk_is_not_continued(board):
     with pytest.raises(HTTPException) as refused:
         trace_router.evidence_subgraph(node_id=explorer.entity_id("wafer", {"wafer": "W1"}), engine="virtual",
