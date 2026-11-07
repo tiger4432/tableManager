@@ -276,6 +276,93 @@
           "kind": "leaf",
           "hint": "free"
         }
+      },
+      {
+        "key": "access",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "read",
+              "required": false,
+              "node": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "key": "allow",
+                    "required": false,
+                    "node": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "name",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  },
+                  {
+                    "key": "deny",
+                    "required": false,
+                    "node": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "name",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "key": "edit",
+              "required": false,
+              "node": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "key": "allow",
+                    "required": false,
+                    "node": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "name",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  },
+                  {
+                    "key": "deny",
+                    "required": false,
+                    "node": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "name",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "key": "edit_by",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            }
+          ]
+        }
       }
     ]
   }

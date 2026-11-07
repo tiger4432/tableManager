@@ -27,6 +27,12 @@ def _columns():
     return chain_bindings.list_node("column", _leaf())
 
 
+def _who():
+    """An access list pair: the names allowed and the names denied (`admin.access`)."""
+    return {"kind": "record", "fields": [{"key": key, "required": False, "node": chain_bindings.list_node("name", _leaf())}
+                                         for key in ("allow", "deny")]}
+
+
 #: (cell, node) - the order is the form's.
 TABLE_CELLS = (
     ("column_types", _names("column", _leaf())),
@@ -56,6 +62,10 @@ TABLE_CELLS = (
         {"key": "value", "required": True, "node": _leaf()},
         {"key": "carry", "required": False, "node": _columns()}]}),
     ("order", _leaf()),
+    ("access", {"kind": "record", "fields": [                   # who may read or edit it (admin/access, owner 11-06)
+        {"key": "read", "required": False, "node": _who()},
+        {"key": "edit", "required": False, "node": _who()},
+        {"key": "edit_by", "required": False, "node": _leaf()}]}),
 )
 
 

@@ -302,9 +302,13 @@ def test_a_missing_unique_constraint_is_named_and_not_built(scratch):
 @pytest.mark.pg
 def test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing(scratch, monkeypatch, caplog):
     import parsers.directory_watcher as directory_watcher
+    from ledger import schema as ledger_schema
 
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings",
                         lambda: {models.BUILD_MISSING_INDEXES_SETTING: False})
+    # a world's declared qualifiers come from the tree's own config (gitignored): without table_config.json its read
+    # says «world system: its declaration was not read» - another line than this one's (C 11-07)
+    monkeypatch.setattr(ledger_schema, "declared_indexed_qualifiers", lambda names: [])
     _ddl(scratch, "DROP INDEX %s" % DROPPED)
     caplog.set_level("WARNING", logger=worker.logger.name)
 

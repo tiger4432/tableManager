@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""총괄 49792d3f6 A (소유자 「체인은 뭐 10 분째 스타팅이냐」): the business-key index build waits for the transactions on its
-table no longer than its cap; then the leftover is dropped and the session holding the table is named. The build is
-the migration's own (`build_index`) aimed at the test schema's table."""
-import logging
+"""총괄 49792d3f6 A (소유자 「체인은 뭐 10 분째 스타팅이냐」): the business-key index build does not hold the chain's start
+for ever. Since the one builder (`models._ensure_one_index`, 1bcc2fa03): a session holding the table open past the
+wait before the build puts the build off (BLOCKED here) and is named; a short writer is waited out by the build itself
+(총괄 11-06). The build is `uq.index_ddl` on the test schema's table (its search path)."""
 import os
 import sys
+import threading
 import time
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -14,45 +14,61 @@ from sqlalchemy import text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from chain import ingestion_worker as worker                                   # noqa: E402
-import db_safety                                                               # noqa: E402
 from conftest import PG_TEST_SCHEMA                                            # noqa: E402
+from database import models                                                    # noqa: E402
 from migrations import add_business_key_unique_index as uq                     # noqa: E402
 
 pytestmark = pytest.mark.pg
 TABLE, NAME = "bkx_held", "uq_bkx_held_bk"
 
 
-def _build_here(conn, table, name):
-    """uq.build_index's statement on the test schema's table, its errors read as uq.build_index reads them."""
-    try:
-        conn.execute(text('CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS %s ON "%s"."%s" (business_key_val)'
-                          % (uq.quote_ident(name), PG_TEST_SCHEMA, table)))
-    except Exception as e:                                                     # noqa: BLE001
-        return (uq.BLOCKED if db_safety.waited_past_the_lock_timeout(e) else uq.FAILED), str(e).splitlines()[0]
-    return uq.OK_CREATED, "built"
+def _cancel_the_build_after(engine, seconds):
+    """The test's cap, not the product's: a build that waits for a holder after all would hang the run - cancelled
+    after `seconds` it ends, and the cell is red (총괄 11-07)."""
+    def cancel():
+        with engine.connect() as conn:
+            conn.execute(text("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname = current_database() "
+                              "AND pid <> pg_backend_pid() AND query = :q"), {"q": uq.index_ddl(TABLE, NAME)})
+            conn.commit()
+    timer = threading.Timer(seconds, cancel)
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
-def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leaves_no_index(pg_engine, caplog,
-                                                                                          monkeypatch):
-    import db_safety as safety
-
-    monkeypatch.setattr(safety, "DDL_LOCK_TIMEOUT", "2s")
-    seat = SimpleNamespace(build_index=_build_here, BLOCKED=uq.BLOCKED, quote_ident=uq.quote_ident)
+def _held_past_the_wait(pg_engine, monkeypatch):
+    """The table made, a writer left open on it past the wait before the build -> (that connection, its pid)."""
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 1.0)
+    monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
         conn.execute(text('CREATE TABLE "%s"."%s" (business_key_val text)' % (PG_TEST_SCHEMA, TABLE)))
     holder = pg_engine.connect()
-    holder_pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
-    holder.execute(text("INSERT INTO \"%s\".\"%s\" VALUES ('k1')" % (PG_TEST_SCHEMA, TABLE)))   # an open write holds it
+    pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
+    holder.execute(text("INSERT INTO \"%s\".\"%s\" VALUES ('k1')" % (PG_TEST_SCHEMA, TABLE)))   # an open write
+    time.sleep(1.5)                                                                  # open longer than the wait
+    return holder, pid
+
+
+def _build(pg_engine):
+    cap = _cancel_the_build_after(pg_engine, 20)
+    try:
+        return worker._build_unique_index_waiting(pg_engine, uq, TABLE, NAME)
+    finally:
+        cap.cancel()
+
+
+def test_a_build_held_by_a_transaction_left_open_is_put_off_names_the_holder_and_leaves_no_index(pg_engine,
+                                                                                                monkeypatch):
+    holder, holder_pid = _held_past_the_wait(pg_engine, monkeypatch)
     valid = ("SELECT count(*) FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid JOIN pg_namespace n ON "
              "n.oid = c.relnamespace WHERE n.nspname = :s AND c.relname = :n AND i.indisvalid")
     try:
-        caplog.set_level(logging.WARNING)
         started = time.monotonic()
-        first, _detail = worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)
+        first, detail = _build(pg_engine)
         took = time.monotonic() - started
         holder.rollback()                                                      # what held it ends
-        second, _detail = worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)
+        second, _detail = _build(pg_engine)
         with pg_engine.connect() as conn:
             built = conn.execute(text(valid), {"s": PG_TEST_SCHEMA, "n": NAME}).scalar()
     finally:
@@ -60,31 +76,27 @@ def test_a_build_held_by_an_open_transaction_gives_up_names_the_holder_and_leave
         holder.close()
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
-    said = [r.getMessage() for r in caplog.records if "not built - waited 2s" in r.getMessage()]
-    assert (first, second, built) == (uq.BLOCKED, uq.OK_CREATED, 1) and took < 30, (first, second, built, took)
-    assert said and "pid %d" % holder_pid in said[0], said
+    assert (first, second, built) == (uq.BLOCKED, uq.OK_CREATED, 1) and took < 15, (first, second, built, took)
+    assert "not built - waited 1s for pid %d holding %s (idle in transaction, open " % (holder_pid, TABLE) in detail, \
+        detail
 
 
 def test_a_leftover_is_rebuilt_though_the_census_read_the_table_first(pg_engine, monkeypatch):
     """총괄 4593442f9 re-review ①: the census reads the table (AccessShareLock) on the connection the loop keeps - the
-    read ends before the drop and the build, or the CONCURRENTLY drop waits on its own process and the leftover stays."""
-    import db_safety as safety
+    read ends before the drop and the build, or the CONCURRENTLY drop waits on its own process and the leftover stays.
+    The leftover is a build that failed on a duplicate key."""
     from sqlalchemy.orm import sessionmaker
 
-    monkeypatch.setattr(safety, "DDL_LOCK_TIMEOUT", "2s")
-    seat = SimpleNamespace(build_index=_build_here, BLOCKED=uq.BLOCKED, quote_ident=uq.quote_ident)
     state = ("SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid JOIN pg_namespace n ON "
              "n.oid = c.relnamespace WHERE n.nspname = :s AND c.relname = :n")
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
         conn.execute(text('CREATE TABLE "%s"."%s" (business_key_val text)' % (PG_TEST_SCHEMA, TABLE)))
-    holder = pg_engine.connect()
-    holder.execute(text("INSERT INTO \"%s\".\"%s\" VALUES ('k1')" % (PG_TEST_SCHEMA, TABLE)))
-    try:
-        assert worker._build_unique_index_waiting(pg_engine, seat, TABLE, NAME)[0] == uq.BLOCKED
-    finally:
-        holder.rollback()
-        holder.close()
+    with pg_engine.begin() as conn:
+        conn.execute(text("INSERT INTO \"%s\".\"%s\" VALUES ('k1'), ('k1')" % (PG_TEST_SCHEMA, TABLE)))
+    assert _build(pg_engine)[0] == uq.FAILED
+    with pg_engine.begin() as conn:
+        conn.execute(text('DELETE FROM "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
     with pg_engine.connect() as conn:
         assert conn.execute(text(state), {"s": PG_TEST_SCHEMA, "n": NAME}).scalar() is False, "CANARY: a leftover"
 
@@ -96,7 +108,6 @@ def test_a_leftover_is_rebuilt_though_the_census_read_the_table_first(pg_engine,
     monkeypatch.setattr(uq, "existing_unique_index", lambda conn, t: (NAME, False))
     monkeypatch.setattr(uq, "duplicate_census", census)
     monkeypatch.setattr(uq, "unique_index_name", lambda t: NAME)
-    monkeypatch.setattr(uq, "build_index", _build_here)
     try:
         out = worker._ensure_business_key_unique_indexes_sync(sessionmaker(bind=pg_engine))
         with pg_engine.connect() as conn:
@@ -104,4 +115,5 @@ def test_a_leftover_is_rebuilt_though_the_census_read_the_table_first(pg_engine,
     finally:
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, TABLE)))
-    assert (out["built"], valid) == ([(TABLE, uq.OK_CREATED, "built")], True), (out, valid)
+    assert ([built[:2] for built in out["built"]], valid) == ([(TABLE, uq.OK_CREATED)], True), (out, valid)
+    assert "is INVALID from an earlier failure; dropping and rebuilding" in out["built"][0][2], out
