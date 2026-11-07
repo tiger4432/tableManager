@@ -5,7 +5,7 @@
     "python": "server/ledger/sql_translate.py :: event_results (the translator's judges)",
     "sql": "server/ledger/sql_translate.py :: compile_world (legs) - read by ledger_api.ledger_subgraph.VirtualEvidenceLookup"
   },
-  "table": {"step": "string", "at": "string"},
+  "table": {"step": "string", "at": "string", "seen": "datetime"},
   "cases": [
     {
       "name": "keys: a number spelled as the ledger spells it, a constant, and a reference whose when holds",
@@ -154,6 +154,24 @@
       ],
       "one": ["processed_with"],
       "walk": [{"cap": 10, "times": ["2026-10-01T01:00:00+00:00"], "cut": false}],
+      "unreadable": 0
+    },
+    {
+      "name": "a time key - the walk finds its rows by the column's own instant, not its spelling",
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "mappings": {"made": {"predicate": "processed_with@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "at"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "seen"}}},
+        "target": {"kind": "entity", "entity_type": "recipe@1", "keys": {"recipe": {"kind": "column", "column": "hold"}}}}}},
+      "rows": [{"hold": "R1", "seen": "2026-10-01 09:30", "at": "2026-10-01 09:30"},
+               {"hold": "R2", "seen": "2026-10-01 09:30", "at": "2026-10-01 10:00"},
+               {"hold": "R3", "seen": "2026-10-02 08:00", "at": "2026-10-01 11:00"}],
+      "expected": [
+        ["wafer", {"wafer": "2026-10-01T09:30:00+09:00"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R1"}}, "2026-10-01T00:30:00+00:00", null],
+        ["wafer", {"wafer": "2026-10-01T09:30:00+09:00"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R2"}}, "2026-10-01T01:00:00+00:00", null],
+        ["wafer", {"wafer": "2026-10-02T08:00:00+09:00"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R3"}}, "2026-10-01T02:00:00+00:00", null]
+      ],
+      "walk": [{"cap": 10, "times": ["2026-10-01T02:00:00+00:00", "2026-10-01T01:00:00+00:00", "2026-10-01T00:30:00+00:00"], "cut": false}],
       "unreadable": 0
     },
     {

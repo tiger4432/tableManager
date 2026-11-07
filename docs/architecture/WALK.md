@@ -399,9 +399,16 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
           다리마다 SQL 한 문장(소유자 11-07 ㄱ «원장은 테이블을 감싸서 하나의 통일된 폼으로 보여주는 껍데기»):
           row_id · 끝의 키(조인의 철자 notation_norm.key_expression_text) · 수식어 칸 · 시각 FROM 표 WHERE 말하는
           행(kept · 키 비지 않음 · 시각 있음) · 프런티어(노드마다 skip · 수식어 경계) · 구간 ORDER BY 시각 DESC,
-          row_id DESC LIMIT 상한+1 — VirtualEvidenceLookup._select 하나를 걷기 · reach 씨앗 · 시간 쪽 · 먼 끝 수가 지남
-          파이썬은 포장만: 다리들을 (시각, 소스, 문장, row_id) 내림으로 합쳐 상한에서 자름. 원자 id =
-          uuid5(«소스|문장|row_id»), 원천 행 «표:row_id» — 저장 원장과 바이트 같음은 버림(같은 행 · 같은 사실까지)
+          row_id DESC LIMIT 상한+1 — VirtualEvidenceLookup._statement 하나를 걷기 · reach · 씨앗 · 시간 쪽 · 먼 끝 수가 지남
+          빈 키 = btrim(철자한 키) = '' 하나(정본 crud.is_blank_key_part — assy_key_number · assy_key_instant 가 그 SQL 쌍둥이)
+          프런티어(_in) = 칸 «원값» 튜플 IN unnest(노드 키를 _held 로 칸 타입으로 — 숫자 · 시각 키는 키 철자로 되짚어
+          같은 글자일 때만), 칸 여럿이면 칸마다 = ANY 앞 거르기도(인덱스 없는 표에서 스캔이 거름 — 박스 다이 다리
+          340 -> 120 ms). 함수식(Leg.key)은 notation 규칙 칸 · 글자로 든 시각 키만(소유자 11-07 «안 씌우면 안 됨?»)
+          파이썬은 포장만: 읽은 행의 시각을 Leg.instant 로(서로 다른 값마다 한 번, _timed — 걷기 · 씨앗 · 먼 끝 수가
+          같은 행을 남김) · 다리들을 (시각, 소스, 문장, row_id) 내림으로 합쳐 상한에서 자름(_reached). 원자는 그 위
+          한 겹(claims_for_entities) — id = uuid5(«소스|문장|row_id»), 원천 행 «표:row_id». reach 는 원자 없이 행과
+          끝만(reached_for_entities, 저장은 원자 그대로). 씨앗(nodes_of_rows)도 원자 없이 SQL 키에서. 먼 끝 수
+          (count_far_ends)는 다리마다 SELECT DISTINCT 먼 끝 키 · 시각. 저장 원장과 바이트 같음은 버림
           one 술어의 지금 것 = 그 소스에서 그 술어를 말하는 문장들(같은 주어 타입)의 주어마다 max(시각)
 시각      timestamptz 그대로 · zone 없는 시각은 read.occurred_at.timezone 필수 · 글자 칸은 선언 형식이 시각
           순서로 정렬될 때만(utils.time_format.text_order: 고정 폭 숫자, 연도부터 단위를 안 건너뜀 — %y%m%d_%H%M%S
@@ -410,6 +417,8 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
           씨앗 없는 질문(key-values · gaps · 타입의 씨앗)은 다리 끝마다 키 칸 GROUP BY 한 번(행은 안 읽음)
 시점      since · until · include_superseded 는 저장 걷기와 같은 절 — 원자의 occurred_at 은 선언된 시각 칸이므로
           원천 행에 그대로 걸림. 이력표로 지어내지 않음(소유자 11-06 «시점 걷기 그대로»)
+원장 확인  _ledgers_ready(원장 표 · Source Event 칸 · 인덱스)는 _walk_lookup 의 저장 갈래만 — 가상은 원장을 안
+          읽으므로 원장 표가 없는 설치에서도 503 없이 답함. 저장의 reach · gaps 도 이제 같은 확인을 지남
 답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}],
           unreadable_times: n} — n = 읽은 행 중 시각 칸이 있는데 안 읽히는 행(저장 원장에도 원자가 없는 행)
           left_out = 컴파일이 안 읽는 소스(계획 안 됨 · 코드 맵퍼 · 묶음 단위 · attributes · value 목적어 ·
@@ -437,11 +446,11 @@ records · 이름의 값)는 파이썬 키(`_read_order_key`)만 정한다. 가�
           — 라우트를 따로 안 둠(키 받는 데이터 라우트 0). 주면 그림 대신 이 답. type · follow 는 걷기의 이름 좌석
 씨앗      표 A 의 행 = 그리드 집합 필터(column_filter, filterType set) 그대로 · 그 행들의 원자가 이름 댄
           `type` 노드(양 끝 중 그 타입만) — 조회기 nodes_of_rows. 원장 철자는 걷기부터
-걸음      걷기의 조회기 claims_for_entities 를 follow 의 술어 하나씩 차례로 — 그림 조립(subgraph)과 그 상한은
+걸음      걷기의 조회기 reached_for_entities(행과 끝 — 저장은 claims_for_entities 의 원자) 를 follow 의 술어 하나씩 차례로 — 그림 조립(subgraph)과 그 상한은
           안 지남. 상한은 REACH_ATOM_CAP 하나를 걸음마다(원자 수) — 끊긴 걸음은 읽은 원자의 먼 끝을 최신순으로
           REACH_FRONTIER_CAP 개까지 넘겨 다음 걸음을 감. 끊긴 걸음은 count.capped_steps [{step, predicate}]
 닿은 행   조회기 rows_of = 읽은 원자 «전부»의 표 B 행(엣지의 가장 늦은 원자만이 아님). 저장은 row_ref,
-          가상은 원자를 지은 다리의 row_id. 수 = 그 집합의 길이, 잘리면 capped + cap
+          가상은 그 행의 원천 행 «표:row_id». 수 = 그 집합의 길이, 잘리면 capped + cap
 조회기    trace_router._walk_lookup 하나 — 걷기와 같은 자리라 leave_out · engine 을 같이 물려받음
 빠진 것   left_out — 표에 없는 값 수 · 노드를 안 짓는 행 수 · 뷰(row_id 없음, 읽는 소스 이름) ·
           가상에서 컴파일 안 된 A/B 소스. 빈 마킹 = 0 행, 원장을 안 읽음

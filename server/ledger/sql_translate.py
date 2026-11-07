@@ -212,16 +212,14 @@ class Leg:
     is the outgoing end; a spec is {"column", "declared", "kind", "zone"} or {"constant": spelled}. `qualifiers` {name:
     spec}; `required` the specs that must not be blank for the row to say anything (a reference's sentence's own keys
     too); `kept` the rows it says - SQL over the table's own cells; `columns` {arm: the text columns its keys are read
-    from as they are} - an index on one of them serves the arm, else the answer says «scan»; `filled` the `required`
-    columns not blank, as SQL; `clock` how the SQL reads its time - {"text": None} a time column, {"text": regex} a text
+    from as they are} - an index on one of them serves the arm, else the answer says «scan»; `clock` how the SQL reads its time - {"text": None} a time column, {"text": regex} a text
     column whose declared format sorts as its time (`time_format.text_order`), "naive" a time without a zone."""
 
-    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, filled,
-                 clock):
+    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, clock):
         self.source, self.relation, self.sentence, self.predicate = plan.source_id, plan.relation, sentence, predicate
         self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
         self.basis, self.version, self.columns, self.plan, self.world = basis, version, columns, plan, None
-        self.filled, self.clock = filled, clock
+        self.clock = clock
         self.time = plan.driver.occurred_at
 
     def key(self, spec) -> str:
@@ -260,7 +258,9 @@ class Leg:
         """[SQL] - the rows that say something: kept, every key not blank as the SQL spells it, and the time there and
         readable (`timed`; else left out - what a count of the unreadable asks)."""
         keys = {spec["column"]: spec for spec in self.required if "column" in spec}
-        out = [*self.kept, *self.filled, *(f"{self.key(spec)} <> ''" for _column, spec in sorted(keys.items()))]
+        # one blank-key judge: the key as the join spells it, trimmed - `assy_key_number` / `assy_key_instant` give NULL
+        # where `crud.is_blank_key_part` says blank (NaN, infinity, from KEY_EXACT_LIMIT, unreadable), btrim the spaces
+        out = [*self.kept, *(f"btrim({self.key(spec)}) <> ''" for _column, spec in sorted(keys.items()))]
         return out + [self.present()] if timed else out
 
     def at(self) -> str:
@@ -297,10 +297,17 @@ class Leg:
 
 
 def _held(value, spec):
-    """A frontier key value as the column holds it - text as it is, a number as the column's number; None when it
-    cannot be one."""
+    """A frontier key value as the column holds it - text as it is, a number as the column's number, a time key
+    (`zone`) on a time column as its instant (`expression._wall`, what `map_overlay.time_key_text` spells from; a
+    zoneless column its wall clock there); None when it cannot be one."""
     if value is None:
         return None
+    if spec.get("zone") and spec["kind"] in (_TIME, "timestamp without time zone"):
+        import expression
+        from utils.time_format import _zone
+
+        moment = expression._wall(value, _zone(spec["zone"]))
+        return moment if moment is None or spec["kind"] == _TIME else moment.replace(tzinfo=None)
     if spec.get("zone") or spec["kind"] == _TEXT:
         return str(value)
     try:
@@ -491,10 +498,9 @@ def compile_source(snapshot, plan, kinds, world) -> list:
         first = {role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
-        filled = [_present(kinds, column) for column in dict.fromkeys(spec["column"] for spec in said if "column" in spec)]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
-                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, filled, clock))
+                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, clock))
         for role, binding in named.items():
             bare, keys = ends[role]
             for reference in getattr(snapshot.entities.get(binding["entity_type"]), "references", ()):
@@ -515,7 +521,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                 legs.append(Leg(plan, reference.derivation, bare_name(reference.predicate_id),
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
-                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, filled, clock))
+                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, clock))
     return legs
 
 

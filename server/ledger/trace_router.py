@@ -107,6 +107,21 @@ def _ledgers_present(connection, names):
             raise _relation_absent(each.ledger)
 
 
+def _ledgers_ready(connection, names):
+    """A stored read's ledgers are there (`_ledgers_present`) with the Source Event columns and indexes it reads
+    (`_subgraph_contract_state`) - else refused before a slow scan. Asked by the stored side of `_walk_lookup` only."""
+    _ledgers_present(connection, names)
+    missing = sorted({name for each in names
+                      for name in _subgraph_contract_state(connection, each.ledger)})
+    if missing:
+        raise HTTPException(status_code=503, detail={
+            "reason": "source_event_projection_not_deployed",
+            "state": "not_deployed", "missing": missing,
+            "message": ("The Source Event graph is not migrated - run "
+                        "server/migrations/add_ledger_source_events.py --apply"),
+        })
+
+
 
 
 
@@ -858,6 +873,7 @@ def _walk_lookup(connection, engine, names, world, leave_out=None, **reading):
     legs, said = _engine_reading(connection, engine, names, leave_out)
     if legs is not None:
         return ledger_subgraph.VirtualEvidenceLookup(connection, legs, worlds=names, said=said, **reading), said
+    _ledgers_ready(connection, names)                   # a virtual read reads no ledger - only a stored one asks
     return ledger_subgraph.SqlEvidenceLookup(connection, worlds=names, **({"leave_out": leave_out} if leave_out else {}),
                                              indexed=_indexed_qualifiers(world), **reading), None
 
@@ -874,16 +890,6 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
                     propagation=True, read="both", engine="stored", hidden=()):
     names = _worlds(world)
-    _ledgers_present(connection, names)
-    missing = sorted({name for each in names
-                      for name in _subgraph_contract_state(connection, each.ledger)})
-    if missing:
-        raise HTTPException(status_code=503, detail={
-            "reason": "source_event_projection_not_deployed",
-            "state": "not_deployed", "missing": missing,
-            "message": ("The Source Event graph is not migrated - run "
-                        "server/migrations/add_ledger_source_events.py --apply"),
-        })
     cardinalities = _predicate_cardinalities(world)
     leave_out = schema.first_read(names, _source_names) if read == "first" else None
     hidden, leave_out = _hidden_here(names, hidden, leave_out)
@@ -933,6 +939,12 @@ REACH_ATOM_CAP = 10000
 #: processes in two steps, 1,000 values, stored, the spec 5 s: 500 nodes 4.04 s, 1,000 4.47 / 4.49 s, 1,500 5.14 s,
 #: 2,000 5.82 s).
 REACH_FRONTIER_CAP = 1000
+
+
+def _items(keys):
+    """A node's keys as a hashable, ordered key - a frontier's set and sort (reach), no JSON spelled."""
+    return tuple(sorted((key, json.dumps(value) if isinstance(value, (dict, list)) else value)
+                        for key, value in (keys or {}).items()))
 
 
 def reach(connection, *, table, column, values, type, follow, to, world=None, engine="stored", hidden=()):
@@ -987,27 +999,28 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     named = lookup.nodes_of_rows(table, rows, _bare_name(type)) if rows else {}
     if len(named) < len(rows):
         left_out.append({"why": "names no %s" % _bare_name(type), "table": table, "rows": len(rows) - len(named)})
-    frontier = sorted({(kind, json.dumps(keys, sort_keys=True)) for ends in named.values() for kind, keys in ends})
+    frontier = {(kind, _items(keys)): keys for ends in named.values() for kind, keys in ends}
     said["seeds"] = len(frontier)
-    frontier = [(kind, json.loads(keys)) for kind, keys in frontier]
+    frontier = [(kind, frontier[(kind, items)]) for kind, items in sorted(frontier, key=str)]
     read = []
     for step, predicate in enumerate(follow or (), 1):
         if not frontier:
             break
-        atoms, cut = lookup.claims_for_entities(frontier, "both", REACH_ATOM_CAP, follow=[predicate])
-        read.extend(atoms)
+        reached, cut = lookup.reached_for_entities(frontier, "both", REACH_ATOM_CAP, follow=[predicate])
+        read.extend(reached)
         if cut:
             said["count"]["capped"] = True
             said["count"].setdefault("capped_steps", []).append({"step": step, "predicate": predicate})
-        near = {(kind, json.dumps(keys, sort_keys=True)) for kind, keys in frontier}
+        near = {(kind, _items(keys)) for kind, keys in frontier}
         far = {}                                            # in the read's order, newest first - what a cut keeps
-        for atom in atoms:
-            subject = (atom.subject_type, json.dumps(atom.subject_keys, sort_keys=True))
+        for item in reached:
+            subject = (item.subject_type, _items(item.subject_keys))
             if subject not in near:
-                far[subject] = None
-            elif atom.object_kind == "entity_ref":
-                far[(atom.object_payload.get("type"), json.dumps(atom.object_payload.get("keys"), sort_keys=True))] = None
-        frontier = [(kind, json.loads(keys)) for kind, keys in far if (kind, keys) not in near]
+                far[subject] = item.subject_keys
+            elif item.object_kind == "entity_ref":
+                keys = item.object_payload.get("keys") or {}
+                far[(item.object_payload.get("type"), _items(keys))] = keys
+        frontier = [(kind, keys) for (kind, items), keys in far.items() if (kind, items) not in near]
         frontier = frontier[:REACH_FRONTIER_CAP] if cut else frontier
     said["rows"] = sorted(lookup.rows_of(read, to)) if read and to not in views else []
     said["count"].update(total=len(said["rows"]), counted_at=datetime.now(timezone.utc).isoformat())
@@ -1122,7 +1135,6 @@ def ledger_key_values(
 
     connection = db.connection()
     names = _worlds(world)
-    _ledgers_present(connection, names)
     hidden, hiding = _hidden_here(names, hidden)
     reader, said = _walk_lookup(connection, engine if engine in ENGINES else "stored", names, world, hiding)
 

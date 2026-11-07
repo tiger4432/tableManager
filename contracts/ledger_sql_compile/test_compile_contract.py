@@ -106,8 +106,8 @@ def _compiled(world):
         legs, left_out = sql_translate.compile_world(
             world["setup"].snapshot, lambda sql, params=None: trace._fetch(connection, sql, params), "default")
         reader = ledger_subgraph.VirtualEvidenceLookup(connection, legs, current_only=False)
-        atoms = [atom for leg in reader.legs for row in reader._select(leg, "true", {}, current=False)
-                 for atom in [reader._atom(leg, row)] if atom]
+        atoms = [reader._atom(leg, row, moment) for leg in reader.legs
+                 for moment, row in reader._timed(leg, reader._select(leg, "true", {}, current=False))]
         rows = {row_id for (row_id,) in trace._fetch(connection, f"SELECT row_id FROM {hw.OFFICIAL}")}
         walk = []
         for asked in case.get("walk", ()):

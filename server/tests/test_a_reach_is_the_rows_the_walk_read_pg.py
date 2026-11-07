@@ -165,7 +165,7 @@ def test_a_hidden_middle_table_gives_none_of_its_atoms(world, monkeypatch):
         return reading
 
     for reader in (ledger_subgraph.SqlEvidenceLookup, ledger_subgraph.VirtualEvidenceLookup):
-        monkeypatch.setattr(reader, "claims_for_entities", kept(reader.claims_for_entities))
+        monkeypatch.setattr(reader, "reached_for_entities", kept(reader.reached_for_entities))
     for engine in ENGINES:
         seen = _reach(world, engine, **middle)
         assert set(seen["rows"]) == _expected(world, ("W1",))[1] and "hidden" not in seen, engine
@@ -238,7 +238,7 @@ def test_an_empty_marking_is_zero_rows_and_reads_nothing(world, monkeypatch):
     def refused(*_args, **_kwargs):
         raise AssertionError("an empty marking read the ledger")
 
-    for name in ("nodes_of_rows", "claims_for_entities", "rows_of"):
+    for name in ("nodes_of_rows", "reached_for_entities", "rows_of"):
         monkeypatch.setattr(ledger_subgraph.SqlEvidenceLookup, name, refused)
         monkeypatch.setattr(ledger_subgraph.VirtualEvidenceLookup, name, refused, raising=False)
     for engine in ENGINES:

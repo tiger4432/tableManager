@@ -37,7 +37,7 @@ import secrets
 import threading
 import time
 import uuid
-from collections import Counter, OrderedDict, defaultdict, deque
+from collections import Counter, OrderedDict, defaultdict, deque, namedtuple
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
@@ -603,17 +603,15 @@ def prepare_operating_declaration():
 def _say_value_types(nodes, edges):
     """Each value says the table_config type of the column the ledger read it from (총괄 2d6a0fd58 ㄱ for `image`,
     widened 10-14 to every declared type - the test bed hands it to the calculator as `types`): `column_type` on a node
-    name's record and per-world value, `column_types` {qualifier: type} on an edge record and on the edge itself, and
-    `column_types` {key part: type} on a node (owner 11-07 ㄱ: a time key shown as a time) - the sources of the records
-    and edges that name it, when they say one type.
+    name's record and per-world value, `column_types` {qualifier: type} on an edge record and on the edge itself.
     The answer is the declaration's - the value's source, the column it binds that name to, that column's
     table_config type, as written (`ledger.setup.declared_value_type`) - never the value's shape; a name with no one
     declared type (a code mapper's qualifier, two columns of two types) adds no cell: unknown.
     Measured 10-14 on 18766's bonded wafer page (773 nodes, 4.4 MB): +0.3 %, +3.9 % had every name a type."""
     setups, said = {}, {}
 
-    def kind(world, source, name, entity=None):
-        key = (world, source, name, entity)
+    def kind(world, source, name):
+        key = (world, source, name)
         if key not in said:
             if world not in setups:
                 try:
@@ -625,7 +623,7 @@ def _say_value_types(nodes, edges):
                         world or "(operating)", told(exc), exc_info=exc)
                     setups[world] = None
             from ledger.setup import declared_value_type
-            said[key] = setups[world] and declared_value_type(setups[world], source, name, entity)
+            said[key] = setups[world] and declared_value_type(setups[world], source, name)
         return said[key]
 
     def mark(record, world):
@@ -634,21 +632,7 @@ def _say_value_types(nodes, edges):
         if types:
             record["column_types"] = types
 
-    nodes, named_by = list(nodes), defaultdict(set)
-    for edge in edges:
-        for record in edge.get("records") or ():
-            for end in (edge.get("source"), edge.get("target")):
-                named_by[end].add((record.get("world"), record.get("source_who")))
     for node in nodes:
-        for records in (node.get("records") or {}).values():
-            named_by[node.get("id")].update((record.get("world"), record.get("source_who")) for record in records)
-        parts = {}
-        for part in node.get("keys") or {}:
-            types = {kind(world, source, part, node.get("type")) for world, source in named_by[node.get("id")]} - {None}
-            if len(types) == 1:
-                parts[part] = types.pop()
-        if parts:
-            node["column_types"] = parts
         for name, records in (node.get("records") or {}).items():
             for record in records:
                 each = kind(record.get("world"), record.get("source_who"), name)
@@ -715,6 +699,11 @@ class EvidenceAtom:
         if self.source_event_id and self.source_event_state in EVENT_STATES:
             return str(self.source_event_id), self.source_event_state
         return str(self.id), "legacy_atom"
+
+
+#: What a reach reads of a row (`reached_for_entities`): its ends and the row it was read from - an atom's own cells,
+#: so a stored atom is one too (`SqlEvidenceLookup.reached_for_entities`, `rows_of`).
+Reached = namedtuple("Reached", "subject_type subject_keys object_kind object_payload world source_who source_raw_ref")
 
 
 ATOM_COLUMNS = ", ".join((*LEDGER_COLUMNS, "world"))
@@ -1117,6 +1106,10 @@ class SqlEvidenceLookup:
         rows = self._execute(f"{FRONTIER_CTE} SELECT count(*) {arm}", params)
         return int(rows[0][0]) if rows else 0
 
+    def reached_for_entities(self, entities, direction, limit, *, follow=None):
+        """`claims_for_entities` - a stored atom carries what a reach reads (`Reached`)."""
+        return self.claims_for_entities(entities, direction, limit, follow=follow)
+
     def count_far_ends(self, entities, direction, predicate, far_type):
         """How many distinct far nodes one step reaches from `entities` [(type, keys)] along `predicate` on `direction`,
         of the bare `far_type` - a hub's count from the ledger, not from what a walk's budget read (owner 10-27). The
@@ -1466,8 +1459,6 @@ class VirtualEvidenceLookup:
                     f"in one"}
             for source, world, predicate in sorted({(leg.source, leg.world, leg.predicate) for leg in legs
                                                     if said_by.get((leg.world, leg.predicate), 0) > 1}))
-        #: atom id -> (relation, row id) - the rows a reach reads back (`rows_of`)
-        self._row_of = {}
         self._unreadable = set()
         self._census_of = {}
 
@@ -1475,30 +1466,50 @@ class VirtualEvidenceLookup:
         return trace._fetch(self.connection, sql, params)
 
     @staticmethod
-    def _in(leg, arm, texts, params, name, held=False):
-        """SQL: an end's column keys, as the SQL spells them, are one of `texts` [tuple in `columns_of` order] - with
-        `held`, each also as its column holds it (`_held`), so an index on the column serves the read."""
+    def _in(leg, arm, texts, params, name):
+        """SQL: an end's column keys are one of `texts` [tuple in `columns_of` order] (owner 11-07 «함수를 씌워서
+        인덱스를 못 탄다면 안 씌우면 안 됨?»): a column as it holds the value (`_held` - a number or a time key only
+        where the key speller spells it back to `texts`' own), so the column's index serves it; a column with notation
+        rules, or a time key held as text, as the join spells it (`Leg.key`) - its expression index. One tuple, one set."""
+        import map_overlay
         import notation_norm
-        from ledger.sql_translate import _NUMBERS, _TEXT, _held, _quoted
+        from ledger.sql_translate import _FLOAT, _INTEGER, _TEXT, _TIME, _held, _quoted
+        from utils.time_format import _zone
+
+        held_as = {_FLOAT: "float8", _INTEGER: "bigint", "numeric": "numeric", _TIME: "timestamptz",
+                   "timestamp without time zone": "timestamp"}
 
         columns, texts = leg.columns_of(arm), sorted(set(texts))
         if not texts or not columns:
             return "true" if texts else "false"
+        cells, types, rows = [], [], []
+        for _key, spec in columns:
+            spelled = notation_norm.rules_for_column(leg.relation, spec["column"]) or (
+                spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone"))
+            cells.append(leg.key(spec) if spelled else f"w.{_quoted(spec['column'])}")
+            types.append("text" if spelled or spec["kind"] == _TEXT else held_as[spec["kind"]])
+        for each in texts:
+            row = []
+            for text, (_key, spec), kind in zip(each, columns, types):
+                value = text if kind == "text" else _held(text, spec)
+                spelled = None if value is None or kind == "text" else map_overlay.time_key_text(value, _zone(spec["zone"]))                     if spec.get("zone") else map_overlay.canonical_key_value(value, "number")
+                if value is None or (kind != "text" and spelled != text):
+                    break                               # no value the column holds is spelled `text`
+                row.append(value)
+            else:
+                rows.append(row)
+        if not rows:
+            return "false"
         said = []
-        for index, (_key, spec) in enumerate(columns):
-            params[f"{name}{index}"] = [each[index] for each in texts]
-        if len(columns) == 1:
-            said.append(f"{leg.key(columns[0][1])} = ANY(%({name}0)s)")
-        else:
-            said.append("(%s) IN (SELECT * FROM unnest(%s))" % (
-                ", ".join(leg.key(spec) for _key, spec in columns),
-                ", ".join(f"CAST(%({name}{index})s AS text[])" for index in range(len(columns)))))
-        for index, (_key, spec) in enumerate(columns if held else ()):
-            if spec["kind"] in (_TEXT, *_NUMBERS) and not spec.get("zone") \
-                    and not notation_norm.rules_for_column(leg.relation, spec["column"]):
-                params[f"{name}h{index}"] = sorted({value for value in (_held(each[index], spec) for each in texts)
-                                                    if value is not None}, key=str)
-                said.append(f"w.{_quoted(spec['column'])} = ANY(%({name}h{index})s)")
+        for index, (cell, kind) in enumerate(zip(cells, types)):
+            params[f"{name}{index}"] = [row[index] for row in rows]
+            if cell.startswith("w.") and len(columns) > 1:
+                # a pre-filter the scan applies on a table with no index on these columns (box die leg 340 -> 120 ms,
+                # lead 11-07 ㄴ); the exact comparison is the tuple IN below
+                params[f"{name}a{index}"] = sorted({row[index] for row in rows}, key=str)
+                said.append(f"{cell} = ANY(CAST(%({name}a{index})s AS {kind}[]))")
+        said.append("(%s) IN (SELECT * FROM unnest(%s))" % (", ".join(cells), ", ".join(
+            f"CAST(%({name}{index})s AS {kind}[])" for index, kind in enumerate(types))))
         return "(" + " AND ".join(said) + ")"
 
     @staticmethod
@@ -1540,7 +1551,7 @@ class VirtualEvidenceLookup:
                 groups[(step in (extra.get("steps") or ()), _canonical(bound) if bound else "")].append((texts, bound))
             ors = []
             for index, ((skip, _bound_text), members) in enumerate(sorted(groups.items())):
-                said = [self._in(leg, arm, [texts for texts, _ in members], params, f"{arm[0]}{index}n", held=True)]
+                said = [self._in(leg, arm, [texts for texts, _ in members], params, f"{arm[0]}{index}n")]
                 if skip:
                     said.append(self._in(leg, other, [texts for _item, texts in leg.named(other, entities)], params,
                                          f"{arm[0]}{index}w"))
@@ -1570,9 +1581,13 @@ class VirtualEvidenceLookup:
         return "(" + (" OR " if outside else " AND ").join(said) + ")"
 
     def _select(self, leg, where, params, *, current=None, tail=""):
-        """The rows of `leg` `where` keeps: (row id, each end's column keys, the qualifier columns, the time, whether a
-        later fact of its subject is there - a `one` predicate's, before `until`) - `current`: keep only the current
-        (True), mark (False), None: as the reader is asked."""
+        """The rows of `leg` `where` keeps (`_statement`)."""
+        return self._execute(self._statement(leg, where, params, current=current, tail=tail), params)
+
+    def _statement(self, leg, where, params, *, current=None, tail=""):
+        """THE ONE STATEMENT a leg is read by: the rows `where` keeps as (row id, each end's column keys, the qualifier
+        columns, the time, whether a later fact of its subject is there - a `one` predicate's, before `until`) -
+        `current`: keep only the current (True), mark (False), None: as the reader is asked."""
         from ledger.sql_translate import _literal, _quoted
 
         current = self.current_only if current is None else current
@@ -1583,7 +1598,7 @@ class VirtualEvidenceLookup:
         named = ", ".join(f"{cell} AS {alias}" for cell, alias in zip(listed, aliases))
         base = f"SELECT {named} FROM {leg.relation} w WHERE {' AND '.join([*leg.said(), where])}"
         if leg.predicate not in self.one:
-            return self._execute(f"SELECT c.*, false FROM ({base}) c {tail}", params)
+            return f"SELECT c.*, false FROM ({base}) c {tail}"
         bare, specs = leg.ends["outgoing"]
         cells = iter(range(1, len(specs) + 1))
         mine = [_literal(spec["constant"]) if "constant" in spec else f"c.c{next(cells)}" for _key, spec in sorted(specs.items())]
@@ -1606,32 +1621,44 @@ class VirtualEvidenceLookup:
                   + (f" GROUP BY {', '.join(names)}" if names else ""))
         on = " AND ".join(f"{cell} = l.s{index}" for index, cell in enumerate(mine)) or "true"
         later = "coalesce(l.latest > c.at, false)"
-        return self._execute(f"""WITH c AS NOT MATERIALIZED ({base}), l AS ({latest})
-            SELECT c.*, {later} FROM c LEFT JOIN l ON {on} {"WHERE NOT " + later if current else ""} {tail}""", params)
+        return f"""WITH c AS NOT MATERIALIZED ({base}), l AS ({latest})
+            SELECT c.*, {later} FROM c LEFT JOIN l ON {on} {"WHERE NOT " + later if current else ""} {tail}"""
 
-    def _atom(self, leg, row):
-        """A row of `_select` as an atom, or None when its text time does not read."""
+    def _timed(self, leg, rows, counted=True):
+        """[(instant, row)] of `_select`'s `rows` whose time reads (`Leg.instant`, each distinct time once) - the rest
+        counted unreadable (`counted`; a far-end count's rows are not rows). Every read's rows pass here, so a walk, a
+        reach, its seeds and a hub's count keep the same rows."""
+        out, read = [], {}
+        for row in rows:
+            moment = read[row[-2]] if row[-2] in read else read.setdefault(row[-2], leg.instant(row[-2]))
+            if moment is None:
+                if counted:
+                    self._unreadable.add((leg.relation, row[0]))
+            else:
+                out.append((moment, row))
+        self.said["unreadable_times"] = len(self._unreadable)
+        return out
+
+    @staticmethod
+    def _ends(leg, row):
+        """((subject type, keys), (object type, keys)) of a `_select` row - the SQL's key texts and the constants."""
+        values = iter(row[1:])
+        return tuple((leg.ends[arm][0], {key: spec["constant"] if "constant" in spec else next(values)
+                                         for key, spec in sorted(leg.ends[arm][1].items())})
+                     for arm in ("outgoing", "incoming"))
+
+    def _atom(self, leg, row, moment):
+        """A `_timed` row as an atom."""
         from ledger import roleframe
 
-        values = iter(row[1:])
-        ends = {}
-        for arm in ("outgoing", "incoming"):
-            bare, specs = leg.ends[arm]
-            ends[arm] = (bare, {key: spec["constant"] if "constant" in spec else next(values)
-                                for key, spec in sorted(specs.items())})
+        (subject_type, subject_keys), (object_type, object_keys) = self._ends(leg, row)
+        values = iter(row[1 + sum(len(leg.columns_of(arm)) for arm in ("outgoing", "incoming")):])
         qualifiers = {}
         for name, spec in sorted(leg.qualifiers.items()):
             value = spec["constant"] if "constant" in spec else roleframe._plain(next(values))
             if value is not None:
                 qualifiers[name] = value
-        moment = leg.instant(next(values))
-        if moment is None:
-            self._unreadable.add((leg.relation, row[0]))
-            self.said["unreadable_times"] = len(self._unreadable)
-            return None
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
-        self._row_of[atom_id] = (leg.relation, row[0])
-        (subject_type, subject_keys), (object_type, object_keys) = ends["outgoing"], ends["incoming"]
         return EvidenceAtom(
             id=atom_id, subject_type=subject_type, subject_keys=subject_keys, predicate=leg.predicate,
             object_kind="entity_ref", object_payload={"type": object_type, "keys": object_keys,
@@ -1656,10 +1683,10 @@ class VirtualEvidenceLookup:
         return [leg for leg in self.legs
                 if not (follow and leg.predicate not in follow) and not (exclude and leg.predicate in exclude)]
 
-    def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None, exclude=None, far=None, far_types=None, before=None):
-        if before is not None:
-            raise ValueError("a virtual read is not continued from a cursor - nothing is recorded to read it as of")
+    def _reached(self, entities, direction, limit, follow=None, exclude=None, far=None, far_types=None):
+        """THE READ (lead 11-07: one SQL, one packing, atoms a layer above): ([(instant, leg, row)] newest first - a
+        time two rows share split by source, sentence, row id - cut at `limit`, whether more were there). A leg's
+        statement fetches `limit` + 1, so a cut is said without reading on."""
         if not entities or limit <= 0:
             return [], False
         read = []
@@ -1671,28 +1698,53 @@ class VirtualEvidenceLookup:
             self._unread(leg, where, params)
             rows = self._select(leg, f"{where} AND {self._window(leg, params)}", params,
                                 tail="ORDER BY c.at DESC, c.rid DESC LIMIT %(fetch)s")
-            read.extend(((atom.occurred_at, leg.source, leg.sentence, row[0]), atom)
-                        for row in rows for atom in (self._atom(leg, row),) if atom is not None)
+            read.extend(((moment, leg.source, leg.sentence, row[0]), leg, row) for moment, row in self._timed(leg, rows))
             if self.interval_excluded is not None:
                 outside = self._execute(
                     f"SELECT count(*) FROM {leg.relation} w WHERE {' AND '.join([*leg.said(), where])} "
                     f"AND {self._window(leg, params, outside=True)}", params)
                 self.interval_excluded += int(outside[0][0])
         read.sort(key=lambda each: each[0], reverse=True)
-        return [atom for _key, atom in read[:int(limit)]], len(read) > int(limit)
+        return [(key[0], leg, row) for key, leg, row in read[:int(limit)]], len(read) > int(limit)
+
+    def claims_for_entities(self, entities, direction, limit, *,
+                            follow=None, exclude=None, far=None, far_types=None, before=None):
+        if before is not None:
+            raise ValueError("a virtual read is not continued from a cursor - nothing is recorded to read it as of")
+        read, cut = self._reached(entities, direction, limit, follow, exclude, far, far_types)
+        return [self._atom(leg, row, moment) for moment, leg, row in read], cut
+
+    def reached_for_entities(self, entities, direction, limit, *, follow=None):
+        """`claims_for_entities`' rows with their ends and row only - what a reach reads (`trace_router.reach`); no atom
+        made."""
+        read, cut = self._reached(entities, direction, limit, follow)
+        out = []
+        for _moment, leg, row in read:
+            (subject_type, subject_keys), (object_type, object_keys) = self._ends(leg, row)
+            out.append(Reached(subject_type, subject_keys, "entity_ref", {"type": object_type, "keys": object_keys},
+                               leg.world, leg.source, f"{leg.relation}:{row[0]}"))
+        return out, cut
 
     def count_far_ends(self, entities, direction, predicate, far_type):
-        """`SqlEvidenceLookup.count_far_ends` over the legs - the read's filters (window, current fact), no step guard."""
+        """`SqlEvidenceLookup.count_far_ends` over the legs - the read's filters (window, current fact), no step guard:
+        each leg's distinct far keys and times in SQL, the times read once (`_timed`)."""
         far_bare, ends = _bare_name(far_type), set()
+        far_arm = "outgoing" if direction == "incoming" else "incoming"
         for leg in self._legs([predicate]):
             params = {}
             where = self._arms(leg, direction, [(t, k) for t, k in entities], params, far_types=("in", {far_bare}))
             if where is None:
                 continue
-            for row in self._select(leg, f"{where} AND {self._window(leg, params)}", params):
-                atom = self._atom(leg, row)
-                if atom is not None:
-                    ends.add(_canonical(atom.subject_keys if direction == "incoming" else atom.object_payload["keys"]))
+            before = len(leg.columns_of("outgoing")) if far_arm == "incoming" else 0
+            cells = [f"r.c{before + index}" for index in range(1, len(leg.columns_of(far_arm)) + 1)]
+            statement = self._statement(leg, f"{where} AND {self._window(leg, params)}", params)
+            rows = self._execute(f"SELECT DISTINCT {', '.join(['NULL', *cells, 'r.at', 'false'])} FROM ({statement}) r",
+                                 params)
+            specs = sorted(leg.ends[far_arm][1].items())
+            for _moment, row in self._timed(leg, rows, counted=False):
+                values = iter(row[1:])
+                ends.add(_canonical({key: spec["constant"] if "constant" in spec else next(values)
+                                     for key, spec in specs}))
         return len(ends)
 
     def _paged(self, entity, direction, predicate, timed, at=None, op=None):
@@ -1704,15 +1756,14 @@ class VirtualEvidenceLookup:
             if reads_as_event_time(leg.basis) != timed:
                 continue
             params = {"fetch": MAX_CLAIM_SCAN + 1}
-            where = self._in(leg, direction, [texts for _item, texts in leg.named(direction, [entity])], params, "p",
-                             held=True)
+            where = self._in(leg, direction, [texts for _item, texts in leg.named(direction, [entity])], params, "p")
             if at is not None:
                 params["at"] = leg.edge(at[0])
                 where += f" AND {leg.at()} {'<=' if op == '<' else '>='} %(at)s"
             rows = self._select(leg, where, params, current=False,
                                 tail=f"ORDER BY c.at {'DESC' if op == '<' else 'ASC'} LIMIT %(fetch)s")
             cut = cut or len(rows) > MAX_CLAIM_SCAN
-            out.extend(atom for row in rows[:MAX_CLAIM_SCAN] for atom in (self._atom(leg, row),) if atom is not None)
+            out.extend(self._atom(leg, row, moment) for moment, row in self._timed(leg, rows[:MAX_CLAIM_SCAN]))
         return out, cut
 
     def claims_in_time_order(self, entity, direction, predicate, at, op, limit):
@@ -1727,21 +1778,24 @@ class VirtualEvidenceLookup:
         return len(self._paged(entity, direction, predicate, False)[0])
 
     def nodes_of_rows(self, relation, row_ids, bare_type):
-        """{row id: [(type, keys)]} - the `bare_type` ends of the rows `row_ids` that say something - none made."""
-        said = []
+        """{row id: [(type, keys)]} - the `bare_type` ends of the rows `row_ids` that say something, their time read as
+        a walk reads it (`_timed`) - from the SQL's keys, no atom made (`_named_by_row` is the stored ledger's)."""
+        named = defaultdict(dict)
         for leg in self.legs:
-            if leg.relation != relation:
+            if leg.relation != relation or bare_type not in (leg.ends["outgoing"][0], leg.ends["incoming"][0]):
                 continue
             params = {"rows": list(row_ids)}
             self._unread(leg, "w.row_id = ANY(%(rows)s)", params)
-            for row in self._select(leg, "w.row_id = ANY(%(rows)s)", params, current=False):
-                atom = self._atom(leg, row)
-                if atom is not None:
-                    said.append((row[0], atom.subject_type, atom.subject_keys, "entity_ref", atom.object_payload))
-        return _named_by_row(said, bare_type)
+            for _moment, row in self._timed(leg, self._select(leg, "w.row_id = ANY(%(rows)s)", params, current=False)):
+                for kind, keys in self._ends(leg, row):
+                    if kind == bare_type:
+                        named[row[0]][(kind, tuple(sorted(keys.items())))] = keys
+        return {row: [(kind, ends[(kind, items)]) for kind, items in sorted(ends)] for row, ends in named.items()}
 
-    def rows_of(self, atoms, relation):
-        return {self._row_of[atom.id][1] for atom in atoms if self._row_of.get(atom.id, (None,))[0] == relation}
+    def rows_of(self, read, relation):
+        """The row ids of `relation` the atoms or `Reached` rows `read` were read from - their raw ref «relation:row id»."""
+        return {item.source_raw_ref.split(":", 1)[1] for item in read
+                if item.source_raw_ref.startswith(relation + ":")}
 
     def _census(self, bare):
         """{node keys as canonical JSON: [keys, rows naming it, its first event instant or None, {predicate}]} - every
