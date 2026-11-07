@@ -2811,9 +2811,13 @@ def _claimed_group_sync(tx_id, events, db, rules):
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
-            if chain_control.paused() is None:
-                raise
-            return False, "paused: %s" % (str(exc).strip().splitlines() or [""])[0], []
+            if chain_control.paused() is not None:
+                return False, "paused: %s" % (str(exc).strip().splitlines() or [""])[0], []
+            # So does a lock its one commit lost (its withdrawal lost twice, 총괄 11-07): rewound by the same judge
+            # (`table_locks.rewinds`) and said on its line - raised, the slot rolled its whole batch back unsaid.
+            if table_locks.rewinds(exc):
+                return False, str(exc), []
+            raise
         if answer[0]:
             return answer
         claim = _group_claim()
@@ -3732,29 +3736,43 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     not stamp its origin leaves cells this cannot find, and answering that with a quiet zero
     is the picture this round exists to end. The seat says which, and it says it per rule.
 
-    ⚠️ CONTAINED, like its neighbour: a failure here must not cost the group that already
-    committed, nor propagate into the chain loop.
+    🔴 A LOST LOCK IS NOT SWALLOWED (총괄 11-07): this runs inside the commit that ends the events (09f58844f), so
+    a deadlock or a lock timeout (`db_safety.lost_a_lock`) undoes this step and withdraws ONCE more; lost again, it
+    is raised - the group rewinds, a × answers 409 `SAVE_AGAIN`, a cancelled run ends failed with it. Logged and
+    gone, the cells it should have withdrawn stayed. ⚠️ ANY OTHER FAILURE IS STILL SWALLOWED (this step undone, one
+    error line, the events end as they are): «a withdrawal does not cost the group» stands for those until the
+    lead rules on them (the kinds that reach here: the C report of 11-07).
     """
+    import db_safety
     from database.context import channel
 
-    try:
-        # The follow-up lap is the chain's own write - said, so it does not lean on the
-        # source name the way events queued before the channel do.
-        with channel(event_constants.CHANNEL_CHAIN):
-            _withdraw_and_tell(db, table, row_ids, "deleted")
-        # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
-        #   There is one set now, so it walks the loader's - and that is WIDER, which is
-        #   right: a rule that cannot be reverted is worth naming whichever path runs it.
-        for rule in loaded_chain_rules():
-            if not watches_table(rule, table):
+    for attempt in (1, 2):
+        try:
+            # The follow-up lap is the chain's own write - said, so it does not lean on the
+            # source name the way events queued before the channel do.
+            with channel(event_constants.CHANNEL_CHAIN):
+                _withdraw_and_tell(db, table, row_ids, "deleted")
+            # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
+            #   There is one set now, so it walks the loader's - and that is WIDER, which is
+            #   right: a rule that cannot be reverted is worth naming whichever path runs it.
+            for rule in loaded_chain_rules():
+                if not watches_table(rule, table):
+                    continue
+                refusal = rule_run.retraction_refusal(rule)
+                if refusal:
+                    logger.warning("[ChainRetract] %s", refusal)
+            return
+        except Exception as err:                                   # noqa: BLE001
+            session_contract.undo_step(db)
+            if db_safety.lost_a_lock(err):
+                if attempt == 2:
+                    raise
+                logger.warning("[ChainRetract] retraction for table %s lost a lock - withdrawing again: %s",
+                               table, told(err))
                 continue
-            refusal = rule_run.retraction_refusal(rule)
-            if refusal:
-                logger.warning("[ChainRetract] %s", refusal)
-    except Exception as err:                                       # noqa: BLE001
-        session_contract.undo_step(db)
-        logger.error("[ChainRetract] retraction failed for table %s "
-                     "(the events are marked as they are): %s", table, told(err), exc_info=err)
+            logger.error("[ChainRetract] retraction failed for table %s "
+                         "(the events are marked as they are): %s", table, told(err), exc_info=err)
+            return
 
 
 def _deleted_rows_of(events):

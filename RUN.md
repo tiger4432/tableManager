@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **지운 행이 먹인 칸 거두기가 잠금을 잃으면 한 번 더, 또 잃으면 «보이게» — 로그 한 줄로 끝나지 않음** — git pull · 런처 재기동(API · 소급 · 체인 워커)
+>
+> ```
+> 무엇이 바뀌나  거두기가 교착 · 잠금 시간 초과를 만나면 한 번 더 거둠. 또 잃으면 올림:
+>              체인 그룹 = 되감기(큐 줄에 «deadlock with a save, rewound N time(s)»), 다음 판에 다시
+>              큐의 × = 409 «Another write is in progress - try again» → × 를 다시 누름
+>              소급 실행의 취소 끝 = 실행 FAILED + 사유
+> 문장         저장이 잠금을 못 받을 때의 409 문장도 «… - save again» → «… - try again» (같은 사건, 한 문장)
+> 로그         한 번 잃고 다시 거둠  «[ChainRetract] retraction for table <표> lost a lock - withdrawing again»
+>              그 밖의 실패는 지금처럼 «[ChainRetract] retraction failed …» 한 줄 (총괄 판정 대기)
+> 같은 답      server 폴더에서 python scripts/run_pg_tests.py -k test_a_withdrawal_that_loses_a_lock_tries_once_more
+> 끄기         없음. 되돌리려면 revert
+> ```
+>
+> ---
+>
 > ## [11-07] **소급 실행의 프로세스가 죽으면 그 실행은 스케줄러의 다음 틱에 «failed» — 큐가 스스로 움직임** — git pull · 런처 재기동(스케줄러)
 >
 > ```

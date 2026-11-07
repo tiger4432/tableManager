@@ -315,8 +315,8 @@ def waited_past_the_lock_timeout(error) -> bool:
     code = getattr(error, "pgcode", None) or getattr(getattr(error, "orig", None), "pgcode", None)
     return code == "55P03" or "lock timeout" in str(error)
 
-#: The sentence a person's save gets when it did not get a lock (`lost_a_lock`, 총괄 09f58844f ②).
-SAVE_AGAIN = "Another write is in progress - save again"
+#: The sentence a person's save or a queue × gets when it did not get a lock (`lost_a_lock`, 총괄 09f58844f ② · 11-07).
+SAVE_AGAIN = "Another write is in progress - try again"
 
 
 def lost_a_lock(error) -> bool:

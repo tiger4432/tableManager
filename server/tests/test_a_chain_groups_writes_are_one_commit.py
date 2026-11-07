@@ -12,7 +12,7 @@ processed mark are ONE commit, its holder's (`session_contract.hold_commit` · `
           matches: «origin unknown» once by the rule's name · a join's item writing only its `fn` cells is not counted,
           its plain take's unmatched item and another mapper's are
           a deadlock with a save rewinds, says how many times
-  PG      a save over HTTP waits for a held row at most `save_lock_timeout_seconds`, then is told to save again
+  PG      a save over HTTP waits for a held row at most `save_lock_timeout_seconds`, then is told to try again
 """
 import asyncio
 import logging
@@ -374,7 +374,7 @@ def test_a_save_waits_for_a_held_row_at_most_its_limit_then_is_told_to_save_agai
         save.close()
     answer = asyncio.run(main._a_lock_not_got(SimpleNamespace(method="PUT", url=SimpleNamespace(path="/t")),
                                               refused.value))
-    assert answer.status_code == 409 and b"Another write is in progress - save again" in answer.body
+    assert answer.status_code == 409 and b"Another write is in progress - try again" in answer.body
     session_contract.release_hold(pg_session)
     pg_session.commit()
 
