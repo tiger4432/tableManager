@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **가상 걷기가 남기지 않을 원자의 참조 · id 를 안 짓는다 — 같은 값은 한 번만 철자** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 무엇     engine=virtual 을 줄 때만 — 답은 그대로, 시간만 줄어듦(박스 reach wafer 1000 11.8 -> 6.2 s, lot 1000 17.7 -> 10.4 s)
+> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
+> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
+> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
+> ```
+>
+> ---
+>
 > ## [11-07] **가상 걷기(engine=virtual)는 표의 칸을 «그대로» 읽고 원자는 파이썬에서 짓는다 — SQL 다리 은퇴** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

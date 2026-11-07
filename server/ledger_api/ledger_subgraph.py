@@ -725,10 +725,58 @@ def _read_order_cells(prefix=""):
 
 
 def _read_order_key(atom):
-    """The read's order of one atom, in Python - an empty cell above any other, as PostgreSQL's DESC puts NULL first."""
-    cells = (_canonical(getattr(atom, name)) if name in _JSON_CELLS else str(getattr(atom, name)) if name == "id"
-             else getattr(atom, name) for name in READ_ORDER)
-    return tuple((cell is None, cell) for cell in cells)
+    """The read's order of one atom, in Python - an empty cell above any other, as PostgreSQL's DESC puts NULL first.
+    The raw ref and the id are compared only when the cells before them tie (`_Later`) - a virtual atom makes them
+    when first read (`_RowAtom`)."""
+    return tuple(_Later(atom, name) if name in _LATER_CELLS else
+                 (lambda cell: (cell is None, cell))(_canonical_cell(atom, name, getattr(atom, name))
+                                                     if name in _JSON_CELLS else getattr(atom, name))
+                 for name in READ_ORDER)
+
+
+_LATER_CELLS = ("source_raw_ref", "id")
+
+
+class _Later:
+    """One of `_LATER_CELLS` in a read order key: its (empty, value) pair, read when a comparison reaches it."""
+    __slots__ = ("atom", "name")
+
+    def __init__(self, atom, name):
+        self.atom, self.name = atom, name
+
+    def pair(self):
+        cell = getattr(self.atom, self.name)
+        cell = str(cell) if self.name == "id" else cell
+        return cell is None, cell
+
+    @staticmethod
+    def _of(other):
+        return other.pair() if isinstance(other, _Later) else other
+
+    def __eq__(self, other):
+        return self.pair() == self._of(other)
+
+    def __lt__(self, other):
+        return self.pair() < self._of(other)
+
+    def __le__(self, other):
+        return self.pair() <= self._of(other)
+
+    def __gt__(self, other):
+        return self.pair() > self._of(other)
+
+    def __ge__(self, other):
+        return self.pair() >= self._of(other)
+
+    def __hash__(self):
+        return hash(self.pair())
+
+
+def _canonical_cell(atom, name, value):
+    """`_canonical(value)` of an atom's `name` (subject_keys · object_payload · object_keys) - the text its reader kept
+    when it has one (`VirtualEvidenceLookup._texts`: one read spells each value once)."""
+    texts = getattr(atom, "_texts", None)
+    return texts[name] if texts else _canonical(value)
 
 #: The nodes a read starts from, one row each - `skip`: what that node does not read (`_skip`).
 FRONTIER_CTE = """
@@ -1294,10 +1342,12 @@ class InMemoryEvidenceLookup:
         self.recorded_before = None
 
     def _recorded(self, atom):
-        """`SqlEvidenceLookup._recorded_clause` over the atoms held here."""
+        """`SqlEvidenceLookup._recorded_clause` over the atoms held here - the id read only when a read is «as of»
+        (a virtual atom makes its id when first read, `_RowAtom`)."""
+        if self.recorded_before is None:
+            return True
         atom_id = str(atom.id)
-        return (self.recorded_before is None or len(atom_id) < 15 or atom_id[14] != "7"
-                or uuid.UUID(atom_id) < uuid.UUID(str(self.recorded_before)))
+        return len(atom_id) < 15 or atom_id[14] != "7" or uuid.UUID(atom_id) < uuid.UUID(str(self.recorded_before))
 
     def _outside(self, atom):
         if not reads_as_event_time(atom.occurred_at_basis):
@@ -1362,9 +1412,9 @@ class InMemoryEvidenceLookup:
             if (before is not None and (cursor is None or _read_order_key(atom) >= cursor)) \
                     or not self._recorded(atom):
                 continue                                # the cursor and the «as of», as the SQL spells them
-            subject = (atom.subject_type, _canonical(atom.subject_keys))
+            subject = (atom.subject_type, _canonical_cell(atom, "subject_keys", atom.subject_keys))
             payload = atom.object_payload or {}
-            target = (str(payload.get("type")), _canonical(payload.get("keys") or {}))
+            target = (str(payload.get("type")), _canonical_cell(atom, "object_keys", payload.get("keys") or {}))
             named = atom.object_kind == "entity_ref"
             if ((direction in ("outgoing", "both") and subject in wanted
                  and read("outgoing", subject, target if named else None, payload.get("type"), atom))
@@ -1404,7 +1454,8 @@ class InMemoryEvidenceLookup:
         latest = {}
         for other in self.atoms:
             if other.predicate in self.one and (self.until is None or other.occurred_at < self.until):
-                said = (other.world, other.subject_type, _canonical(other.subject_keys), other.predicate)
+                said = (other.world, other.subject_type, _canonical_cell(other, "subject_keys", other.subject_keys),
+                        other.predicate)
                 if said not in latest or other.occurred_at > latest[said]:
                     latest[said] = other.occurred_at
         return latest
@@ -1414,7 +1465,7 @@ class InMemoryEvidenceLookup:
         predicate) - so the double is not looser than the SQL it stands in for."""
         if atom.predicate not in self.one:
             return False
-        said = (atom.world, atom.subject_type, _canonical(atom.subject_keys), atom.predicate)
+        said = (atom.world, atom.subject_type, _canonical_cell(atom, "subject_keys", atom.subject_keys), atom.predicate)
         return said in latest and latest[said] > atom.occurred_at
 
 
@@ -1447,10 +1498,12 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         self.legs = tuple(legs)
         self.said = {} if said is None else said
         self.said.setdefault("unreadable_times", 0)     # the cell is there whether or not a row was read
-        #: atom id -> (relation, row id) - the rows a reach reads back (`rows_of`)
+        #: atom id -> (relation, row id) - the rows a reach reads back (`rows_of`); filled as an id is made
         self._row_of = {}
         self._unreadable = set()
         self._census_of = {}
+        #: this reader's spellings - a key part, a time, a canonical text - each value once (`Leg.atom`, `_texts`)
+        self._memo = {}
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -1473,14 +1526,33 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         out = []
         with roleframe.times_read(readings):
             for row in rows:
-                fields, unreadable = leg.atom(row)
+                fields, unreadable = leg.atom(row, self._memo)
                 if unreadable:
                     self._unreadable.add((leg.relation, row["row_id"]))
                 if fields is not None:
-                    atom = EvidenceAtom(**fields)
-                    self._row_of[atom.id] = (leg.relation, row["row_id"])
-                    out.append(atom)
+                    out.append(_RowAtom.of(fields, self._maker(leg, row), self._texts(fields),
+                                           (leg.source, leg.sentence, row["row_id"])))
         self.said["unreadable_times"] = len(self._unreadable)
+        return out
+
+    def _maker(self, leg, row):
+        """What makes a row's atom's raw ref and id when first read - and says its row, for `rows_of`."""
+        def make():
+            raw_ref, atom_id = leg.late(row)
+            self._row_of[atom_id] = (leg.relation, row["row_id"])
+            return raw_ref, atom_id
+        return make
+
+    def _texts(self, fields):
+        """{subject_keys · object_payload · object_keys: `_canonical` of it} - each value once a reader."""
+        payload = fields["object_payload"]
+        out = {}
+        for name, value in (("subject_keys", fields["subject_keys"]), ("object_payload", payload),
+                            ("object_keys", payload.get("keys") or {})):
+            said = ("text", name, repr(value))      # repr tells 9, 9.0 and '9' apart - Python's == does not
+            if said not in self._memo:
+                self._memo[said] = _canonical(value)
+            out[name] = self._memo[said]
         return out
 
     def _read(self, arm, entities, limit, follow=None, exclude=None):
@@ -1510,7 +1582,7 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         for arm in ("outgoing", "incoming"):
             if direction in (arm, "both"):
                 atoms, bit = self._read(arm, entities, limit, follow, exclude)
-                pool.update((atom.id, atom) for atom in atoms)
+                pool.update((atom.row, atom) for atom in atoms)
                 cut = cut or bit
         one = [atom for atom in pool.values() if atom.predicate in self.one]
         if one:
@@ -1518,7 +1590,7 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
                         for atom in one}
             atoms, bit = self._read("outgoing", list(subjects.values()), limit,
                                     follow=sorted({atom.predicate for atom in one}))
-            pool.update((atom.id, atom) for atom in atoms)
+            pool.update((atom.row, atom) for atom in atoms)
             cut = cut or bit
         self.atoms = list(pool.values())
         return cut
@@ -1658,6 +1730,45 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
                    if not node[3] & set(absent) and (not present or node[3] & set(present))]
         firsts = [node[2] for node in counted if node[2] is not None]
         return len(counted), min(firsts, default=None), max(firsts, default=None), len(examined)
+
+
+
+_LATE = object()
+
+
+class _Late:
+    """An EvidenceAtom field a `_RowAtom` makes when it is first read - set like any field (the dataclass's `__init__`
+    sets it), `_LATE` until made."""
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, atom, owner=None):
+        if atom is None:
+            return self
+        value = atom.__dict__.get(self.name, _LATE)
+        if value is _LATE:
+            atom.__dict__["source_raw_ref"], atom.__dict__["id"] = atom.__dict__.pop("make")()
+            value = atom.__dict__[self.name]
+        return value
+
+    def __set__(self, atom, value):
+        atom.__dict__[self.name] = value
+
+
+class _RowAtom(EvidenceAtom):
+    """A virtual read's atom (`VirtualEvidenceLookup._atoms`): its raw ref and id are made when first read - the rules
+    and the order's first five cells never read them, the order's last two only at a tie (11-07: 72,400 rows read for
+    10,000 kept). `row`: (source, sentence, row id) - its identity before an id is made. `replace` reads every field,
+    so a replaced atom holds them made."""
+    source_raw_ref = _Late()
+    id = _Late()
+
+    @classmethod
+    def of(cls, fields, make, texts, row):
+        atom = cls(**fields, source_raw_ref=_LATE, id=_LATE)
+        atom.__dict__.update(make=make, _texts=texts, row=row)
+        return atom
 
 
 #: The declaration's facts the walk in progress reads (`_read_entity_declaration`) - read once at its start, by the

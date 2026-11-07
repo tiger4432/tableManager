@@ -399,6 +399,9 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
           (Leg.read — 행 거르기 + 프런티어 키 칸 = ANY, 키가 두 칸 이상이면 그 묶음 IN 프런티어 묶음)
           원자는 파이썬에서 번역기의 함수로(Leg.atom — 키 철자 map_overlay · 시각 _aware_time + PostgreSQL 이
           읽는 시각 · 원천 행 _claim_source_raw_ref). 원자를 SQL 로 짓는 자리 0(총괄 11-07 «SQL 다리 은퇴»)
+          값 철자 · 시각 · 정본 JSON 은 조회기 하나에서 값마다 한 번(사전 열쇠는 타입까지 — 9 · 9.0 · '9').
+          원천 행 참조 · id 는 처음 읽힐 때 지음(Leg.late · _RowAtom) — 규칙과 순서의 앞 다섯 칸은 안 읽고,
+          동률일 때와 남긴 원자만 읽음(박스 wafer 1000: 72,400 행 중 남는 10,000)
           ledger_subgraph.VirtualEvidenceLookup — InMemoryEvidenceLookup 의 규칙(순서 · 자르기 · 구간 · 지금 것)을
           그 원자에 그대로. 다리 하나가 읽는 행은 READ_GUARD_FACTOR x 그 읽기의 상한까지 — 넘으면 cut(capped)
           씨앗 없는 질문(key-values · gaps · 타입의 씨앗)은 다리 끝마다 키 칸 GROUP BY 한 번(행은 안 읽음)

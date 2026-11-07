@@ -276,19 +276,23 @@ class Leg:
                 ", ".join(cells), ", ".join(f"%({name}_t{index})s" for index in range(len(cells)))))
         return conditions
 
-    def atom(self, row):
-        """(the row's atom as the translator makes it - {EvidenceAtom field: value}, or None when the row says nothing:
-        a blank key or a blank time; whether its time was there and did not read)."""
-        from .event_frame import STORED_RAW_REF_JOINS, SourcePreparationError, _aware_time
-        from .event_frame import _canonical as canonical
+    def atom(self, row, memo=None):
+        """(the row's atom as the translator makes it - {EvidenceAtom field: value} but the two `late` makes, or None
+        when the row says nothing: a blank key or a blank time; whether its time was there and did not read).
+        `memo`: one read's spellings - a value the rows repeat is spelled once, keyed by its type too (9, 9.0 and '9'
+        are three keys; 11-07: 724 wafers and 6,126 times in 72,400 rows)."""
+        from .event_frame import SourcePreparationError, _aware_time
 
-        spelled = {}
+        memo = {} if memo is None else memo
 
-        def spell(spec):            # a column read twice (a required key, an end's key) is spelled once a row
-            said = (spec.get("column"), str(spec.get("declared")), spec.get("constant"))
-            if said not in spelled:
-                spelled[said] = _spelled(spec, row)
-            return spelled[said]
+        def spell(spec):
+            if "constant" in spec:
+                return spec["constant"]
+            value = row[spec["column"]]
+            said = ("key", str(spec["declared"]), type(value).__name__, repr(value))
+            if said not in memo:
+                memo[said] = _spelled(spec, row)
+            return memo[said]
 
         if any(spell(spec) is None for spec in self.required):
             return None, False
@@ -298,10 +302,15 @@ class Leg:
         moment = row[self.time.column]
         if roleframe.is_blank_source_value(moment):
             return None, False
-        try:
-            moment = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
-                                 self.time.timezone, f"read.{self.time.column}", self.time.format)
-        except SourcePreparationError:
+        said = ("time", self.time.timezone, self.time.format, type(moment).__name__, repr(moment))
+        if said not in memo:
+            try:
+                memo[said] = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
+                                         self.time.timezone, f"read.{self.time.column}", self.time.format)
+            except SourcePreparationError:
+                memo[said] = None
+        moment = memo[said]
+        if moment is None:
             return None, True
         qualifiers = {}
         for name, spec in self.qualifiers.items():
@@ -310,19 +319,24 @@ class Leg:
                 qualifiers[name] = value
         (subject_type, subject_keys), (object_type, object_keys) = ends["outgoing"], ends["incoming"]
         payload = {"type": object_type, "keys": object_keys, **({"qualifiers": qualifiers} if qualifiers else {})}
+        return {"subject_type": subject_type, "subject_keys": subject_keys, "predicate": self.predicate,
+                "object_kind": "entity_ref", "object_payload": payload, "occurred_at": moment, "source_who": self.source,
+                "source_translator_ver": self.version, "supersedes": None, "source_event_id": None,
+                "source_event_state": None, "occurred_at_basis": self.basis, "world": self.world}, False
+
+    def late(self, row):
+        """(source_raw_ref, id) of the row's atom - the read order reads them only at a tie and the answer for the
+        atoms it keeps, so a reader makes them when first read (`ledger_subgraph._RowAtom`)."""
+        from .event_frame import STORED_RAW_REF_JOINS
+        from .event_frame import _canonical as canonical
+
         row_ref = f"{self.relation}:" + canonical({column: row[column] for column in self.order_by},
                                                    path="source_row_ref")
         event = canonical({"relation": self.relation, "rows": [row_ref], "verified_joins": STORED_RAW_REF_JOINS},
                           path="event_frame.source_raw_ref")
         # an atom id is a uuid, as the ledger's - a time page's cursor carries it (`ledger_subgraph.time_cursor`)
         said = "%s|%s|%s" % (self.source, self.sentence, row["row_id"])
-        return {"id": str(uuid.uuid5(uuid.NAMESPACE_OID, said)), "subject_type": subject_type,
-                "subject_keys": subject_keys, "predicate": self.predicate, "object_kind": "entity_ref",
-                "object_payload": payload, "occurred_at": moment, "source_who": self.source,
-                "source_translator_ver": self.version,
-                "source_raw_ref": roleframe._claim_source_raw_ref(event, [row_ref]), "supersedes": None,
-                "source_event_id": None, "source_event_state": None, "occurred_at_basis": self.basis,
-                "world": self.world}, False
+        return roleframe._claim_source_raw_ref(event, [row_ref]), str(uuid.uuid5(uuid.NAMESPACE_OID, said))
 
 
 def _spelled(spec, row):
