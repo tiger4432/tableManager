@@ -3741,7 +3741,7 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     is raised - the group rewinds, a × answers 409 `SAVE_AGAIN`, a cancelled run ends failed with it. Logged and
     gone, the cells it should have withdrawn stayed. ⚠️ ANY OTHER FAILURE IS STILL SWALLOWED (this step undone, one
     error line, the events end as they are): «a withdrawal does not cost the group» stands for those until the
-    lead rules on them (the kinds that reach here: the C report of 11-07).
+    lead says otherwise (총괄 11-07: kept - box logs 0, tests 1 on purpose; again when there is evidence).
     """
     import db_safety
     from database.context import channel

@@ -3891,7 +3891,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >           그룹은 쓰기 단계 «내내» 그 행을 쥠. 맵퍼 · 데이터 받기 동안은 안 쥠
 >           알려진 예외: 여러 쪽 제안의 다음 쪽(more())은 쓰기 단계 안에서 맵퍼가 돌아 그 동안 쥠 — 데이터 받기 합치기(ㄴ)에서 닫힘
 >           막지 않는 것: 맵퍼가 읽는 «입력 값»은 잠금 없이 읽음 — 그 사이 바뀐 값은 그 바뀜의 사건이 다시 돌려 맞춤
-> 사람 저장  같은 행을 쥔 그룹 뒤에서 save_lock_timeout_seconds(기본 10 초) 넘게 기다리면 409 «Another write is in progress - save again»
+> 사람 저장  같은 행을 쥔 그룹 뒤에서 save_lock_timeout_seconds(기본 10 초) 넘게 기다리면 409 «Another write is in progress - try again»(11-07 부터)
 >           교착(40P01)도 같은 409. 다시 저장하면 됨
 >           기본값 근거: 판(박스) 1,000 행 그룹 뒤 사람 저장의 가장 긴 기다림 0.66 초 · 그룹 하나의 기준 5 초의 두 배
 > 맵퍼 커밋  쓰기 단계 안에서 맵퍼가 db.commit() 을 부르면 거절 -> 그 그룹 실패, 대기열 last_failure
