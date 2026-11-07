@@ -108,13 +108,13 @@
     "access": {"edit_by": "target_table"}
   },
   "sys_collect_misses": {
-    "__comment": "One row per item a run did not write: reason no_key | not_opened | refused, seq its place in the run, cells what was read from it as JSON. A row is an edit of target_table.",
+    "__comment": "One row per item a run did not write: reason no_key | not_opened | refused, detail its sentence (the server's refusal, the extension's timeout), seq its place in the run, cells what was read from it as JSON. A row is an edit of target_table.",
     "group": "System",
     "composite_key_source": ["run_id", "seq"],
     "composite_key_separator": "|",
     "column_types": {"run_id": "string", "seq": "string", "target_table": "string", "page_url": "string",
-                     "reason": "string", "cells": "string"},
-    "display_columns": ["run_id", "seq", "reason", "page_url", "cells", "target_table"],
+                     "reason": "string", "detail": "string", "cells": "string"},
+    "display_columns": ["run_id", "seq", "reason", "detail", "page_url", "cells", "target_table"],
     "access": {"edit_by": "target_table"}
   }
 }

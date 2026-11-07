@@ -25,7 +25,7 @@
 >          sys_templates        한 행 = 한 쪽의 읽는 법 (키 template)
 >          sys_template_fields  한 행 = 넣을 칸 하나를 읽는 법 (키 template|column, base item = 열기 전 · content = 연 뒤)
 >          sys_collect_runs     한 행 = 한 번 돈 것과 수 다섯 (written · skipped · no_key · not_opened · refused)
->          sys_collect_misses   한 행 = 못 쓴 항목 (reason no_key | not_opened | refused, cells = 읽은 칸 JSON)
+>          sys_collect_misses   한 행 = 못 쓴 항목 (reason no_key | not_opened | refused, detail = 그 사유 문장, cells = 읽은 칸 JSON)
 > 권한     네 표의 한 행 = target_table 칸이 이름 대는 표의 편집 (access.edit_by target_table)
 >          그 표 access.edit.allow 에 이름이 있으면 쓰고, 없으면 403 — 문장이 고칠 표를 이름 댐
 > 판       python tools/browser_bench/serve.py   -> http://127.0.0.1:8095/webmail.html · /board

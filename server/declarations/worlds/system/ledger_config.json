@@ -406,6 +406,7 @@
       "attributes": [
         "page_url",
         "reason",
+        "detail",
         "cells"
       ]
     }
@@ -1482,6 +1483,10 @@
               "cells": {
                 "kind": "column",
                 "column": "cells"
+              },
+              "detail": {
+                "kind": "column",
+                "column": "detail"
               }
             }
           }
