@@ -1312,9 +1312,12 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 
   const b = document.getElementById('pivot-toggle-btn');
   return b && !b.hidden && b.getAttribute('aria-pressed') === 'false' ? null : 'Pivot is not drawn unpressed';
 })()` });
+// What is drawn, not the attribute (lead 11-07): the base button's display beat [hidden] and this read green.
 CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'pivot only where declared', at: 'pivot', expr: `(() => {
   const b = document.getElementById('pivot-toggle-btn');
-  return b && b.hidden ? null : 'Pivot is drawn on a table that declares none';
+  if (!b) return 'no Pivot button';
+  const w = b.getBoundingClientRect().width;
+  return getComputedStyle(b).display === 'none' && w === 0 ? null : 'Pivot is drawn on a table that declares none (' + Math.round(w) + ' px)';
 })()` });
 // An html cell (lead 10-22): its size, not its text; a paste with no HTML leaves it and says so; one with HTML writes it.
 const HTML_CELL = `document.querySelector('.oe-html-cell')`;
@@ -3823,6 +3826,9 @@ const MUTANTS = [
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
+  // The base layer's [hidden] gone (lead 11-07): the button keeps its attribute and is drawn - the cell reads what is drawn.
+  { name: 'a hidden button drawn again, [hidden] beaten by the base button', entry: 'index.html', rule: 'pivot only where declared',
+    at: 'pivot', file: 'src/base.css', edits: [[':where([hidden]) { display: none !important; }', '']] },
   { name: 'Pivot refused while Tx is merely on (it is on by default)', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [["  if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard", "  if (refuseWrite(state.txModeActive ? 'Apply or discard"]] },
   { name: 'Apply reads a pivot group id again', entry: 'index.html', rule: 'pivot apply writes', at: 'pivot',

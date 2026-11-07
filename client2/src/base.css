@@ -22,6 +22,9 @@
 /* The reset lives here, first: a screen's own `*` reset ties at specificity 0 and the build may
    emit that screen's stylesheet AFTER this one (the grid's does), which would erase every padding below. */
 :where(*) { box-sizing: border-box; margin: 0; padding: 0; }
+/* `hidden` closes whatever it is on (lead 11-07): an author rule's display - the button's inline-flex below - beats the
+   browser's own [hidden], so a hidden Gallery and Pivot were drawn on every table. One rule here, not one per part. */
+:where([hidden]) { display: none !important; }
 
 :where(body) {
   font-family: var(--font-body);
@@ -65,8 +68,6 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
 }
-/* `hidden` must keep closing a box body the rule above opens (the Overview board uses it). */
-:where(.box-body, .section-body, .ov-section-body, .ov-row-body)[hidden] { display: none; }
 
 /* ── button — secondary unless a variant says otherwise ─────────────────────────── */
 /* Buttons and fields stop at AG-Grid's parts (class ag-*): its theme draws them - except a part of ours that
