@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Any, NamedTuple, Optional
 from . import models, schemas
@@ -17,6 +18,7 @@ def transaction_context(user: str, tx_id: str, source: str):
         request_transaction_id.reset(token_tx)
         request_source.reset(token_src)
 import hashlib
+import io
 import uuid
 import uuid6
 import codecs
@@ -2578,8 +2580,13 @@ def _warn_upsert_fastpath_declined_once(table_name: str, reason: str, detail: st
 
 def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
                         conflict_cols: list[str], update_cols: list[str],
-                        chunk_size: int) -> bool:
+                        chunk_size: int, copy: bool = False) -> bool:
     """Send `mappings` as one MULTI-ROW `VALUES` statement per chunk. `False` = declined.
+
+    `copy=True` sends them as ONE `COPY ... FROM STDIN` instead - only for rows NO stored row can share a conflict
+    key with (the caller's to prove: `bulk_upsert_cell_sources`' new rows). Same declines, same bind processors; a
+    database error is translated by SQLAlchemy's own `DBAPIError.instance`, so a unique or NOT NULL failure still
+    arrives as `IntegrityError` at the three sites below (lead 11-07: 1,000 new rows x 120 columns, 6.18 -> 3.68 s).
 
     🔴 WHY THIS EXISTS: `db.execute(stmt, list_of_dicts)` DOES NOT BATCH THIS STATEMENT.
     It reads like a batched send and it is not. SQLAlchemy 2.0 routes a parameter list
@@ -2748,8 +2755,21 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     if db.autoflush:
         db.flush()
 
-    one_row = "(" + ",".join(["%s"] * len(keys)) + ")"
     conn = db.connection()
+    if copy:
+        buf = io.StringIO()
+        for m in mappings:
+            buf.write("\t".join(_copy_field(p(m[k]) if p is not None else m[k]) for k, p in zip(keys, procs)))
+            buf.write("\n")
+        buf.seek(0)
+        statement = f"COPY {prep.format_table(table)} ({col_list}) FROM STDIN"
+        dbapi = dialect.loaded_dbapi
+        try:
+            conn.connection.dbapi_connection.cursor().copy_expert(statement, buf)
+        except dbapi.Error as orig:
+            raise DBAPIError.instance(statement, None, orig, dbapi.Error, dialect=dialect) from orig
+        return True
+    one_row = "(" + ",".join(["%s"] * len(keys)) + ")"
     row_sql_cache: dict[int, str] = {}
     for chunk in _chunks(mappings, chunk_size):
         n = len(chunk)
@@ -2774,11 +2794,26 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
 # a column that updates or does not depending on which path the batch takes and on nothing
 # else. Nothing would raise: the insert would carry the value and the conflicting row would
 # quietly keep its old one.
+def _copy_field(value) -> str:
+    """One value in COPY's text format: NULL is \\N; tab, newline, carriage return and backslash escaped."""
+    if value is None:
+        return "\\N"
+    if isinstance(value, bool):
+        return "t" if value else "f"
+    if hasattr(value, "isoformat"):
+        value = value.isoformat()
+    return (str(value).replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
+            .replace("\r", "\\r"))
+
+
 CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
 CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id')
 
 
-def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
+def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE,
+                             new_rows=frozenset()):
+    """`new_rows` - (table, row_id) of rows THIS transaction inserted (flushed before this call): no stored layer
+    can hold their keys, so theirs go by COPY; every other layer is upserted as before."""
     if not mappings:
         return
 
@@ -2814,6 +2849,16 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # limit; that rationale was re-measured and is false for psycopg2, see the
     # constant's own comment. What changes below is HOW those rows are sent, never how
     # many go per call.
+    if new_rows and _is_executemany_safe(deduped_mappings):
+        fresh = [m for m in deduped_mappings if (m['table_name'], m['row_id']) in new_rows]
+        if fresh and _pg_multirow_upsert(
+                db, models.CellSource.__table__, fresh,
+                conflict_cols=list(CELL_SOURCE_CONFLICT_COLS),
+                update_cols=list(CELL_SOURCE_UPDATE_COLS),
+                chunk_size=chunk_size, copy=True):
+            deduped_mappings = [m for m in deduped_mappings if (m['table_name'], m['row_id']) not in new_rows]
+            if not deduped_mappings:
+                return
     if _is_executemany_safe(deduped_mappings):
         # [P4] One MULTI-ROW statement per chunk. This used to be
         # `db.execute(stmt, chunk)` with a comment claiming psycopg2 rewrote the
@@ -6272,7 +6317,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             count(len(logs_to_cache or ()))
         with alignment_batch_counts.write_step("cell sources") as count:
             sources = list(cell_sources_to_upsert.values())
-            bulk_upsert_cell_sources(db, sources)
+            bulk_upsert_cell_sources(db, sources, new_rows={(table_name, row.row_id) for row in new_rows})
             count(len(sources))
         with alignment_batch_counts.write_step("cell overwrites") as count:
             overwrites = list(cell_overwrites_to_upsert.values())
