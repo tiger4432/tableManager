@@ -594,15 +594,18 @@ def dry_run_report(setup: LedgerSetup) -> Mapping[str, Any]:
     })
 
 
-def declared_value_type(setup: "LedgerSetup", source_id: str, name: str):
+def declared_value_type(setup: "LedgerSetup", source_id: str, name: str, entity=None):
     """The table_config type of the column `source_id` reads `name` from - a qualifier role of that name, or an
     attribute of that name on an entity role, in any of its sentences (총괄 2d6a0fd58: the walk says a value is an
-    image from the declaration, never from the value's shape). None when the source binds no column to the name (a
-    code mapper's qualifier), binds columns of more than one type to it, or is not declared."""
+    image from the declaration, never from the value's shape); with `entity`, the key part `name` of that entity type
+    (owner 11-07 ㄱ: a time key is shown as a time). None when the source binds no column to the name (a code mapper's
+    qualifier), binds columns of more than one type to it, or is not declared."""
     import map_overlay
+    from declaration_names import bare_name
 
     plan = setup.snapshot.source_plans.get(source_id)
-    columns = {row["column"] for row in bound_columns(plan) if row["role"] != "key" and row.get("name") == name}
+    columns = {row["column"] for row in bound_columns(plan) if row.get("name") == name and (
+        row["role"] == "key" and bare_name(row.get("entity")) == bare_name(entity) if entity else row["role"] != "key")}
     if not columns:
         return None
     types = {map_overlay.declared_column_type(plan.relation, column) for column in columns}

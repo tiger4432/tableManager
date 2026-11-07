@@ -5,6 +5,7 @@ table_config type as written (`ledger.setup.declared_value_type`) - never the va
 
   a node name    its records and per-world values carry `column_type` ("image", "datetime", "TEXT" ... as declared)
   an edge        its records and the edge carry `column_types: {<qualifier>: <type>}`
+  a node's key   the node carries `column_types: {<key part>: <type>}` - its sources', when they say one (owner 11-07 ㄱ)
   two sources    one name, two sources binding it to columns of two types - each record says its own source's
   no one type    a name bound to two columns of two types in one source: no cell (unknown)
   a reload       the type changed in table_config reaches the next walk, no restart (the singleton is read live)
@@ -139,3 +140,29 @@ def test_an_edge_qualifier_read_from_an_image_column_says_so_on_the_edge_and_its
     assert edge.get("column_types") == {"shot": "datetime"}
     assert edge["records"] and {json.dumps(r.get("column_types")) for r in edge["records"]} == {
         json.dumps({"shot": "datetime"})}
+
+
+def _lot_slot(body):
+    return next(n for n in body["nodes"] if n["type"] == "lot_slot")
+
+
+def test_a_key_part_says_the_type_of_its_column_on_its_node(declared):
+    atoms = declared(_declared(), event_type="TEXT", wafer="datetime", lot="TEXT", slot="number")
+    body = _walk(atoms)
+    assert _wafer(body)["keys"] == {"wafer": "W000"} and _lot_slot(body)["keys"], "CANARY: both ends walked"
+    assert _wafer(body).get("column_types") == {"wafer": "datetime"}
+    assert _lot_slot(body).get("column_types") == {"lot": "TEXT", "slot": "number"}
+
+
+def test_two_sources_that_bind_a_key_part_to_two_types_say_none(declared):
+    """A second source reads the wafer key from `lot` (text): the wafer's sources say two types - no cell."""
+    document = _declared(other_source=True)
+    document["sources"][OTHER]["bind"]["mappings"]["seat-holds-wafer"]["bind"]["target"]["keys"]["wafer"] = {
+        "kind": "column", "column": "lot"}
+    atoms = declared(document, event_type="TEXT", wafer="datetime", lot="TEXT", slot="number")
+    edges = [a for a in atoms if a.predicate != setup_bundle.REGISTER_PREDICATE]
+    copied = [replace(a, id=a.id + "-b", source_who=OTHER) for a in edges]
+    body = _walk(atoms + copied)
+    assert {r["source_who"] for e in body["edges"] for r in e["records"]} >= {SOURCE, OTHER}, "CANARY: two sources"
+    assert "column_types" not in _wafer(body), _wafer(body)
+    assert _lot_slot(body).get("column_types") == {"lot": "TEXT", "slot": "number"}

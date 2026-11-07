@@ -72,7 +72,7 @@ def _walk(board, engine, **asked):
 def _drawn(payload):
     """What both engines draw alike - an edge's `basis` and claim ids are the stored ledger's own (owner 11-07: the read
     is SQL alone, no byte parity with the stored record)."""
-    nodes = sorted(json.dumps({k: n.get(k) for k in ("id", "type", "keys", "attributes")}, sort_keys=True)
+    nodes = sorted(json.dumps({k: n.get(k) for k in ("id", "type", "keys", "attributes", "column_types")}, sort_keys=True)
                    for n in payload["nodes"])
     edges = sorted(json.dumps({k: e.get(k) for k in ("id", "source", "target", "predicate", "qualifiers",
                                                       "occurred_at", "not_current", "worlds")},

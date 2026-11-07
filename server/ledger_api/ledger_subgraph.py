@@ -603,15 +603,17 @@ def prepare_operating_declaration():
 def _say_value_types(nodes, edges):
     """Each value says the table_config type of the column the ledger read it from (총괄 2d6a0fd58 ㄱ for `image`,
     widened 10-14 to every declared type - the test bed hands it to the calculator as `types`): `column_type` on a node
-    name's record and per-world value, `column_types` {qualifier: type} on an edge record and on the edge itself.
+    name's record and per-world value, `column_types` {qualifier: type} on an edge record and on the edge itself, and
+    `column_types` {key part: type} on a node (owner 11-07 ㄱ: a time key shown as a time) - the sources of the records
+    and edges that name it, when they say one type.
     The answer is the declaration's - the value's source, the column it binds that name to, that column's
     table_config type, as written (`ledger.setup.declared_value_type`) - never the value's shape; a name with no one
     declared type (a code mapper's qualifier, two columns of two types) adds no cell: unknown.
     Measured 10-14 on 18766's bonded wafer page (773 nodes, 4.4 MB): +0.3 %, +3.9 % had every name a type."""
     setups, said = {}, {}
 
-    def kind(world, source, name):
-        key = (world, source, name)
+    def kind(world, source, name, entity=None):
+        key = (world, source, name, entity)
         if key not in said:
             if world not in setups:
                 try:
@@ -623,7 +625,7 @@ def _say_value_types(nodes, edges):
                         world or "(operating)", told(exc), exc_info=exc)
                     setups[world] = None
             from ledger.setup import declared_value_type
-            said[key] = setups[world] and declared_value_type(setups[world], source, name)
+            said[key] = setups[world] and declared_value_type(setups[world], source, name, entity)
         return said[key]
 
     def mark(record, world):
@@ -632,7 +634,21 @@ def _say_value_types(nodes, edges):
         if types:
             record["column_types"] = types
 
+    nodes, named_by = list(nodes), defaultdict(set)
+    for edge in edges:
+        for record in edge.get("records") or ():
+            for end in (edge.get("source"), edge.get("target")):
+                named_by[end].add((record.get("world"), record.get("source_who")))
     for node in nodes:
+        for records in (node.get("records") or {}).values():
+            named_by[node.get("id")].update((record.get("world"), record.get("source_who")) for record in records)
+        parts = {}
+        for part in node.get("keys") or {}:
+            types = {kind(world, source, part, node.get("type")) for world, source in named_by[node.get("id")]} - {None}
+            if len(types) == 1:
+                parts[part] = types.pop()
+        if parts:
+            node["column_types"] = parts
         for name, records in (node.get("records") or {}).items():
             for record in records:
                 each = kind(record.get("world"), record.get("source_who"), name)
