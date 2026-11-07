@@ -1342,8 +1342,9 @@ export function buildColumnDefs() {
     filter: false,
     resizable: false,
     editable: false,
-    // a table read in its entered order: its rows (in pivot view its groups) dragged by this cell (owner 11-06)
-    rowDrag: (params) => placing() && Boolean(params.data && params.data.order_key),
+    // a table read in its entered order: its rows (in pivot view its groups) dragged by this cell (owner 11-06) - on no
+    // other table: a handle AG Grid hides still takes its room, and the number beside it was drawn as a dot (box, 11-07)
+    ...(state.currentOrder === ENTERED ? { rowDrag: (params) => placing() && Boolean(params.data && params.data.order_key) } : {}),
     cellClass: 'cell-system-readonly'
   });
 
@@ -1442,6 +1443,9 @@ export function fitColumnWidths() {
   widthsOwed = false;
   const cs = getComputedStyle(cell);
   const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+  // the drag handle beside the row number, as drawn (hidden or not, it takes its room)
+  const handle = document.querySelector('#myGrid .ag-row-drag');
+  const drag = handle ? handle.getBoundingClientRect().width + (parseFloat(getComputedStyle(handle).marginRight) || 0) : 0;
   const font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
   const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-column-max')) || Infinity;
   const nodes = [];
@@ -1457,7 +1461,7 @@ export function fitColumnWidths() {
   api.setColumnWidths(api.getColumns().filter((col) => isDataColumn(col.getColId()) || col.getColId() === '#').map((col) => ({
     key: col.getColId(),
     newWidth: Math.min(col.getMaxWidth() || Infinity, Math.max(col.getMinWidth() || 0, columnFitWidth(headerNeed(col.getColDef()),
-      texts(col), (text) => textWidth(text, font), pad, cap))),
+      texts(col), (text) => textWidth(text, font), pad + (col.getColDef().rowDrag ? drag : 0), cap))),
   })));
 }
 

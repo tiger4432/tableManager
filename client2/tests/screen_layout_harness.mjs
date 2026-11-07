@@ -1128,7 +1128,9 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pi
 // the first table, and one switched to (its fit is the read's: the grid's very first rows fit from onFirstDataRendered too).
 const VALUES_WHOLE = `(() => {
   const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-column-max'));
-  const cells = [...document.querySelectorAll('.ag-center-cols-container .ag-row .ag-cell[col-id]')].filter((c) => c.getClientRects().length);
+  // the pinned columns too - the row number is pinned left, and its cut was not read (box 11-07: «1» drawn as a dot)
+  const cells = [...document.querySelectorAll(['.ag-pinned-left-cols-container', '.ag-center-cols-container', '.ag-pinned-right-cols-container']
+    .map((box) => box + ' .ag-row .ag-cell[col-id]').join(', '))].filter((c) => c.getClientRects().length);
   if (cells.length < 10) return cells.length + ' cells drawn (else this proves nothing)';
   for (const c of cells) {
     const v = c.querySelector('.ag-cell-value') || c;
@@ -3905,6 +3907,11 @@ const MUTANTS = [
   { name: 'the drag fits the columns to the box', entry: 'index.html', rule: 'column widths kept', at: 'ag-cell',
     file: 'src/main.js', edits: [['        putSidebarWidth(sidePanel(), sidebarWidth);\n', '        putSidebarWidth(sidePanel(), sidebarWidth);\n        if (state.gridApi) state.gridApi.sizeColumnsToFit();\n']] },
   // The first rows not fitting the columns (every column at the default 150 px).
+  // L1 as it landed (787c9871e): the row number's drag handle on every table and its room not in the fit - hidden, it
+  // still takes the room, and «1» was drawn as a dot (box 11-07).
+  { name: 'the drag handle in every table row number', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
+    file: 'src/grid.js', edits: [['...(state.currentOrder === ENTERED ? { rowDrag:', '...(true ? { rowDrag:'],
+      ['pad + (col.getColDef().rowDrag ? drag : 0)', 'pad']] },
   { name: 'the columns not fitted', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/api.js', edits: [['    fitColumnWidths();\n', '']] },
   // The defs' width laid again on every defs refresh, undoing the fit (measured on the box, 11-05).
