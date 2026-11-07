@@ -269,6 +269,8 @@ SYSTEM_TABLE_COLUMNS = {
     # them - leaving them declared here would fail as "the build lost a system
     # table", which is the opposite of what happened.
     "interaction_effort_logs": ('id', 'key_count', 'mouse_count', 'nav_count', 'nav_preserved_count', 'session_id', 'timestamp', 'transaction_id'),
+    # NEW TABLE (f7660ed52, a person's named marking - markings.py), made whole by create_all: no migration
+    "markings": ('column_name', 'id', 'marked', 'owner', 'rev', 'table_name', 'touched_at'),
 }
 
 

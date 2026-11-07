@@ -146,7 +146,12 @@ def census():
                            else lists if _is_the_list(arg, my_lists) else None)
                     if bag is None:
                         continue
-                    for target_rel, target in by_name.get(_callee(node), ()):
+                    targets = by_name.get(_callee(node), ())
+                    # a bare name is its own module's function when it has one - graph's `_when(rule)` is not
+                    # sql_translate's `_when(kinds, ...)`
+                    if isinstance(node.func, ast.Name) and any(t_rel == rel for t_rel, _ in targets):
+                        targets = [(t_rel, t) for t_rel, t in targets if t_rel == rel]
+                    for target_rel, target in targets:
                         params = [a.arg for a in target.args.args]
                         if params and params[0] in ("self", "cls"):
                             params = params[1:]

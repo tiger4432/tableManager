@@ -113,4 +113,5 @@ def test_the_schema_route_moved_nothing_else(client, monkeypatch):
     assert set(client.get(f"/tables/{name}/schema").json()) == (
         SCHEMA_KEYS_BEFORE | {"kind", "smart_paste",         # smart_paste: 총괄 12cc7dd1f ⓪
                               "column_indexes",                   # the header's index mark: 13ddbdbb9 (owner 10-15)
-                              "pivot"})                           # a long table's item key: 9638397f2
+                              "pivot",                            # a long table's item key: 9638397f2
+                              "order"})                           # read in entered order: 787c9871e (owner 11-06)

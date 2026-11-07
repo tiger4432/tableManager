@@ -41,6 +41,9 @@ BELONGING_TO_ANOTHER_GRAMMAR = (
     "derived_table", "target_fields", "aggregations", "decision_key", "alignment",
     "reference_views", "left_table", "right_table", "right_columns", "right_folds",
     "expose",
+    # the unified declaration's (`rule_shape.from_declaration` reads them off a raw declaration; a loaded rule carries
+    # none - `declared_kind` takes either, so the census reaches them from chain.graph's loaded rule since abdbdd0cc)
+    "derive", "on", "into", "limits", "extra",
 )
 
 
