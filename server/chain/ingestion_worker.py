@@ -1935,6 +1935,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                         db, target_table, batch_data, drop_report=drop_report)
                 written[target_table].extend(batch_data.updates)
+                with alignment_batch_counts.stage("plain layer moved"):
+                    _move_off_the_plain_layer(db, target_table, batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
                     # the columns not written in the words a file and a grid save say them (lead 11-04: one event,
@@ -3943,6 +3945,26 @@ def _covered_rows(db, table, covers) -> set:
             found.update(row for (row,) in db.query(model.row_id).filter(
                 target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
     return found
+
+
+def _move_off_the_plain_layer(db, table, items):
+    """⑦ (총괄 09f58844f, option 1): a cell a rule writes sits on its owned layer (`rule_run.layer_of_a_rules_write`);
+    the plain, unowned chain layer that rule wrote on that cell before goes in this commit
+    (`cell_layer.withdraw_layers`), so settling the owned one later leaves no old value behind. Another owned layer
+    of the same rule stays - settle answers for it (owner 11-06 step 2). -> the layers withdrawn."""
+    from chain import cell_layer
+    from database import crud
+
+    cells = defaultdict(dict)                      # writer -> {(row_id, column): the layer it was just written on}
+    for item, row_id in _row_of_each(db, table, [i for i in items or () if crud.layer_owner(i.source_name)]):
+        cells[item.updated_by].update({(row_id, column): item.source_name for column in (item.updates or {})})
+    moved = 0
+    for writer, wanted in sorted(cells.items(), key=lambda kv: str(kv[0])):
+        found = [layer for layer in cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
+                 if layer[3] != wanted.get((layer[1], layer[2])) and not crud.layer_owner(layer[3])]
+        if found:
+            moved += cell_layer.withdraw_layers(db, found, apply=True)["cells_withdrawn"]
+    return moved
 
 
 def _row_of_each(db, table, items):

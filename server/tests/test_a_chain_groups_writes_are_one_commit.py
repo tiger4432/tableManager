@@ -253,7 +253,7 @@ def test_an_output_row_its_mapper_left_without_its_source_gets_it_by_key(db):
     assert ok, error
     src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
     [(row, column, source, origin)] = _layers(db)
-    assert (column, origin) == ("w", src_row) and source == crud.merged_layer_name(crud.CHAIN_SOURCE, src_row)
+    assert (column, origin) == ("w", src_row) and source == crud.owned_layer_name("oc_copy", src_row)
 
 
 def test_the_plain_layer_it_sat_on_moves_and_a_deleted_source_leaves_no_old_value(db):
@@ -266,8 +266,7 @@ def test_the_plain_layer_it_sat_on_moves_and_a_deleted_source_leaves_no_old_valu
     _push(db, [{"k": "K1", "v": "new"}])
     ok, error, _ = _group(db, [rule])
     assert ok, error
-    assert [layer[2] for layer in _layers(db)] == [crud.merged_layer_name(crud.CHAIN_SOURCE, layer[3])
-                                                  for layer in _layers(db)], "the plain layer went"
+    assert [crud.layer_owner(layer[2]) is not None for layer in _layers(db)] == [True], "the plain layer went"
     src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
     crud.delete_rows_batch(db, SRC, [src_row], "oc")
     ok, error, _ = _group(db, [rule])
