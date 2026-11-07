@@ -4,6 +4,7 @@
 //  Code Editor는 독립 탭 대신 각 탭의 편집 딥링크로 진입하는 공용 뷰. #editor URL 호환 유지)
 import './tokens.css';
 import './base.css';
+import './chain_pause.css';
 // `isCount` 는 인제션 행이 `admin_rows.js` 로 옮겨가며 이 파일에서 «쓰는 곳이 없어졌습니다».
 import { ABSENT, localeCountText, UNKNOWN } from './absent.js';
 import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';

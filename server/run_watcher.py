@@ -17,7 +17,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 # Now we can import database, models, and directory_watcher
 from database.database import SessionLocal, engine
 from database import models
-from directory_watcher import WorkspaceWatcher
+from directory_watcher import WorkspaceWatcher, watcher_paused
 from error_said import told
 from ingestion.activity import path_of
 
@@ -351,6 +351,10 @@ def poll_pending_retries():
     from ingestion import reread
 
     reading_stamps = reread.load_reading_stamps()
+    was_paused = False
+    from ingestion import settings as ingestion_settings
+    from ledger.setup import file_stamp
+    settings_seen = file_stamp(ingestion_settings.INGESTION_SETTINGS_PATH)
 
     while True:
         # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
@@ -364,7 +368,9 @@ def poll_pending_retries():
         # ingestion path opens work claims (directory_watcher.HEARTBEAT_NAME),
         # and this beat carries their stall age. The poller is now the reporter
         # of a wedged ingestion rather than a mask over it.
-        heartbeat.beat("watcher")
+        # Paused (총괄 290e22ac0): no retry is taken, the beat says so; Resume sweeps what came meanwhile
+        held = watcher_paused()
+        heartbeat.beat("watcher", state="paused" if held else None)
         db = SessionLocal()
         try:
             # The Reload button's SYSTEM_RELOAD row and the index line's join-keys row - a save writes none; this
@@ -411,7 +417,19 @@ def poll_pending_retries():
             # in this same cycle rather than waiting a whole extra one.
             reclaim_stranded_claims(db)
 
-            pending_logs = pending_retries(db)
+            # ingestion_settings.json saved: its external sources as it says now, no restart (총괄 10-21)
+            settings_now = file_stamp(ingestion_settings.INGESTION_SETTINGS_PATH)
+            if settings_now != settings_seen and workspace_watcher is not None:
+                settings_seen = settings_now
+                try:
+                    workspace_watcher.refresh_external_sources()
+                except Exception as refresh_error:                     # noqa: BLE001 - the retries below go on
+                    logger.warning("[Watcher] the external sources were not read again: %s", told(refresh_error))
+            if was_paused and not held and workspace_watcher is not None:
+                logger.info("[Watcher] resumed - sweeping what came while paused")
+                workspace_watcher.sweep_existing_files_async(reason="resume")
+            was_paused = held
+            pending_logs = [] if held else pending_retries(db)
 
             for log in pending_logs:
                 logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")

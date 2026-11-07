@@ -3,6 +3,7 @@
 import '../tokens.css';
 import '../base.css';
 import './file_ingestion.css';
+import '../chain_pause.css';
 import { API_BASE } from '../config.js';
 import { adminFetch } from '../admin_token.js';
 import { showToast } from '../utils.js';
@@ -10,6 +11,7 @@ import { writeClipboardRich } from '../clipboard_write.js';
 import { fileRetryAsk, fileRetryToast } from '../retry_verdict.js';
 import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
+import { ChainPauseControl, chainPauseView } from '../chain_pause.js';
 import { initTheme } from '../theme.js';
 import { WORDS, groupFiles, queryOf, tableLines } from './model.js';
 import { DetailPart, FilesPart, SearchPart, TableListPart } from './parts.js';
@@ -82,6 +84,30 @@ export function seatFileIngestionPage(doc = document) {
     },
   });
 
+  // the watcher's Pause (lead 290e22ac0) - the chain's part, its watcher instance
+  const pause = new ChainPauseControl(byId('fi-pause'), { doc, kind: 'watcher', send: sendPause });
+  async function readPause() {
+    let requested, worker = null;
+    try {
+      requested = { read: true, paused: (await read('/admin/watcher/pause')).paused || null };
+    } catch (e) { requested = { read: false, reason: e.message }; }
+    try {
+      const health = await (await fetch(`${API_BASE}/health`)).json();
+      worker = (((health || {}).checks || {}).workers || {}).watcher || null;
+    } catch (e) { /* the line says the request alone */ }
+    pause.render(chainPauseView(requested, worker));
+  }
+  async function sendPause({ path, body }) {
+    try {
+      const res = await adminFetch(`${API_BASE}${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const said = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: `${res.status}${said.detail ? ` · ${said.detail}` : ''}` };
+    } catch (e) { return { ok: false, error: e.message }; }
+    await readPause();
+    return { ok: true };
+  }
+
   function draw() {
     const picked = view.picked && view.rows.find((r) => r.id === view.picked.id);
     view.picked = picked || null;
@@ -127,6 +153,7 @@ export function seatFileIngestionPage(doc = document) {
   }
 
   draw();
+  readPause();
   start();
   return { query, view, search };
 }

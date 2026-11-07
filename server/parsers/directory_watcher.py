@@ -1410,10 +1410,10 @@ class HeavyIngestionLane:
 
     def _take(self):
         """The oldest waiting job whose table no worker is on, marked running - or None
-        once the lane is stopped."""
+        once the lane is stopped. While the watcher is paused none is taken; they wait."""
         with self._cond:
             while not self._stop_event.is_set():
-                for i, (key, job) in enumerate(self._waiting):
+                for i, (key, job) in enumerate(() if watcher_paused() else self._waiting):
                     if key not in self._running:
                         del self._waiting[i]
                         self._running.add(key)
@@ -1921,6 +1921,10 @@ class IngestionHandler(FileSystemEventHandler):
         # content hashing instead of being hidden by tier 1.
         self._external_force_hash = set()
 
+    def unregister_external_source(self, source_id: str):
+        """Detach one external-source context - the watcher retired it (switched off, removed or changed)."""
+        self._external_sources.pop(source_id, None)
+
     def register_external_source(self, spec: dict):
         """Attach one validated external-source context to this table handler."""
         source_id = spec["source_id"]
@@ -2066,6 +2070,8 @@ class IngestionHandler(FileSystemEventHandler):
     # Agent D v7: Removed on_modified as it causes too many duplicates on Windows
 
     def _handle_event(self, file_path: str):
+        if watcher_paused():
+            return          # left on the disk, untried - the sweep at Resume takes it (총괄 290e22ac0)
         abs_path = os.path.abspath(file_path)
         # [Startup Sweep] 멤버십 검사→add 사이 갭에서 스윕 스레드와 watchdog 스레드가
         # 동시에 통과하던 비원자 check-then-add를 락으로 원자화 (이중 처리 가드).
@@ -4172,6 +4178,14 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
             self.dispatch_path(event.src_path)
 
 
+def watcher_paused():
+    """Whether the watcher's Pause is on (총괄 290e22ac0) - the chain's control file shape, by the name "watcher" (read
+    every call, so it holds across a restart and a Resume reaches a running watcher)."""
+    from chain import control
+
+    return control.paused("watcher") is not None
+
+
 def _tried_already(memo, key, signature, handler, abs_path):
     """The one rule both sweeps skip by (총괄 10-07 ③): a file tried at this (mtime, size) is
     not tried again - unless that try waited past the lock timeout, which was not the file."""
@@ -4250,7 +4264,7 @@ class WorkspaceWatcher:
             self._external_availability[spec["source_id"]] = False
             return False
         try:
-            self.observer.schedule(
+            target["watch"] = self.observer.schedule(
                 target["event_handler"], root, recursive=spec["recursive"])
         except Exception as e:
             logger.warning(
@@ -4268,6 +4282,36 @@ class WorkspaceWatcher:
         if was is False:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
+
+    def _retire_external(self, source_id: str, why: str):
+        """One binding out: its handler forgets it (events not taken), its watch unscheduled, its sweep memory
+        cleared - so switched on again, its files are looked at again."""
+        target = self.external_targets.pop(source_id, None)
+        if target is None:
+            return
+        spec = target["spec"]
+        target["handler"].unregister_external_source(source_id)
+        if target.get("watch") is not None:
+            try:
+                self.observer.unschedule(target["watch"])
+                self.watch_count -= 1
+            except Exception as e:                                  # noqa: BLE001 - the handler no longer takes them
+                logger.warning(f"External source {source_id}: its watch was not unscheduled: {told(e)}")
+        for key in [key for key in self._external_sweep_attempted if key[0] == source_id]:
+            self._external_sweep_attempted.pop(key, None)
+        self._external_unmatched_said.discard(source_id)
+        logger.warning(f"External source {why} - no longer read as it was: {spec['root']} -> {spec['table_name']} "
+                       f"({spec.get('options') or {}}); a file being read finishes")
+
+    def refresh_external_sources(self):
+        """ingestion_settings.json was saved (총괄 10-21): the bindings as it declares them now - retired, changed or
+        new, no restart - and a new or changed one swept. -> the source ids that stood."""
+        with self._sync_lock:
+            added = self._register_external_sources(load_global_table_config())
+        if added:
+            self._ensure_observer_running()
+            self.sweep_external_sources_async(added, reason="external-source-saved")
+        return added
 
     def raws_root_for(self, table_name: str, table_config: dict | None = None) -> str:
         """The raws/ this watcher watches for `table_name` - the key of `handlers_by_raw_path`,
@@ -4295,15 +4339,18 @@ class WorkspaceWatcher:
         for error in errors:
             logger.error(f"External source config rejected: {error}")
 
+        # 🔴 [총괄 10-21, 소유자 「외부 저장소 별로 끄기」 · 「받는 파일을 바꿨는데 voids.json 이 계속 돎」] A binding
+        #    switched off, removed or changed (path · glob/filename · parser) is retired here - no restart: its events
+        #    and its sweep stop, a file it is reading is read to its end - and a changed one stands again below.
+        wanted = {spec["source_id"]: spec for spec in specs}
+        for source_id in [sid for sid, target in list(self.external_targets.items())
+                          if wanted.get(sid) != target["spec"]]:
+            self._retire_external(source_id, "changed" if source_id in wanted else "switched off or removed")
+
         added = []
         for spec in specs:
             source_id = spec["source_id"]
-            existing = self.external_targets.get(source_id)
-            if existing is not None:
-                if existing["spec"] != spec:
-                    logger.error(
-                        f"External source config changed for {source_id}; the running "
-                        f"binding is unchanged. Restart the watcher to apply it.")
+            if source_id in self.external_targets:
                 continue
             try:
                 raws_root = self.raws_root_for(spec["table_name"], table_config)
@@ -4558,8 +4605,8 @@ class WorkspaceWatcher:
 
             processed = 0
             for _mtime, fp, abs_fp, handler, sig, _fstat in candidates:
-                if self._stop_event.is_set():
-                    break
+                if self._stop_event.is_set() or watcher_paused():
+                    break           # a Pause: the rest untried, swept at Resume
                 self._sweep_attempted[fp] = sig
                 if abs_fp in cleared:
                     continue
@@ -4686,12 +4733,14 @@ class WorkspaceWatcher:
             said, said_at = dict(done), time.monotonic()
             processed = 0
             for turn in itertools.zip_longest(*queues.values()):
-                if self._stop_event.is_set():
-                    break
+                if self._stop_event.is_set() or watcher_paused():
+                    break           # a Pause: the rest untried, swept at Resume
                 for item in turn:
                     if item is None:
                         continue
                     _mtime, source_id, abs_path, handler, signature, _file_stat = item
+                    if source_id not in self.external_targets:
+                        continue            # retired while this sweep ran (총괄 10-21)
                     self._external_sweep_attempted[(source_id, abs_path)] = signature
                     done[source_id] += 1
                     if (handler, abs_path) not in cleared:
