@@ -429,3 +429,25 @@ def test_a_deletion_run_again_after_its_set_aside_withdrew_it_withdraws_nothing_
     ok, error, _ = _group(db, [rule])
     assert ok, error
     assert (_layers(db), _dst(db), _count(db)) == before and _waiting(db, SRC) == []
+
+
+def test_only_the_plain_layer_moves_and_another_owned_layer_of_the_same_rule_stays(db):
+    """b76befd25: the plain, unowned layer a rule wrote on a cell goes when it writes that cell on an owned layer;
+    another owned layer of the same rule on that cell is settle's (owner 11-06 step 2) and stays."""
+    from chain import ingestion_worker as worker
+    from chain import rule_shape
+
+    signed = rule_shape.declaration_of(_rule("oc_copy"))
+    for name in (crud.CHAIN_SOURCE, crud.owned_layer_name(signed, "S1")):
+        crud.apply_batch_updates(db, DST, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            updates={"k": "K1", "w": name}, source_name=name, updated_by=signed)]))
+    row_id = db.query(models.DYNAMIC_TABLES[DST]).one().row_id
+    now = crud.owned_layer_name(signed, "S2")
+    crud.apply_batch_updates(db, DST, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row_id, updates={"w": "new"}, source_name=now, updated_by=signed)]))
+    assert len(_layers(db)) == 3, "non-vacuous: the plain layer and two owned ones sit on the cell"
+
+    worker._move_off_the_plain_layer(db, DST, [schemas.GeneralUpdateItem(
+        row_id=row_id, updates={"w": "new"}, source_name=now, updated_by=signed)])
+
+    assert sorted(layer[2] for layer in _layers(db)) == sorted([crud.owned_layer_name(signed, "S1"), now])
