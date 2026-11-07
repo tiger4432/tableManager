@@ -32,7 +32,7 @@
 // --touched (owner 10-24 «ㄱ», lead): only the entries whose module graph in this run's build holds a file changed since
 // this tree left origin/main - base and mutants both; a shared file is in every graph. Nothing touched, nothing runs;
 // only the checker or its recorded answers changed, every screen. The whole round runs at night, without it.
-//   node client2/tests/screen_layout_harness.mjs [--mutate] [--touched] [--only <entry.html>] [--shots <dir>]
+//   node client2/tests/screen_layout_harness.mjs [--mutate] [--mutant <name> ...] [--touched] [--only <entry.html>] [--shots <dir>]
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -40,6 +40,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
+import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
 import { reachPlugin, changedFiles, norm } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
@@ -75,7 +76,9 @@ const SEND_LIMIT_MS = 60000;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
 const shots = argOf('--shots');
-const MUTATE = process.argv.includes('--mutate');
+// --mutant <name>, repeatable (lead 11-07): those mutants only - a landing runs the ones of what it changed
+const NAMED = namedMutants(process.argv);
+const MUTATE = process.argv.includes('--mutate') || NAMED.length > 0;
 const TOUCHED = process.argv.includes('--touched') && !only;
 // A made-up admin token so the admin page reads one and asks the answers below; it never leaves this Chrome.
 const TOKEN = 'screens-test';
@@ -4087,11 +4090,32 @@ async function buildMutant(m) {
   for (const [a, n] of hits) if (!n) throw new Error(`mutant «${m.name}»: «${a.slice(0, 60)}» is not in ${m.file}`);
   return out;
 }
+// A DevTools call that never answers (lead 11-07): the first measure of the sample page loses its answer - the run says
+// that call, red, and goes on; it does not wait for ever. Bounded here too, so a send without its limit is a red line.
+// Picked with the others, by its name and its entry; built on the sample page's own bundle, not swapped text.
+const STALL_ENTRY = 'sample.html';
+const STALL_MUTANT = { name: 'a DevTools call that never answers', entry: STALL_ENTRY };
+async function stallMutant() {
+  const deaf = (method, params) => method === 'Runtime.evaluate' && params.expression === 'window.__screens.measure()';
+  const hung = sleep(SEND_LIMIT_MS * 3).then(() => null);
+  const run = await Promise.race([runScreens(source, 'stall', [STALL_ENTRY], deaf), hung]);
+  const got = run && run.found.find((f) => f.entry === STALL_ENTRY && f.rule === 'answers'
+    && f.what.includes(`Runtime.evaluate «window.__screens.measure()» gave no answer in ${SEND_LIMIT_MS / 1000} s · ${STALL_ENTRY}`));
+  if (!got) failed += 1;
+  console.log(`${got ? '✓' : '✗'} mutant «${STALL_MUTANT.name}» ${got ? `red: ${got.what}`
+    : run ? 'ESCAPED - no line names the call' : `HUNG - no answer in ${SEND_LIMIT_MS * 3 / 1000} s`}`);
+}
 if (MUTATE) {
-  for (const m of MUTANTS) {
-    if (only && m.entry !== only) continue;   // --only names the mutants' entry too
-    if (picked && !picked.includes(m.entry)) continue;   // and --touched
+  // --mutant names them; --only names their entry too, and --touched
+  const { run, unknown } = pickMutants([...MUTANTS, STALL_MUTANT], { named: NAMED, only, picked });
+  for (const name of unknown) {
     ran += 1;
+    failed += 1;
+    console.log(`✗ mutant «${name}» - no mutant has this name`);
+  }
+  for (const m of run) {
+    ran += 1;
+    if (m === STALL_MUTANT) { await stallMutant(); continue; }
     const out = await buildMutant(m);
     try {
       const got = (await runScreens(out, 'mutant', [m.entry])).found
@@ -4102,20 +4126,6 @@ if (MUTATE) {
       removeFolder(out, 'mutant build');
     }
   }
-}
-// A DevTools call that never answers (lead 11-07): the first measure of the sample page loses its answer - the run says
-// that call, red, and goes on; it does not wait for ever. Bounded here too, so a send without its limit is a red line.
-const STALL_ENTRY = 'sample.html';
-if (MUTATE && (!only || only === STALL_ENTRY) && (!picked || picked.includes(STALL_ENTRY))) {
-  ran += 1;
-  const deaf = (method, params) => method === 'Runtime.evaluate' && params.expression === 'window.__screens.measure()';
-  const hung = sleep(SEND_LIMIT_MS * 3).then(() => null);
-  const run = await Promise.race([runScreens(source, 'stall', [STALL_ENTRY], deaf), hung]);
-  const got = run && run.found.find((f) => f.entry === STALL_ENTRY && f.rule === 'answers'
-    && f.what.includes(`Runtime.evaluate «window.__screens.measure()» gave no answer in ${SEND_LIMIT_MS / 1000} s · ${STALL_ENTRY}`));
-  if (!got) failed += 1;
-  console.log(`${got ? '✓' : '✗'} mutant «a DevTools call that never answers» ${got ? `red: ${got.what}`
-    : run ? 'ESCAPED - no line names the call' : `HUNG - no answer in ${SEND_LIMIT_MS * 3 / 1000} s`}`);
 }
 console.log(`ASSERTIONS ${ran} ${failed}`);
 await sleep(1500);   // the last Chrome's children let go of its profile
