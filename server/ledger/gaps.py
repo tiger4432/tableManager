@@ -374,6 +374,17 @@ def gap_count(fetchone, relation, bare, absent, present, scan):
         {"bare": bare, "scan": scan, "absent": list(absent), "present": list(present)})
 
 
+def asked_for(declaration, only, names=None):
+    """The question named `only`, or GapQuestionUnknown - pure, so a caller asks it before it reads anything (an
+    unknown name on an install with no ledger was a 503 «ledger_events missing», measured 11-07)."""
+    asked = [item for item in questions(declaration, names=names or load_names()) if item["name"] == only]
+    if not asked:
+        raise GapQuestionUnknown(
+            f"no gap is named {only!r}. The names come from "
+            f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
+    return asked
+
+
 def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=None,
             relation=None, reader=None):
     """Count each named gap over a bounded sample of nodes, with each one's age. READ ONLY.
@@ -396,13 +407,7 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
     from . import schema
 
     names = names or load_names()
-    asked = questions(declaration, names=names)
-    if only is not None:
-        asked = [item for item in asked if item["name"] == only]
-        if not asked:
-            raise GapQuestionUnknown(
-                f"no gap is named {only!r}. The names come from "
-                f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
+    asked = questions(declaration, names=names) if only is None else asked_for(declaration, only, names)
     relation = relation or schema.walk_relation((schema.world_names(),))
     out = []
     connection = engine.raw_connection()

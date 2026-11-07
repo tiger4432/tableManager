@@ -1399,6 +1399,7 @@ def ledger_gap_catalogue(name: str = Query(None),
             asked = _gaps.questions(declared, unused=unused)
             return {"mode": "names", "count": len(asked), "gaps": asked,
                     "unnamed": sum(1 for item in asked if item.get("unnamed")), "unused": len(unused)}
+        _gaps.asked_for(declared, name)            # the name first - free, before a ledger is looked for
         from database.database import engine as database
         with database.connect() as connection:
             hidden, hiding = _hidden_here(_worlds(world), hidden)
