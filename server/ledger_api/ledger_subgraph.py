@@ -1680,13 +1680,17 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
                    if not reads_as_event_time(atom.occurred_at_basis))
 
     def nodes_of_rows(self, relation, row_ids, bare_type):
+        """The ends of the rows that make an atom (`_timed`: the time reads; `Leg.ends_of`: no key blank) - none made."""
         said = []
         for leg in self.legs:
             if leg.relation == relation:
-                for atom in self._atoms(leg, self._execute(leg.read(["w.row_id = ANY(%(rows)s)"]),
-                                                           {"rows": list(row_ids)})):
-                    said.append((self._row_of[atom.id][1], atom.subject_type, atom.subject_keys, atom.object_kind,
-                                 atom.object_payload))
+                for _key, _leg, row, _moment in self._timed(leg, self._execute(leg.read(["w.row_id = ANY(%(rows)s)"]),
+                                                                                {"rows": list(row_ids)})):
+                    ends = leg.ends_of(row, self._memo)
+                    if ends is not None:
+                        (subject_type, subject_keys), (object_type, object_keys) = ends["outgoing"], ends["incoming"]
+                        said.append((row["row_id"], subject_type, subject_keys, "entity_ref",
+                                     {"type": object_type, "keys": object_keys}))
         return _named_by_row(said, bare_type)
 
     def rows_of(self, atoms, relation):

@@ -282,20 +282,8 @@ class Leg:
         `memo`: one read's spellings - a value the rows repeat is spelled once, keyed by its type too (9, 9.0 and '9'
         are three keys; 11-07: 724 wafers and 6,126 times in 72,400 rows)."""
         memo = {} if memo is None else memo
-
-        def spell(spec):
-            if "constant" in spec:
-                return spec["constant"]
-            value = row[spec["column"]]
-            said = ("key", str(spec["declared"]), type(value).__name__, repr(value))
-            if said not in memo:
-                memo[said] = _spelled(spec, row)
-            return memo[said]
-
-        if any(spell(spec) is None for spec in self.required):
-            return None, False
-        ends = {arm: (bare, {key: spell(spec) for key, spec in keys.items()}) for arm, (bare, keys) in self.ends.items()}
-        if any(value is None for _bare, keys in ends.values() for value in keys.values()):
+        ends = self.ends_of(row, memo)
+        if ends is None:
             return None, False
         moment, unreadable = self.moment(row, memo)
         if moment is None:
@@ -311,6 +299,25 @@ class Leg:
                 "object_kind": "entity_ref", "object_payload": payload, "occurred_at": moment, "source_who": self.source,
                 "source_translator_ver": self.version, "supersedes": None, "source_event_id": None,
                 "source_event_state": None, "occurred_at_basis": self.basis, "world": self.world}, False
+
+    def ends_of(self, row, memo):
+        """{arm: (bare type, {key: spelled})} of the row, or None when a required cell or a key is blank - each value
+        spelled once a `memo`. `atom` and a reach's seeds (`VirtualEvidenceLookup.nodes_of_rows`) read it."""
+        def spell(spec):
+            if "constant" in spec:
+                return spec["constant"]
+            value = row[spec["column"]]
+            said = ("key", str(spec["declared"]), type(value).__name__, repr(value))
+            if said not in memo:
+                memo[said] = _spelled(spec, row)
+            return memo[said]
+
+        if any(spell(spec) is None for spec in self.required):
+            return None
+        ends = {arm: (bare, {key: spell(spec) for key, spec in keys.items()}) for arm, (bare, keys) in self.ends.items()}
+        if any(value is None for _bare, keys in ends.values() for value in keys.values()):
+            return None
+        return ends
 
     def moment(self, row, memo):
         """(the row's instant as the translator reads it, or None: blank or not read; whether it was there and did not
