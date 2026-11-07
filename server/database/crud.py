@@ -1989,6 +1989,13 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
 _FORMULAS = []
 
 
+def _rule_priorities() -> dict:
+    """{rule: declared priority} (`rule_shape.priorities`) - read where the chain's rules are loaded."""
+    from chain import rule_shape
+
+    return rule_shape.priorities()
+
+
 def _formulas():
     if not _FORMULAS:
         from chain import formula
@@ -2071,8 +2078,12 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
         if name not in ranks:
             ranks[name] = get_source_priority(name, table_name)
+        owner = layer_owner(name)
+        said = _rule_priorities().get(owner[0]) if owner else None
         return (
             ranks[name],                             # 1. declared ranking
+            0 if said is not None else 1,      # 1b. a rule that says its priority before one that does not
+            said if said is not None else 0,   # 1c. the smaller priority (owner 11-06 step 2 1ㄱ)
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
