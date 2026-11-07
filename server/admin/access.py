@@ -24,6 +24,10 @@ READ_POSTS = frozenset({"/tables/{table_name}/cells/sources/query"})
 TABLE_ARGS = ("table_name", "table", "target_table", "map_table")
 #: The door that knows each row it writes - an edit_by table's rows are judged there, row by row (`may(row=)`).
 ROWS_DOOR = "/tables/{table_name}/data/updates"
+#: The doors that delete rows - deleting a row edits it (lead 11-08), so an edit_by table's are judged there row by row
+#: too (`may_delete`). Until then they answered the table's own cell (cb4310be8 «other edit doors on that table answer
+#: its own cell») - widened for these two; the other edit doors still do.
+DELETE_DOORS = ("/tables/{table_name}/rows/{row_id}", "/tables/{table_name}/rows/batch_delete")
 DENIED = "%s may not %s the table %s - an administrator adds the name to access.%s.allow in table_config.json"
 
 
@@ -79,6 +83,23 @@ def refuse(user, table, what, row=None):
     raise HTTPException(status_code=403, detail=DENIED % (user, what, _judged(table, what, row), what))
 
 
+def may_delete(request, db, table, row_ids):
+    """A delete door's judgment of an edit_by table's rows: each row an edit of the table its edit_by column names - a
+    row not there, or its column blank, the table's own cell. Refused by name at the first row refused."""
+    by = _cell(table).get(EDIT_BY_KEY)
+    if not by:
+        return                                                         # `table_door` judged the table
+    from database import models
+    model = models.DYNAMIC_TABLES.get(table)
+    named = dict(db.query(model.row_id, getattr(model, by)).filter(model.row_id.in_(list(row_ids))).all()
+                 if model is not None else ())
+    user = person(request)
+    for row_id in row_ids:
+        row = {by: named[row_id]} if row_id in named else None
+        if not may(user, table, EDIT, row=row):
+            refuse(user, table, EDIT, row=row)
+
+
 def table_door(request: Request):
     """The dependency every route that takes a table carries (`TableRoute`): each table it names, in its path or query.
     A table named only in a body is judged in its route (the test's BODY_TABLE_ROUTES)."""
@@ -88,8 +109,8 @@ def table_door(request: Request):
     for arg in TABLE_ARGS:
         table = request.path_params.get(arg) or request.query_params.get(arg)
         if not table or (
-                what == EDIT and path == ROWS_DOOR and _cell(table).get(EDIT_BY_KEY)):
-            continue                                                   # the rows door judges an edit_by table's rows
+                what == EDIT and path in (ROWS_DOOR, *DELETE_DOORS) and _cell(table).get(EDIT_BY_KEY)):
+            continue                                                   # its door judges an edit_by table's rows
         if not may(user, table, what):
             refuse(user, table, what)
 

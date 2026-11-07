@@ -123,11 +123,38 @@ def test_an_edit_by_row_is_judged_on_the_table_it_names(grid):
     who["name"] = "lee"
     assert _write(client, LOOKS, "c", look_table="acc_allow").status_code == 403
     assert _write(client, LOOKS, "d", look_table="acc_deny").status_code == 200
-    who["name"] = "kim"
-    rows = client.get("/tables/%s/data" % LOOKS).json()["data"]
-    assert rows                                                                        # canary: rows were written
-    gone = client.post("/tables/%s/rows/batch_delete" % LOOKS, json={"row_ids": [rows[0]["row_id"]]})
-    assert gone.status_code == 403                    # another door: the table's own cell (admins), not the row's
+
+
+#: (person, the table the row names) -> may delete it (lead 11-08: deleting a row edits it - judged as the rows door does)
+DELETES = {("kim", "acc_allow"): True, ("lee", "acc_allow"): False, ("kim", "acc_deny"): False,
+           ("lee", "acc_deny"): True, ("kim", None): False, ("lee", None): False}
+
+
+@pytest.mark.parametrize("door", ["one", "batch"])
+def test_a_delete_door_judges_an_edit_by_row_on_the_table_it_names(grid, door):
+    """Both doors that delete a row: each row on the table its look_table names; a row not there on LOOKS's own cell
+    (admins). cb4310be8 answered LOOKS's own cell at both, for every row."""
+    client, who = grid
+
+    def delete(row_id):
+        return (client.delete("/tables/%s/rows/%s" % (LOOKS, row_id)) if door == "one" else
+                client.post("/tables/%s/rows/batch_delete" % LOOKS, json={"row_ids": [row_id]})).status_code
+
+    got = {}
+    for person in ("kim", "lee"):
+        for named in ("acc_allow", "acc_deny", None):
+            who["name"] = "boss"
+            if named:
+                assert _write(client, LOOKS, "%s-%s" % (person, named), look_table=named).status_code == 200
+                row_id = [r["row_id"] for r in client.get("/tables/%s/data" % LOOKS).json()["data"]
+                          if r["data"]["k"]["value"] == "%s-%s" % (person, named)][0]
+            else:
+                row_id = "no-such-row"
+            who["name"] = person
+            status = delete(row_id)
+            assert status in (200, 403, 404), (person, named, status)
+            got[(person, named)] = status != 403
+    assert got == DELETES
 
 
 def test_the_audit_lists_leave_out_an_unreadable_table(grid):
