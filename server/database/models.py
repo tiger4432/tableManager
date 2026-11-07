@@ -628,7 +628,7 @@ RUN_CURSOR_COLUMNS = {"cursor_page": "INTEGER", "cursor_end": "VARCHAR(64)", "cu
 
 
 def ensure_run_columns(engine, add=True):
-    """`retroactive_runs`' unmapped columns - `phase` · `phase_at`, the run's stage, and a replay's cursor
+    """`retroactive_runs`' unmapped columns - `phase` · `phase_at`, the run's stage, `waiting`, what it waits on, and a replay's cursor
     (`RUN_CURSOR_COLUMNS`) - on a database without them. ONE SEAT: each writer asks here before it writes; a
     read-only door asks with `add` False and reads nothing of them when they are not there. Looked up first, so a
     database that has them takes no lock - once a process and database, after which it asks nothing.
@@ -638,7 +638,7 @@ def ensure_run_columns(engine, add=True):
     from sqlalchemy import inspect
 
     postgres = engine.dialect.name == "postgresql"
-    kinds = dict({"phase": "VARCHAR(200)", "phase_at": "TIMESTAMPTZ" if postgres else "TIMESTAMP"},
+    kinds = dict({"phase": "VARCHAR(200)", "phase_at": "TIMESTAMPTZ" if postgres else "TIMESTAMP", "waiting": "TEXT"},
                  **RUN_CURSOR_COLUMNS)
     with engine.connect() as conn:
         have = {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}

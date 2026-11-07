@@ -64,13 +64,14 @@ def backend_waits(dbapi_conn, pid=None, pids=None, chars=60):
 
 
 def wait_sentence(row, pid=None):
-    """The one sentence for a row of `backend_waits` (None = the pid is not connected)."""
+    """The one sentence for a row of `backend_waits` (None = the pid is not connected). The holder is named by the work
+    on it (`work_on`), else its application."""
     if row is None:
         return "pid %s is not in pg_stat_activity - its connection is gone" % pid
     held = row["blocker"]
     if held is not None:
         return "waiting %s on pid %s (%s, %s %s): %s" % (
-            row["wait"], held["pid"], held["app"], held["state"] or "no state",
+            row["wait"], held["pid"], work_on(held["pid"]) or held["app"], held["state"] or "no state",
             _age(held["xact_age"] if held["xact_age"] is not None else held["state_age"]),
             held["query"])
     state = row["state"] or "no state"
@@ -170,6 +171,24 @@ def what_a_backend_waits_on(bind_url, pid):
     finally:
         probe.dispose()
     return wait_sentence(rows[0] if rows else None, pid)
+
+
+def work_on(pid, beats=None):
+    """-> what work holds database backend `pid`: «<beat> · <its claim>[, rule <name>]» - the open work claim whose
+    database pid it is, as each process's beat publishes it (`heartbeat.note_work` db_pid / lock_db_pid: a chain
+    group, a slot's, a watcher file); None when no fresh beat names it. Up to one beat old. `beats`: `heartbeat.read_all()`
+    already read."""
+    from runtime.running import work_facts
+    from utils import heartbeat
+
+    for name, beat in sorted((heartbeat.read_all() if beats is None else beats).items()):
+        work = beat.get("work") or {}
+        facts = work.get("facts") or {}
+        if beat.get("stale") or pid not in (facts.get("db_pid"), facts.get("lock_db_pid")):
+            continue
+        run = work_facts(work)["rule_run"]
+        return "%s · %s%s" % (name, work.get("what") or "work", ", rule %s" % run["rule"] if run else "")
+    return None
 
 
 def _seconds(value):

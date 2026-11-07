@@ -152,8 +152,9 @@ def _with_slots(sight, beats):
 
 
 def _item(what, where, pid, started_at, elapsed, processed=None, total=None, cancel=None,
-          state=STATE_RUNNING):
-    return {"what": what, "where": where, "pid": pid, "started_at": started_at,
+          state=STATE_RUNNING, waiting=None):
+    # `waiting`: what it waits on now, the server's sentence (a retroactive run's beat, 총괄 11-08) - null when nothing
+    return {"what": what, "where": where, "pid": pid, "started_at": started_at, "waiting": waiting,
             "elapsed_seconds": None if elapsed is None else round(max(0.0, elapsed), 1),
             "progress": (None if processed is None and total is None
                          else {"processed": processed, "total": total}),
@@ -200,7 +201,8 @@ def _retroactive(db, now):
                   run.get("processed_rows"), run.get("total_rows"),
                   None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
                   else {"run_id": run["run_id"]},
-                  state=run_state(run.get("runner")))]
+                  state=run_state(run.get("runner")),
+                  waiting=retroactive._stages_of(db, [run["run_id"]]).get(run["run_id"], (None, None, None))[2])]
 
 
 def _collectors(scheduler_pid):

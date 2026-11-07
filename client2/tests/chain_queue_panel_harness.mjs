@@ -1168,6 +1168,23 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     aged === 'Read 7 s ago' && !byClass(host, 'chain-queue-read-age').length, JSON.stringify([aged]));
 }
 
+// A running retroactive run's wait is the line under its row, the server's sentence whole; none, no line (총괄 11-08).
+{
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  const panel = new ChainQueuePanel(host, { doc });
+  const wait = 'waiting Lock:transactionid on pid 51234 (chain-slot-1 · tx 3f9a2c · 30000 row(s) of zz_pfab, '
+    + 'rule pf_note_back) · 41 s';
+  const item = { what: 'Re-translate a ledger scope', where: 'own_process', pid: 9, elapsed_seconds: 480,
+    progress: { processed: 12000, total: 30000 }, cancel: { run_id: 'r1' }, state: 'running' };
+  panel.render({ ...EMPTY, now_running: [{ ...item, waiting: wait }] });
+  const lines = byClass(host, 'run-line__summary').map((el) => el.textContent);
+  panel.render({ ...EMPTY, now_running: [{ ...item, waiting: null }] });
+  const none = byClass(host, 'run-line__summary').length + byClass(host, 'run-line__result').length;
+  ok('WQ1 a held run\'s wait is the line under its row, whole; a run that waits on nothing has no such line',
+    lines.length === 1 && lines[0] === wait && none === 0, JSON.stringify([lines, none]));
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

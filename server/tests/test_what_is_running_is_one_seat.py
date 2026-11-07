@@ -90,7 +90,7 @@ def test_the_four_sources_run_through_one_door_in_one_shape(db_session, sources)
     assert sorted(by_where) == sorted([running.WHERE_CHAIN_WORKER, running.WHERE_OWN_PROCESS,
                                        running.WHERE_SCHEDULER, running.WHERE_WATCHER])
     assert all(set(item) == {"what", "where", "pid", "started_at", "elapsed_seconds",
-                             "progress", "cancel", "state"} for item in items)
+                             "progress", "cancel", "state", "waiting"} for item in items)
     assert (by_where["chain_worker"]["what"], by_where["chain_worker"]["pid"]) == (
         "tx-probe", 111)
     run = by_where["own_process"]

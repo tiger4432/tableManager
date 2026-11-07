@@ -179,6 +179,8 @@ export function runLineRow(item) {
     detail: where ? { text: where } : null,
     progress: { ...cell, elapsed: known ? formatAge(secs) : '' },
     stateName: r.state ? { text: String(r.state) } : null,
+    // what it waits on now - the server's sentence on the line under the row; none, no line (총괄 11-08)
+    summary: r.waiting ? { text: String(r.waiting) } : null,
     cancel: Boolean(cancel),
     skip: skipOf(cancel),
     moving: isRunningItem(r),

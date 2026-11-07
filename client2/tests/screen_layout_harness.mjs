@@ -382,6 +382,16 @@ const galleryAnswer = (u) => {
 const CUT_RUN = { on: false, entry: { run_id: 'cutrun-0001', op: 'chain_replay', rule: 'dt_log_to_dt_map', state: 'cancelled',
   pages: { done: 12, staged: 20, rows_done: 12000 }, cursor_end: 'LOT-2026-10-23-000123|WAFER-07|DIE-0042', total_rows: 40000,
   cut_at: '2026-10-23 09:00:00', resume: { run_id: 'cutrun-0001' }, cancel: { key: 'cutrun-0001' } } };
+// A retroactive run held up by a chain slot (owner ㄱ, lead 11-08): while on, the queue's running items carry it with
+// its wait - the server's sentence, long - and a chain line beside it that waits on nothing.
+const HELD_WAIT = 'waiting Lock:transactionid on pid 51234 (chain-slot-1 · tx 3f9a2c7e-0000-0000 · 30000 row(s) of '
+  + 'wafer_process_inspection_result_by_lot_and_slot, rule pf_note_back) · 41 s';
+const HELD_RUN = { on: false, items: [
+  { what: 'Re-translate a ledger scope', where: 'own_process', pid: 4321, started_at: '2026-10-08T19:52:00+09:00',
+    elapsed_seconds: 480, progress: { processed: 12000, total: 30000 }, cancel: { run_id: 'heldrun-0001' }, state: 'running',
+    waiting: HELD_WAIT },
+  { what: 'dt_log · tx-run-0000', where: 'chain_worker', pid: 4242, started_at: '2026-10-08T19:59:00+09:00',
+    elapsed_seconds: 60, progress: null, cancel: null, state: 'running', waiting: null }] };
 // The file page's read progress (owner 10-23 «몇 개 중 몇 개»): while on, /tables carries per table and source what the
 // checklist counted (A 23c35a768) - one source not done, one long external path, one done - counted 12 s before.
 const FILE_SOURCES = { on: false };
@@ -548,6 +558,10 @@ const answerOf = (u) => {
   if (SUGGEST.on) { const v = suggestAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
+  }
+  if (HELD_RUN.on && u.pathname === '/admin/chain/queue') {
+    return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], now_running: HELD_RUN.items,
+      ...(CUT_RUN.on ? { interrupted_runs: [CUT_RUN.entry] } : {}) } };
   }
   if (CUT_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], interrupted_runs: [CUT_RUN.entry] } };
@@ -1119,6 +1133,21 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
+// owner ㄱ, lead 11-08: a held run's wait is the line under its row - drawn, whole, not small, inside the queue; the
+// line beside it that waits on nothing has none.
+CELLS.push({ entry: 'admin.html', after: 'Chain queue, a held retroactive run', rule: 'contents', at: 'chain-queue', expr: `(() => {
+  const all = [...document.querySelectorAll('#chain-queue-mount .run-line__summary')];
+  const line = all.find((el) => el.textContent === ${JSON.stringify(HELD_WAIT)});
+  if (!line) return 'no wait line under the held run (' + all.map((el) => el.textContent.slice(0, 40)).join(' | ') + ')';
+  if (all.length !== 1) return all.length + ' wait lines - the line that waits on nothing drew one';
+  if (!line.getClientRects().length) return 'its wait line is not drawn';
+  const size = parseFloat(getComputedStyle(line).fontSize);
+  if (size < 12) return 'its wait line is ' + size + ' px';
+  const r = line.getBoundingClientRect(), box = document.querySelector('#chain-queue-mount').getBoundingClientRect();
+  if (r.left < box.left - 1 || r.right > box.right + 1) return 'its wait line runs out of the queue';
+  if (line.scrollWidth > line.clientWidth + 1) return 'its wait line is cut';
+  return null;
 })()` });
 // owner 10-23: the file page's read progress - a row per table and source «K / N read · M left», nothing left dimmed,
 // when it was counted in its head.
@@ -3835,8 +3864,17 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .chain-queue-resume');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // A retroactive run held up by a chain slot (lead 11-08): the queue read again with it running.
+    ['Chain queue, a held retroactive run', async (c) => {
+      HELD_RUN.on = true;
+      await evaluate(c, "document.querySelector('#chain-queue-mount .chain-queue-refresh').click(); true");
+      await until(c, "!!document.querySelector('#chain-queue-mount .run-line__summary')");
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .run-line__summary');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     // An html cell (lead 10-22): its size and «Paste HTML»; a paste with plain text only, then one with HTML.
     ['Chain, an html cell', async (c) => {
+      HELD_RUN.on = false;    // on till here: the queue's own poll read it again before the held run's cell
       PASTE_HTML.on = true;
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");

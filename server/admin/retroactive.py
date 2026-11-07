@@ -3274,15 +3274,27 @@ def _beat_said(control, rows, now):
              if stages else "between stages")
     import db_waits
 
-    backends = []
-    for row in rows:
-        shown = dict(row, query=(row["query"] or "")[:BEAT_QUERY_CHARS])
-        if row["blocker"] is not None:
-            shown["blocker"] = dict(row["blocker"], query=(row["blocker"]["query"] or "")[:BEAT_QUERY_CHARS])
-        backends.append("pid %s %s" % (row["pid"], db_waits.wait_sentence(shown)))
+    backends = ["pid %s %s" % (row["pid"], db_waits.wait_sentence(_shown(row))) for row in rows]
     return "[%s] beat: page %d · %s · db: %s" % (
         control.op, control._pages + 1, where,
         " ; ".join(backends) if backends else "no busy backend - the time is in this process")
+
+
+def _shown(row):
+    """A `backend_waits` row with its queries and its holder's cut to BEAT_QUERY_CHARS."""
+    shown = dict(row, query=(row["query"] or "")[:BEAT_QUERY_CHARS])
+    if row["blocker"] is not None:
+        shown["blocker"] = dict(row["blocker"], query=(row["blocker"]["query"] or "")[:BEAT_QUERY_CHARS])
+    return shown
+
+
+def _waiting(rows):
+    """The run's wait (소유자 ㄱ, 총괄 11-08): the first of its backends another holds up, in `db_waits.wait_sentence`'s
+    words; None when none is held up."""
+    import db_waits
+
+    held = next((row for row in rows if row["blocker"] is not None), None)
+    return db_waits.wait_sentence(_shown(held)) if held else None
 
 
 def _beat(control, stop, url, held):
@@ -3326,6 +3338,7 @@ def _beat(control, stop, url, held):
             if now - last >= BEAT_SECONDS:
                 if control.own_beat:
                     control._log(_beat_said(control, rows, now))
+                control.waiting = _waiting(rows)
                 control.tell()
                 slow, last = slow_statement_seconds(), now
     except Exception as exc:                               # noqa: BLE001 - the beat's own failure, said below
@@ -3389,6 +3402,7 @@ class RunControl:
         #: False once telling failed - said once, the run goes on - or the run's beat ended (`tell`, `stop_telling`).
         self.telling = True
         self._told = threading.Lock()
+        self.waiting = None           # the beat's: what the run's backend waits on (`_waiting`), the record's `waiting`
 
     def _session(self):
         if self._session_factory is not None:
@@ -3519,8 +3533,9 @@ class RunControl:
             session = self._session()
             try:
                 models.ensure_run_columns(session.get_bind())
-                session.execute(text("UPDATE retroactive_runs SET phase = :phase, phase_at = :at WHERE run_id = :run"),
-                                {"phase": phase[:200], "run": self.run_id,
+                session.execute(text("UPDATE retroactive_runs SET phase = :phase, phase_at = :at, waiting = :waiting "
+                                     "WHERE run_id = :run"),
+                                {"phase": phase[:200], "run": self.run_id, "waiting": self.waiting,
                                  "at": datetime.now(timezone.utc) - timedelta(seconds=now - since)})
                 session.commit()
             except Exception as exc:                                    # noqa: BLE001 - said once below
@@ -3541,6 +3556,23 @@ class RunControl:
         """No stage told after this returns - one in flight finishes first (its notice before the run's ending one)."""
         with self._told:
             self.telling = False
+            if self.waiting is not None and self.run_id and self.report is None:
+                self._no_more_waiting()
+
+    def _no_more_waiting(self) -> None:
+        """The run's `waiting` emptied as it ends - a wait the last beat saw is not the finished run's (총괄 11-08)."""
+        from sqlalchemy import text
+
+        self.waiting = None
+        session = self._session()
+        try:
+            session.execute(text("UPDATE retroactive_runs SET waiting = NULL WHERE run_id = :run"), {"run": self.run_id})
+            session.commit()
+        except Exception as exc:                                    # noqa: BLE001 - the run's end goes on
+            session.rollback()
+            logger.warning("[Retroactive] run_id=%s: its wait could not be emptied: %s", self.run_id, told(exc))
+        finally:
+            session.close()
 
     @contextlib.contextmanager
     def stage(self, name, rows=None):
@@ -3725,15 +3757,17 @@ def request_cancel(db, run_id: str) -> dict:
 
 
 def _stages_of(db, run_ids):
-    """-> {run_id: (phase, phase_at)} of these runs (`RunControl.tell`), read once on a connection of its own; {} on a
-    database the columns are not on yet (QA 10-14 ②: the list never adds them - their writer does - nor waits)."""
+    """-> {run_id: (phase, phase_at, waiting)} of these runs (`RunControl.tell`), read once in a savepoint of the caller's
+    session; {} on a database the columns are not on yet (QA 10-14 ②: the list never adds them - their writer does - nor
+    waits). Not a connection of its own: on SQLite's shared connection closing it rolled the caller's unflushed rows back."""
     if not run_ids:
         return {}
     from sqlalchemy import bindparam, text
 
     try:
-        with db.get_bind().connect() as conn:
-            found = conn.execute(text("SELECT run_id, phase, phase_at FROM retroactive_runs WHERE run_id IN :ids")
+        with db.begin_nested():
+            found = db.execute(text("SELECT run_id, phase, phase_at, waiting FROM retroactive_runs "
+                                      "WHERE run_id IN :ids")
                                  .bindparams(bindparam("ids", expanding=True)), {"ids": list(run_ids)}).all()
     except Exception as exc:                                            # noqa: BLE001 - the list goes on, stageless
         logger.debug("[Retroactive] run stages not read: %s", told(exc), exc_info=exc)
@@ -3741,7 +3775,8 @@ def _stages_of(db, run_ids):
     from datetime import datetime
 
     # a raw read on SQLite hands the time back as text
-    return {run_id: (phase, datetime.fromisoformat(at) if isinstance(at, str) else at) for run_id, phase, at in found}
+    return {run_id: (phase, datetime.fromisoformat(at) if isinstance(at, str) else at, waiting)
+            for run_id, phase, at, waiting in found}
 
 
 def runs(db, limit: int = 50) -> list:
@@ -3767,7 +3802,7 @@ def runs(db, limit: int = 50) -> list:
             return {"phase": None, "phase_seconds": None, "rows_per_second": None, "seconds_left": None}
         rate, left = pace(row.processed_rows, row.total_rows,
                           row.started_at and (now - _utc(row.started_at)).total_seconds())
-        phase, phase_at = stages.get(row.run_id, (None, None))
+        phase, phase_at, _waiting = stages.get(row.run_id, (None, None, None))
         return {"phase": phase,
                 "phase_seconds": phase_at and round((now - _utc(phase_at)).total_seconds()),
                 "rows_per_second": rate and round(rate, 1), "seconds_left": left and round(left)}
