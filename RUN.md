@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **브라우저 수집기 시스템 표 넷 · 시험 판 8095** — git pull · API 재기동
+>
+> ```
+> 무엇     시스템 표 넷이 재기동 때 생김 — 확장(클라B)이 쓰기 전까지 비어 있고 아무도 안 읽음
+>          sys_templates        한 행 = 한 쪽의 읽는 법 (키 template)
+>          sys_template_fields  한 행 = 넣을 칸 하나를 읽는 법 (키 template|column, base item = 열기 전 · content = 연 뒤)
+>          sys_collect_runs     한 행 = 한 번 돈 것과 수 다섯 (written · skipped · no_key · not_opened · refused)
+>          sys_collect_misses   한 행 = 못 쓴 항목 (reason no_key | not_opened | refused, cells = 읽은 칸 JSON)
+> 권한     네 표의 한 행 = target_table 칸이 이름 대는 표의 편집 (access.edit_by target_table)
+>          그 표 access.edit.allow 에 이름이 있으면 쓰고, 없으면 403 — 문장이 고칠 표를 이름 댐
+> 판       python tools/browser_bench/serve.py   -> http://127.0.0.1:8095/webmail.html · /board
+>          웹메일 200 항목 · 클릭 0.2~2 초 뒤 열림 · id % 11 == 8 열여덟은 안 열림 · 숨김 넷이 id 마다 돎
+>          게시판 5 쪽 x 20 · 링크로 열림 · Next 버튼
+> 버리는 서버 (박스 DB 아님 — PG 에 빈 DB assy_d_bench 를 만들고, 빈 폴더 config/table_config.json 에 원문 표)
+>          cd server; ASSY_DATA_ROOT=<빈 폴더> DATABASE_URL=postgresql://<박스와 같은 사용자>@localhost:5432/assy_d_bench
+>          python setup/init_db.py; python -m uvicorn main:app --port 8096
+>          sqlite 로도 뜨지만 sys_collect_runs.started_at(datetime) 쓰기가 500 — sqlite 는 글 시각을 못 받음
+> 끄기     없음 — 선언만이고 읽는 코드 0
+> ```
+>
+> ---
+>
 > ## [11-07] **원장 소스의 시각은 datetime 칸만 — 글자 시각을 읽던 소스는 재기동 뒤 그 소스만 빠짐** — git pull · 런처 재기동(API · 원장 워커 · 걷기 프로세스)
 >
 > ```

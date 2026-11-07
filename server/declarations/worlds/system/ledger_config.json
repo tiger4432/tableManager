@@ -185,7 +185,9 @@
     "fills": {
       "status": "active",
       "subjects": [
-        "ingestion"
+        "ingestion",
+        "template",
+        "collect_run"
       ],
       "object": {
         "kind": "entity_ref",
@@ -239,6 +241,25 @@
         "kind": "entity_ref",
         "types": [
           "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "part_of": {
+      "status": "active",
+      "subjects": [
+        "template_field",
+        "collect_run",
+        "collect_miss"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "template",
+          "collect_run"
         ],
         "qualifiers": {
           "required": [],
@@ -325,6 +346,67 @@
       "class": "static",
       "attributes": [
         "position"
+      ]
+    },
+    "template": {
+      "keys": [
+        "template"
+      ],
+      "class": "static",
+      "attributes": [
+        "url_pattern",
+        "list_area",
+        "list_item",
+        "click_target",
+        "open_method",
+        "content_area",
+        "timeout_seconds",
+        "close_element",
+        "next_method",
+        "next_element",
+        "scroll_end_seconds",
+        "max_items",
+        "ready_match",
+        "key_columns"
+      ]
+    },
+    "template_field": {
+      "keys": [
+        "template",
+        "column"
+      ],
+      "class": "static",
+      "attributes": [
+        "base",
+        "element",
+        "take",
+        "regex"
+      ]
+    },
+    "collect_run": {
+      "keys": [
+        "run"
+      ],
+      "class": "static",
+      "attributes": [
+        "started_at",
+        "written",
+        "skipped",
+        "no_key",
+        "not_opened",
+        "refused"
+      ]
+    },
+    "collect_miss": {
+      "keys": [
+        "run",
+        "seq"
+      ],
+      "class": "static",
+      "attributes": [
+        "page_url",
+        "reason",
+        "cells"
       ]
     }
   },
@@ -1108,6 +1190,327 @@
                   "table": {
                     "kind": "column",
                     "column": "look_table"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_templates": {
+      "relation": "sys_templates",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "template": {
+            "attributes": {
+              "url_pattern": {
+                "kind": "column",
+                "column": "url_pattern"
+              },
+              "list_area": {
+                "kind": "column",
+                "column": "list_area"
+              },
+              "list_item": {
+                "kind": "column",
+                "column": "list_item"
+              },
+              "click_target": {
+                "kind": "column",
+                "column": "click_target"
+              },
+              "open_method": {
+                "kind": "column",
+                "column": "open_method"
+              },
+              "content_area": {
+                "kind": "column",
+                "column": "content_area"
+              },
+              "timeout_seconds": {
+                "kind": "column",
+                "column": "timeout_seconds"
+              },
+              "close_element": {
+                "kind": "column",
+                "column": "close_element"
+              },
+              "next_method": {
+                "kind": "column",
+                "column": "next_method"
+              },
+              "next_element": {
+                "kind": "column",
+                "column": "next_element"
+              },
+              "scroll_end_seconds": {
+                "kind": "column",
+                "column": "scroll_end_seconds"
+              },
+              "max_items": {
+                "kind": "column",
+                "column": "max_items"
+              },
+              "ready_match": {
+                "kind": "column",
+                "column": "ready_match"
+              },
+              "key_columns": {
+                "kind": "column",
+                "column": "key_columns"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "template_fills": {
+            "predicate": "fills",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "template",
+                "keys": {
+                  "template": {
+                    "kind": "column",
+                    "column": "template"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_template_fields": {
+      "relation": "sys_template_fields",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "template_field": {
+            "attributes": {
+              "base": {
+                "kind": "column",
+                "column": "base"
+              },
+              "element": {
+                "kind": "column",
+                "column": "element"
+              },
+              "take": {
+                "kind": "column",
+                "column": "take"
+              },
+              "regex": {
+                "kind": "column",
+                "column": "regex"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "field_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "template_field",
+                "keys": {
+                  "template": {
+                    "kind": "column",
+                    "column": "template"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "template",
+                "keys": {
+                  "template": {
+                    "kind": "column",
+                    "column": "template"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_collect_runs": {
+      "relation": "sys_collect_runs",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "collect_run": {
+            "attributes": {
+              "started_at": {
+                "kind": "column",
+                "column": "started_at"
+              },
+              "written": {
+                "kind": "column",
+                "column": "written"
+              },
+              "skipped": {
+                "kind": "column",
+                "column": "skipped"
+              },
+              "no_key": {
+                "kind": "column",
+                "column": "no_key"
+              },
+              "not_opened": {
+                "kind": "column",
+                "column": "not_opened"
+              },
+              "refused": {
+                "kind": "column",
+                "column": "refused"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "run_fills": {
+            "predicate": "fills",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "collect_run",
+                "keys": {
+                  "run": {
+                    "kind": "column",
+                    "column": "run_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          },
+          "run_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "collect_run",
+                "keys": {
+                  "run": {
+                    "kind": "column",
+                    "column": "run_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "template",
+                "keys": {
+                  "template": {
+                    "kind": "column",
+                    "column": "template"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_collect_misses": {
+      "relation": "sys_collect_misses",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "collect_miss": {
+            "attributes": {
+              "page_url": {
+                "kind": "column",
+                "column": "page_url"
+              },
+              "reason": {
+                "kind": "column",
+                "column": "reason"
+              },
+              "cells": {
+                "kind": "column",
+                "column": "cells"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "miss_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "collect_miss",
+                "keys": {
+                  "run": {
+                    "kind": "column",
+                    "column": "run_id"
+                  },
+                  "seq": {
+                    "kind": "column",
+                    "column": "seq"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "collect_run",
+                "keys": {
+                  "run": {
+                    "kind": "column",
+                    "column": "run_id"
                   }
                 }
               }

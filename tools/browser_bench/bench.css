@@ -1,0 +1,20 @@
+body { font: 15px/1.5 system-ui, sans-serif; margin: 16px; color: #1d1d1f; }
+table { border-collapse: collapse; }
+td, th { padding: 6px 12px; border-bottom: 1px solid #ddd; text-align: left; }
+button { font: inherit; padding: 6px 16px; margin-top: 12px; }
+
+#mail { display: flex; gap: 16px; height: calc(100vh - 80px); }
+#mail-list { width: 420px; overflow-y: auto; border: 1px solid #ccc; }
+.mail-item { padding: 8px 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+.mail-item.unread .mail-subject { font-weight: 700; }
+.mail-item .mail-from, .mail-item .mail-date { color: #666; font-size: 13px; margin-right: 8px; }
+#list-status { padding: 8px 12px; color: #666; }
+#reader-shell { flex: 1; border: 1px solid #ccc; padding: 12px; position: relative; overflow: hidden; }
+#reader { padding: 4px; }
+.reader-subject { font-size: 20px; margin: 0 0 8px; }
+
+/* The four ways a closed pane is hidden - one per item, in turn (webmail.js HIDES). */
+#reader.hide-height { height: 0; overflow: hidden; padding: 0; }
+.hide-opacity { opacity: 0; }
+.hide-offscreen { position: absolute; left: -10000px; top: 0; }
+.hide-fold { display: none; }   /* on #reader-wrap: the pane itself carries no hiding style */
