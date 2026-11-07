@@ -1973,7 +1973,9 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             answer = rule_run.run_rule(db, rule, prepared=rule_run.prepare(db, rule, payloads=[
                 outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found]))
             step("rule", stats["pages"] + 1, None, len(ids))
-            yield answer["updates"]
+            # what an answer covers is settled after every page (`ingestion_worker._settle`), not written
+            covered.extend(item for item in answer["updates"] if rule_run.item_cell(item, "covers"))
+            yield [item for item in answer["updates"] if not rule_run.item_cell(item, "covers")]
             for record in answer["next_page"]:
                 call = record["call"]
                 while call is not None:
@@ -1984,9 +1986,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     def pages():
         page, n = [], size.next()
         for updates in asked():
-            # what an answer covers is settled after every page (`ingestion_worker._settle`), not written
-            covered.extend(item for item in updates if rule_run.item_cell(item, "covers"))
-            page.extend(item for item in updates if not rule_run.item_cell(item, "covers"))
+            page.extend(updates)
             while len(page) >= n:
                 yield page[:n]
                 page, n = page[n:], size.next()

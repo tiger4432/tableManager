@@ -73,11 +73,15 @@ def rows_written(items) -> int:
     return sum(1 for item in items or () if not item_cell(item, "covers"))
 
 
-def owner_of(item, keys=()) -> tuple:
+def owner_of(item, keys=()):
     """(rule, key) that owns what this proposed item writes (owner 11-06 step 2): its rule (`updated_by`, what `signed`
     stamps) and the key its kind named (`owner_key` - a join's key, a decide's, a fold's group), else the row it was
     read from (one layer per source row), else the target row's own key - its `business_key_val`, else `keys` (its
-    table's key columns) read off what it writes, else its `row_id` (auto-confirm's answer names no other)."""
+    table's key columns) read off what it writes, else its `row_id` (auto-confirm's answer names no other). None for
+    an item no rule signed - no owner is made up for it."""
+    rule = item_cell(item, "updated_by")
+    if not rule:
+        return None
     key = item_cell(item, "owner_key")
     if key is None:
         key = item_cell(item, "origin_row_id")
@@ -90,7 +94,7 @@ def owner_of(item, keys=()) -> tuple:
         key = item_cell(item, "row_id")
     if isinstance(key, (tuple, list)):          # a key of several columns - its values, `|` between
         key = "|".join("" if part is None else str(part) for part in key)
-    return str(item_cell(item, "updated_by") or ""), "" if key is None else str(key)
+    return str(rule), "" if key is None else str(key)
 
 
 def layer_of_a_rules_write(name, origin_row_id=None, owner=None) -> str:
