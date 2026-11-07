@@ -498,6 +498,10 @@ run 결과           state=done · rows_scanned 3 · events_staged 1 · «cells_
      게이트    유령 치운 뒤 «열림» · 로그 「[Retroactive] released a ghost lock run_id=… runner=…」
    총괄 판정 둘이 그대로 섰다 — ① `failed`이지 `cancelled`가 아니다 ② unknown 은 «안 푼다»
 => 다음에 워커가 또 죽어도 운영자가 SQL 을 칠 일이 «없다». 화면에서 취소하면 풀린다
+🟢 `86418412c` — 이제 «×도 필요 없다»: 이 머신에서 실행자 pid 가 «증명된 죽음»(심박 orphaned + pid 없음)이면
+   스케줄러 틱이 그 행을 `failed` 로 끝내고 사유에 «runner died … its process's last line: …» 를 남긴 뒤 큐가 간다
+   × 로만 남는 것  막 띄워 심박이 아직 없는 자식(pid 살아 있음) · 다른 머신의 실행 · pid 재사용(살아 있음으로 읽힘)
+   박스 11-07 14:26 실측  retype 자식이 import 중 WinError 10106 으로 죽어 큐가 섰다(원인 «모름», retroactive_stdout.log)
      위험  진행 보고를 아예 안 하는 연산이 «둘»(ledger_rescope · enrichment_confirm)이라
            「진행이 없다」로 거둬 가면 «살아 있는» 실행을 죽인다. 생사는 /health 로 묻는다
 ```
