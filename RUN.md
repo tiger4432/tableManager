@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **reach 가 진짜 표를 «뷰»라며 0 행을 답하던 것 — 걷기 프로세스가 표 모델을 짓는다** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 전에 보이던 것  POST /api/ledger/subgraph 본문 reach -> rows 0 · seeds 0, left_out 에 진짜 표가
+>              «a view - its rows have no row_id» (걷기 프로세스에 표 모델이 없었음)
+> 무엇이 바뀌나  걷기 · 격자 풀 프로세스가 준비될 때 서버 시동과 같은 표 모델 짓기를 함
+>              table_config 저장 뒤에는 기존 recycle 이 프로세스를 새로 띄워 새 표도 읽음
+> 돌릴 것      server 폴더의 walk_pool.log 에서  [Pool] built
+> 답의 뜻      «[Pool] built N table models» 줄이 프로세스마다 하나 = 정상
+>              «[Pool] the table models were not built» = 그 프로세스의 reach 는 여전히 0 행 — 그 줄 그대로 총괄에게
+> 끄기         없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-07] **걷기의 같은 시각은 원자 «내용»으로 가름 — id 로 안 가름** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

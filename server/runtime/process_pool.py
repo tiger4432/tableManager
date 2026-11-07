@@ -430,8 +430,8 @@ def _end(worker, why="process ended", pool=None):
 
 
 def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.log", prepares=()):
-    """The pool process: ready once its bodies' modules are imported and their prepares ran (one line each - a slow
-    start says why), then one body at a time, until the server's end of the pipe closes. Its lines go to its pool's
+    """The pool process: ready once its bodies' modules are imported, the tables' models built and their prepares ran
+    (one line each - a slow start says why), then one body at a time, until the server's end of the pipe closes. Its lines go to its pool's
     log file."""
     os.environ.update(POOL_DB)
     from utils.logger import get_process_logger
@@ -449,6 +449,14 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
     for module in modules:
         importlib.import_module(module)
     import database.database                                    # noqa: F401 - its engine, before the first body
+    from database import crud, models
+
+    began = time.monotonic()
+    try:            # the tables' models, as the server's start builds them - reach and the walk read tables through them
+        models.init_dynamic_models(crud.TABLE_CONFIG)
+        logger.info("[Pool] built %d table models in %.1f s", len(models.DYNAMIC_TABLES), time.monotonic() - began)
+    except Exception as exc:                                    # noqa: BLE001 - the process serves all the same
+        logger.error("[Pool] the table models were not built: %s: %s", type(exc).__name__, told(exc))
     for module, name in prepares:
         try:
             logger.info("[Pool] %s", getattr(importlib.import_module(module), name)())
