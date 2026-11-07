@@ -49,6 +49,26 @@
 >
 > ---
 >
+> ## [11-07] **브라우저 수집 확장 (Collector)** — git pull · 서버 재기동 없음(표 넷은 D 착지 84ad8d303)
+>
+> ```
+> 설치     크롬 chrome://extensions → 개발자 모드 켬 → «압축해제된 확장 프로그램 로드» → 저장소의 browser_collector 폴더
+>          툴바의 Collector 아이콘 → 오른쪽 사이드 패널 → Settings 에 제품 서버 주소 + 개인 키(계정 화면에서 만든 키)
+>          «Save and check» → «reached · signed in as <이름>» 이 뜨면 끝
+> 선언     sys_templates 에 템플릿 한 행(목록 항목 · 내용 영역 · 키 칸 · 넣을 표), sys_template_fields 에 칸마다 한 행
+>          (base item|content · element · take). 패널의 «+ New template» 에서 고르기로 채우고 Save 하면 이 두 표에 적힘
+> 실행     그 사이트를 연 탭에서 패널 → 맞는 템플릿의 Run. 탭을 열어 둠. 끝 화면에 쓴 수 · 건너뜀 · 남긴 항목(사유별)
+> 답의 뜻  «not signed in» = 서버 주소나 키가 틀림 · «server not reached» = 이 크롬에서 서버 주소가 안 열림
+>          «content did not change in N s» = 클릭 뒤 내용 영역이 안 바뀜(그 항목만 건너뜀, History 에 남음)
+>          «key in table, skipped» = 이미 넣은 키 — 다시 돌려도 중복이 안 생김
+>          «Stopped - the product refused the run» + 문장 = 그 표를 고칠 권한 없음(서버 문장 그대로)
+> 끄기     Run 중이면 Pause(묶음 사이에서 멈춤, Resume 으로 이어감) 또는 Stop. 확장 자체는 chrome://extensions 에서 끔
+> 기록     실행마다 sys_collect_runs 한 행, 남긴 항목은 sys_collect_misses 한 행씩(reason · detail 에 사유 문장 · cells 에 읽은 값)
+>          끝 화면이나 History 의 «Retry these N» = 남긴 항목만 다시 열어 봄
+> ```
+>
+> ---
+>
 > ## [11-07] **브라우저 수집기 시스템 표 넷 · 시험 판 8095** — git pull · API 재기동
 >
 > ```
