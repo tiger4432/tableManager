@@ -1847,7 +1847,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 later_covers[target_table].extend(
                     item for item in batch_covers if rule_run.item_cell(item, "covers").get("stamped_by"))
                 batch_covers = [item for item in batch_covers if not rule_run.item_cell(item, "covers").get("stamped_by")]
-                owners = [rule_run.owner_of(item) for item in updates_list]
+                from chain.cell_layer import key_columns
+                owners = [rule_run.owner_of(item, key_columns(target_table)) for item in updates_list]
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,

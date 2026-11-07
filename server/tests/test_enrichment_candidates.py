@@ -255,12 +255,19 @@ def run_followup_auto_confirm(db, derived_table="encand_test_derived"):
         #    that stopped (2026-09-23) it confirmed NOTHING and said nothing, which is the
         #    shape 2026-09-17 already paid for once. The worker collects `updates` off the
         #    same answer and writes them in its batch step; so does this.
-        if answer.get("updates"):
-            crud.apply_batch_updates(
-                db, rule.get("target_table"),
-                schemas.GeneralUpdateBatch(
-                    updates=answer["updates"],
-                    transaction_id="chain_%s_followup" % derived_table))
+        #    (owner 11-06 step 2) Through the worker's write seat, its naming and its settle - an answer also says what
+        #    it covers, which only that seat reads.
+        updates = list(answer.get("updates") or [])
+        if updates:
+            from chain import ingestion_worker, rule_shape
+
+            target = rule.get("target_table")
+            ok, error = ingestion_worker.apply_chain_writes(
+                db, "chain_%s_followup" % derived_table, rule, 0, {target: {rule.get("name")}}, {target: updates},
+                [], [], {target: [rule.get("name")]}, [],
+                settles={target: [{"declaration": rule_shape.declaration_of(rule),
+                                   "origins": [str(r) for r in row_ids]}]})
+            assert ok, error
 
     db.commit()
     return answer
@@ -460,7 +467,9 @@ def test_chain_path_auto_confirms_single_candidate(cand_env):
         models.CellSource.table_name == "encand_test_derived",
         models.CellSource.row_id == row.row_id,
         models.CellSource.column_name == "wafer_id").all()
-    assert [s.source_name for s in src] == [enrichment.candidates.SOURCE_NAME]
+    # owner 11-06 step 2: auto-confirm's layer, owned by its rule and the row's key
+    assert [(crud.layer_writer(s.source_name), crud.layer_owner(s.source_name)) for s in src] == [
+        (enrichment.candidates.SOURCE_NAME, ("enrichment_auto_confirm:encand_rule", "L1_S1"))]
 
 
 def test_following_the_same_rows_twice_confirms_them_once(cand_env):
@@ -491,11 +500,11 @@ def test_following_the_same_rows_twice_confirms_them_once(cand_env):
             models.CellSource.row_id == row.row_id,
             models.CellSource.column_name == "wafer_id").all()
 
-    after_first = [(s.source_name, s.value) for s in _layers()]
+    after_first = [(crud.layer_writer(s.source_name), s.value) for s in _layers()]
     assert after_first == [(enrichment.candidates.SOURCE_NAME, "WF1")]
 
     run_followup_auto_confirm(cand_env)              # the SAME rows, a second time
-    assert [(s.source_name, s.value) for s in _layers()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
+    assert [(crud.layer_writer(s.source_name), s.value) for s in _layers()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
     assert _derived(cand_env, "L1_S1").wafer_id == "WF1"
 
 

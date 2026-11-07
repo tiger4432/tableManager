@@ -73,13 +73,21 @@ def rows_written(items) -> int:
     return sum(1 for item in items or () if not item_cell(item, "covers"))
 
 
-def owner_of(item) -> tuple:
+def owner_of(item, keys=()) -> tuple:
     """(rule, key) that owns what this proposed item writes (owner 11-06 step 2): its rule (`updated_by`, what `signed`
     stamps) and the key its kind named (`owner_key` - a join's key, a decide's, a fold's group), else the row it was
-    read from (one layer per source row), else none - a row's one layer of that rule."""
+    read from (one layer per source row), else the target row's own key - its `business_key_val`, else `keys` (its
+    table's key columns) read off what it writes, else its `row_id` (auto-confirm's answer names no other)."""
     key = item_cell(item, "owner_key")
     if key is None:
         key = item_cell(item, "origin_row_id")
+    if key is None:
+        key = item_cell(item, "business_key_val")
+    if key is None and keys:
+        said = item_cell(item, "updates") or {}
+        key = [said.get(column) for column in sorted(keys)] if all(column in said for column in keys) else None
+    if key is None:
+        key = item_cell(item, "row_id")
     if isinstance(key, (tuple, list)):          # a key of several columns - its values, `|` between
         key = "|".join("" if part is None else str(part) for part in key)
     return str(item_cell(item, "updated_by") or ""), "" if key is None else str(key)

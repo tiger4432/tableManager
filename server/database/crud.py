@@ -2082,8 +2082,11 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         said = _rule_priorities().get(owner[0]) if owner else None
         return (
             ranks[name],                             # 1. declared ranking
+            # two rules' layers on one cell: the priority decides, then the rule's name - never ingested_at (owner
+            # 11-06 step 2 1ㄱ, lead 11-07). One rule's layers, a file's or a person's: as before.
             0 if said is not None else 1,      # 1b. a rule that says its priority before one that does not
-            said if said is not None else 0,   # 1c. the smaller priority (owner 11-06 step 2 1ㄱ)
+            said if said is not None else 0,   # 1c. the smaller priority
+            owner[0] if owner else "",         # 1d. the rule's name
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
