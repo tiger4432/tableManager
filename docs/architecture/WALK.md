@@ -424,7 +424,11 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
           attributes · value 목적어 · 숫자 칸 when · 필수 수식어 · 소스 둘이 말하는 one 술어) — 그 소스의 사실은
           이 답에 없음. 글자 시각의 거절 문장이 다음 행동: 행 · 맵 키 칸이면 «add a datetime column filled by a
           chain: =ParseDateTime([<칸>], "<형식>")», 아니면 «declare <칸> datetime»
-          scans = 다리 끝의 글자 키 칸이 표 선언 "indexes" 의 첫 칸이 아님 — 그 표를 훑음
+          scans = 다리 끝의 글자 키 칸 중 어느 것도 DB 가 가진 인덱스(선언 · 자동 · 손)의 첫 칸이 아님 — 그 표를
+          훑음. 판정은 ask 와 같은 models.auto_index_serves(카탈로그, 다리 표마다 한 번 — 박스 넷 6~8 ms).
+          🆕 11-08 그 (표, 첫 키 칸)마다 자동 인덱스를 청함(소유자 «키칸 인덱스 자동»): index_wants.want(…,
+          "walk key") — 프로세스마다 한 번, 중복 · 상한(auto_index_per_table) · 기다림은 ask 한 자리. 끄기 =
+          auto_index_per_table 0. 어드민 인덱스 화면에 «auto (walk key)»
 거절      resumable · resume + virtual -> 422 virtual_walk_not_continued (기록이 없어 «첫 쪽 시점»이 없다)
 비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, «행»으로 맞춰(저장 원자의 order_by
           참조를 그 행의 row_id 로 읽어) 칸 spelling · stale · stored-only · real · tie_split · time. real 이 있으면

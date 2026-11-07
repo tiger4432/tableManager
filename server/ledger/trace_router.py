@@ -837,17 +837,24 @@ def _compiled(connection, names):
 def _engine_reading(connection, engine, names, leave_out=None):
     """THE one seat that asks `engine` (lead 11-06): (legs, the answer's `engine` cell) of the worlds `names` -
     (None, None) for the stored ledger. A scan is a leg's end none of whose text key columns leads an index the
-    table declares (table_config.json "indexes")."""
+    database holds (`models.auto_index_serves`, the ask's own judgment - declared, automatic or by hand); each scan's
+    first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자동», `index_wants.want`, once a
+    process). One catalogue query per table the legs read: 6-8 ms over the box's four (11-08)."""
     if engine != "virtual":
         return None, None
     from database import models
+    from runtime import index_wants
 
     legs, left_out = _compiled(connection, names)
     legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world, ())]
-    led = {(table, item["columns"][0]) for table, _name, item in models.table_declared_indexes()
-           if not item.get("search")}
+    raw = connection.connection.dbapi_connection
+    held = {table: models.catalogue_indexes(raw, table) for table in {leg.relation for leg in legs}}
     scans = sorted({(leg.relation, (columns or [None])[0]) for leg in legs for columns in leg.columns.values()
-                    if not any((leg.relation, column) in led for column in columns)}, key=str)
+                    if not any(models.auto_index_serves(index, [column], models.AUTO_WALK_KEY)
+                               for column in columns for index in held[leg.relation])}, key=str)
+    for table, column in scans:
+        if column is not None:                          # an end keyed by no text column has none to index
+            index_wants.want(table, [column], models.AUTO_WALK_KEY, None, connection.engine)
     return legs, {"name": "virtual", "left_out": left_out,
                   "scans": [{"table": table, "column": column} for table, column in scans]}
 

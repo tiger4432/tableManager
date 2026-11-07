@@ -187,7 +187,8 @@ def _wrapped(expression):
 
 
 def ask(table, columns, why, seconds, bind):
-    """One INDEX_WANTED row, unless an index serves it, the table is at its cap, or the same ask waits. -> written."""
+    """One INDEX_WANTED row, unless an index serves it, the table is at its cap, or the same ask waits. -> written.
+    `seconds` the slow read's time - None for a walk's scan, asked before it reads."""
     from sqlalchemy.orm import Session
 
     import event_constants
@@ -196,6 +197,7 @@ def ask(table, columns, why, seconds, bind):
 
     if bind.dialect.name != "postgresql":
         return False
+    took = "" if seconds is None else " took %.1f s" % seconds
     db = Session(bind=bind)
     try:
         if why == models.AUTO_SLOW_SEARCH and not models.has_trigram(db.connection()):
@@ -205,12 +207,12 @@ def ask(table, columns, why, seconds, bind):
         held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table)
         served = [index["name"] for index in held if models.auto_index_serves(index, columns, why)]
         if served:
-            logger.info("[Indexes] %s (%s) took %.1f s - not asked for a %s: %s already serves it",
-                        table, ", ".join(columns), seconds, why, served[0])
+            logger.info("[Indexes] %s (%s)%s - not asked for a %s: %s already serves it",
+                        table, ", ".join(columns), took, why, served[0])
             return False
         if sum(1 for index in held if index["name"].startswith(models.AUTO_INDEX_PREFIX)) >= auto_index_per_table():
-            logger.info("[Indexes] %s (%s) took %.1f s - not asked for a %s: %s holds auto_index_per_table (%d) "
-                        "automatic indexes", table, ", ".join(columns), seconds, why, table, auto_index_per_table())
+            logger.info("[Indexes] %s (%s)%s - not asked for a %s: %s holds auto_index_per_table (%d) "
+                        "automatic indexes", table, ", ".join(columns), took, why, table, auto_index_per_table())
             return False
         waiting = (db.query(models.DatabaseOutbox.payload)
                    .filter(models.DatabaseOutbox.event_type == event_constants.EVENT_INDEX_WANTED,
@@ -218,18 +220,19 @@ def ask(table, columns, why, seconds, bind):
                            models.DatabaseOutbox.processed_chain.is_(False)).all())
         if any((json.loads(row.payload or "{}").get("columns"), json.loads(row.payload or "{}").get("why"))
                == (columns, why) for row in waiting):
-            logger.info("[Indexes] %s (%s) took %.1f s - the same %s ask is already waiting",
-                        table, ", ".join(columns), seconds, why)
+            logger.info("[Indexes] %s (%s)%s - the same %s ask is already waiting",
+                        table, ", ".join(columns), took, why)
             return False
         db.add(models.DatabaseOutbox(
             event_uuid=str(uuid.uuid4()), table_name=table, event_type=event_constants.EVENT_INDEX_WANTED,
-            payload=json.dumps({"table": table, "columns": columns, "why": why, "seconds": round(seconds, 3)}),
+            payload=json.dumps({"table": table, "columns": columns, "why": why,
+                                "seconds": None if seconds is None else round(seconds, 3)}),
             processed_chain=False))
         db.commit()
     finally:
         db.close()
-    logger.info("[Indexes] asked for an automatic index on %s (%s) - %s, the read took %.1f s",
-                table, ", ".join(columns), why, seconds)
+    logger.info("[Indexes] asked for an automatic index on %s (%s) - %s%s",
+                table, ", ".join(columns), why, "" if seconds is None else ", the read took %.1f s" % seconds)
     return True
 
 

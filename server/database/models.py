@@ -2627,7 +2627,8 @@ BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
 # --------------------------------------------------------------- the product's automatic indexes
 # 🔴 THE COLUMNS IN USE, AND ONLY THEM (총괄 ff7890892, 소유자 「쓰이는 칸만」 - every column cost +14~17 % a chain write
 #    and 5.7 times the table's disk): a decide rule's judgment key, a grid sort or equal/range filter that was slow, and
-#    a slow reference view's whole-table filter (소유자 10-14 «넓혀»: equal/IN as a filter, LIKE/ILIKE as a search).
+#    a slow reference view's whole-table filter (소유자 10-14 «넓혀»: equal/IN as a filter, LIKE/ILIKE as a search), and
+#    a key column a virtual walk scanned (소유자 11-07 «키칸 인덱스 자동»: `trace_router._engine_reading`'s scans).
 #    (columns, row_id) - a search: the declared search index's trigram (`table_index_ddl`), `..._search` -, named
 #    `ix_auto_<table>_<columns>` and built by the scheduler's index line (`runtime.maintenance_line`) through
 #    `_build_one`, as a declared one is. No table records them: the database's list is the state - the prefix says the
@@ -2636,6 +2637,7 @@ AUTO_INDEX_PREFIX = "ix_auto_"
 AUTO_SAID = "auto: "
 AUTO_DECIDE_KEY, AUTO_SLOW_SORT, AUTO_SLOW_FILTER = "decide key", "slow sort", "slow filter"
 AUTO_SLOW_SEARCH = "slow search"
+AUTO_WALK_KEY = "walk key"
 #: An INDEX_WANTED of a table made at runtime (lead 10-28): its business_key_val unique index - the identity the start
 #: builder (`ingestion_worker._ensure_business_key_unique_indexes_sync`) makes, built for this table on the next poll.
 KEY_UNIQUE = "business key"

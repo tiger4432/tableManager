@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **걷기가 훑은 키 칸에 자동 인덱스 · edit_by 표의 행 지우기는 그 행이 가리키는 표로 판정** — git pull · 런처 재기동(API · 걷기 프로세스 · 스케줄러)
+>
+> ```
+> 무엇     engine=virtual 걷기 답의 engine.scans 에 실린 (표, 첫 키 칸)마다 자동 인덱스를 청함 — 사유 «walk key»
+>          프로세스마다 한 번 · 이미 맞는 인덱스 · 표 상한(auto_index_per_table) · 기다리는 같은 청은 안 청함
+>          scans 는 이제 DB 가 가진 인덱스(선언 · 자동 · 손)로 판정 — 지어진 뒤엔 scans 에서 빠짐
+> 보는 곳   어드민 인덱스 화면에 «auto (walk key)» 줄. 로그(걷기 프로세스): [Indexes] asked for an automatic index on <표> (<칸>) - walk key
+>          짓기는 스케줄러 인덱스 줄 — 박스 사본에서 wafer_process 48 만 행 한 칸 3.2~3.5 s, 아홉 합 8.4 s
+> 끄기     ingestion_settings.json 의 auto_index_per_table 을 0 — 자동 인덱스 전부(그리드 것도) 안 지음
+> 지우기   edit_by 표(sys_looks · sys_templates · sys_template_fields · sys_collect_runs · sys_collect_misses)의 행을
+>          지우는 문 둘(행 하나 · 여러 행)이 그 행의 edit_by 칸이 가리키는 표의 편집 허용으로 판정 — 없는 행은 표 자체로
+>          거절 문장은 그대로 «<이름> may not edit the table <가리킨 표> - ... access.edit.allow ...»
+> ```
+>
+> ---
+>
 > ## [11-08] **수식 칸이 이름 · 인자 · 열을 내놓는다 — 목록 하나(수식 · 걷기 노드 검색 · 셀 값 제안)** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```
