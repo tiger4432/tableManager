@@ -5,6 +5,9 @@ whose mapper is code is not this path's (`NotCovered`) - it stays on the Python 
 from __future__ import annotations
 
 import json
+import uuid
+
+import map_overlay
 
 from . import roleframe
 from .event_frame import SourcePreparationContext, SourcePreparationError, named_columns, prepared_molecules
@@ -192,32 +195,168 @@ def differs(said) -> bool:
 
 
 # --------------------------------------------------------------------------- the walk's compile (lead 11-06, engine=virtual)
-# A declarative source as SQL «legs» over its own table: a leg is one sentence (or one entity reference a sentence's
-# entity carries) - the ledger's columns (`schema.LEDGER_COLUMNS`) spelled from the row, and each end's keys as columns
-# a walk joins its frontier on. The spellers are the product's SQL ones (`notation_norm` assy_key_number ·
-# assy_key_instant); `contracts/ledger_sql_compile` holds the Python path and this to one expectation. What this compile
-# does not read leaves the source out by name (`NotCompiled`) - the virtual answer lists it.
+# A declarative source as COLUMN MAPS over its own table (owner 11-07 «행별로 순수함수로 노드 및 엣지 키, 속성 맵핑 -
+# sql 컬럼 맵핑 컴파일»): a leg is one sentence (or one entity reference a sentence's entity carries) - the column each
+# end's keys, each qualifier, the time and the row's name are read from, and the rows it says. A walk reads those columns
+# (`Leg.read`) and makes a row's atom in Python by the translator's own functions (`Leg.atom`) - nothing computed per
+# row in SQL, no second spelling of the mapping. `contracts/ledger_sql_compile` holds it and the translator to one
+# expectation. What this compile does not read leaves the source out by name (`NotCompiled`) - the answer lists it.
 
 class NotCompiled(Exception):
     """A source the walk's compile does not read - why, in the answer's `engine.left_out`."""
 
 
-#: The ends a leg can be walked from, and the alias prefix of their key columns.
-LEG_ENDS = {"outgoing": "__o", "incoming": "__i"}
-#: The alias of the row a leg's atom is read from - its `row_id` (a reach's rows, `trace_router.reach`).
-LEG_ROW = "__row"
 _TEXT, _FLOAT, _INTEGER, _TIME = "text", "float", "integer", "time"
 _NUMBERS = (_FLOAT, _INTEGER, "numeric")
 
 
 class Leg:
-    """One sentence or reference of one source: `select` - `SELECT <the ledger's columns, its row (`LEG_ROW`), each end's key columns> FROM
-    <relation> w WHERE <the rows it says>`; `ends` {arm: (bare type, {key: column alias})}; `columns` {arm: the text
-    columns its keys are read from as they are} - an index on one of them serves the arm, else the answer says «scan»."""
+    """One sentence or reference of one source as a column map. `ends` {arm: (bare type, {key: spec})} - the subject
+    is the outgoing end; a spec is {"column", "declared", "kind", "zone"} or {"constant": spelled}. `qualifiers` {name:
+    spec}; `required` the specs that must not be blank for the row to say anything (a reference's sentence's own keys
+    too); `kept` the rows it says - SQL over the table's own cells; `columns` {arm: the text columns its keys are read
+    from as they are} - an index on one of them serves the arm, else the answer says «scan»; `filled` the `required`
+    columns and the time not blank, as SQL - what a count of the rows a node is named by asks without reading them."""
 
-    def __init__(self, source, relation, predicate, select, ends, columns):
-        self.source, self.relation, self.predicate = source, relation, predicate
-        self.select, self.ends, self.columns = select, ends, columns
+    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, filled):
+        self.source, self.relation, self.sentence, self.predicate = plan.source_id, plan.relation, sentence, predicate
+        self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
+        self.basis, self.version, self.columns, self.plan, self.world = basis, version, columns, plan, None
+        self.filled = filled
+        self.time = plan.driver.occurred_at
+        self.order_by = sorted(plan.driver.order_by)
+
+    def cells(self, arm=None):
+        """The columns a read selects - `row_id` first; `arm`: that end's key columns alone."""
+        specs = [spec for each in ((arm,) if arm else self.ends) for spec in self.ends[each][1].values()]
+        if arm is None:
+            specs += [*self.qualifiers.values(), *self.required]
+        named = [spec["column"] for spec in specs if "column" in spec]
+        if arm is not None:
+            return list(dict.fromkeys(named))
+        return list(dict.fromkeys(["row_id", *named, self.time.column, *self.order_by]))
+
+    def read(self, where=(), cells=None, tail=""):
+        """`SELECT <cells> FROM <relation> w WHERE <the rows it says> AND <where>` - a column read, nothing computed."""
+        return "SELECT %s FROM %s w WHERE %s%s" % (
+            ", ".join(cells or (f"w.{_quoted(column)}" for column in self.cells())), self.relation,
+            " AND ".join([*self.kept, *where]) or "true", tail)
+
+    def matching(self, arm, frontier, params, name):
+        """[SQL condition] - the rows whose `arm` keys are one of `frontier` [{key: value}] as the columns hold them:
+        each key column = ANY(its values), and with two or more, the columns together IN the frontier's tuples (one
+        column at a time is their cross product - 77,154 rows read for 4,240 on the box's die, 11-07); None when none
+        can. The atom holds it to the frontier exactly."""
+        import notation_norm
+
+        specs = sorted(self.ends[arm][1].items())
+        held = set()
+        for keys in frontier:
+            if all("column" in spec or keys.get(key) == spec["constant"] for key, spec in specs):
+                said = tuple(_held(keys.get(key), spec) for key, spec in specs if "column" in spec)
+                if None not in said:
+                    held.add(said)
+        if not held:
+            return None
+        held, cells = sorted(held, key=str), []
+        for key, spec in specs:
+            if "column" in spec:
+                cell = f"w.{_quoted(spec['column'])}"
+                if spec.get("zone"):                # the declaration reads this column as a time: its function stays
+                    cell = notation_norm.key_expression_text(cell, zone=spec["zone"])
+                cells.append(cell)
+        conditions = []
+        for index, cell in enumerate(cells):
+            params[f"{name}_{index}"] = sorted({each[index] for each in held}, key=str)
+            conditions.append(f"{cell} = ANY(%({name}_{index})s)")
+        if len(cells) > 1:
+            for index in range(len(cells)):
+                params[f"{name}_t{index}"] = [each[index] for each in held]
+            conditions.append("(%s) IN (SELECT * FROM unnest(%s))" % (
+                ", ".join(cells), ", ".join(f"%({name}_t{index})s" for index in range(len(cells)))))
+        return conditions
+
+    def atom(self, row):
+        """(the row's atom as the translator makes it - {EvidenceAtom field: value}, or None when the row says nothing:
+        a blank key or a blank time; whether its time was there and did not read)."""
+        from .event_frame import STORED_RAW_REF_JOINS, SourcePreparationError, _aware_time
+        from .event_frame import _canonical as canonical
+
+        spelled = {}
+
+        def spell(spec):            # a column read twice (a required key, an end's key) is spelled once a row
+            said = (spec.get("column"), str(spec.get("declared")), spec.get("constant"))
+            if said not in spelled:
+                spelled[said] = _spelled(spec, row)
+            return spelled[said]
+
+        if any(spell(spec) is None for spec in self.required):
+            return None, False
+        ends = {arm: (bare, {key: spell(spec) for key, spec in keys.items()}) for arm, (bare, keys) in self.ends.items()}
+        if any(value is None for _bare, keys in ends.values() for value in keys.values()):
+            return None, False
+        moment = row[self.time.column]
+        if roleframe.is_blank_source_value(moment):
+            return None, False
+        try:
+            moment = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
+                                 self.time.timezone, f"read.{self.time.column}", self.time.format)
+        except SourcePreparationError:
+            return None, True
+        qualifiers = {}
+        for name, spec in self.qualifiers.items():
+            value = spec["constant"] if "constant" in spec else roleframe._plain(row[spec["column"]])
+            if value is not None:
+                qualifiers[name] = value
+        (subject_type, subject_keys), (object_type, object_keys) = ends["outgoing"], ends["incoming"]
+        payload = {"type": object_type, "keys": object_keys, **({"qualifiers": qualifiers} if qualifiers else {})}
+        row_ref = f"{self.relation}:" + canonical({column: row[column] for column in self.order_by},
+                                                   path="source_row_ref")
+        event = canonical({"relation": self.relation, "rows": [row_ref], "verified_joins": STORED_RAW_REF_JOINS},
+                          path="event_frame.source_raw_ref")
+        # an atom id is a uuid, as the ledger's - a time page's cursor carries it (`ledger_subgraph.time_cursor`)
+        said = "%s|%s|%s" % (self.source, self.sentence, row["row_id"])
+        return {"id": str(uuid.uuid5(uuid.NAMESPACE_OID, said)), "subject_type": subject_type,
+                "subject_keys": subject_keys, "predicate": self.predicate, "object_kind": "entity_ref",
+                "object_payload": payload, "occurred_at": moment, "source_who": self.source,
+                "source_translator_ver": self.version,
+                "source_raw_ref": roleframe._claim_source_raw_ref(event, [row_ref]), "supersedes": None,
+                "source_event_id": None, "source_event_state": None, "occurred_at_basis": self.basis,
+                "world": self.world}, False
+
+
+def _spelled(spec, row):
+    """A key part as the translator spells it (`roleframe` - the column's declared type, then the ledger's one fold);
+    None when blank."""
+    if "constant" in spec:
+        return spec["constant"]
+    value = roleframe._plain(row[spec["column"]])
+    if roleframe.is_blank_key_part(value):
+        return None
+    spelled = map_overlay.canonical_key_value(map_overlay.canonical_key_value(value, spec["declared"]), None)
+    return None if roleframe.is_blank_key_part(spelled) else spelled
+
+
+def _held(value, spec):
+    """A frontier key value as the column holds it - text as it is, a number as the column's number; None when it
+    cannot be one."""
+    if value is None:
+        return None
+    if spec.get("zone") or spec["kind"] == _TEXT:
+        return str(value)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if spec["kind"] == _FLOAT:
+        return number
+    if spec["kind"] == _INTEGER:
+        return int(number) if number.is_integer() else None
+    from decimal import Decimal, InvalidOperation
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
 
 
 def _quoted(name) -> str:
@@ -277,33 +416,25 @@ def _when(kinds, when, why) -> str:
     return " AND ".join(said) or "true"
 
 
-def _key(relation, kinds, binding, why) -> str:
-    """One key part's SQL - `map_overlay.canonical_key_value` by the column's declared type; NULL or '' when blank. A
-    text key is the cell itself: storage holds it stripped (`crud.normalize_stored_text`), and so a table's index on
-    the column serves the join (`crud.blank_sql_condition` reads blank the same way)."""
+def _key(relation, kinds, binding, why) -> dict:
+    """One key part's spec - a constant spelled (`map_overlay.canonical_key_value`), or the column with its declared
+    type, the database's kind and the zone a time column is read on."""
     import map_overlay
-    import notation_norm
 
     if binding.get("kind") == "constant":
-        spelled = map_overlay.canonical_key_value(roleframe._plain(binding.get("value")), None)
-        return "NULL::text" if spelled is None else _literal(spelled)
+        return {"constant": map_overlay.canonical_key_value(roleframe._plain(binding.get("value")), None)}
     if binding.get("kind") != "column":
         raise NotCompiled(f"{why}: a key bound by {binding.get('kind')!r}")
-    cell, kind = _column(kinds, binding.get("column"), why)
+    _cell, kind = _column(kinds, binding.get("column"), why)
     declared = map_overlay.declared_column_type(relation, binding.get("column"))
     zone = map_overlay.key_time_zone(relation, binding.get("column"))
-    if zone:
-        return f"NULLIF(btrim({notation_norm.key_expression_text(cell, zone=zone)}), '')"
-    if kind in _NUMBERS:
-        cast = "::float8" if kind == _FLOAT else "::numeric"
-        return f"NULLIF({notation_norm.key_expression_text(cell + cast, number_column=True)}, '')"
-    if kind != _TEXT or declared == "number":
+    if not zone and kind not in _NUMBERS and (kind != _TEXT or declared == "number"):
         raise NotCompiled(f"{why}: a {declared or 'text'} key read from a {kind} column")
-    return cell
+    return {"column": binding["column"], "declared": declared, "kind": kind, "zone": zone}
 
 
 def _entity(relation, kinds, binding, why):
-    """(bare type, {key: SQL}) of an entity role."""
+    """(bare type, {key: spec}) of an entity role."""
     from .setup_bundle import bare_name, entity_type_column
 
     if binding.get("kind") != "entity" or entity_type_column(binding):
@@ -314,93 +445,35 @@ def _entity(relation, kinds, binding, why):
                                                 for key, child in (binding.get("keys") or {}).items()}
 
 
-def _time(plan, kinds) -> str:
-    """The molecule's instant (`roleframe.aware_time` on the declared zone); NULL when it does not read."""
-    import notation_norm
-
+def _time(plan, kinds) -> None:
+    """The molecule's instant is read by the translator's `_aware_time` - a column this compile reads only."""
     occurred = plan.driver.occurred_at
     if occurred.format:
         raise NotCompiled("a time read by a declared format")
-    cell, kind = _column(kinds, occurred.column, "read.occurred_at")
-    zone = roleframe.zone_of(occurred.timezone)
-    if kind == _TIME:
-        return cell
-    if kind == "timestamp without time zone":
-        return f"timezone({_literal(zone)}, {cell})"
-    if kind != _TEXT:
+    _cell, kind = _column(kinds, occurred.column, "read.occurred_at")
+    if kind not in (_TIME, "timestamp without time zone", _TEXT):
         raise NotCompiled(f"read.occurred_at: a time read from a {kind} column")
-    read = f"{notation_norm.KEY_INSTANT_FUNCTION}({cell}, {_literal(zone)})"
-    return (f"CASE WHEN {read} ~ '^[0-9]{{4}}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]"
-            f":[0-5][0-9](\\.[0-9]{{1,6}})?[+-][0-9]{{2}}:[0-9]{{2}}$' THEN CAST({read} AS timestamptz) END")
 
 
-def _raw_ref(plan, kinds) -> str:
-    """An atom's `source_raw_ref` for a one-row molecule (`event_frame` · `roleframe._claim_source_raw_ref`): the row
-    `<relation>:{<order_by>}`, the event `{"relation","rows","verified_joins"}`, the two as `{"event","rows"}` - compact
-    sorted JSON, the text `json.dumps` writes (`to_jsonb(text)::text` escapes as it does)."""
-    from .event_frame import STORED_RAW_REF_JOINS
-
-    parts = []
+def _raw_ref(plan, kinds) -> None:
+    """An atom's `source_raw_ref` names its row by `read.order_by` - columns this compile reads only."""
     for column in sorted(plan.driver.order_by):
-        cell, kind = _column(kinds, column, "read.order_by")
+        _cell, kind = _column(kinds, column, "read.order_by")
         if kind not in (_TEXT, _INTEGER, _FLOAT):
             raise NotCompiled(f"read.order_by: a row named by a {kind} column")
-        # a float is written as Python writes it (`json.dumps`): a whole one below 1e15 with «.0», others shortest
-        spelled = (f"CASE WHEN {cell} = trunc({cell}) AND abs({cell}) < 1e15 THEN trunc({cell})::bigint::text || '.0' "
-                   f"ELSE {cell}::text END" if kind == _FLOAT else f"to_jsonb({cell})::text")
-        parts.append("%s || %s" % (_literal(json.dumps(column, ensure_ascii=False) + ":"), spelled))
-    row = "(%s || %s || '}')" % (_literal(plan.relation + ":{"), " || ',' || ".join(parts))
-    head = '{"relation":%s,"rows":[' % json.dumps(plan.relation, ensure_ascii=False)
-    tail = '],"verified_joins":%s}' % json.dumps(list(STORED_RAW_REF_JOINS))
-    event = "(%s || to_jsonb(%s)::text || %s)" % (_literal(head), row, _literal(tail))
-    return "('{\"event\":' || to_jsonb(%s)::text || ',\"rows\":[' || to_jsonb(%s)::text || ']}')" % (event, row)
 
 
-def _qualifier(kinds, binding, why) -> str:
-    """An optional qualifier's jsonb - the cell as it came (`roleframe._attribute_value`); NULL leaves it out."""
+def _qualifier(kinds, binding, why) -> dict:
+    """An optional qualifier's spec - the cell as it came (`roleframe._attribute_value`) or a constant; None leaves it
+    out."""
     if binding.get("kind") == "constant":
-        return "%s::jsonb" % _literal(json.dumps(roleframe._plain(binding.get("value")), ensure_ascii=False))
+        return {"constant": roleframe._plain(binding.get("value"))}
     if binding.get("kind") != "column" or binding.get("timezone") or binding.get("format"):
         raise NotCompiled(f"{why}: a qualifier bound by {binding.get('kind')!r} or read as a time")
-    cell, kind = _column(kinds, binding.get("column"), why)
+    _cell, kind = _column(kinds, binding.get("column"), why)
     if kind not in (_TEXT, _INTEGER):
         raise NotCompiled(f"{why}: a qualifier read from a {kind} column")
-    return f"to_jsonb({cell})"
-
-
-def _keys_json(keys) -> str:
-    return "jsonb_build_object(%s)" % ", ".join("%s, %s" % (_literal(key), sql) for key, sql in sorted(keys.items()))
-
-
-def _leg(plan, world, subject, predicate, target, qualifiers, row, kept, basis, version, columns_read) -> Leg:
-    """One leg's SELECT: the ledger's columns (`schema.LEDGER_COLUMNS`, with `world`), its row and each end's key
-    columns."""
-    (near_type, near), (far_type, far) = subject, target
-    payload = "jsonb_build_object('type', %s, 'keys', %s)" % (_literal(far_type), _keys_json(far))
-    if qualifiers:
-        said = "jsonb_strip_nulls(%s)" % _keys_json(qualifiers)
-        payload = f"CASE WHEN {said} = '{{}}'::jsonb THEN {payload} ELSE {payload} || jsonb_build_object('qualifiers', {said}) END"
-    near_json = _keys_json(near)
-    ends, columns = {}, [
-        f"{_literal(world)}::text AS world",
-        f"md5({row['ref']} || {_literal(version)} || {near_json}::text || ({payload})::text)::uuid AS id",
-        f"{_literal(near_type)}::text AS subject_type", f"{near_json} AS subject_keys",
-        f"{_literal(predicate)}::text AS predicate", "'entity_ref'::text AS object_kind",
-        f"{payload} AS object_payload", f"{row['time']} AS occurred_at",
-        f"{_literal(plan.source_id)}::text AS source_who", f"{_literal(version)}::text AS source_translator_ver",
-        f"{row['ref']} AS source_raw_ref", "NULL::uuid AS supersedes", "NULL::uuid AS source_event_id",
-        "NULL::text AS source_event_state",
-        ("NULL::text" if basis is None else f"{_literal(basis)}::text") + " AS occurred_at_basis",
-        f"w.row_id AS {LEG_ROW}"]
-    for arm, (bare, keys) in (("outgoing", (near_type, near)), ("incoming", (far_type, far))):
-        aliases = {}
-        for index, (key, sql) in enumerate(sorted(keys.items())):
-            aliases[key] = f"{LEG_ENDS[arm]}{index}"
-            columns.append(f"{sql} AS {aliases[key]}")
-        ends[arm] = (bare, aliases)
-    filled = [f"{sql} <> ''" for sql in (*near.values(), *far.values())]
-    select = "SELECT %s FROM %s w WHERE %s" % (", ".join(columns), plan.relation, " AND ".join([*kept, *filled]))
-    return Leg(plan.source_id, plan.relation, predicate, select, ends, columns_read)
+    return {"column": binding["column"]}
 
 
 def compile_source(snapshot, plan, kinds, world) -> list:
@@ -417,9 +490,8 @@ def compile_source(snapshot, plan, kinds, world) -> list:
     if driver.group_by or driver.mapper.unit_kind not in ("row", "event"):
         raise NotCompiled("a molecule of more than one row (read.group_by or map.unit)")
     context = roleframe.MapperContext(snapshot, plan)
-    row = {"time": _time(plan, kinds), "ref": _raw_ref(plan, kinds)}
-    # the time is not here: a text time is read by a function, and a filter on the table runs on every row before the
-    # walk's join - the reader asks `occurred_at IS NOT NULL` after it (`VirtualEvidenceLookup`, `legs_relation`)
+    _time(plan, kinds)
+    _raw_ref(plan, kinds)
     kept = [_present(kinds, column) for column in dict.fromkeys(
         (*driver.cursor_columns, *driver.identity,
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
@@ -449,10 +521,12 @@ def compile_source(snapshot, plan, kinds, world) -> list:
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
         first = {role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
-        legs.append(_leg(plan, world, ends["subject"], emission_plan.predicate_runtime_id, ends["object"], qualifiers,
-                         row, kept_here, basis, prefix + sentence,
-                         {"outgoing": first["subject"], "incoming": first["object"]}))
-        said = [f"{sql} <> ''" for _type, keys in ends.values() for sql in keys.values()]
+        said = [spec for _type, keys in ends.values() for spec in keys.values()]
+        filled = [_present(kinds, column) for column in dict.fromkeys(
+            [spec["column"] for spec in said if "column" in spec] + [driver.occurred_at.column])]
+        legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
+                        {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
+                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, filled))
         for role, binding in named.items():
             bare, keys = ends[role]
             for reference in getattr(snapshot.entities.get(binding["entity_type"]), "references", ()):
@@ -466,15 +540,14 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                 for target_key, kind, value in reference.keys:
                     if kind == "key" and value not in keys:
                         raise NotCompiled(f"{sentence}.{role}: a reference to a key {value!r} it does not bind")
-                    spelled = None if kind == "key" else map_overlay.canonical_key_value(roleframe._plain(value), None)
-                    target[target_key] = keys[value] if kind == "key" else (
-                        "NULL::text" if spelled is None else _literal(spelled))
+                    target[target_key] = keys[value] if kind == "key" else {
+                        "constant": map_overlay.canonical_key_value(roleframe._plain(value), None)}
                 pointed = {target_key: own.get(value) if kind == "key" else None
                            for target_key, kind, value in reference.keys}
-                legs.append(_leg(plan, world, (bare, keys), bare_name(reference.predicate_id),
-                                 (bare_name(reference.target_type), target), {}, row, [*kept_here, *said],
-                                 NOT_AN_EVENT_BASIS, prefix + reference.derivation,
-                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}))
+                legs.append(Leg(plan, reference.derivation, bare_name(reference.predicate_id),
+                                {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
+                                {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
+                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, filled))
     return legs
 
 

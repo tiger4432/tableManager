@@ -358,8 +358,24 @@ class GapQuestionUnknown(ValueError):
     """
 
 
+def gap_count(fetchone, relation, bare, absent, present, scan):
+    """(nodes of type `bare` without any `absent` predicate - and with a `present` one when named - among the first `scan`
+    of `relation`'s, the oldest and newest first instant of those, nodes examined): one statement, `fetchone(sql, params)`
+    its first row - the stored reader's (`SqlEvidenceLookup.gap_count`) and `measure`'s own."""
+    node_sql = _nodes_of_type_sql().replace("{table}", relation)
+    has_sql = _has_predicate_sql().replace("{table}", relation)
+    where = ["NOT " + has_sql.replace("%(preds)s", "%(absent)s")]
+    if present:
+        where.append(has_sql.replace("%(preds)s", "%(present)s"))
+    return fetchone(
+        f"SELECT count(*), min(n.first_seen), max(n.first_seen), "
+        f"       (SELECT count(*) FROM ({node_sql}) c) "
+        f"FROM ({node_sql}) n WHERE " + " AND ".join(where),
+        {"bare": bare, "scan": scan, "absent": list(absent), "present": list(present)})
+
+
 def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=None,
-            relation=None):
+            relation=None, reader=None):
     """Count each named gap over a bounded sample of nodes, with each one's age. READ ONLY.
 
     🔴 `only` EXISTS BECAUSE THE SCREEN HAS THREE SECONDS AND ALL TWENTY TAKE THIRTY.
@@ -373,6 +389,9 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
     A question whose type cannot exist without the predicate is `not_applicable` and gets
     NO count at all: zero would say "we looked and found none" about a set that cannot have
     members, and the spec is explicit that the row stays so nobody asks again.
+
+    `reader`: the walk's reader of the worlds asked about (`trace_router._walk_lookup` - the ledger's or the
+    declaration's own tables), whose `gap_count` answers; none: `relation`, or the default world's ledger, asked here.
     """
     from . import schema
 
@@ -384,15 +403,16 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
             raise GapQuestionUnknown(
                 f"no gap is named {only!r}. The names come from "
                 f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
-    # `relation`: the walk relation of the worlds asked about (the router's `_worlds`)
     relation = relation or schema.walk_relation((schema.world_names(),))
-    node_sql = _nodes_of_type_sql().replace("{table}", relation)
-    has_sql = _has_predicate_sql().replace("{table}", relation)
-
     out = []
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
+            def fetchone(sql, params):
+                cursor.execute(sql, params)
+                return cursor.fetchone()
+            counted = reader.gap_count if reader is not None else (
+                lambda *asked: gap_count(fetchone, relation, *asked))
             for item in asked:
                 row = {"name": item["name"], "type": item["type"], "form": item["form"],
                        "present": item["present"], "absent": item["absent"],
@@ -403,18 +423,9 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
                                 "count_kind": None, "examined": None, "oldest": []})
                     out.append(row)
                     continue
-                bare = _bare(item["type"])
-                params = {"bare": bare, "scan": scan_limit,
-                          "absent": [_bare(p) for p in item["absent"]],
-                          "present": [_bare(p) for p in item["present"]]}
-                where = ["NOT " + has_sql.replace("%(preds)s", "%(absent)s")]
-                if item["present"]:
-                    where.append(has_sql.replace("%(preds)s", "%(present)s"))
-                cursor.execute(
-                    f"SELECT count(*), min(n.first_seen), max(n.first_seen), "
-                    f"       (SELECT count(*) FROM ({node_sql}) c) "
-                    f"FROM ({node_sql}) n WHERE " + " AND ".join(where), params)
-                count, oldest, newest, examined = cursor.fetchone()
+                count, oldest, newest, examined = counted(
+                    _bare(item["type"]), [_bare(p) for p in item["absent"]], [_bare(p) for p in item["present"]],
+                    scan_limit)
                 complete = (examined or 0) < scan_limit
                 row.update({
                     "count": int(count or 0),

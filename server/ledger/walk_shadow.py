@@ -149,7 +149,7 @@ def main(argv=None) -> int:
     names = schema.require_world(args.world)
     snapshot = load_setup(names.declaration_root).snapshot
     engine = create_engine(live.url, connect_args={"options": "-c default_transaction_read_only=on"})
-    raw = engine.raw_connection()
+    raw = engine.connect()        # a SQLAlchemy connection: the virtual read asks PostgreSQL the times the translator does
 
     def fetch(sql, params=None):
         return trace._fetch(raw, sql, params)

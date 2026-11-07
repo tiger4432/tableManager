@@ -146,14 +146,16 @@ def test_a_hidden_middle_table_gives_none_of_its_atoms(world, monkeypatch):
     middle = dict(table="wafer_process", column="wafer_id", values=["W1"], type="wafer", to="wafer_process",
                   follow=["has_wafer", "has_wafer", "processed_with"])
     read = []
-    real = ledger_subgraph.SqlEvidenceLookup.claims_for_entities
 
-    def kept(self, *args, **kwargs):
-        atoms, cut = real(self, *args, **kwargs)
-        read.extend(atom.source_who for atom in atoms)
-        return atoms, cut
+    def kept(real):
+        def reading(self, *args, **kwargs):
+            atoms, cut = real(self, *args, **kwargs)
+            read.extend(atom.source_who for atom in atoms)
+            return atoms, cut
+        return reading
 
-    monkeypatch.setattr(ledger_subgraph.SqlEvidenceLookup, "claims_for_entities", kept)
+    for reader in (ledger_subgraph.SqlEvidenceLookup, ledger_subgraph.VirtualEvidenceLookup):
+        monkeypatch.setattr(reader, "claims_for_entities", kept(reader.claims_for_entities))
     for engine in ENGINES:
         seen = _reach(world, engine, **middle)
         assert set(seen["rows"]) == _expected(world, ("W1",))[1] and "hidden" not in seen, engine

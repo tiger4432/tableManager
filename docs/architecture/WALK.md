@@ -394,15 +394,18 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 묻는 것   같은 걷기를 저장 원장 대신 «선언이 읽는 표»에서 — 원장에 쓴 것 없이
 인자      engine=stored(기본, 오늘 그대로) | virtual — subgraph · key-values · gaps 셋이 같은 낱말. 묻는 자리는
           trace_router._engine_reading 하나. 걷기 답의 cards 는 답 본문과 선언만 읽어 따로 할 것 없음
-읽기      sql_translate.compile_world — 선언 소스를 «다리»로: 문장 하나 · 그 문장의 엔티티가 든 references 하나마다
-          원장의 칸(LEDGER_COLUMNS)을 행에서 짓는 SELECT + 끝마다 키 칸. 키 철자는 제품의 SQL 함수
-          (assy_key_number · assy_key_instant), 글자 키는 칸 그대로(저장이 이미 떼어 둠 — 표 색인이 조인을 받음)
-          ledger_subgraph.VirtualEvidenceLookup — SqlEvidenceLookup 의 읽기 그대로, `_legs(arm)` 만 다리마다
-          프런티어를 키 칸으로 조인(저장은 다리 하나 = 오늘 SQL). 시각을 못 읽는 행은 조인 «뒤»에 빠짐
-          (글자 시각은 함수 호출이라 표 전체에 걸면 박스 47.9 만 행에 18 s)
+읽기      sql_translate.compile_world — 선언 소스를 «다리»(sql_translate.Leg = 칸 맵)로: 문장 하나 · 그 문장의
+          엔티티가 든 references 하나마다 끝마다의 키 칸 · 수식어 칸 · 시각 칸. SQL 은 칸을 «그대로» 읽기만
+          (Leg.read — 행 거르기 + 프런티어 키 칸 = ANY, 키가 두 칸 이상이면 그 묶음 IN 프런티어 묶음)
+          원자는 파이썬에서 번역기의 함수로(Leg.atom — 키 철자 map_overlay · 시각 _aware_time + PostgreSQL 이
+          읽는 시각 · 원천 행 _claim_source_raw_ref). 원자를 SQL 로 짓는 자리 0(총괄 11-07 «SQL 다리 은퇴»)
+          ledger_subgraph.VirtualEvidenceLookup — InMemoryEvidenceLookup 의 규칙(순서 · 자르기 · 구간 · 지금 것)을
+          그 원자에 그대로. 다리 하나가 읽는 행은 READ_GUARD_FACTOR x 그 읽기의 상한까지 — 넘으면 cut(capped)
+          씨앗 없는 질문(key-values · gaps · 타입의 씨앗)은 다리 끝마다 키 칸 GROUP BY 한 번(행은 안 읽음)
 시점      since · until · include_superseded 는 저장 걷기와 같은 절 — 원자의 occurred_at 은 선언된 시각 칸이므로
           원천 행에 그대로 걸림. 이력표로 지어내지 않음(소유자 11-06 «시점 걷기 그대로»)
-답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}]}
+답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}],
+          unreadable_times: n} — n = 읽은 행 중 시각 칸이 있는데 안 읽히는 행(저장 원장에도 원자가 없는 행)
           left_out = 컴파일이 안 읽는 소스(계획 안 됨 · 코드 맵퍼 · 묶음 단위 · attributes · value 목적어 ·
           format 시각 · 숫자 칸 when · 필수 수식어) — 그 소스의 사실은 이 답에 없음
           scans = 다리 끝의 글자 키 칸이 표 선언 "indexes" 의 첫 칸이 아님 — 그 표를 훑음
@@ -428,7 +431,7 @@ records · 이름의 값)는 파이썬 키(`_read_order_key`)만 정한다 — �
           안 지남. 상한은 REACH_ATOM_CAP 하나를 걸음마다(원자 수) — 끊긴 걸음은 읽은 원자의 먼 끝을 최신순으로
           REACH_FRONTIER_CAP 개까지 넘겨 다음 걸음을 감. 끊긴 걸음은 count.capped_steps [{step, predicate}]
 닿은 행   조회기 rows_of = 읽은 원자 «전부»의 표 B 행(엣지의 가장 늦은 원자만이 아님). 저장은 row_ref,
-          가상은 다리의 행(LEG_ROW). 수 = 그 집합의 길이, 잘리면 capped + cap
+          가상은 원자를 지은 다리의 row_id. 수 = 그 집합의 길이, 잘리면 capped + cap
 조회기    trace_router._walk_lookup 하나 — 걷기와 같은 자리라 leave_out · engine 을 같이 물려받음
 빠진 것   left_out — 표에 없는 값 수 · 노드를 안 짓는 행 수 · 뷰(row_id 없음, 읽는 소스 이름) ·
           가상에서 컴파일 안 된 A/B 소스. 빈 마킹 = 0 행, 원장을 안 읽음

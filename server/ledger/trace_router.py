@@ -837,13 +837,6 @@ def _engine_reading(connection, engine, names, leave_out=None):
                   "scans": [{"table": table, "column": column} for table, column in scans]}
 
 
-def _engine_relation(connection, engine, names, leave_out=None):
-    """(the relation a seedless read reads, the answer's `engine` cell or None) - `_engine_reading`'s."""
-    legs, said = _engine_reading(connection, engine, names, leave_out)
-    relation = schema.walk_relation(names, leave_out)
-    return (relation, None) if legs is None else (ledger_subgraph.legs_relation(legs, relation), said)
-
-
 def _hidden_here(names, hidden, leave_out=None):
     """(how many tables, `leave_out` with every source that reads one added) - the tables of `hidden`
     (`access.hidden_tables`) these worlds' sources read (a source's "relation"). A walk leaves those sources out as a
@@ -860,11 +853,11 @@ def _hidden_here(names, hidden, leave_out=None):
 
 
 def _walk_lookup(connection, engine, names, world, leave_out=None, **reading):
-    """(the walk's reader of `engine` over the worlds `names`, the answer's `engine` cell or None) - the walk's and a
-    reach's (`reach`)."""
+    """(the walk's reader of `engine` over the worlds `names`, the answer's `engine` cell or None) - the walk's, a
+    reach's (`reach`), the key list's and the gap catalogue's: each asks the reader, never the engine."""
     legs, said = _engine_reading(connection, engine, names, leave_out)
     if legs is not None:
-        return ledger_subgraph.VirtualEvidenceLookup(connection, legs, worlds=names, **reading), said
+        return ledger_subgraph.VirtualEvidenceLookup(connection, legs, worlds=names, said=said, **reading), said
     return ledger_subgraph.SqlEvidenceLookup(connection, worlds=names, **({"leave_out": leave_out} if leave_out else {}),
                                              indexed=_indexed_qualifiers(world), **reading), None
 
@@ -1066,17 +1059,14 @@ PREFIX_REFUSAL = ("'%s' cannot be found by its first letters - its first key '%s
                   "Type the whole key in the key boxes")
 
 
-def _prefix_axis(connection, relation, bare_type, declared_keys, case):
+def _prefix_axis(reader, bare_type, declared_keys, case):
     """(the axis `starts_with` reads, or None; the refusal, or None). The axis is the declared key
     that comes FIRST in jsonb's own key order - asked of PostgreSQL, the order the subject index
     sorts by, so only on it is a prefix one range (총괄 bccbdd601). It must hold text: read from the
     first node with that axis at or past '' (two probes); a number or no text there is refused."""
     nulls = json.dumps({name: None for name in declared_keys})
-    axis = connection.exec_driver_sql("SELECT k FROM jsonb_object_keys(%(o)s::jsonb) k LIMIT 1",
-                                      {"o": nulls}).scalar()
-    first = connection.exec_driver_sql(
-        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql(case).format(table=relation),
-        {"bare": bare_type, "scan": 1, "nulls": nulls, "axis": axis, "p": "", "plen": 0}).scalar()
+    axis = trace._fetch(reader.connection, "SELECT k FROM jsonb_object_keys(%(o)s::jsonb) k LIMIT 1", {"o": nulls})[0][0]
+    first = next(iter(reader.key_nodes(bare_type, 1, case, axis, "", nulls)), None)
     if first is None or isinstance(json.loads(first).get(axis), str):
         return axis, None
     return None, PREFIX_REFUSAL % (bare_type, axis)
@@ -1134,7 +1124,7 @@ def ledger_key_values(
     names = _worlds(world)
     _ledgers_present(connection, names)
     hidden, hiding = _hidden_here(names, hidden)
-    relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", names, hiding)
+    reader, said = _walk_lookup(connection, engine if engine in ENGINES else "stored", names, world, hiding)
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
     # type answers with one list per axis, and a screen that pairs them offers the CROSS
@@ -1153,7 +1143,7 @@ def ledger_key_values(
     # 🔴 [총괄 bccbdd601] EVERY ANSWER SAYS WHICH KEY THE FIRST LETTERS SEARCH, starts_with or not - the
     #   screen asks once with none to learn which key box its search box stands for.
     case = gaps.prefix_case(connection)
-    prefix_axis, prefix_refusal = _prefix_axis(connection, relation, wanted_type, declared_keys, case)
+    prefix_axis, prefix_refusal = _prefix_axis(reader, wanted_type, declared_keys, case)
     prefixed = not _crud.is_blank_value(starts_with)
     if prefixed and prefix_refusal:
         raise HTTPException(status_code=422, detail={
@@ -1167,39 +1157,9 @@ def ledger_key_values(
     budget = limit + 1 if set(grouping) == set(declared_keys) else KEY_VALUE_SCAN_NODES
     # `::text` keeps each node's keys exactly as stored - a float round trip through Python
     # could name a node nobody has, and its count would read 0.
-    nodes = [row[0] for row in connection.exec_driver_sql(
-        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql(case if prefixed else None).format(
-            table=relation),
-        {"bare": wanted_type, "scan": budget + 1, "axis": prefix_axis, "p": starts_with,
-         "plen": len(starts_with or ""),
-         "nulls": json.dumps({name: None for name in declared_keys})}).fetchall()]
-    params = {"bare": wanted_type, "nodes": "[" + ",".join(nodes[:budget]) + "]",
-              "limit": limit + 1}
-    # Key NAMES are bound, never interpolated - they came from the declaration, and
-    # binding them keeps that true no matter what a declaration is allowed to contain.
-    selected = []
-    for index, name in enumerate(grouping):
-        params["k%d" % index] = name
-        # 🔴 `->` NOT `->>`. The text extractor turns the ledger's 0.0 into "0.0", the
-        # canonical seed id writes those two differently, and the walk then answers a seed
-        # nobody has - measured 2026-09-06: composite seeds 8/8 empty, the same 8 ready
-        # once the type survives. A key's TYPE is part of its identity here.
-        selected.append("k.keys -> %%(k%d)s AS v%d" % (index, index))
-    columns = ", ".join("v%d" % index for index in range(len(grouping)))
-    # jsonb `->` gives SQL NULL for a missing key and `'null'::jsonb` for a declared one
-    # holding JSON null; neither is a value a seed can carry, and they are different rows.
-    not_null = " AND ".join("v%d IS NOT NULL AND v%d <> 'null'::jsonb" % (index, index)
-                            for index in range(len(grouping)))
-
-    rows = connection.exec_driver_sql(
-        "SELECT " + columns + ", sum(n) AS n FROM ("
-        "  SELECT " + ", ".join(selected) + ", (SELECT count(*) FROM " + relation + " e"
-        "   WHERE " + gaps._names_node_sql("e", "k.keys") + ") AS n"
-        "  FROM jsonb_array_elements(%(nodes)s::jsonb) AS k(keys)"
-        ") w WHERE " + not_null + " GROUP BY " + columns +
-        " ORDER BY " + columns + " LIMIT %(limit)s",
-        params,
-    ).fetchall() if nodes else []
+    nodes = reader.key_nodes(wanted_type, budget + 1, case if prefixed else None, prefix_axis, starts_with,
+                             json.dumps({name: None for name in declared_keys}))
+    rows = reader.key_counts(wanted_type, nodes[:budget], grouping, limit + 1)
 
     return {
         **({"hidden": hidden} if hidden else {}),
@@ -1430,10 +1390,10 @@ def ledger_gap_catalogue(name: str = Query(None),
         from database.database import engine as database
         with database.connect() as connection:
             hidden, hiding = _hidden_here(_worlds(world), hidden)
-            relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", _worlds(world),
-                                              hiding)
-        return {"mode": "measured", "count": 1,
-                "gaps": _gaps.measure(database, declared, only=name, relation=relation),
+            reader, said = _walk_lookup(connection, engine if engine in ENGINES else "stored", _worlds(world), world,
+                                        hiding)
+            measured = _gaps.measure(database, declared, only=name, reader=reader)
+        return {"mode": "measured", "count": 1, "gaps": measured,
                 **({"engine": said} if said else {}), **({"hidden": hidden} if hidden else {})}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))

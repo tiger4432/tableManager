@@ -9,7 +9,7 @@ through `server/tests/test_ledger_sql_compile_contract.py`, the shim, as the oth
 
 Each case: the hold world's official table with the case's rows (written through the write door), the case's source
 declared on it. The translator's atoms (`sql_translate.event_results` - what the stored ledger holds) and the compile's
-(`sql_translate.compile_world`, every leg read whole) must each be the case's atoms, and the two must name the same
+(`sql_translate.compile_world`, every leg's rows read whole and made atoms by `Leg.atom`) must each be the case's atoms, and the two must name the same
 rows (`source_raw_ref`) for the same facts.
 """
 import copy
@@ -100,17 +100,14 @@ def _python(world):
 def _compiled(world):
     from ledger_api import ledger_subgraph
 
-    raw = world["engine"].raw_connection()
-    try:
-        def fetch(sql, params=None):
-            return trace._fetch(raw, sql, params)
-        legs, left_out = sql_translate.compile_world(world["setup"].snapshot, fetch, "default")
-        rows = fetch("SELECT subject_type, subject_keys, predicate, object_payload, occurred_at, occurred_at_basis, "
-                     "source_raw_ref FROM %s r" % ledger_subgraph.legs_relation(legs, "(SELECT NULL)")) if legs else []
-    finally:
-        raw.rollback()
-        raw.close()
-    said = sorted((_fact(t, k, p, o, at.isoformat(), basis), ref) for t, k, p, o, at, basis, ref in rows)
+    with world["engine"].connect() as connection:
+        legs, left_out = sql_translate.compile_world(
+            world["setup"].snapshot, lambda sql, params=None: trace._fetch(connection, sql, params), "default")
+        reader = ledger_subgraph.VirtualEvidenceLookup(connection, legs)
+        atoms = [atom for leg in legs for atom in reader._atoms(leg, reader._execute(leg.read(), None))]
+        connection.rollback()
+    said = sorted((_fact(a.subject_type, a.subject_keys, a.predicate, a.object_payload, a.occurred_at.isoformat(),
+                         a.occurred_at_basis), a.source_raw_ref) for a in atoms)
     return said, left_out
 
 

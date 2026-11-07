@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **가상 걷기(engine=virtual)는 표의 칸을 «그대로» 읽고 원자는 파이썬에서 짓는다 — SQL 다리 은퇴** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 무엇     engine=virtual 을 줄 때만 — 가상 걷기 · reach · key-values · gaps 가 선언 표의 칸만 읽음(행 거르기 + 키 칸), 원자는 번역기의 함수로
+>          다리 하나가 한 번에 읽는 행은 그 읽기 상한 x 10 까지 — 넘으면 capped (박스 실측 최대 3.07 x)
+>          답의 engine 칸에 unreadable_times = 읽은 행 중 시각 칸이 있는데 안 읽히는 행 수
+> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
+> 답의 뜻  bins.real 0 · tie_split 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
+>          답의 engine.unreadable_times > 0 = 그 행은 저장 원장에도 원자가 없음 — 원천 표의 시각 글자를 볼 일
+>          답의 capped(reach 는 count.capped) = 상한이나 다리 하나의 읽기 가드에 걸려 잘림
+> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
+> ```
+>
+> ---
+>
 > ## [11-07] **reach 가 진짜 표를 «뷰»라며 0 행을 답하던 것 — 걷기 프로세스가 표 모델을 짓는다** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

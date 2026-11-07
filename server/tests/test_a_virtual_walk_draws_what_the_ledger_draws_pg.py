@@ -74,7 +74,8 @@ def test_the_virtual_walk_draws_the_walk_the_ledger_draws(board, asked):
     assert _drawn(virtual) == _drawn(stored)
     assert len(stored["edges"]) >= (1 if asked.get("since") else 3), "canary: the walk crosses both sources"
     assert "engine" not in stored, "the stored answer is today's - no new cell"
-    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"]}
+    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"],
+                                 "unreadable_times": 0}
     assert {scan["table"] for scan in virtual["engine"]["scans"]} <= {"wafer_process", "lot_slot_wafer"}
 
 

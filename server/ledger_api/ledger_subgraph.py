@@ -937,15 +937,14 @@ class SqlEvidenceLookup:
         return f"(e.predicate = ANY(%(one)s) AND {self._later_fact(bound)})"
 
     def _later_fact(self, bound):
-        """`EXISTS` a later fact of `e`'s (world, subject, predicate) - over the ledger; a virtual read asks its legs."""
+        """`EXISTS` a later fact of `e`'s (world, subject, predicate) - over the ledger."""
         return (f"EXISTS (SELECT 1 FROM {self.relation} n "
                 f"WHERE n.world = e.world "
                 f"AND n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
                 f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound})")
 
     def _legs(self, arm):
-        """((relation, how an atom `e` names a frontier node `f`), ...) the reads on `arm` join - the ledger, once;
-        a virtual read (`VirtualEvidenceLookup`) one per compiled leg, joined on its key columns."""
+        """((relation, how an atom `e` names a frontier node `f`), ...) the reads on `arm` join - the ledger, once."""
         return ((self.relation, ARM_JOIN[arm]),)
 
     def _execute(self, sql, params):
@@ -1125,7 +1124,7 @@ class SqlEvidenceLookup:
     def nodes_of_rows(self, relation, row_ids, bare_type):
         """{row id: [(type, keys)]} - the `bare_type` nodes, on either end, of the atoms read from `relation`'s rows
         `row_ids`: a reach's seeds (`trace_router.reach`). A row's atoms are found by each world's row index, in the
-        relation this reader reads (what it leaves out stays out); a virtual read reads its legs."""
+        relation this reader reads (what it leaves out stays out)."""
         from ledger import schema
 
         reads = " UNION ".join(f"""
@@ -1138,7 +1137,7 @@ class SqlEvidenceLookup:
 
     def rows_of(self, atoms, relation):
         """THE REACHED ROWS (lead 11-06): the ids of `relation`'s rows `atoms` were read from - of every atom read, not
-        only an edge's newest. The stored ledger asks its row index; a virtual read its legs."""
+        only an edge's newest. The stored ledger asks its row index."""
         from ledger import schema
 
         refs = defaultdict(set)
@@ -1196,6 +1195,54 @@ class SqlEvidenceLookup:
             out.append(explorer.entity_id(bare, dict(keys or {})))
         return _DescribedSeeds(out, cut)
 
+    def key_nodes(self, bare, scan, case=None, axis=None, prefix=None, nulls=None):
+        """The `bare` nodes' keys as JSON text, in key order, `scan` of them (`gaps._nodes_of_type_sql`) - with `case`,
+        those whose `axis` starts with `prefix` (`trace_router.ledger_key_values`)."""
+        from ledger import gaps
+
+        return [row[0] for row in self._execute(
+            "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql(case).format(table=self.relation),
+            {"bare": bare, "scan": scan, "axis": axis, "p": prefix, "plen": len(prefix or ""), "nulls": nulls})]
+
+    def key_counts(self, bare, nodes, grouping, limit):
+        """(each `grouping` key's value, ..., the atoms naming those nodes) of `nodes` (`key_nodes`), in value order,
+        `limit` rows (`trace_router.ledger_key_values`)."""
+        from ledger import gaps
+
+        if not nodes:
+            return []
+        params = {"bare": bare, "nodes": "[" + ",".join(nodes) + "]", "limit": limit}
+        # Key NAMES are bound, never interpolated - they came from the declaration, and
+        # binding them keeps that true no matter what a declaration is allowed to contain.
+        selected = []
+        for index, name in enumerate(grouping):
+            params["k%d" % index] = name
+            # 🔴 `->` NOT `->>`. The text extractor turns the ledger's 0.0 into "0.0", the
+            # canonical seed id writes those two differently, and the walk then answers a seed
+            # nobody has - measured 2026-09-06: composite seeds 8/8 empty, the same 8 ready
+            # once the type survives. A key's TYPE is part of its identity here.
+            selected.append("k.keys -> %%(k%d)s AS v%d" % (index, index))
+        columns = ", ".join("v%d" % index for index in range(len(grouping)))
+        # jsonb `->` gives SQL NULL for a missing key and `'null'::jsonb` for a declared one
+        # holding JSON null; neither is a value a seed can carry, and they are different rows.
+        not_null = " AND ".join("v%d IS NOT NULL AND v%d <> 'null'::jsonb" % (index, index)
+                                for index in range(len(grouping)))
+        return self._execute(
+            "SELECT " + columns + ", sum(n) AS n FROM ("
+            "  SELECT " + ", ".join(selected) + ", (SELECT count(*) FROM " + self.relation + " e"
+            "   WHERE " + gaps._names_node_sql("e", "k.keys") + ") AS n"
+            "  FROM jsonb_array_elements(%(nodes)s::jsonb) AS k(keys)"
+            ") w WHERE " + not_null + " GROUP BY " + columns +
+            " ORDER BY " + columns + " LIMIT %(limit)s", params)
+
+    def gap_count(self, bare, absent, present, scan):
+        """(nodes without any `absent` predicate - and with a `present` one when named - among the first `scan`
+        `bare` nodes, the oldest and newest first instant of those, nodes examined) - `gaps.measure`'s one count."""
+        from ledger import gaps
+
+        return gaps.gap_count(lambda sql, params: self._execute(sql, params)[0], self.relation, bare, absent, present,
+                              scan)
+
 
 def _quoted_text(value):
     return "'%s'" % str(value).replace("'", "''")
@@ -1214,77 +1261,6 @@ def _named_by_row(rows, bare_type):
             if kind and _bare_name(kind) == bare_type:
                 named[row].add((kind, json.dumps(keys or {}, sort_keys=True)))
     return {row: [(kind, json.loads(keys)) for kind, keys in sorted(ends)] for row, ends in named.items()}
-
-
-def legs_relation(legs, empty):
-    """The legs (`sql_translate.compile_world`) as one relation of the ledger's columns and `world` - what a seedless
-    read (a described seed set, the key list, the gap catalogue, a time page) reads; `empty` (a relation of those
-    columns) with no row when there is no leg."""
-    from ledger import schema
-
-    columns = ", ".join(("world", *schema.LEDGER_COLUMNS))
-    if not legs:
-        return f"(SELECT {columns} FROM {empty} n WHERE false)"
-    return "(%s)" % " UNION ".join(f"SELECT {columns} FROM ({leg.select}) v WHERE occurred_at IS NOT NULL"
-                                   for leg in legs)
-
-
-def _leg_join(leg, arm):
-    """How an atom `e` of `leg` names a frontier node `f` on `arm` - on the leg's key columns first."""
-    bare, keys = leg.ends[arm]
-    # a row whose time does not read says nothing - asked WITH the frontier so it is asked after the join, of
-    # the rows the keys found, not of the table (a text time is a function call a row: 18 s for the table)
-    return " AND ".join([f"f.type = {_quoted_text(bare)}",
-                         *(f"e.{alias} = f.keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items())),
-                         ARM_JOIN[arm], "(e.occurred_at IS NOT NULL OR f.type IS NULL)"])
-
-
-class VirtualEvidenceLookup(SqlEvidenceLookup):
-    """The walk read from the declaration's own tables (engine=virtual, lead 11-06): every compiled leg is a relation
-    the frontier joins on its key columns; the reads, the interval, `_skip` and the current fact are
-    `SqlEvidenceLookup`'s. Nothing is recorded, so no read is «as of» - the route refuses a continued walk."""
-
-    def __init__(self, connection, legs, **kwargs):
-        super().__init__(connection, **kwargs)
-        self.legs = tuple(legs)
-        self.relation = legs_relation(self.legs, self.relation)
-
-    def _legs(self, arm):
-        return tuple((f"({leg.select})", _leg_join(leg, arm)) for leg in self.legs)
-
-    def nodes_of_rows(self, relation, row_ids, bare_type):
-        from ledger.sql_translate import LEG_ROW
-
-        reads = " UNION ".join(f"""
-            SELECT e.{LEG_ROW}, e.subject_type, e.subject_keys, e.object_kind, e.object_payload FROM ({leg.select}) e
-            WHERE e.{LEG_ROW} = ANY(%(rows)s) AND e.occurred_at IS NOT NULL""" for leg in self.legs if leg.relation == relation)
-        return _named_by_row(self._execute(reads, {"rows": list(row_ids)}), bare_type) if reads else {}
-
-    def rows_of(self, atoms, relation):
-        from ledger.sql_translate import LEG_ROW
-
-        reads = " UNION ".join(f"""
-            SELECT e.{LEG_ROW} FROM frontier f JOIN ({leg.select}) e ON {_leg_join(leg, "outgoing")} AND e.id = f.id"""
-                               for leg in self.legs if leg.relation == relation)
-        if not reads or not atoms:
-            return set()
-        frontier = _canonical([{"type": atom.subject_type, "keys": atom.subject_keys, "id": atom.id} for atom in atoms])
-        return {row for (row,) in self._execute(f"""
-            WITH frontier AS (
-                SELECT type, keys, id FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
-                     AS item(type text, keys jsonb, id uuid)
-            )
-            {reads}""", {"frontier": frontier})}
-
-    def _later_fact(self, bound):
-        later = []
-        for leg in self.legs:
-            _type, keys = leg.ends["outgoing"]
-            same = " AND ".join(f"n.{alias} = e.subject_keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items()))
-            later.append(f"EXISTS (SELECT 1 FROM ({leg.select}) n WHERE {same} AND n.world = e.world "
-                         f"AND n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
-                         f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound})")
-        return "(%s)" % " OR ".join(later) if later else "false"
 
 
 class _DescribedSeeds:
@@ -1377,7 +1353,7 @@ class InMemoryEvidenceLookup:
                 return False                            # the bound values, as `_skip` spells them
             return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
 
-        rows = []
+        rows, latest = [], self._latest()
         cursor = None if before is None else next(
             (_read_order_key(atom) for atom in self.atoms if str(atom.id) == str(before[1])), None)
         for atom in self.atoms:
@@ -1400,7 +1376,7 @@ class InMemoryEvidenceLookup:
                     if self.interval_excluded is not None:
                         self.interval_excluded += 1
                     continue
-                if self._not_current(atom):
+                if self._not_current(atom, latest):
                     if self.current_only:
                         continue
                     atom = replace(atom, not_current=True)
@@ -1423,17 +1399,265 @@ class InMemoryEvidenceLookup:
                          _canonical((atom.object_payload or {}).get("keys") or {})) if direction == "incoming"
                         else (atom.subject_type, _canonical(atom.subject_keys))) in near})
 
-    def _not_current(self, atom):
-        """`SqlEvidenceLookup._not_current_clause` over the atoms held here - the same condition,
-        so the double is not looser than the SQL it stands in for."""
+    def _latest(self):
+        """{(world, subject, predicate): its latest instant before `until`} of the `one` predicates held here."""
+        latest = {}
+        for other in self.atoms:
+            if other.predicate in self.one and (self.until is None or other.occurred_at < self.until):
+                said = (other.world, other.subject_type, _canonical(other.subject_keys), other.predicate)
+                if said not in latest or other.occurred_at > latest[said]:
+                    latest[said] = other.occurred_at
+        return latest
+
+    def _not_current(self, atom, latest):
+        """`SqlEvidenceLookup._not_current_clause` over the atoms held here - a later fact of the same (world, subject,
+        predicate) - so the double is not looser than the SQL it stands in for."""
         if atom.predicate not in self.one:
             return False
-        subject = (atom.subject_type, _canonical(atom.subject_keys))
-        return any(other.predicate == atom.predicate
-                   and (other.subject_type, _canonical(other.subject_keys)) == subject
-                   and other.occurred_at > atom.occurred_at
-                   and (self.until is None or other.occurred_at < self.until)
-                   for other in self.atoms)
+        said = (atom.world, atom.subject_type, _canonical(atom.subject_keys), atom.predicate)
+        return said in latest and latest[said] > atom.occurred_at
+
+
+#: The rows one read takes from one table at most, a multiple of the read's own cap (lead 11-07: a far end of tens of
+#: thousands of rows - a recipe's wafers - cannot read without bound). A read it cuts says so, as the cap does. Measured
+#: on the box 11-07 (the route's walk, its defaults, every compiled source's 1/100/1000 seeds, whole · a window · old
+#: facts too; 266 leg reads): the most rows a read took whose answer the cap did not cut was 3.07 x its cap - rows the
+#: window leaves out are read, then dropped.
+READ_GUARD_FACTOR = 10
+
+
+class VirtualEvidenceLookup(InMemoryEvidenceLookup):
+    """The walk read from the declaration's own tables (engine=virtual; owner 11-07 «노드 → 그 노드를 만드는 것이 선언된
+    테이블들 → 컬럼 맵핑으로 행 조회 → 엣지와 다음 노드는 그 행 안에»): a read picks the legs whose end is the frontier's
+    type (`sql_translate.Leg`), reads their columns by the frontier's keys, makes each row's atom by the translator's
+    functions (`Leg.atom`), and asks `InMemoryEvidenceLookup`'s rules of them - the order and the cut, the interval and
+    its count, the current fact, `_skip`. Nothing is recorded, so no read is «as of» - the route refuses a continued
+    walk. `said`: the answer's `engine` cell - «unreadable_times» counts the rows read whose time is there and does not
+    read (lead 11-07: the whole of what a virtual read leaves out that the stored ledger would also have refused)."""
+
+    def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None):
+        from ledger import schema
+        from ledger.trace_router import _instant_arg
+
+        super().__init__((), since=None if since is None else _instant_arg(since),
+                         until=None if until is None else _instant_arg(until), one=one, current_only=current_only)
+
+        self.connection = connection
+        self.worlds = tuple(each.name for each in (worlds or (schema.world_names(schema.DEFAULT_WORLD),)))
+        self.legs = tuple(legs)
+        self.said = {} if said is None else said
+        self.said.setdefault("unreadable_times", 0)     # the cell is there whether or not a row was read
+        #: atom id -> (relation, row id) - the rows a reach reads back (`rows_of`)
+        self._row_of = {}
+        self._unreadable = set()
+        self._census_of = {}
+
+    def _execute(self, sql, params):
+        return trace._fetch(self.connection, sql, params)
+
+    def _atoms(self, leg, rows):
+        """The atoms `leg` makes of `rows` (its `cells`, in order) - a time the translator reads only by PostgreSQL read
+        by it first (`times_read_of`), as a translation reads it."""
+        from sqlalchemy.engine import Connection
+        from sqlalchemy.orm import Session
+
+        from ledger import backfill, roleframe
+
+        cells = leg.cells()
+        rows = [dict(zip(cells, row)) for row in rows]
+        wanted = roleframe.source_times_to_ask(leg.plan, {cell: [row[cell] for row in rows] for cell in cells})
+        readings = None
+        if any(wanted.values()) and isinstance(self.connection, Connection):
+            with Session(bind=self.connection) as db:
+                readings = backfill.times_postgresql_read(db, wanted)
+        out = []
+        with roleframe.times_read(readings):
+            for row in rows:
+                fields, unreadable = leg.atom(row)
+                if unreadable:
+                    self._unreadable.add((leg.relation, row["row_id"]))
+                if fields is not None:
+                    atom = EvidenceAtom(**fields)
+                    self._row_of[atom.id] = (leg.relation, row["row_id"])
+                    out.append(atom)
+        self.said["unreadable_times"] = len(self._unreadable)
+        return out
+
+    def _read(self, arm, entities, limit, follow=None, exclude=None):
+        """(the atoms the legs make of the rows whose `arm` end is one of `entities`, whether a leg had more rows than
+        `limit` x READ_GUARD_FACTOR)."""
+        wanted = defaultdict(list)
+        for item in entities:
+            wanted[item[0]].append(dict(item[1] or {}))
+        atoms, cut, guard = [], False, max(1, int(limit)) * READ_GUARD_FACTOR
+        for leg in self.legs:
+            bare = leg.ends[arm][0]
+            if bare not in wanted or (follow and leg.predicate not in follow) or (exclude and leg.predicate in exclude):
+                continue
+            params = {"guard": guard + 1}
+            where = leg.matching(arm, wanted[bare], params, "k")
+            if where is None:
+                continue
+            rows = self._execute(leg.read(where, tail=" LIMIT %(guard)s"), params)
+            cut = cut or len(rows) > guard
+            atoms.extend(self._atoms(leg, rows[:guard]))
+        return atoms, cut
+
+    def _pool(self, entities, direction, limit, follow=None, exclude=None):
+        """The atoms a read of `entities` holds - both arms `direction` names, and for a `one` predicate its subjects'
+        other facts, which say whether it is current - and whether a leg was cut."""
+        pool, cut = {}, False
+        for arm in ("outgoing", "incoming"):
+            if direction in (arm, "both"):
+                atoms, bit = self._read(arm, entities, limit, follow, exclude)
+                pool.update((atom.id, atom) for atom in atoms)
+                cut = cut or bit
+        one = [atom for atom in pool.values() if atom.predicate in self.one]
+        if one:
+            subjects = {(atom.subject_type, _canonical(atom.subject_keys)): (atom.subject_type, atom.subject_keys)
+                        for atom in one}
+            atoms, bit = self._read("outgoing", list(subjects.values()), limit,
+                                    follow=sorted({atom.predicate for atom in one}))
+            pool.update((atom.id, atom) for atom in atoms)
+            cut = cut or bit
+        self.atoms = list(pool.values())
+        return cut
+
+    def claims_for_entities(self, entities, direction, limit, *,
+                            follow=None, exclude=None, far=None, far_types=None, before=None):
+        if not entities or limit <= 0:
+            return [], False
+        cut = self._pool(entities, direction, limit, follow, exclude)
+        atoms, over = InMemoryEvidenceLookup.claims_for_entities(
+            self, entities, direction, limit, follow=follow, exclude=exclude, far=far, far_types=far_types,
+            before=before)
+        return atoms, over or cut
+
+    def count_far_ends(self, entities, direction, predicate, far_type):
+        self._pool(entities, direction, MAX_CLAIM_SCAN, follow=[predicate])
+        return InMemoryEvidenceLookup.count_far_ends(self, entities, direction, predicate, far_type)
+
+    def _paged(self, entity, direction, predicate):
+        """A time page's atoms of one node and predicate (`SqlEvidenceLookup._time_arm`): entity references, each
+        marked when it is not the current fact; and whether the read was cut."""
+        cut = self._pool([entity], direction, MAX_CLAIM_SCAN, follow=[predicate])
+        node, latest = (entity[0], _canonical(entity[1])), self._latest()
+        out = []
+        for atom in self.atoms:
+            payload = atom.object_payload or {}
+            end = ((atom.subject_type, _canonical(atom.subject_keys)) if direction == "outgoing" else
+                   (str(payload.get("type")), _canonical(payload.get("keys") or {})))
+            if atom.predicate == predicate and atom.object_kind == "entity_ref" and end == node:
+                out.append(replace(atom, not_current=True) if self._not_current(atom, latest) else atom)
+        return out, cut
+
+    def claims_in_time_order(self, entity, direction, predicate, at, op, limit):
+        atoms, cut = self._paged(entity, direction, predicate)
+        mark = (at[0], str(at[1]))
+        kept = [atom for atom in atoms if reads_as_event_time(atom.occurred_at_basis)
+                and {">": (atom.occurred_at, atom.id) > mark, ">=": (atom.occurred_at, atom.id) >= mark,
+                     "<": (atom.occurred_at, atom.id) < mark}[op]]
+        kept.sort(key=lambda atom: (atom.occurred_at, atom.id), reverse=op == "<")
+        return kept[:int(limit)], len(kept) > int(limit) or cut
+
+    def count_not_event_time(self, entity, direction, predicate):
+        return sum(1 for atom in self._paged(entity, direction, predicate)[0]
+                   if not reads_as_event_time(atom.occurred_at_basis))
+
+    def nodes_of_rows(self, relation, row_ids, bare_type):
+        said = []
+        for leg in self.legs:
+            if leg.relation == relation:
+                for atom in self._atoms(leg, self._execute(leg.read(["w.row_id = ANY(%(rows)s)"]),
+                                                           {"rows": list(row_ids)})):
+                    said.append((self._row_of[atom.id][1], atom.subject_type, atom.subject_keys, atom.object_kind,
+                                 atom.object_payload))
+        return _named_by_row(said, bare_type)
+
+    def rows_of(self, atoms, relation):
+        return {self._row_of[atom.id][1] for atom in atoms if self._row_of.get(atom.id, (None,))[0] == relation}
+
+    def _census(self, bare):
+        """{node keys as canonical JSON: [keys, atoms naming it, its first event instant or None, {predicate}]} - every
+        node of the bare type the legs name: one count of each (leg, end)'s rows by its key columns, none read. A row
+        names its nodes when its keys and its time are not blank (lead 11-07 ㄱ: a time there that does not read is
+        counted - the stored ledger has no atom of it; `unreadable_times` on a seeded read says how many)."""
+        if bare in self._census_of:
+            return self._census_of[bare]
+        from ledger import roleframe
+        from ledger.event_frame import SourcePreparationError, _aware_time
+        from ledger.sql_translate import _quoted, _spelled
+
+        nodes = {}
+        for leg in self.legs:
+            for arm, (end_type, specs) in leg.ends.items():
+                if end_type != bare:
+                    continue
+                cells = leg.cells(arm)
+                quoted = [f"w.{_quoted(cell)}" for cell in cells]
+                rows = self._execute(leg.read(leg.filled, cells=[*quoted, "count(*)", f"min(w.{_quoted(leg.time.column)})"],
+                                              tail=" GROUP BY " + ", ".join(quoted) if quoted else ""), None)
+                for row in rows:
+                    named = dict(zip(cells, row))
+                    keys = {key: _spelled(spec, named) for key, spec in specs.items()}
+                    if any(value is None for value in keys.values()):
+                        continue
+                    first = None
+                    if leg.basis is None:
+                        try:
+                            first = _aware_time(roleframe._plain(row[-1]) if not hasattr(row[-1], "tzinfo") else row[-1],
+                                                leg.time.timezone, "read.occurred_at", leg.time.format)
+                        except SourcePreparationError:
+                            first = None
+                    node = nodes.setdefault(_canonical(keys), [keys, 0, None, set()])
+                    node[1] += int(row[-2])
+                    node[2] = first if node[2] is None or (first is not None and first < node[2]) else node[2]
+                    node[3].add(leg.predicate)
+        self._census_of[bare] = nodes
+        return nodes
+
+    def subjects_of_type(self, entity_type, limit):
+        bare = _bare_name(entity_type)
+        ids = [explorer.entity_id(bare, keys) for _text, (keys, *_rest) in sorted(self._census(bare).items())]
+        return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
+
+    def key_nodes(self, bare, scan, case=None, axis=None, prefix=None, nulls=None):
+        """`SqlEvidenceLookup.key_nodes` from the census - its nodes in key order, those whose `axis` starts with
+        `prefix` when one is asked (`case`: `gaps.PREFIX_INSENSITIVE` ignores the letters' case)."""
+        from ledger import gaps
+
+        out = []
+        for text, (keys, *_rest) in sorted(self._census(bare).items()):
+            if case is not None and prefix:
+                said = keys.get(axis)
+                said = said[:len(prefix)] if isinstance(said, str) else None
+                if said is None or (said.lower() != prefix.lower() if case == gaps.PREFIX_INSENSITIVE
+                                    else said != prefix):
+                    continue
+            out.append(text)
+            if len(out) >= int(scan):
+                break
+        return out
+
+    def key_counts(self, bare, nodes, grouping, limit):
+        """`SqlEvidenceLookup.key_counts` from the census - (each grouping key's value, ..., atoms naming them)."""
+        census, sums = self._census(bare), defaultdict(int)
+        for text in nodes:
+            keys, count = census[text][0], census[text][1]
+            values = tuple(keys.get(name) for name in grouping)
+            if all(value is not None for value in values):
+                sums[values] += count
+        return [(*values, count) for values, count in sorted(sums.items(), key=lambda item: [str(v) for v in item[0]])
+                ][:int(limit)]
+
+    def gap_count(self, bare, absent, present, scan):
+        """`SqlEvidenceLookup.gap_count` from the census: (nodes without any `absent` predicate - and with a `present`
+        one when named - in the first `scan` nodes, the oldest and newest first instant of those, nodes examined)."""
+        examined = sorted(self._census(bare).items())[:int(scan)]
+        counted = [node for _text, node in examined
+                   if not node[3] & set(absent) and (not present or node[3] & set(present))]
+        firsts = [node[2] for node in counted if node[2] is not None]
+        return len(counted), min(firsts, default=None), max(firsts, default=None), len(examined)
 
 
 #: The declaration's facts the walk in progress reads (`_read_entity_declaration`) - read once at its start, by the

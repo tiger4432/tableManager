@@ -31,8 +31,9 @@ def _atom(n, subject_type, subject_keys, predicate, object_type, object_keys):
 
 
 def _atoms(members=MEMBERS):
-    """void <-leads_to- wetting -describes-> PA/M2 -is_a-> via, and `members` more structures is_a via, each
-    described by a quantity of its own."""
+    """void <-leads_to- wetting -describes-> A/M2 -is_a-> via, and `members` more structures is_a via, each
+    described by a quantity of its own. One instant for all, so the read's order is their content (lead 11-07): A/M2,
+    the way in, reads after every P - the fold's first 20 are 20 of the P's."""
     n, atoms = [0], []
 
     def add(*args):
@@ -40,8 +41,8 @@ def _atoms(members=MEMBERS):
         atoms.append(_atom(n[0], *args))
 
     add("quantity", {"quantity": "wetting"}, "leads_to", "defect_kind", {"defect_kind": "void"})
-    add("quantity", {"quantity": "wetting"}, "describes", "product_structure", {"product": "PA", "structure": "M2"})
-    add("product_structure", {"product": "PA", "structure": "M2"}, "is_a", "physical_object",
+    add("quantity", {"quantity": "wetting"}, "describes", "product_structure", {"product": "A", "structure": "M2"})
+    add("product_structure", {"product": "A", "structure": "M2"}, "is_a", "physical_object",
         {"physical_object": "via"})
     for i in range(members):
         structure = {"product": "P%03d" % i, "structure": "M2"}
