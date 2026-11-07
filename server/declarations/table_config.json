@@ -63,13 +63,13 @@
     "display_columns": ["world", "source_id", "entity_type", "declared"]
   },
   "sys_looks": {
-    "__comment": "One row per place a person dragged on a table that reads in entered order (order: entered): look_table the table, look_axis row · group · item, look_key the first row_id of what was moved, position its place - a text between its neighbours' keys.",
+    "__comment": "One row per place a person dragged on a table that reads in entered order (order: entered): look_table the table, look_axis row · group · item, look_key the first row_id of what was moved, position its place - a text between its neighbours' keys. Every key part is filled: a blank one makes no business key, and every write a new row.",
     "group": "System",
-    "composite_key_source": ["look_table", "look_axis", "look_key", "look_column"],
+    "composite_key_source": ["look_table", "look_axis", "look_key"],
     "composite_key_separator": "|",
-    "column_types": {"look_table": "string", "look_axis": "string", "look_key": "string", "look_column": "string",
-                     "position": "string"},
-    "display_columns": ["look_table", "look_axis", "look_key", "look_column", "position"],
-    "indexes": [{"columns": ["look_table", "look_axis", "look_key"], "purpose": "a read in entered order finds each place"}]
+    "column_types": {"look_table": "string", "look_axis": "string", "look_key": "string", "position": "string"},
+    "display_columns": ["look_table", "look_axis", "look_key", "position"],
+    "indexes": [{"columns": ["look_table", "look_axis", "look_key"], "purpose": "a read in entered order finds each place"}],
+    "access": {"edit_by": "look_table"}
   }
 }

@@ -3876,7 +3876,7 @@ async def apply_batch_updates_endpoint(
     for item in batch.updates:
         item.updated_by = sso.who(request, item.updated_by)
         if not access.may(access.person(request), table_name, access.EDIT, row=item.updates):
-            access.refuse(access.person(request), table_name, access.EDIT)
+            access.refuse(access.person(request), table_name, access.EDIT, row=item.updates)
     from fastapi.concurrency import run_in_threadpool
     # [V1 instrument] The instrument must never be able to destroy the operation it
     # measures (fix round F4). A malformed `effort` blob is DISCARDED and reported - in

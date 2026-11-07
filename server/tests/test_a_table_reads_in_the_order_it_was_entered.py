@@ -8,6 +8,8 @@ and in pivot view each key group and each item, at its first row_id (uuid7: arri
   drag      a place written for a group, an item, a row moves it there and nowhere else
   plain     rows in entered order, each with its order key; a page read by key and a jump to a row agree with it
   declared  /schema says "entered" or null; another word is refused at save
+  access    a place is an edit of the table it is on (sys_looks edit_by look_table): a person who may edit it drags, one
+            who may not is refused with the access sentence, an administrator always drags
 """
 import json
 
@@ -140,6 +142,38 @@ def test_the_schema_says_the_order_and_another_word_is_refused(grid, monkeypatch
     assert client.get("/tables/%s/schema" % TABLE).json()["order"] is None
 
 
+def test_a_place_is_an_edit_of_the_table_it_is_on(grid, db_session, monkeypatch):
+    """Sign-in on (lead 11-07, cb4310be8): the shipped sys_looks says edit_by look_table, so the write door judges each
+    place on the table being reordered - kim may edit it, lee may not, boss is an administrator."""
+    from admin import access, sso
+
+    client, ids = grid
+    assert shipped.tables()[LOOKS]["access"] == {"edit_by": "look_table"}
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, {**ENTRY, "access": {"edit": {"allow": ["kim"]}}})
+    who = {"name": None}
+
+    def admit(request):
+        request.state.sso_user = who["name"]
+    monkeypatch.setattr(sso, "enabled", lambda: True)
+    monkeypatch.setattr(sso, "admit", admit)
+    monkeypatch.setattr(sso, "is_admin", lambda user: user == "boss")
+
+    def drag(name, position):
+        who["name"] = name
+        return client.put("/tables/%s/data/updates" % LOOKS, json={"updates": [{"updates": {
+            "look_table": TABLE, "look_axis": "row", "look_key": ids[-1], "position": position}, "updated_by": name}]})
+
+    refused = drag("lee", "0")
+    assert refused.status_code == 403 and refused.json()["detail"] == access.DENIED % ("lee", "edit", TABLE, "edit")
+    assert _read(client, order_by="entered")["data"][0]["row_id"] == ids[0], "a refused place moved nothing"
+    assert drag("kim", "0").status_code == 200
+    assert _read(client, order_by="entered")["data"][0]["row_id"] == ids[-1]
+    assert drag("boss", "08").status_code == 200
+    looks = models.DYNAMIC_TABLES[LOOKS]
+    # the same place written again is the same row (every key part filled - a blank one would make a row per write)
+    assert [r.position for r in db_session.query(looks).filter(looks.look_table == TABLE)] == ["08"]
+
+
 @pytest.mark.pg
 def test_the_places_read_the_same_on_postgresql(pg_session, monkeypatch):
     """Production is PostgreSQL: a row, a group and an item each read at a place between two row ids - the screen's
@@ -184,7 +218,7 @@ def test_the_places_read_the_same_on_postgresql(pg_session, monkeypatch):
 @pytest.mark.pg
 def test_a_table_node_walks_to_the_places_dragged_on_it(pg_engine, tmp_path, monkeypatch):
     """총괄 11-06 ㄱ: `sys_looks` is a source of the shipped `system` world - a look is keyed as grid_order reads a
-    place (look_table · look_axis · look_key; a place has no look_column, and a blank key part makes no atom), and
+    place (look_table · look_axis · look_key), and
     `placed_on` reaches the very table node `sys_tables` registers. Walked from the table: its looks, and the table's
     own group from sys_tables on the same node."""
     import os

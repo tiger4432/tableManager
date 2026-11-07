@@ -41,14 +41,21 @@ def _on(names, listed):
     return bool(names & {str(name).casefold() for name in (listed or ())})
 
 
+def _judged(table, what, row):
+    """The table an edit of `row` is judged on - the one it names when `table` declares edit_by, else `table`."""
+    by = _cell(table).get(EDIT_BY_KEY)
+    return str(row[by]) if what == EDIT and by and row is not None and row.get(by) else table
+
+
 def may(user, table, what, row=None):
     """Whether `user` may `what` (read | edit) `table`. `row` (its cells) - for a table that declares edit_by, an edit
     is judged on the table that row names; without the row the table's own cell answers."""
     if user is None or not sso.enabled() or sso.is_admin(user):
         return True
+    judged = _judged(table, what, row)
+    if judged != table:
+        return may(user, judged, EDIT)
     cell = _cell(table)
-    if what == EDIT and cell.get(EDIT_BY_KEY) and row is not None and row.get(cell[EDIT_BY_KEY]):
-        return may(user, str(row[cell[EDIT_BY_KEY]]), EDIT)
     names = _names(user)
     read = cell.get(READ) or {}
     if _on(names, read.get("deny")) or (read.get("allow") and not _on(names, read["allow"])):
@@ -67,8 +74,9 @@ def person(connection: HTTPConnection):
     return getattr(getattr(connection, "state", None), "sso_user", None)
 
 
-def refuse(user, table, what):
-    raise HTTPException(status_code=403, detail=DENIED % (user, what, table, what))
+def refuse(user, table, what, row=None):
+    """The refusal, naming the table the edit was judged on (an edit_by row's) - where the name is added."""
+    raise HTTPException(status_code=403, detail=DENIED % (user, what, _judged(table, what, row), what))
 
 
 def table_door(request: Request):

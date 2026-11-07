@@ -39,7 +39,7 @@ def key(table_name, axis, first):
     if look is None:
         return first
     place = (select(look.position).where(look.look_table == table_name, look.look_axis == axis,
-                                         look.look_key == first, look.look_column.is_(None))
+                                         look.look_key == first)
              .limit(1).scalar_subquery())
     return func.coalesce(place, first)
 
@@ -57,8 +57,7 @@ def row_keys(db, table_name, rows):
     placed = {}
     if ids and look is not None:
         placed = dict(db.query(look.look_key, look.position).filter(
-            look.look_table == table_name, look.look_axis == ROW, look.look_key.in_(ids),
-            look.look_column.is_(None)).all())
+            look.look_table == table_name, look.look_axis == ROW, look.look_key.in_(ids)).all())
     for row in rows:
         if row.get("row_id") is not None:
             row["order_key"] = placed.get(row["row_id"]) or row["row_id"]
