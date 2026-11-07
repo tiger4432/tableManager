@@ -2339,17 +2339,11 @@ body.resizing-active .gallery-seat {
 .value-suggest-list {
   position: fixed;
   z-index: 1000;
-  /* max-height 는 value_suggest.js 가 MAX_VISIBLE_ROWS × ROW_HEIGHT_PX 로 인라인 지정한다
-     — 보이는 행 수는 키스트로크 산식(행당 화살표 1타)에 묶인 값이라 CSS 에 숫자를
-     복제하면 둘이 어긋난다. max-width/left 도 같은 이유로 positionList 가 뷰포트를 보고
-     인라인 지정한다(가로 클램프). 여기서는 스크롤 동작만 선언.
+  /* 높이 상한 · 스크롤 · 여백 · 선은 목록 부품의 것(option_list.js .option-list, 8 행). max-width/left 는
+     positionList 가 뷰포트를 보고 인라인 지정한다(가로 클램프).
      overflow-x:hidden 을 유지하는 근거: 가로 클램프 + 행 말줄임이 들어온 뒤로 잘려서
      못 읽는 글자가 없다 — 예전엔 이 선언이 "읽을 방법이 아예 없음"의 절반이었다. */
-  overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 0;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-surface);
   box-shadow: var(--shadow-pop);
   /* 등장만 애니메이션(6px 상승 + 페이드, 120ms). 화살표로 하이라이트를 옮길 때는
      아무 것도 움직이지 않는다 — 목록이 흔들리면 키보드 이동이 느리게 느껴진다. */
@@ -2369,7 +2363,7 @@ body.resizing-active .gallery-seat {
   top: 0;
   display: block;
   height: 2px;
-  margin: -4px 0 2px;
+  margin: calc(-1 * var(--space-1)) 0 2px;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
   animation: valueSuggestPending 0.9s ease-in-out infinite;
 }
@@ -3335,7 +3329,7 @@ body.resizing-active .gallery-seat {
    arguments with the one being typed in bold under the field and its refusal */
 .formula-pop__complete, .formula-pop__signature { position: absolute; top: 100%; left: 0; z-index: 2; margin-top: var(--space-1);
   background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
-.formula-pop__complete { right: 0; max-height: calc(8 * var(--control-h-small) + 2 * var(--space-1)); overflow-y: auto; padding: var(--space-1) 0; }
+.formula-pop__complete { right: 0; }
 .formula-pop__signature { display: flex; align-items: center; min-height: var(--control-h-small); padding: 0 var(--space-3);
   font-family: var(--font-mono); font-size: var(--fs-button); white-space: pre; color: var(--text-dim); }
 .formula-pop__signature b { color: var(--accent); }

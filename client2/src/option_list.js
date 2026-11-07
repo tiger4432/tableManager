@@ -9,9 +9,13 @@ import { ensureStyle } from './style_once.js';
 
 const STAMP = 'data-option-list-styles';
 
-/** A row at the small height; what was typed bold; the active row the accent's. */
+/** A row at the small height; what was typed bold; the active row the accent's. Eight rows, then it scrolls (owner
+ *  11-07, one height for every list): past eight an arrow per row costs more than one more letter typed. The list's own
+ *  padding and line sit inside the eight, so eight rows show whole. */
 export const OPTION_LIST_CSS = `
-:where(.option-list) { display: flex; flex-direction: column; }
+:where(.option-list) { display: flex; flex-direction: column; box-sizing: border-box;
+  max-height: calc(8 * var(--control-h-small) + 2 * var(--space-1) + 2px); overflow-y: auto;
+  padding: var(--space-1) 0; background: var(--bg-surface); border: 1px solid var(--border); }
 :where(.option-list__row) { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control-h-small);
   padding: 0 var(--space-3); font-family: var(--font-mono); font-size: var(--fs-button); font-variant-numeric: tabular-nums;
   white-space: nowrap; color: var(--text); cursor: pointer; }

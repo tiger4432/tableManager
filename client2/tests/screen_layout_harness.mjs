@@ -415,6 +415,15 @@ const pickGlobAnswer = () => {
 // schema says it (the recorded answer with `formulas`), the popover's read finds it, and a preview answers over the recorded
 // first rows (FORMULA.refuse: refused with the server's kind of sentence). No formula is saved on the recorded box.
 const FORMULA = { on: false, refuse: false };
+// A cell's value suggestions (owner 11-07, the eight-row cap): while SUGGEST.on any column's values route answers twelve
+// values that start with what is typed, said cut (the route's limit) - more than the list shows at once.
+const SUGGEST = { on: false };
+const suggestAnswer = (u) => {
+  if (!/^\/tables\/[^/]+\/columns\/[^/]+\/values$/.test(u.pathname)) return null;
+  const prefix = u.searchParams.get('prefix') || '';
+  return { status: 200, type: 'application/json',
+    body: { values: Array.from({ length: 12 }, (_, i) => `${prefix}${String(i).padStart(2, '0')}`), truncated: true } };
+};
 const FORMULA_COLUMN = 'dt_index';
 const FORMULA_TEXT = '=[dt_x]+[dt_y]*3';
 const FORMULA_REFUSED = "formula dt_log.dt_index: take 'dt_index' from 'dt_z' - not a column of dt_log";
@@ -525,6 +534,7 @@ const answerOf = (u) => {
   if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (FORMULA.on) { const v = formulaAnswer(u); if (v) return v; }
+  if (SUGGEST.on) { const v = suggestAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
@@ -1322,6 +1332,35 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 
   if (more && !more.hidden) return 'the held-back line is left';
   const b = document.getElementById('pivot-toggle-btn');
   return b && !b.hidden && b.getAttribute('aria-pressed') === 'false' ? null : 'Pivot is not drawn unpressed';
+})()` });
+// The one eight-row cap (owner 11-07, .option-list): twelve values offered, eight rows show and the list scrolls - read off
+// the screen; at the screen's foot the list stands above its cell, whole on the screen.
+const OPTION_LIST_AT = (sel) => `(() => { const l = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.getClientRects().length); if (!l) return null;
+  const rows = [...l.querySelectorAll('.option-list__row')]; const cs = getComputedStyle(l);
+  const inner = l.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  return { l, rows, inner, rowH: rows[0] ? rows[0].getBoundingClientRect().height : 0, box: l.getBoundingClientRect() }; })()`;
+const SUGGEST_LIST = OPTION_LIST_AT('.value-suggest-list');
+CELLS.push({ entry: 'index.html', after: 'Value suggestions, eight rows', rule: 'eight rows then a scroll', at: 'suggest', expr: `(() => {
+  const s = ${SUGGEST_LIST}; if (!s) return 'no value suggestions drawn';
+  if (s.rows.length !== 12) return s.rows.length + ' rows offered, not 12';
+  if (Math.abs(s.inner - 8 * s.rowH) > 1) return 'the list shows ' + (s.inner / s.rowH).toFixed(1) + ' rows, not 8';
+  if (s.l.scrollHeight <= s.l.clientHeight + 1) return 'the list does not scroll';
+  return s.box.bottom <= innerHeight + 0.5 ? null : 'the list runs past the foot of the screen';
+})()` });
+// The walk's node search: the type's first twenty nodes, eight rows and a scroll.
+CELLS.push({ entry: 'walk.html', after: 'Node search opened', rule: 'eight rows then a scroll', at: 'wk-search', expr: `(() => {
+  const s = ${OPTION_LIST_AT('.wk-barpop .option-list')}; if (!s) return 'no node search list drawn';
+  if (s.rows.length <= 8) return s.rows.length + ' rows offered, not more than 8';
+  if (Math.abs(s.inner - 8 * s.rowH) > 1) return 'the list shows ' + (s.inner / s.rowH).toFixed(1) + ' rows, not 8';
+  return s.l.scrollHeight > s.l.clientHeight + 1 ? null : 'the list does not scroll';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Value suggestions, at the foot of the screen', rule: 'up when the foot has no room', at: 'suggest', expr: `(() => {
+  const s = ${SUGGEST_LIST}; if (!s) return 'no value suggestions drawn';
+  const cell = document.querySelector('.ag-cell-inline-editing'); if (!cell) return 'no cell editing';
+  const c = cell.getBoundingClientRect();
+  if (s.box.bottom > c.top + 0.5) return 'the list is not above its cell (' + Math.round(s.box.bottom - c.top) + ' px over it)';
+  if (s.box.top < -0.5) return 'the list runs past the top of the screen';
+  return Math.abs(s.inner - 8 * s.rowH) > 1 ? 'above, it shows ' + (s.inner / s.rowH).toFixed(1) + ' rows, not 8' : null;
 })()` });
 // A call's arguments under the formula and the server's refusal both read (owner 11-07): the line hangs under the refusal.
 CELLS.push({ entry: 'index.html', after: 'Formula, its arguments', rule: 'arguments under the refusal', at: 'formula', expr: `(() => {
@@ -3403,6 +3442,47 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // A cell's value suggestions (owner 11-07): twelve offered on dt_log's first row - eight rows, then the list scrolls;
+    // then on the lowest row the screen shows whole - the list stands above it. Each editor left by Esc, nothing written.
+    ...[['Value suggestions, eight rows', 'first'], ['Value suggestions, at the foot of the screen', 'last']].map(([name, which]) => [name, async (c, log) => {
+      SUGGEST.on = true;
+      await evaluate(c, `(() => { const i = document.querySelector('.ag-cell-inline-editing input');
+        if (i) for (let k = 0; k < 2; k += 1) i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()`);
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === 'dt_log') return false;
+        window.__suggestFrom = window.__suggestFrom || sel.value; sel.value = 'dt_log'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await evaluate(c, `(() => {
+        const body = document.querySelector('.ag-body-viewport').getBoundingClientRect();
+        const cells = [...document.querySelectorAll('.ag-center-cols-container .ag-cell[col-id^="dt_"]')]
+          .filter((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.top >= body.top && r.bottom <= body.bottom; });
+        const rows = [...new Set(cells.map((x) => Number(x.closest('.ag-row').getAttribute('row-index'))))].sort((a, b) => a - b);
+        const at = ${JSON.stringify(which)} === 'first' ? rows[0] : rows[rows.length - 1];
+        const cell = cells.find((x) => Number(x.closest('.ag-row').getAttribute('row-index')) === at);
+        if (!cell) return false;
+        window.__suggestCell = cell.closest('.ag-row').getAttribute('row-index') + ':' + cell.getAttribute('col-id');
+        const r = cell.getBoundingClientRect();
+        const o = { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5, view: window };
+        for (const type of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(type, o));
+        cell.dispatchEvent(new MouseEvent('dblclick', { ...o, detail: 2 }));
+        return true; })()`);
+      await until(c, "!!document.querySelector('.ag-cell-inline-editing input')");
+      await evaluate(c, `(() => { const i = document.querySelector('.ag-cell-inline-editing input'); i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'LOT-24A1');
+        i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await until(c, "[...document.querySelectorAll('.value-suggest-list .option-list__row')].length === 12 && document.querySelector('.value-suggest-list').style.display === 'block'");
+    }]),
+    ['Value suggestions closed', async (c, log) => {
+      await evaluate(c, `(() => { const i = document.querySelector('.ag-cell-inline-editing input');
+        if (i) for (let k = 0; k < 2; k += 1) i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()`);
+      SUGGEST.on = false;
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__suggestFrom || sel.value === window.__suggestFrom) return true;
+        sel.value = window.__suggestFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
@@ -3860,6 +3940,8 @@ const MUTANTS = [
   { name: 'a paste on «Paste HTML» is not taken', entry: 'admin.html', rule: 'html written', at: 'html',
     file: 'src/ontology_explorer_view.js', edits: [["  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;", '  return false;']] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
+  { name: 'the eight-row cap removed', entry: 'index.html', rule: 'eight rows then a scroll', at: 'suggest',
+    file: 'src/option_list.js', edits: [['  max-height: calc(8 * var(--control-h-small) + 2 * var(--space-1) + 2px); overflow-y: auto;', '']] },
   { name: 'the arguments line over the refusal', entry: 'index.html', rule: 'arguments under the refusal', at: 'formula',
     file: 'src/formula_popover.js', edits: [['    entry.appendChild(this.sign);', '    field.appendChild(this.sign);']] },
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',

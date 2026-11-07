@@ -1,5 +1,7 @@
 import{a as e}from"./image_preview-DOnqV1C9.js";var t=`data-option-list-styles`,n=`
-:where(.option-list) { display: flex; flex-direction: column; }
+:where(.option-list) { display: flex; flex-direction: column; box-sizing: border-box;
+  max-height: calc(8 * var(--control-h-small) + 2 * var(--space-1) + 2px); overflow-y: auto;
+  padding: var(--space-1) 0; background: var(--bg-surface); border: 1px solid var(--border); }
 :where(.option-list__row) { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control-h-small);
   padding: 0 var(--space-3); font-family: var(--font-mono); font-size: var(--fs-button); font-variant-numeric: tabular-nums;
   white-space: nowrap; color: var(--text); cursor: pointer; }

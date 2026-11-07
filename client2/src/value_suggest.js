@@ -139,16 +139,6 @@ const DEBOUNCE_MS = 90;
  */
 const REQUEST_LIMIT = 12;
 /**
- * Rows visible before the list scrolls. Below `REQUEST_LIMIT` on purpose: scrolling by
- * arrow costs one key per row, so the rows past this point are already in the region where
- * typing more prefix wins. They stay reachable, just not free.
- * The pixel height is derived here rather than duplicated in CSS, so the row count and the
- * box that shows it cannot drift apart.
- */
-const MAX_VISIBLE_ROWS = 8;
-/** The option list's row (base.css .option-list__row: --control-h-small). */
-const ROW_HEIGHT_PX = 27.2;
-/**
  * Consecutive 4xx answers for one column before suggestions are switched off for the
  * session. Bounded so an undeclared column costs a handful of tiny 400s (they raise in
  * `_resolve_target` before any SQL) rather than one per keystroke forever, while still
@@ -476,7 +466,6 @@ function ensureList() {
   eList = document.createElement('div');
   eList.className = 'value-suggest-list';
   eList.setAttribute('role', 'listbox');
-  eList.style.maxHeight = `${MAX_VISIBLE_ROWS * ROW_HEIGHT_PX + 8}px`;
   eList.style.display = 'none';
   document.body.appendChild(eList);
   return eList;

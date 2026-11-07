@@ -98,11 +98,9 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wk-sub { display: flex; flex-direction: column; gap: var(--space-1); }
 /* PICK A NODE (lead bccbdd601): the box, then the nodes that start with what is typed - in the rail's flow, scrolling
-   inside itself past ten rows. */
+   inside itself past eight rows (the option list's one cap, option_list.js). */
 .wk-search { display: flex; flex-direction: column; gap: var(--space-1); }
 .wk-search [hidden] { display: none; }
-.wk-searchlist { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto;
-  background: var(--bg-surface); border: 1px solid var(--border); }
 /* Collect: the picked types are chips (× takes one out); the rest are behind one + Type dropdown. */
 .wk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-chip, .wk-add { min-height: var(--wk-h); padding: 0 var(--space-4); border-radius: 999px; font: inherit;
