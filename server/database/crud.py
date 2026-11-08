@@ -4025,7 +4025,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                            overwrites_cache=None, sources_cache=None, layers_read=None,
                            cell_sources_to_upsert=None, cell_overwrites_to_upsert=None,
                            cell_overwrites_to_delete=None, logs_to_cache=None,
-                           deleted_row_ids=None, row_cache=None):
+                           deleted_row_ids=None, row_cache=None, deleted_edits=None):
     """[대안 B: Silent Merge & Overwrite] A row whose rebuilt key another row already holds: its
     values, layers and pending caches move onto that row (`row`) and the shell (`row_to_delete`)
     is deleted. The ONE merge body (총괄 6e041f4cb ①) - the write seat (a key part written) and the
@@ -4287,6 +4287,11 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
     #    new row with nothing to say is taken out in `_apply_batch_updates_once`: no INSERT, no
     #    outbox event. Its id still goes on `deleted_row_ids` - an earlier item of the batch may
     #    already be answering for it.
+    if deleted_edits is not None:                 # {row_id: the table it was an edit of} - the caller's message
+        from admin import access
+        edit = access.edit_of_row(table_name, row_to_delete)
+        if edit is not None:
+            deleted_edits[row_to_delete.row_id] = edit
     if row_to_delete in db.new:
         db.expunge(row_to_delete)
     else:
@@ -4342,6 +4347,7 @@ def apply_row_update_internal(
     cell_overwrites_to_upsert: dict = None,
     cell_overwrites_to_delete: set = None,
     deleted_row_ids: list = None,
+    deleted_edits: dict = None,
     version_stats: dict = None,
     # [P2] The cells the caller prefetched cell metadata for (`LayersRead`, by row and
     # column). For these - and only these - a cache miss is a proven absence rather than
@@ -4841,7 +4847,7 @@ def apply_row_update_internal(
                             cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                             cell_overwrites_to_delete=cell_overwrites_to_delete,
                             logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids,
-                            row_cache=row_cache)
+                            row_cache=row_cache, deleted_edits=deleted_edits)
 
                 written_col, old_bk_col_val = put_business_key(table_name, row, new_bk_val)
                 if row_cache is not None:
@@ -4971,6 +4977,15 @@ def map_keys_said(table_name: str, row_ids, values, limit: int = 5) -> str:
         said.append(" ".join("%s=%s" % (c, key_part(table_name, c, cells.get(c))) for c in inside)
                     if inside and cells else str(row_id))
     return ", ".join(said) + (" …" if len(row_ids) > limit else "")
+
+
+def _write_deleted_edits(db, table_name, row_ids, deleted_edits):
+    """`deleted_edits` (the caller's out-argument, None = not asked: nothing read) takes what each of `row_ids` is an
+    edit of (`access.edits_by_row`)."""
+    if deleted_edits is None or not row_ids:
+        return
+    from admin import access
+    deleted_edits.update(access.edits_by_row(db, table_name, row_ids) or {})
 
 
 def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
@@ -5597,7 +5612,8 @@ def _say_the_constraint_refused_this_batch(table_name, batch, exc) -> None:
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None,
                         drop_report: Optional[dict] = None,
-                        notation_report: Optional[dict] = None):
+                        notation_report: Optional[dict] = None,
+                        deleted_edits: Optional[dict] = None):
     """Batch write, with one recovery: losing a cross-process race on a business key.
 
     notation_report: optional out-param (dict) - `{verdict: count}` of the time values a
@@ -5681,10 +5697,12 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         # happened. Only the committing attempt may be reported.
         if drop_report is not None:
             drop_report.clear()
+        if deleted_edits is not None:
+            deleted_edits.clear()
         rewind_write_steps()
         try:
             return _apply_batch_updates_once(db, table_name, batch, replace_report,
-                                             drop_report)
+                                             drop_report, deleted_edits)
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
                 # 🔴 [S-269] EVERY OTHER CONSTRAINT IS STILL REFUSED - BY NAME, AND AFTER A
@@ -5822,7 +5840,8 @@ def _say_a_slow_flush(db, table_model, table_name, rows, seconds):
 def _apply_batch_updates_once(db: Session, table_name: str,
                               batch: schemas.GeneralUpdateBatch,
                               replace_report: Optional[dict] = None,
-                              drop_report: Optional[dict] = None):
+                              drop_report: Optional[dict] = None,
+                              deleted_edits: Optional[dict] = None):
     """통합 업데이트를 배치로 처리합니다.
 
     replace_report: optional out-param (dict). When batch.replace_map is set and a dict
@@ -6206,6 +6225,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                         cell_overwrites_to_delete=cell_overwrites_to_delete,
                         deleted_row_ids=deleted_row_ids,
+                        deleted_edits=deleted_edits,
                         version_stats=version_stats,
                         layers_read=layers_read,
                         probed_identity=probed_identity,
@@ -6388,6 +6408,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
             removed_keys = []
             if removed_row_ids:
+                _write_deleted_edits(db, table_name, removed_row_ids, deleted_edits)     # before they go
                 purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
@@ -6468,6 +6489,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # a consumer of this list must be able to tell "gone" from "moved", and once
             # both classes are in one list that distinction is not recoverable from it.
             deleted_row_ids = list(deleted_row_ids) + adopted_row_ids
+            _write_deleted_edits(db, table_name, adopted_row_ids, deleted_edits)          # they stay: read now
 
         # 🔴 판정 187 사실 ④ / 판정 192. AN UNCHANGED SAVE HAS NO ITEM AT ALL: a row this
         # request neither inserted nor changed does not appear in the answer. It used to,
@@ -6863,7 +6885,8 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
     changed_rows, logs = delete_cell_source_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name)
     return changed_rows[0] if changed_rows else None, [col_name] if logs else []
 
-def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user"):
+def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user",
+                                   deleted_edits: Optional[dict] = None):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
@@ -7028,7 +7051,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                             cell_sources_to_upsert=cell_sources_to_upsert,
                             cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                             cell_overwrites_to_delete=cell_overwrites_to_delete,
-                            logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids)
+                            logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids,
+                            deleted_edits=deleted_edits)
 
                         # 3. 변경 대상 변경사항 캐시 스위칭
                         if row not in changed_rows:
@@ -7070,8 +7094,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         
     return changed_rows, serialized_logs, deleted_row_ids
 
-def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user"):
+def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user",
+                             deleted_edits: Optional[dict] = None):
     """수동 소스 우선순위(Pin)를 설정합니다."""
-    changed_rows, logs, deleted_row_ids = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by)
+    changed_rows, logs, deleted_row_ids = set_cell_manual_priority_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name, updated_by,
+                                                                         deleted_edits=deleted_edits)
     return changed_rows[0] if changed_rows else None, [col_name] if logs else [], deleted_row_ids
 

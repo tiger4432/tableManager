@@ -508,7 +508,7 @@ def test_a_replayed_attempt_reports_only_the_transaction_that_committed(monkeypa
 
     seen = {}
 
-    def fake_once(db, table_name, batch, replace_report=None, drop_report=None):
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None, deleted_edits=None):
         if not seen:
             seen["first"] = True
             drop_report["dropped_cells"] = 999

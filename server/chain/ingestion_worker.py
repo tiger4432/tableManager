@@ -1938,8 +1938,9 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 with (alignment_batch_counts.stage("write:%s" % target_table, said=page_said),
                       outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
                       written_by((declarations_by_target or {}).get(target_table, ()))):
+                    deleted_edits = {}                    # what each row the write deletes was an edit of (③)
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
-                        db, target_table, batch_data, drop_report=drop_report)
+                        db, target_table, batch_data, drop_report=drop_report, deleted_edits=deleted_edits)
                 written[target_table].extend(batch_data.updates)
                 with alignment_batch_counts.stage("plain layer moved"):
                     _move_off_the_plain_layer(db, target_table, batch_data.updates)
@@ -2219,10 +2220,11 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             }
                         # 껍데기 행 실시간 제거 이벤트를 먼저(순서 보존) 큐잉한 뒤 upsert/refresh 이벤트를 큐잉
                         if deleted_row_ids:
+                            from admin import access
                             broadcast_messages.append(
                                 event_constants.row_delete_message(
-                                    target_table, deleted_row_ids,
-                                    transaction_id=chain_tx_id))
+                                    target_table, deleted_row_ids, transaction_id=chain_tx_id,
+                                    edits_of=access.tables_in(target_table, deleted_edits, deleted_row_ids)))
 
                         broadcast_messages.append(msg)
                     except Exception as ws_err:

@@ -2945,11 +2945,6 @@ def get_table_data_values(
 import json
 from fastapi import HTTPException
 
-def _edits_of(edits, row_ids):
-    """The tables these deleted rows were edits of, from `access.may_delete`'s answer - None for a table without edit_by."""
-    return None if edits is None else sorted({edits[row_id] for row_id in row_ids if row_id in edits})
-
-
 @app.delete("/tables/{table_name}/rows/{row_id}")
 async def delete_row(table_name: str, row_id: str, request: Request, user_name: str = None,
                      db: Session = Depends(get_db)):
@@ -2977,7 +2972,7 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
 
     # Broadcast (Unified to batch_row_delete)
     msg = event_constants.row_delete_message(table_name, [row_id],
-                                             updated_by=author, edits_of=_edits_of(edits, [row_id]))
+                                             updated_by=author, edits_of=access.tables_in(table_name, edits, [row_id]))
     await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "row_id": row_id}
@@ -3038,7 +3033,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
                 chunk_logs[index].append(log)
         for chunk, logs in zip(chunks, chunk_logs):
             msg = event_constants.row_delete_message(
-                table_name, chunk, updated_by=author, created_logs=logs, edits_of=_edits_of(edits, chunk))
+                table_name, chunk, updated_by=author, created_logs=logs, edits_of=access.tables_in(table_name, edits, chunk))
             await manager.broadcast(json.dumps(msg))
         
     # 🔴 [총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」] THE ANSWER IS THE COUNT, NOT EVERY ROW'S HISTORY. It
@@ -3740,10 +3735,11 @@ async def apply_batch_updates_endpoint(
         # must not reach 「N rows updated」. The number to subtract travels here rather than
         # on the return value, which ten call sites and dozens of tests unpack as a 4-tuple.
         drop_report: dict = {}
+        deleted_edits: dict = {}                           # what each deleted row was an edit of (③)
         rows_offered = len(batch.updates)
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
-                crud.apply_batch_updates, db, table_name, batch, replace_report, drop_report
+                crud.apply_batch_updates, db, table_name, batch, replace_report, drop_report, deleted_edits=deleted_edits
             )
     except crud.ReadOnlyRelation:
         # 🔴 NOT 400, AND NOT HERE. A read-only relation is one judgement with one
@@ -3871,9 +3867,11 @@ async def apply_batch_updates_endpoint(
                     await manager.broadcast(json.dumps(
                         event_constants.batch_refresh_message(
                             table_name, delete_ids_omitted,
-                            deleted_row_ids_omitted=delete_ids_omitted)))
+                            deleted_row_ids_omitted=delete_ids_omitted,
+                            edits_of=access.tables_in(table_name, deleted_edits, deleted_row_ids))))
                 else:
-                    delete_msg = event_constants.row_delete_message(table_name, deleted_row_ids)
+                    delete_msg = event_constants.row_delete_message(
+                        table_name, deleted_row_ids, edits_of=access.tables_in(table_name, deleted_edits, deleted_row_ids))
                     await manager.broadcast(json.dumps(delete_msg))
 
             if not broadcast_needs_items:
@@ -4188,15 +4186,16 @@ async def set_cell_priority(
     from fastapi.concurrency import run_in_threadpool
 
     def _apply_and_merge_single():
+        gone = {}                                                         # what each row the pin merges away was an edit of
         updated_row, changed_cols, deleted = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name,
-                                                                         sso.who(request, updated_by))
+                                                                         sso.who(request, updated_by), deleted_edits=gone)
         if not updated_row:
             return None, None, None
         cfg = crud.TABLE_CONFIG.get(table_name, {})
         col_types = cfg.get("column_types", {})
         user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
         merged, _looks = read_as_page(db, table_name, [updated_row], user_cols, include_sources=True)
-        return merged, changed_cols, deleted
+        return merged, changed_cols, (deleted, access.tables_in(table_name, gone, deleted))
 
     merged_rows, changed_cols, deleted_row_ids = await run_in_threadpool(_apply_and_merge_single)
     if merged_rows is None:
@@ -4207,9 +4206,10 @@ async def set_cell_priority(
     merged_item = merged_rows[0]
 
     # 껍데기 행 실시간 제거 브로드캐스트 전송
+    deleted_row_ids, deleted_edits = deleted_row_ids if deleted_row_ids is not None else (None, None)
     if deleted_row_ids:
         await manager.broadcast(json.dumps(
-            event_constants.row_delete_message(table_name, deleted_row_ids)))
+            event_constants.row_delete_message(table_name, deleted_row_ids, edits_of=deleted_edits)))
 
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
@@ -4244,8 +4244,9 @@ async def set_cell_priority_batch_endpoint(
     from fastapi.concurrency import run_in_threadpool
 
     def _apply_and_merge():
+        gone = {}                                                         # what each row the pin merges away was an edit of
         changed, logs, deleted = crud.set_cell_manual_priority_batch(
-            db, table_name, req.updates, req.source_name, sso.who(request, req.updated_by)
+            db, table_name, req.updates, req.source_name, sso.who(request, req.updated_by), deleted_edits=gone
         )
         merged = []
         # [P1b] Same discarded merge as the batch-update endpoint, and dearer here:
@@ -4266,9 +4267,9 @@ async def set_cell_priority_batch_endpoint(
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
             merged, _looks = read_as_page(db, table_name, changed, user_cols, include_sources=True)
         edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
-        return changed, logs, deleted, merged, edits
+        return changed, logs, (deleted, access.tables_in(table_name, gone, deleted)), merged, edits
 
-    changed_rows, created_logs, deleted_row_ids, merged_items, edits = await run_in_threadpool(_apply_and_merge)
+    changed_rows, created_logs, (deleted_row_ids, deleted_edits), merged_items, edits =         await run_in_threadpool(_apply_and_merge)
 
     if changed_rows:
         invalidate_table_cache(table_name)
@@ -4276,7 +4277,7 @@ async def set_cell_priority_batch_endpoint(
         # 껍데기 행 실시간 제거 브로드캐스트 전송
         if deleted_row_ids:
             await manager.broadcast(json.dumps(
-                event_constants.row_delete_message(table_name, deleted_row_ids)))
+                event_constants.row_delete_message(table_name, deleted_row_ids, edits_of=deleted_edits)))
 
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [event_constants.upsert_item(

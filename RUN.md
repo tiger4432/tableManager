@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **edit_by 표의 행이 지워지면 알림이 «그 행이 무엇의 편집이었나»를 늘 실음 — 칸 고치기 · 핀 · 체인 · 맵 통째 바꾸기까지** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 무엇     batch_row_delete 의 edits_of: 전엔 행 지우기 문 둘만 실었고, 키가 겹쳐 합쳐진 행 · replace_map 이 지운 행 · 옮겨 온 행은 안 실음
+>          이제 지우는 자리(crud 합치기 · replace_map 지우기)가 지우기 «전»에 그 행의 표를 적음 — 합쳐진 행은 받은 행 말고 «자기» 표
+> 보는 법   알림 edits_of 에 지워진 행의 표 이름 — 그걸 읽는 화면(클라B 범위 칠하기)은 화면 쪽 착지가 따로
+> 값       합치기 0 질의 (값이 손에 있음) · replace_map 이 지우거나 옮긴 행 900 개마다 하나 · edit_by 없는 표는 0, 알림도 전과 같음
+> 되돌리기  git log --oneline -1 --grep="the seat that deletes a row writes what it was an edit of" 의 해시를 git revert -> API · 체인 워커 재기동
+> ```
+>
+> ---
+>
 > ## [11-08] **edit_by 표(sys_looks 등)의 행 지우기 — 행마다 «무엇의 편집인가» 읽기가 이벤트 루프 밖으로** — git pull · API 재기동
 >
 > ```

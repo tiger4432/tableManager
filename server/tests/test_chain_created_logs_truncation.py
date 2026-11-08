@@ -93,7 +93,7 @@ def _patch_apply_batch_updates(monkeypatch, num_rows, num_logs):
     # `drop_report` is spelled out rather than swallowed by `**kwargs`: 94954cb's lane
     # ruled that a double lying about its signature hides forwarding bugs, and the chain
     # worker now asks for the report so a discarded key column is attributable.
-    def fake_apply(db, table_name, batch_obj, replace_report=None, drop_report=None):
+    def fake_apply(db, table_name, batch_obj, replace_report=None, drop_report=None, deleted_edits=None):
         return results, [("r0", "v")], created_logs, []
 
     monkeypatch.setattr(crud, "apply_batch_updates", fake_apply)

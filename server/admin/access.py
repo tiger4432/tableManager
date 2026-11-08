@@ -97,30 +97,51 @@ def refuse(user, table, what, row=None):
 def may_delete(request, db, table, row_ids):
     """A delete door's judgment of an edit_by table's rows: each row an edit of the table its edit_by column names - a
     row not there, or its column blank, the table's own cell. Refused by name at the first row refused. Answers
-    {row_id: the table it is an edit of} for the rows there - read before they go, for the delete's message (lead
-    11-08) - None when `table` declares no edit_by."""
-    by = _cell(table).get(EDIT_BY_KEY)
-    if not by:
+    `edits_by_row` - read before the rows go, for the delete's message (lead 11-08) - None without edit_by."""
+    edits = edits_by_row(db, table, row_ids)
+    if edits is None:
         return None                                                    # `table_door` judged the table
-    named = _edit_by_cells(db, table, by, row_ids)
-    user = person(request)
+    by, user = _cell(table)[EDIT_BY_KEY], person(request)
     for row_id in row_ids:
-        row = {by: named[row_id]} if row_id in named else None
+        row = {by: edits[row_id]} if row_id in edits else None        # the judged table reads as itself (`_judged`)
         if not may(user, table, EDIT, row=row):
             refuse(user, table, EDIT, row=row)
-    return {row_id: _judged(table, EDIT, {by: value}) for row_id, value in named.items()}
+    return edits
 
 
-def edits_of(db, table, rows):
-    """The tables these written rows are edits of (`_judged`), sorted - None when `table` declares no edit_by (nothing
-    read). One read by row id: a committed row is expired, and reading its cell would reload it one statement each."""
+def edits_by_row(db, table, row_ids):
+    """{row_id: the table it is an edit of (`_judged`)} for the rows there - None when `table` declares no edit_by
+    (nothing read). One read by row id, a statement per 900."""
     by = _cell(table).get(EDIT_BY_KEY)
     if not by:
         return None
+    return {row_id: _judged(table, EDIT, {by: value}) for row_id, value in _edit_by_cells(db, table, by, row_ids).items()}
+
+
+def edit_of_row(table, row):
+    """The table `row` (a row object of `table`, in hand) is an edit of (`_judged`) - None when `table` declares no
+    edit_by. No read: the seat that deletes a row writes this before it goes (lead 11-08 ③)."""
+    by = _cell(table).get(EDIT_BY_KEY)
+    return _judged(table, EDIT, {by: getattr(row, by, None)}) if by else None
+
+
+def tables_in(table, edits, row_ids):
+    """The tables `row_ids` are edits of, sorted, from a {row_id: table} map (`edits_by_row`, `edit_of_row`'s) - None
+    when `table` declares no edit_by."""
+    if edits is None or not _cell(table).get(EDIT_BY_KEY):
+        return None
+    return sorted({edits[row_id] for row_id in row_ids if row_id in edits})
+
+
+def edits_of(db, table, rows):
+    """The tables these written rows are edits of, sorted - None when `table` declares no edit_by (nothing read). By
+    row id: a committed row is expired, and reading its cell would reload it one statement each."""
+    if not _cell(table).get(EDIT_BY_KEY):
+        return None                                                    # the rows are not even looked at
     from sqlalchemy import inspect
 
-    named = _edit_by_cells(db, table, by, [inspect(row).identity[0] for row in rows])
-    return sorted({_judged(table, EDIT, {by: value}) for value in named.values()})
+    ids = [inspect(row).identity[0] for row in rows]
+    return tables_in(table, edits_by_row(db, table, ids), ids)
 
 
 def _edit_by_cells(db, table, by, row_ids):
