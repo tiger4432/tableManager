@@ -729,7 +729,11 @@ def _checkpoint(control):
     """
     if control is None:
         return None
-    seen = [_reload_mark()]
+    # the run's one-off start before its first page (owner 11-09: the page's 5 s leaves it out, the line says it) -
+    # the boundary reload's first read, its import of the chain worker with it (lazy: the API process never runs it)
+    began = time.monotonic()
+    seen = [_reload_between_pages(_reload_mark())]
+    control.started(time.monotonic() - began)
 
     def hook(processed=None, total=None):
         control.progress(processed, total)
@@ -3500,6 +3504,12 @@ class RunControl:
         self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s%s" % (
             self.op, self._pages, rows, seconds, rate, done, " · %s" % note if note else ""))
         self._said, self._boundary = processed, now
+
+    def started(self, seconds) -> None:
+        """The run's one-off start is over (`_checkpoint`): `[<op>] Starting: <seconds> s` once, in the phase the run
+        already shows («Starting»); the first page's line and step time count from here."""
+        self._log("[%s] Starting: %.2f s" % (self.op, seconds))
+        self._boundary = self._moved = time.monotonic()
 
     def step(self, name, page, pages, rows, seconds=None, note=None) -> None:
         """A step of page `page` (of `pages`, None = unknown) returned (총괄 e71f7d6f1, 소유자 「죄다 stalled」 ·

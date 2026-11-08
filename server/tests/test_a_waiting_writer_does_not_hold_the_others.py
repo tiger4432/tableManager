@@ -62,14 +62,17 @@ def test_each_page_boundary_reloads_and_a_reload_that_fails_does_not_stop_the_ru
 
     monkeypatch.setattr(system_reload, "reload_mark", lambda: 5)
     monkeypatch.setattr(ciw, "reload_at_boundary", boundary)
-    control = SimpleNamespace(progress=lambda *a: None, stop_requested=lambda: False, step=None)
+    control = SimpleNamespace(progress=lambda *a: None, stop_requested=lambda: False, step=None,
+                              started=lambda seconds: None)
     hook = retroactive._checkpoint(control)
     with caplog.at_level(logging.INFO):
         assert [hook(n) for n in (10, 20, 30)] == [False, False, False]
-    assert asked == [(system_reload.RETROACTIVE, 5), (system_reload.RETROACTIVE, 6), (system_reload.RETROACTIVE, 6)]
+    # the run's start reads first (owner 11-09), then each page boundary - the second read is page 1's and fails
+    assert asked == [(system_reload.RETROACTIVE, 5), (system_reload.RETROACTIVE, 6), (system_reload.RETROACTIVE, 6),
+                     (system_reload.RETROACTIVE, 7)]
     said = [r.getMessage() for r in caplog.records]
     assert any("the next page tries" in line for line in said)
-    assert sum("declarations read again at a page boundary" in line for line in said) == 2
+    assert sum("declarations read again at a page boundary" in line for line in said) == 3
 
 
 def test_the_childs_watcher_waits_for_the_page_boundary(monkeypatch):

@@ -129,6 +129,9 @@ class _Control:
     def step(self, name, page, pages, rows):
         """RunControl's step seat (79afc64e5) - the time inside a page; nothing to record here."""
 
+    def started(self, seconds):
+        """RunControl's start line (owner 11-09) - nothing to record here."""
+
     def stop_requested(self):
         return True
 

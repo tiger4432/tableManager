@@ -53,8 +53,9 @@ def test_the_atoms_taken_back_after_the_pages_are_not_counted_as_rows(monkeypatc
     done = backfill.withdraw_stale_atoms(_engine(), "dt_job", "dt_job_rollup", apply=True,
                                          checkpoint=checkpoint, page_refs=4)
 
-    after = lines[1:]
-    assert "50000 / 50000" in lines[0] and done["stale_withdrawn"] == 9
+    assert lines[0].startswith("[ledger_rescope] Starting: ")              # the run's start (owner 11-09)
+    after = lines[2:]
+    assert "50000 / 50000" in lines[1] and done["stale_withdrawn"] == 9
     assert not [line for line in after if "/ 50000" in line], after
     assert after and all("withdraw atoms of a table it no longer reads" in line and "withdrew" in line
                          for line in after), after
