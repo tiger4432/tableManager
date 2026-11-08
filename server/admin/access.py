@@ -29,6 +29,7 @@ ROWS_DOOR = "/tables/{table_name}/data/updates"
 #: its own cell») - widened for these two; the other edit doors still do.
 DELETE_DOORS = ("/tables/{table_name}/rows/{row_id}", "/tables/{table_name}/rows/batch_delete")
 DENIED = "%s may not %s the table %s - an administrator adds the name to access.%s.allow in table_config.json"
+DENIED_BY = "%s is denied by access.%s.deny of %s - remove the name there"   # an allow would not lift a deny
 
 
 def _cell(table):
@@ -51,25 +52,33 @@ def _judged(table, what, row):
     return str(row[by]) if what == EDIT and by and row is not None and row.get(by) else table
 
 
-def may(user, table, what, row=None):
-    """Whether `user` may `what` (read | edit) `table`. `row` (its cells) - for a table that declares edit_by, an edit
-    is judged on the table that row names; without the row the table's own cell answers."""
+def _refused_on(user, table, what, row):
+    """(table, read | edit, deny | allow) - the cell that refuses `user` this `what` (read | edit) on `table`, None
+    when none does. `row` (its cells) - for a table that declares edit_by, an edit its own cell lets past (its read, its
+    edit.deny) is judged on the table that row names; without the row the table's own cell answers."""
     if user is None or not sso.enabled() or sso.is_admin(user):
-        return True
-    judged = _judged(table, what, row)
-    if judged != table:
-        return may(user, judged, EDIT)
+        return None
     cell = _cell(table)
     names = _names(user)
     read = cell.get(READ) or {}
-    if _on(names, read.get("deny")) or (read.get("allow") and not _on(names, read["allow"])):
-        return False
+    if _on(names, read.get("deny")):
+        return table, READ, "deny"
+    if read.get("allow") and not _on(names, read["allow"]):
+        return table, READ, "allow"
     if what == READ:
-        return True
+        return None
     edit = cell.get(EDIT) or {}
     if _on(names, edit.get("deny")):
-        return False
-    return _on(names, edit.get("allow"))
+        return table, EDIT, "deny"
+    judged = _judged(table, what, row)
+    if judged != table:
+        return _refused_on(user, judged, EDIT, None)
+    return None if _on(names, edit.get("allow")) else (table, EDIT, "allow")
+
+
+def may(user, table, what, row=None):
+    """Whether `user` may `what` (read | edit) `table` - `_refused_on` names no table."""
+    return _refused_on(user, table, what, row) is None
 
 
 def person(connection: HTTPConnection):
@@ -79,8 +88,10 @@ def person(connection: HTTPConnection):
 
 
 def refuse(user, table, what, row=None):
-    """The refusal, naming the table the edit was judged on (an edit_by row's) - where the name is added."""
-    raise HTTPException(status_code=403, detail=DENIED % (user, what, _judged(table, what, row), what))
+    """The refusal - the cell that refused (`_refused_on`) and its next step: a deny's name removed, an allow's added."""
+    at, cell, kind = _refused_on(user, table, what, row) or (table, what, "allow")
+    raise HTTPException(status_code=403, detail=DENIED_BY % (user, cell, at) if kind == "deny" else
+                        DENIED % (user, what, at, cell))
 
 
 def may_delete(request, db, table, row_ids):

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **edit_by 표(sys_looks 등) 자기 칸의 거절이 먼저 — 그 표에서 거절된 사람은 행이 가리키는 표에 edit.allow 여도 못 씀 · 못 지움** — git pull · API 재기동
+>
+> ```
+> 무엇     sys_looks 처럼 edit_by 를 단 표: 그 표 자신의 read.deny · read.allow(목록에 없음) · edit.deny 가 행이 가리키는 표보다 먼저
+>          문 셋 — PUT data/updates · 행 지우기 하나 · 묶음. 전: 가리키는 표의 edit.allow 만 보고 통과
+> 보는 법   그 사람으로 색 규칙 고치기 · 지우기 -> 403, 거절한 칸의 표 이름 (sys_looks 자신, 아니면 행이 가리키는 표)
+> 거절 문구  모든 표 · 모든 문: deny 면 «kim is denied by access.edit.deny of <표> - remove the name there»
+>          allow 목록 밖이면 전처럼 «... adds the name to access.<read|edit>.allow» — 거절한 쪽(read · edit)을 댐
+>          (전: deny 여도 «allow 에 넣으라» · read.allow 밖으로 편집 거절돼도 «edit.allow»)
+> 안 바뀜   로그인 끔 · 관리자 · edit_by 표에 access 칸을 안 적은 설치 (shipped 는 edit_by 만) -> 전과 같음
+> 되돌리기  git log --oneline -1 --grep="own cell refuses before the table its row names" 의 해시를 git revert -> API 재기동
+> ```
+>
+> ---
+>
 > ## [11-08] **다른 화면도 «누가 썼나» 색을 실시간으로 — 행 알림 여섯이 쪽 읽기와 같은 written_by · 파일에 핀한 칸은 노랑 아님** — git pull · 런처 재기동(API · 체인 워커)
 >
 > ```
