@@ -4033,6 +4033,8 @@ async def apply_batch_updates_endpoint(
     # another, and the next edit would pick the wrong one.
     items_have_a_consumer = broadcast_needs_items and not batch.silent
     msg_items = await run_in_threadpool(_merge_and_build_items) if items_have_a_consumer else []
+    edits = (await run_in_threadpool(access.edits_of, db, table_name, [row for row, _new in results])
+             if not broadcast_needs_items and not batch.silent else None)
 
     # WebSocket 브로드캐스트를 백그라운드 태스크로 이관하여 즉시 HTTP 200 반환!
     if not batch.silent:
@@ -4066,7 +4068,7 @@ async def apply_batch_updates_endpoint(
                 # len(msg_items) on this arm; msg_items is now empty by construction.
                 msg = event_constants.batch_refresh_message(
                     table_name, len(results), created_logs=created_logs,
-                        total_log_count=len(created_logs))
+                        total_log_count=len(created_logs), edits_of=edits)
                 await manager.broadcast(json.dumps(msg))
             else:
                 CHUNK_SIZE = 500
@@ -4483,9 +4485,10 @@ async def set_cell_priority_batch_endpoint(
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
             merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
-        return changed, logs, deleted, merged
+        edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
+        return changed, logs, deleted, merged, edits
 
-    changed_rows, created_logs, deleted_row_ids, merged_items = await run_in_threadpool(_apply_and_merge)
+    changed_rows, created_logs, deleted_row_ids, merged_items, edits = await run_in_threadpool(_apply_and_merge)
 
     if changed_rows:
         invalidate_table_cache(table_name)
@@ -4507,7 +4510,7 @@ async def set_cell_priority_batch_endpoint(
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = event_constants.batch_refresh_message(
                 table_name, len(changed_rows), created_logs=created_logs,
-                    total_log_count=len(created_logs))
+                    total_log_count=len(created_logs), edits_of=edits)
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500
@@ -4548,9 +4551,10 @@ async def delete_cell_source_batch_endpoint(
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
             merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
-        return changed, logs, merged
+        edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
+        return changed, logs, merged, edits
 
-    changed_rows, created_logs, merged_items = await run_in_threadpool(_delete_and_merge)
+    changed_rows, created_logs, merged_items, edits = await run_in_threadpool(_delete_and_merge)
 
     if changed_rows:
         invalidate_table_cache(table_name)
@@ -4566,7 +4570,7 @@ async def delete_cell_source_batch_endpoint(
             # 대량 업데이트: 경량화된 새로고침 신호만 전송
             msg = event_constants.batch_refresh_message(
                 table_name, len(changed_rows), created_logs=created_logs,
-                    total_log_count=len(created_logs))
+                    total_log_count=len(created_logs), edits_of=edits)
             await manager.broadcast(json.dumps(msg))
         else:
             # Split into chunks of 500

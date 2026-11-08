@@ -798,7 +798,7 @@ EVENT_BATCH_REFRESH_REQUIRED = "batch_refresh_required"
 
 def batch_refresh_message(table_name, change_count, *, transaction_id=None,
                           created_logs=None, total_log_count=None,
-                          deleted_row_ids_omitted=None):
+                          deleted_row_ids_omitted=None, edits_of=None):
     """The `batch_refresh_required` payload, built in one place.
 
     🔴 NINE SENDERS WERE EACH WRITING THIS DICT BY HAND, and a payload written nine times
@@ -812,7 +812,8 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     omitted when they are not given, so every sender still produces exactly the object it
     produced before: seven send `{event, table_name, change_count}`, one adds
     `truncated`, one adds the audit trio. Unifying the SHAPES is a different
-    change and would be a boundary-contract decision, not this one.
+    change and would be a boundary-contract decision, not this one. `edits_of` came after
+    (lead 11-08), omitted when not given like the others.
 
     ⚠️ `change_count` IS ALWAYS PRESENT, INCLUDING WHEN IT IS 0. The client does not use it
     to decide whether to refresh, but `{change_count: 0}` and a missing key are different
@@ -864,6 +865,14 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
         message["truncated"] = {"deleted_row_ids": truncated_note(
             int(deleted_row_ids_omitted) > 0, deleted_row_ids_omitted,
             "deleted ids beyond BROADCAST_ITEM_LIMIT")}
+    # the tables an edit_by table's written rows are edits of (`access.edits_of`, lead 11-08) - a screen knows whether
+    # its table was touched without a row; past BROADCAST_ITEM_LIMIT names, said cut instead
+    if edits_of is not None:
+        if len(edits_of) <= BROADCAST_ITEM_LIMIT:
+            message["edits_of"] = list(edits_of)
+        else:
+            message.setdefault("truncated", {})["edits_of"] = truncated_note(
+                True, len(edits_of), "tables beyond BROADCAST_ITEM_LIMIT")
     return message
 
 

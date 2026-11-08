@@ -89,15 +89,35 @@ def may_delete(request, db, table, row_ids):
     by = _cell(table).get(EDIT_BY_KEY)
     if not by:
         return                                                         # `table_door` judged the table
-    from database import models
-    model = models.DYNAMIC_TABLES.get(table)
-    named = dict(db.query(model.row_id, getattr(model, by)).filter(model.row_id.in_(list(row_ids))).all()
-                 if model is not None else ())
+    named = _edit_by_cells(db, table, by, row_ids)
     user = person(request)
     for row_id in row_ids:
         row = {by: named[row_id]} if row_id in named else None
         if not may(user, table, EDIT, row=row):
             refuse(user, table, EDIT, row=row)
+
+
+def edits_of(db, table, rows):
+    """The tables these written rows are edits of (`_judged`), sorted - None when `table` declares no edit_by (nothing
+    read). One read by row id: a committed row is expired, and reading its cell would reload it one statement each."""
+    by = _cell(table).get(EDIT_BY_KEY)
+    if not by:
+        return None
+    from sqlalchemy import inspect
+
+    named = _edit_by_cells(db, table, by, [inspect(row).identity[0] for row in rows])
+    return sorted({_judged(table, EDIT, {by: value}) for value in named.values()})
+
+
+def _edit_by_cells(db, table, by, row_ids):
+    """{row_id: its edit_by cell} for the rows there."""
+    from database import models
+
+    model = models.DYNAMIC_TABLES.get(table)
+    ids, named = list(row_ids), {}
+    for at in range(0, len(ids) if model is not None else 0, 900):     # under SQLite's 999 parameters
+        named.update(db.query(model.row_id, getattr(model, by)).filter(model.row_id.in_(ids[at:at + 900])).all())
+    return named
 
 
 def table_door(request: Request):

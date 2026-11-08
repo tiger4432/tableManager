@@ -2185,11 +2185,13 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
 
                         if not needs_items:
                             # len(msg_items) before; empty by construction on this arm now.
+                            from admin import access
                             msg = event_constants.batch_refresh_message(
                                 target_table, len(results),
                                 transaction_id=chain_tx_id,
                                 created_logs=serialized_logs,
-                                total_log_count=total_log_count)
+                                total_log_count=total_log_count,
+                                edits_of=access.edits_of(db, target_table, [row for row, _new in results]))
                         else:
                             msg = {
                                 "event": "batch_row_upsert",
