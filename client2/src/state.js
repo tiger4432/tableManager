@@ -106,6 +106,7 @@ export const state = {
   dragEndCell: null,
   selectedCellsMap: {}, // key: "rowIndex_colId"
   isDraggingRange: false,
+  rangeAdding: false, // the press that began the range held Ctrl: its cells join the ctrl-clicked ones when let go
   globalHistoryData: [],
   cellRowHistoryData: [],
   // [History paging] The `/history` envelope's fields, held BESIDE the list and never on it.
@@ -325,32 +326,55 @@ export function visibleRangeColIds() {
     .map(c => c.colId);
 }
 
-/**
- * The cells of the grid's selection, as {rowIndex, colId}: the ctrl-clicked cells when there are any, else the dragged
- * rectangle - its columns in `visibleColIndexMap`'s order, the one `isCellInRange` highlights by. `keep(colId)` the
- * columns counted (data columns unless said); `rectangle` the rectangle alone (what a drag commits into the map).
- * Bulk fill, a drag's commit and the Colours tab's paint ask here (lead 11-08); copy, paste, clear and the sources
- * dialog through `cellsToActOn`.
- */
-export function selectedCells({ keep = isDataColumn, rectangle = false } = {}) {
-  const clicked = Object.values(state.selectedCellsMap || {});
-  if (!rectangle && clicked.length) return clicked.filter((cell) => keep(cell.colId));
+const anyKey = (obj) => { for (const _ in obj) return true; return false; };
+const within = ([lo, hi], n) => n >= lo && n <= hi;
+
+/** The one rule for what is selected: the ctrl-clicked cells when there are any, else the dragged rectangle - its rows,
+ *  and its columns as `visibleColIndexMap` positions; `rectangle` the rectangle alone. -> {clicked} | {rows, cols} | null */
+function selection(rectangle = false) {
+  const clicked = state.selectedCellsMap || {};
+  if (!rectangle && anyKey(clicked)) return { clicked };
   const from = state.dragStartCell, to = state.dragEndCell;
   const map = state.visibleColIndexMap || {};
-  if (!from || !to || map[from.colId] === undefined || map[to.colId] === undefined) return [];
-  const [lo, hi] = [Math.min(map[from.colId], map[to.colId]), Math.max(map[from.colId], map[to.colId])];
-  const cols = Object.keys(map).filter((id) => map[id] >= lo && map[id] <= hi && keep(id)).sort((a, b) => map[a] - map[b]);
+  if (!from || !to || map[from.colId] === undefined || map[to.colId] === undefined) return null;
+  return { rows: [Math.min(from.rowIndex, to.rowIndex), Math.max(from.rowIndex, to.rowIndex)],
+    cols: [Math.min(map[from.colId], map[to.colId]), Math.max(map[from.colId], map[to.colId])] };
+}
+
+/**
+ * The cells of the grid's selection (`selection`), as {rowIndex, colId}, the rectangle's columns in `visibleColIndexMap`'s
+ * order; `keep(colId)` the columns counted (data columns unless said); `rectangle` the rectangle alone (what a ctrl drag
+ * adds to the ctrl-clicked cells). Bulk fill, a drag's commit and the Colours tab's paint ask here (lead 11-08); copy,
+ * paste, clear and the sources dialog through `cellsToActOn`; the highlight through `isSelected`.
+ */
+export function selectedCells({ keep = isDataColumn, rectangle = false } = {}) {
+  const shape = selection(rectangle);
+  if (!shape) return [];
+  if (shape.clicked) return Object.values(shape.clicked).filter((cell) => keep(cell.colId));
+  const map = state.visibleColIndexMap;
+  const cols = Object.keys(map).filter((id) => within(shape.cols, map[id]) && keep(id)).sort((a, b) => map[a] - map[b]);
   const cells = [];
-  for (let r = Math.min(from.rowIndex, to.rowIndex); r <= Math.max(from.rowIndex, to.rowIndex); r++) {
+  for (let r = shape.rows[0]; r <= shape.rows[1]; r++) {
     for (const colId of cols) cells.push({ rowIndex: r, colId });
   }
   return cells;
 }
 
+/** Whether one cell is selected - the cells `selectedCells` lists (the highlight; the focused cell is the grid's own
+ *  border). A ctrl drag being made shows its rectangle too: it joins the ctrl-clicked cells when let go. */
+export function isSelected(rowIndex, colId, keep = isDataColumn) {
+  const shape = selection();
+  if (!shape || !keep(colId)) return false;
+  const inside = (box) => within(box.rows, rowIndex) && within(box.cols, (state.visibleColIndexMap || {})[colId]);
+  if (!shape.clicked) return inside(shape);
+  if (shape.clicked[`${rowIndex}_${colId}`]) return true;
+  const drawn = state.isDraggingRange ? selection(true) : null;
+  return Boolean(drawn) && inside(drawn);
+}
+
 /** The cells a command on the grid acts on: the selection (`selectedCells`, the same `keep`), else the focused cell. */
 export function cellsToActOn({ keep = isDataColumn } = {}) {
-  const cells = selectedCells({ keep });
-  if (cells.length) return cells;
+  if (selection()) return selectedCells({ keep });
   const focused = state.gridApi && state.gridApi.getFocusedCell();
   const colId = focused && focused.column && focused.column.getId();
   return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];

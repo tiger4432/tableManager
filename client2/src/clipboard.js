@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn, pivotShown, selectedCells, cellsToActOn } from './state.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown, selectedCells, cellsToActOn, isSelected } from './state.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped, cellToSend } from './write_guard.js';
@@ -37,24 +37,7 @@ export function isReferenceSidebarCopy(e) {
 }
 
 export function isCellInRange(rowIndex, colId) {
-  const key = `${rowIndex}_${colId}`;
-  if (state.selectedCellsMap[key]) return true;
-
-  if (!state.dragStartCell || !state.dragEndCell) return false;
-  if (!state.gridApi) return false;
-
-  const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
-  const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
-  const colIdx = state.visibleColIndexMap[colId];
-
-  if (startColIdx === undefined || endColIdx === undefined || colIdx === undefined) return false;
-
-  const minColIdx = Math.min(startColIdx, endColIdx);
-  const maxColIdx = Math.max(startColIdx, endColIdx);
-  const minRowIdx = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-  const maxRowIdx = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-
-  return rowIndex >= minRowIdx && rowIndex <= maxRowIdx && colIdx >= minColIdx && colIdx <= maxColIdx;
+  return isSelected(rowIndex, colId);
 }
 
 /**
@@ -92,6 +75,11 @@ function writeRangeReadout(startCell, endCell) {
 
 export function refreshRange(api, startCell, endCell) {
   saidRangeChanged(startCell, endCell);
+  redrawRange(api, startCell, endCell);
+}
+
+/** The cells of the rectangle from `startCell` to `endCell` drawn again (their highlight). */
+function redrawRange(api, startCell, endCell) {
   if (!startCell || !endCell || !api) return;
   const startRow = startCell.rowIndex;
   const endRow = endCell.rowIndex;
@@ -219,6 +207,26 @@ export function commitDragSelection(api) {
   }
 }
 
+/** A press on the grid let go - the one seat (the document's mouseup, the pointer leaving the grid, a move with no
+ *  button held): a Ctrl click adds its cell to the ctrl-clicked cells or takes it off, a Ctrl drag adds its rectangle,
+ *  the rectangle then gone; a plain click or drag stays the rectangle. */
+export function endRangeGesture(api) {
+  if (!state.isDraggingRange) return;
+  state.isDraggingRange = false;
+  const from = state.dragStartCell, to = state.dragEndCell;
+  if (state.rangeAdding && api && from && to) {
+    const key = `${from.rowIndex}_${from.colId}`;
+    if (from.rowIndex !== to.rowIndex || from.colId !== to.colId) commitDragSelection(api);
+    else if (state.selectedCellsMap[key]) delete state.selectedCellsMap[key];
+    else commitDragSelection(api);
+    state.dragStartCell = null;
+    state.dragEndCell = null;
+  }
+  state.rangeAdding = false;
+  redrawRange(api, from, to);   // the press's cells only - the rest did not change
+  saidRangeChanged(state.dragStartCell, state.dragEndCell);
+}
+
 /** A cell's text in a copy - the row's own three as stored, a data cell's value; a time as the grid shows it (copiedText). */
 function copiedCell(data, col) {
   const cell = ['row_id', 'created_at', 'updated_at'].includes(col) ? data[col] : data.data?.[col];
@@ -330,7 +338,6 @@ async function uploadedRef(file, colId) {
 
 async function pasteText(targetCells, clipboardText) {
   markWork('paste', state.currentTable);
-  const focusedCell = state.gridApi.getFocusedCell();
   // Parse TSV clipboard through the shared reader. `trimCells`/`dropBlankLines` keep this
   // handler's long-standing whitespace and blank-line treatment byte for byte; what
   // CHANGES is that a cell Excel quoted because it contains a newline is now one cell.
@@ -387,22 +394,17 @@ async function pasteText(targetCells, clipboardText) {
       let anchorColVisibleIdx = -1;
       let anchorColId = '';
 
-      if (focusedCell) {
-        anchorRow = focusedCell.rowIndex;
-        anchorColId = focusedCell.column.getColId();
-        anchorColVisibleIdx = visibleCols.indexOf(anchorColId);
-      } else {
-        targetCells.forEach(cell => {
-          const idx = visibleCols.indexOf(cell.colId);
-          if (cell.rowIndex < anchorRow) {
-            anchorRow = cell.rowIndex;
-          }
-          if (idx !== -1 && (anchorColVisibleIdx === -1 || idx < anchorColVisibleIdx)) {
-            anchorColVisibleIdx = idx;
-            anchorColId = cell.colId;
-          }
-        });
-      }
+      // the top-left of the cells pasted into (cellsToActOn - the selection, or the focused cell alone)
+      targetCells.forEach(cell => {
+        const idx = visibleCols.indexOf(cell.colId);
+        if (cell.rowIndex < anchorRow) {
+          anchorRow = cell.rowIndex;
+        }
+        if (idx !== -1 && (anchorColVisibleIdx === -1 || idx < anchorColVisibleIdx)) {
+          anchorColVisibleIdx = idx;
+          anchorColId = cell.colId;
+        }
+      });
 
       // If anchor col not in visible list, fallback to first visible column (excluding index column '#')
       if (anchorColVisibleIdx === -1 && visibleCols.length > 0) {

@@ -23,7 +23,8 @@ import {
   refreshRange,
   refreshSelectedRangeDiff,
   commitDragSelection,
-  clearRangeSelection
+  clearRangeSelection,
+  endRangeGesture
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
@@ -1709,11 +1710,12 @@ export function renderGrid(initialRows) {
         state.isDraggingRange = false;
         refreshSelectedRangeDiff(event.api, state.dragStartCell, oldEnd, state.dragEndCell);
       } else {
-        if (!isCtrl) {
-          clearRangeSelection();
-        }
+        // a Ctrl press adds to the selection so far: a plain rectangle (one clicked cell too) joins the ctrl-clicked ones
+        if (isCtrl) commitDragSelection(event.api);
+        else clearRangeSelection();
 
         state.isDraggingRange = true;
+        state.rangeAdding = isCtrl;
         state.dragStartCell = { rowIndex: currRow, colId: currCol };
         state.dragEndCell = { rowIndex: currRow, colId: currCol };
 
@@ -1722,11 +1724,7 @@ export function renderGrid(initialRows) {
     },
     onCellMouseOver: (event) => {
       if (event.event && event.event.buttons !== undefined && event.event.buttons !== 1) {
-        if (state.isDraggingRange) {
-          state.isDraggingRange = false;
-          commitDragSelection(event.api);
-          event.api.refreshCells({ force: true });
-        }
+        endRangeGesture(event.api);   // the button let go outside the window
         return;
       }
 
@@ -1753,39 +1751,6 @@ export function renderGrid(initialRows) {
             }
           });
         }
-      }
-    },
-    onCellMouseUp: (event) => {
-      if (state.isDraggingRange) {
-        state.isDraggingRange = false;
-        
-        const isCtrl = event.event.ctrlKey || event.event.metaKey;
-        const isSingleClick = (state.dragStartCell.rowIndex === state.dragEndCell.rowIndex && state.dragStartCell.colId === state.dragEndCell.colId);
-        
-        if (isSingleClick && isCtrl) {
-          const key = `${state.dragStartCell.rowIndex}_${state.dragStartCell.colId}`;
-          if (state.selectedCellsMap[key]) {
-            delete state.selectedCellsMap[key];
-          } else {
-            const rowNode = event.api.getDisplayedRowAtIndex(state.dragStartCell.rowIndex);
-            const rowId = rowNode?.data?.row_id;
-            state.selectedCellsMap[key] = { rowIndex: state.dragStartCell.rowIndex, colId: state.dragStartCell.colId, rowId };
-          }
-          state.dragStartCell = null;
-          state.dragEndCell = null;
-        } else {
-          commitDragSelection(event.api);
-        }
-
-        const oldStart = state.dragStartCell;
-        const oldEnd = state.dragEndCell;
-        state.dragStartCell = null;
-        state.dragEndCell = null;
-        
-        if (oldStart && oldEnd) {
-          refreshRange(event.api, oldStart, oldEnd);
-        }
-        event.api.refreshCells({ force: true });
       }
     },
     onCellValueChanged: async (event) => {

@@ -15,7 +15,7 @@ import { openInTables } from './tables/handoff.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state, isDataColumn, pivotShown, selectedCells, cellsToActOn } from './state.js';
+import { state, isDataColumn, pivotShown, cellsToActOn } from './state.js';
 import { headerWord, itemOf } from './grid_pivot.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
@@ -78,10 +78,9 @@ import {
 } from './timeline.js';
 import {
   isCellInRange,
-  refreshRange,
   refreshSelectedRangeDiff,
   clearRangeSelection,
-  commitDragSelection,
+  endRangeGesture,
   setupClipboardHandlers,
   registerSmartPasteHandler,
   clearSelectedCells,
@@ -530,18 +529,8 @@ function setupEventListeners() {
     });
   }
 
-  // Global mouseup guard to release range drag selection state securely
-  document.addEventListener('mouseup', () => {
-    if (state.isDraggingRange) {
-      state.isDraggingRange = false;
-      if (state.gridApi) {
-        commitDragSelection(state.gridApi);
-        state.gridApi.refreshCells({ force: true });
-      }
-      state.dragStartCell = null;
-      state.dragEndCell = null;
-    }
-  });
+  // a press on the grid let go anywhere on the page
+  document.addEventListener('mouseup', () => endRangeGesture(state.gridApi));
 
   if (elements.refreshHistoryBtn) {
     elements.refreshHistoryBtn.addEventListener('click', () => {
@@ -742,10 +731,14 @@ function setupEventListeners() {
       const label = `${row} · ${itemOf(at.colId) ?? at.colId}`;
       return target ? { rowId: target.rowId, column: target.column, label } : { label };
     },
-    // the selection when it is more than one cell: the cells it paints, and the ones that are no one row's
+    // the cells a swatch paints - the ones every command acts on - unless that is the picked cell alone (`picked`
+    // names it with its history): the cells it paints, and the ones that are no one row's
     range: () => {
-      const cells = selectedCells({ keep: (col) => isDataColumn(col) && !isSystemColumn(col) });
-      return cells.length > 1 ? paintTargets(cells, ({ rowIndex, colId }) => {
+      const cells = cellsToActOn({ keep: (col) => isDataColumn(col) && !isSystemColumn(col) });
+      const focused = state.gridApi && state.gridApi.getFocusedCell();
+      const pickedAlone = cells.length === 1 && Boolean(focused) && cells[0].rowIndex === focused.rowIndex
+        && cells[0].colId === focused.column.getId();
+      return cells.length && !pickedAlone ? paintTargets(cells, ({ rowIndex, colId }) => {
         const node = state.gridApi && state.gridApi.getDisplayedRowAtIndex(rowIndex);
         return node && node.data ? lookTarget(node.data, colId) : null;
       }) : null;
@@ -1029,15 +1022,7 @@ function setupEventListeners() {
       if (head && !head.closest('.ag-floating-filter, .ag-header-row-column-filter')) openFormula(head.getAttribute('col-id'), head);
       // 다시 돌리는 줄은 이제 이 메뉴에 «없습니다» (소유자 지시). 배너로 옮겼습니다.
     });
-    gridContainer.addEventListener('mouseleave', () => {
-      if (state.isDraggingRange) {
-        state.isDraggingRange = false;
-        commitDragSelection(state.gridApi);
-        if (state.gridApi) {
-          state.gridApi.refreshCells({ force: true });
-        }
-      }
-    });
+    gridContainer.addEventListener('mouseleave', () => endRangeGesture(state.gridApi));
   }
 
   // Sources Modal Close Button
@@ -2095,15 +2080,6 @@ function showClipboardTypeModal(types, outsideOrder) {
     types, outsideOrder ? "Not in this table's smart_paste · pick one" : undefined);
 }
 
-// Global mouseup handling for drag range selection completion
-document.addEventListener('mouseup', () => {
-  if (state.isDraggingRange) {
-    state.isDraggingRange = false;
-    if (state.gridApi && state.dragStartCell && state.dragEndCell) {
-      refreshRange(state.gridApi, state.dragStartCell, state.dragEndCell);
-    }
-  }
-});
 
 // Transaction Mode Helpers
 // Start Application.

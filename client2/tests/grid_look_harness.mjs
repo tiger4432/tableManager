@@ -130,6 +130,19 @@ const choose = (m) => {
   const none = acts();
   m.state.gridApi = null;
   said.push([withRange, focusedData, focusedGutter, none]);
+  // the highlight: the cells isSelected says yes to, over a 4 x 4 grid, against the cells selectedCells lists
+  const lit = () => { const on = []; for (let r = 0; r < 4; r++) for (const c of ['#', 'lot', 'owner', 'value']) if (m.isSelected(r, c)) on.push(`${r}${c}`); return on; };
+  const listed = () => m.selectedCells().map((c) => `${c.rowIndex}${c.colId}`).sort();
+  const both = { '1_lot': { rowIndex: 1, colId: 'lot' } };
+  selecting(m, { clicked: both, from: { rowIndex: 2, colId: 'owner' }, to: { rowIndex: 3, colId: 'value' } });
+  const clickedAndRect = [lit(), listed()];
+  m.state.isDraggingRange = true;
+  const ctrlDragging = lit();
+  m.state.isDraggingRange = false;
+  selecting(m, { from: { rowIndex: 0, colId: '#' }, to: { rowIndex: 1, colId: 'owner' } });
+  const rect = [lit(), listed()];
+  selecting(m);
+  said.push([clickedAndRect, ctrlDragging, rect, lit()]);
   return said;
 };
 const chosen = choose(stateModule);
@@ -139,6 +152,9 @@ eq('R2 every column when asked (copy): 2 rows x 4', chosen[1], 8);
 eq('R3 ctrl-clicked cells first (the rectangle not added), data ones; the rectangle alone when asked (a drag\'s commit)',
   [chosen[2], chosen[3]], [['5lot'], ['0lot', '0owner']]);
 eq('R4 no selection: none', chosen[4], 0);
+eq('R6 the highlight is the listed selection: ctrl-clicked cells over a rectangle - only they lit, as listed; a ctrl drag'
+  + ' being made lights its rectangle too; a rectangle lit as listed, the gutter not; none none', chosen[6],
+  [[['1lot'], ['1lot']], ['1lot', '2owner', '2value', '3owner', '3value'], [['0lot', '0owner', '1lot', '1owner'], ['0lot', '0owner', '1lot', '1owner']], []]);
 eq('R5 the cells a command acts on: the selection over the focused cell; no selection - the focused cell when its column'
   + ' counts (the gutter not, unless every column is asked); no focus - none', chosen[5],
   [['0lot', '0owner'], ['7owner'], [[], ['7#']], []]);
@@ -190,9 +206,12 @@ const MUTANTS = [
   ['M8 a count-only broadcast not read again (a big paint never reaches another screen)', LOOK, '  if (!items.length) return Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) ? {} : { reread: true };\n', ''],
   ['M9 edits_of ignored (every screen reads again on any big paint)', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', 'false'],
   ['M10 a count-only message without edits_of not read again', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', '!(msg.edits_of || []).includes(table)'],
-  ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && clicked.length) return', 'if (false) return'],
-  ['M7 the gutter and every column counted', STATE, 'map[id] <= hi && keep(id))', 'map[id] <= hi)'],
+  ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && anyKey(clicked)) return', 'if (false) return'],
+  ['M7 the gutter and every column counted', STATE, 'within(shape.cols, map[id]) && keep(id))', 'within(shape.cols, map[id]))'],
   ['M11 no focused cell when nothing is selected', STATE, 'return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];', 'return [];'],
+  ['M13 the highlight lights the rectangle beside the ctrl-clicked cells (what is seen is not what is touched)', STATE,
+    'const drawn = state.isDraggingRange ? selection(true) : null;', 'const drawn = selection(true);'],
+  ['M14 the highlight lights the gutter', STATE, 'if (!shape || !keep(colId)) return false;', 'if (!shape) return false;'],
   ['M12 the focused cell whatever its column', STATE, 'return colId && keep(colId) ?', 'return colId ?'],
 ];
 for (const [name, [module, deps, cases], from, to] of MUTANTS) {

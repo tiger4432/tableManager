@@ -1190,7 +1190,7 @@ export const FLOORS = new Map([
   // new with the entered order and its places (owner 11-06): its count on the commit that adds it
   ['grid_order_harness.mjs', 16],
   // a cell's look (owner 11-06, lead L2): paint over rules, the later rule, columns, writer, the broadcast, the writes, a rule moved, the selection and its paints, a broadcast's answer, M1-M8
-  ['grid_look_harness.mjs', 40],
+  ['grid_look_harness.mjs', 43],
   // the screen checker's --mutant (lead 11-07): a named mutant runs, the others do not, an unknown name is said
   ['mutant_pick_harness.mjs', 7],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
