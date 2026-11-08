@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **AI 시스템 표 넷 — pull 하면 System 그룹에 생김(비어 있음)** — git pull · 런처 재기동(API · 체인 워커 · 원장 워커)
+>
+> ```
+> 무엇     재기동 때 System 그룹에 표 넷이 생김 — 값은 비어 있고, 아직 아무것도 쓰지도 읽지도 않음
+>          sys_ai_actions       한 행 = AI 가 하려는 일 하나 (키 action_id) · feedback = 사람의 한 줄
+>          sys_ai_action_kinds  한 행 = 한 표에 대한 행동 종류 (키 kind|target_table) · autonomy 빈칸 = 사람 확인
+>          sys_ai_judge_tests   한 행 = 판정자가 맞혀야 할 예 (키 kind|target_table|example) · expected pass | fail
+>          sys_ai_memory        한 행 = 사람이 고친 자리 하나 (키 purpose|situation|cell) — 샘플 ai_memory 와 같은 모양
+> 권한     앞의 셋은 한 행 = target_table 칸이 이름 대는 표의 편집 (access.edit_by target_table)
+>          target_table 이 빈 행은 그 시스템 표 자신의 칸으로 — 로그인이 켜져 있으면 관리자만, 꺼져 있으면 누구나
+>          sys_ai_memory 는 출하 표의 기본 (로그인이 켜져 있으면 관리자만 고침)
+>          «확인 · 거절 · feedback 칸만 사람» 같은 칸 단위 권한은 오늘 모양에 없음
+> 원장     시스템 월드에 소스 넷이 더해짐 (술어 새것 acts_on 하나, fills · part_of 는 넓힘) — 첫 묶음 전에 스키마가 섬
+> 확인     표 목록 System 그룹에 넷이 보임 · /api/ledger/declaration?world=system 의 sources 에 sys_ai_* 넷
+> 되돌리기  git log --oneline -1 --grep="the AI's four tables" 의 해시를 git revert -> 런처 재기동 (빈 표는 남음 — 지워도 됨)
+> ```
+>
+> ---
+>
 > ## [11-08] **그리드의 기본 색 셋 — 사람이 쓴 칸 노란 선 · 병합 칸 빨간 칠 · AI 가 쓴 칸 파란 선, 모든 표에** — git pull · 런처 재기동(API) · 브라우저 새로고침
 >
 > ```

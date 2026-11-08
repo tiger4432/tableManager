@@ -189,7 +189,8 @@
         "ingestion",
         "template",
         "collect_run",
-        "collector"
+        "collector",
+        "ai_action"
       ],
       "object": {
         "kind": "entity_ref",
@@ -255,13 +256,34 @@
       "subjects": [
         "template_field",
         "collect_run",
-        "collect_miss"
+        "collect_miss",
+        "ai_action",
+        "ai_judge_test",
+        "ai_memory"
       ],
       "object": {
         "kind": "entity_ref",
         "types": [
           "template",
-          "collect_run"
+          "collect_run",
+          "ai_action_kind",
+          "chain_rule"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "acts_on": {
+      "status": "active",
+      "subjects": [
+        "ai_action_kind"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
         ],
         "qualifiers": {
           "required": [],
@@ -442,6 +464,61 @@
         "last_status",
         "last_error",
         "description"
+      ]
+    },
+    "ai_action": {
+      "keys": [
+        "action"
+      ],
+      "class": "static",
+      "attributes": [
+        "status",
+        "why",
+        "evidence",
+        "payload",
+        "result",
+        "feedback",
+        "by_model"
+      ]
+    },
+    "ai_action_kind": {
+      "keys": [
+        "kind",
+        "table"
+      ],
+      "class": "static",
+      "attributes": [
+        "autonomy",
+        "what",
+        "judge",
+        "step_cap"
+      ]
+    },
+    "ai_judge_test": {
+      "keys": [
+        "kind",
+        "table",
+        "example"
+      ],
+      "class": "static",
+      "attributes": [
+        "expected",
+        "note"
+      ]
+    },
+    "ai_memory": {
+      "keys": [
+        "purpose",
+        "situation",
+        "cell"
+      ],
+      "class": "static",
+      "attributes": [
+        "ai",
+        "right",
+        "memo",
+        "who",
+        "at"
       ]
     }
   },
@@ -1712,6 +1789,311 @@
                   "run": {
                     "kind": "column",
                     "column": "run_id"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_ai_actions": {
+      "relation": "sys_ai_actions",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ai_action": {
+            "attributes": {
+              "status": {
+                "kind": "column",
+                "column": "status"
+              },
+              "why": {
+                "kind": "column",
+                "column": "why"
+              },
+              "evidence": {
+                "kind": "column",
+                "column": "evidence"
+              },
+              "payload": {
+                "kind": "column",
+                "column": "payload"
+              },
+              "result": {
+                "kind": "column",
+                "column": "result"
+              },
+              "feedback": {
+                "kind": "column",
+                "column": "feedback"
+              },
+              "by_model": {
+                "kind": "column",
+                "column": "by_model"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "action_fills": {
+            "predicate": "fills",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ai_action",
+                "keys": {
+                  "action": {
+                    "kind": "column",
+                    "column": "action_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          },
+          "action_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ai_action",
+                "keys": {
+                  "action": {
+                    "kind": "column",
+                    "column": "action_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "ai_action_kind",
+                "keys": {
+                  "kind": {
+                    "kind": "column",
+                    "column": "kind"
+                  },
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_ai_action_kinds": {
+      "relation": "sys_ai_action_kinds",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ai_action_kind": {
+            "attributes": {
+              "autonomy": {
+                "kind": "column",
+                "column": "autonomy"
+              },
+              "what": {
+                "kind": "column",
+                "column": "what"
+              },
+              "judge": {
+                "kind": "column",
+                "column": "judge"
+              },
+              "step_cap": {
+                "kind": "column",
+                "column": "step_cap"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "kind_acts_on": {
+            "predicate": "acts_on",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ai_action_kind",
+                "keys": {
+                  "kind": {
+                    "kind": "column",
+                    "column": "kind"
+                  },
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_ai_judge_tests": {
+      "relation": "sys_ai_judge_tests",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ai_judge_test": {
+            "attributes": {
+              "expected": {
+                "kind": "column",
+                "column": "expected"
+              },
+              "note": {
+                "kind": "column",
+                "column": "note"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "test_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ai_judge_test",
+                "keys": {
+                  "kind": {
+                    "kind": "column",
+                    "column": "kind"
+                  },
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  },
+                  "example": {
+                    "kind": "column",
+                    "column": "example"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "ai_action_kind",
+                "keys": {
+                  "kind": {
+                    "kind": "column",
+                    "column": "kind"
+                  },
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sys_ai_memory": {
+      "relation": "sys_ai_memory",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ai_memory": {
+            "attributes": {
+              "ai": {
+                "kind": "column",
+                "column": "ai"
+              },
+              "right": {
+                "kind": "column",
+                "column": "right"
+              },
+              "memo": {
+                "kind": "column",
+                "column": "memo"
+              },
+              "who": {
+                "kind": "column",
+                "column": "who"
+              },
+              "at": {
+                "kind": "column",
+                "column": "at"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "memory_part_of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ai_memory",
+                "keys": {
+                  "purpose": {
+                    "kind": "column",
+                    "column": "purpose"
+                  },
+                  "situation": {
+                    "kind": "column",
+                    "column": "situation"
+                  },
+                  "cell": {
+                    "kind": "column",
+                    "column": "cell"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "purpose"
                   }
                 }
               }
