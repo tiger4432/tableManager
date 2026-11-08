@@ -648,7 +648,9 @@ def test_exactly_one_sql_blank_spelling_exists_in_server():
 
     Counted, not grepped: a grep hits the spelling quoted inside `blank_sql_condition`'s own
     docstring, which is how a duplication guard gets disabled for being noisy. The pattern is
-    `or_(<x>.is_(None), <x> == '')` and its `and_(<x>.isnot(None), <x> != '')` twin.
+    `or_(<x>.is_(None), <x> == '')`; its `and_(<x>.isnot(None), <x> != '')` twin is counted to stay at 0 -
+    `not_blank_sql_condition` is the negation of the one spelling since 1c2140d8d, so an inline notBlank
+    is a second copy.
 
     Pinned by `known_defects.DUP1` while a second copy is live. The pin is SELF-CANCELLING: the
     moment the copy is removed this goes red in the other direction, because a pin that agrees
@@ -685,7 +687,7 @@ def test_exactly_one_sql_blank_spelling_exists_in_server():
 
     pin = DEFECTS.get("DUP1")
     want_blank = pin["measured_blank_spellings"] if pin else 1
-    want_notblank = pin["measured_notblank_spellings"] if pin else 1
+    want_notblank = pin["measured_notblank_spellings"] if pin else 0
 
     tail = ("\n\nIf a count went DOWN to 1, that half of DUP1 was fixed -- update or delete the "
             "entry in vectors.json and let INV-BP-D1 stand at 1. If it went UP, another copy "
