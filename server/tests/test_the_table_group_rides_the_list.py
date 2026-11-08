@@ -36,9 +36,11 @@ def test_a_written_group_rides_the_list_and_the_list_does_not_move(client, monke
     monkeypatch.setitem(crud.TABLE_CONFIG, spaces, {**crud.TABLE_CONFIG[spaces], "group": "   "})
     after = client.get("/tables").json()
 
-    # the operator's word, folded like every other value (strip); a blank one is no group
-    assert after["groups"] == {grouped: "Process"}, after["groups"]
-    assert unwritten not in after["groups"] and spaces not in after["groups"]
+    # the operator's word, folded like every other value (strip); a blank one is no group; every other table's group
+    # (the shipped tables' «System», owner 11-06) as it was
+    assert after["groups"] == {**{n: g for n, g in before["groups"].items() if n != spaces}, grouped: "Process"}, \
+        after["groups"]
+    assert spaces not in after["groups"] and after["groups"].get(unwritten) == before["groups"].get(unwritten)
     # 🔴 THE LIST IS UNTOUCHED - same names, same order - and so is every other key
     assert after["tables"] == before["tables"] == list(crud.TABLE_CONFIG.keys())
     assert {k: v for k, v in after.items() if k != "groups"} == \
