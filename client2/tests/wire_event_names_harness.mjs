@@ -50,7 +50,12 @@ async function wireSuite(mutate) {
   const { module } = await loadWithProbe(WS_PATH, {
     mutate,
     tag: 'wireev',
-    stubs: { './utils.js': { showToast: (text, tone, opts) => said.push({ text, tone, opts }) } },
+    stubs: {
+      './utils.js': { showToast: (text, tone, opts) => said.push({ text, tone, opts }) },
+      // batch_refresh_required asks the history to read again in 300 ms - a real timer that, once this run took longer
+      // (a loaded machine: W1 to the end ~4 s), wrote into a page with no timeline and killed the run (C, 11-08)
+      './timeline.js': { triggerHistoryReloadDebounced() {}, appendHistoryLocally() {}, loadHistory() {} },
+    },
   });
 
   // The copy sits beside the subject, so `./state.js` resolves to the module this file already
