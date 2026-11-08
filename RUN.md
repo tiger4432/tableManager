@@ -7,6 +7,7 @@
 > 이제     이 머신에서 살아 있는 러너(그 실행의 자식, 또는 집기 전부터 돌던 프로세스)는 안내 없음 · × 는 cancel_requested (다음 배치에서 멈춤)
 >          같은 pid 를 다른 프로세스가 받은 경우(재사용)는 죽은 것으로 판정 -> 스케줄러 틱이 풂, 사유 «runner gone: …»
 > 읽는 법  × 뒤 상태가 cancel_requested 면 그 실행은 살아 있다 — 다음 쪽 경계에서 cancelled 로 끝남
+>          시작 직후의 × 도 자식이 뜨자마자 cancelled 로 끝냄 — «failed · runner gone» 으로 안 바뀜 (c6024305f)
 >          «held by a runner this host cannot see» 는 이제 다른 머신 · 판정 불가일 때만 — 그때만 × 가 풂
 > 끄기     없음 — 되돌리기는 619666874 revert
 > ```
