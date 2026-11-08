@@ -162,3 +162,29 @@ def test_a_number_column_s_nan_is_blank_in_sql_and_a_text_column_s_is_a_value(pg
     finally:
         pg_session.rollback()
         table.drop(pg_session.get_bind())
+
+
+def _inline_counts_as_bound(session):
+    from sqlalchemy import Column, Float, MetaData, Table, func, select, text
+
+    table = Table("blank_inline_probe", MetaData(), Column("f", Float))
+    table.create(session.get_bind())
+    try:
+        nan = [{"f": NAN}] if session.get_bind().dialect.name == "postgresql" else []
+        session.execute(table.insert(), [{"f": 7.0}, {"f": 7.5}, {"f": None}, *nan])
+        query = select(func.count()).select_from(table).where(crud.not_blank_sql_condition(crud.numeric_text_sql(table.c.f)))
+        inline = str(query.compile(dialect=session.get_bind().dialect, compile_kwargs={"literal_binds": True}))
+        assert session.execute(query).scalar() == session.execute(text(inline)).scalar() == 2, inline
+    finally:
+        session.rollback()
+        table.drop(session.get_bind())
+
+
+def test_a_number_column_s_blank_test_drawn_inline_counts_as_bound_sqlite(db_session):
+    """A rule's gates are drawn inline (`hold_copy._gated`): a bare nan there was read as a column (A 11-08)."""
+    _inline_counts_as_bound(db_session)
+
+
+@pytest.mark.pg
+def test_a_number_column_s_blank_test_drawn_inline_counts_as_bound_pg(pg_session):
+    _inline_counts_as_bound(pg_session)

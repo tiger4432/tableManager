@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **숫자 칸의 «비었나» 판정을 SQL 에 그대로 적을 때 NaN 이 낱말 nan 으로 찍히던 것 — PG 'NaN'::float8 · sqlite NULL 로 찍는다** — git pull · 런처 재기동(체인 워커 · API)
+>
+> ```
+> 누가     1c2140d8d 이후 main 을 받았고 이 커밋 전이면: 보류 복사 규칙(copy_rows_with_hold) 중 require/exclude 에 «숫자 칸»을 적은 규칙의 그룹이
+>          실패를 거듭하다 FAILED(격리)로 남아 있을 수 있음 — 그 규칙의 복사 · 보류 셈이 그동안 안 됨
+>          require/exclude 가 없거나 글자 칸만 적은 규칙 · 다른 규칙은 해당 없음
+> 볼 줄    chain_worker.log  [Chain] rule=<복사 규칙> target=<표> FAILED: … column "nan" does not exist   (PG 한글이면 «"nan" 칼럼 없음»)
+>          어드민 Chain 탭 대기열의 그 규칙 줄이 failed
+>          줄이 없으면 이 커밋 전에도 해당 없었음 — 할 일 없음
+> 받은 뒤  그 규칙을 «다시 돌리기»: 어드민 Retroactive 탭 «Replay chain rules over old data (R1)», rule = 그 복사 규칙 (키 칸 비움 = 규칙 통째)
+>          복사와 보류가 지금 원천 행으로 다시 써짐. 소급 = 그 규칙의 원천 행 수. FAILED 로 남은 옛 사건은 돌지 않고 그대로 남음(지우지 않아도 됨)
+>          박스 · 시험: python scripts/run_pg_tests.py -k "inline_counts_as_bound or copied_row_holds_until" (server 폴더) — 전부 passed 가 고쳐진 것
+> 그대로   바인드로 묻는 자리(화면 · 질의)는 전에도 맞았음. 이 커밋은 SQL 에 값을 그대로 적는 자리만 바꿈
+> ```
+
 > ## [11-08] **체인 규칙은 «선언한 칸»만 쓴다 — target_columns 가 없으면 그 종류가 선언한 칸(조인 take · 보고서 결과 · ask 출력 · 맵퍼가 등록한 columns), 시스템 카탈로그도 같은 답** — git pull · 런처 재기동(체인 워커 · API; 소급 실행은 다음 실행부터)
 >
 > ```

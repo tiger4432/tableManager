@@ -1602,6 +1602,22 @@ def not_blank_sql_condition(col_expr):
     return ~blank_sql_condition(col_expr)
 
 
+def _nan_sql():
+    """A NaN a number column is compared with: bound as the float, drawn inline as the dialect spells one -
+    PostgreSQL 'NaN'::float8, SQLite NULL (it stores a NaN as NULL). A bare float('nan') drawn inline is the word
+    nan, which both read as a column (A 11-08: the hold count's gates, `hold_copy._gated`)."""
+    from sqlalchemy import Float, literal
+    from sqlalchemy.types import TypeDecorator
+
+    class NaN(TypeDecorator):
+        impl, cache_ok = Float, True
+
+        def literal_processor(self, dialect):
+            return lambda _value: "'NaN'::float8" if dialect.name == "postgresql" else "NULL"
+
+    return literal(float("nan"), NaN())
+
+
 # The BIGINT-safe magnitude guard in `numeric_text_sql`. Conservative: 9.2e18 < 2**63,
 # so the CAST(... AS BIGINT) arm can never raise "bigint out of range" on PostgreSQL.
 BIGINT_SAFE_NUMERIC_TEXT_BOUND = 9.2e18
@@ -1655,7 +1671,7 @@ def numeric_text_sql(col_expr):
     folded = case((as_big == col_expr, cast(as_big, String)),
                   else_=cast(col_expr, String))
     return case(
-        (col_expr == float("nan"), null()),                            # a NaN is blank (owner 11-08 1ㄱ)
+        (col_expr == _nan_sql(), null()),                              # a NaN is blank (owner 11-08 1ㄱ)
         (and_(col_expr >= -BIGINT_SAFE_NUMERIC_TEXT_BOUND,
               col_expr <= BIGINT_SAFE_NUMERIC_TEXT_BOUND), folded),
         else_=cast(col_expr, String),
