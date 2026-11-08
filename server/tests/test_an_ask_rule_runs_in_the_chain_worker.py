@@ -23,7 +23,8 @@ SCHEMA = PATH + '''
 import paths
 from database.database import Base, engine
 from database import models
-models.init_dynamic_models(json.load(open(paths.config_path("table_config.json"), encoding="utf-8")))
+from database import crud
+models.init_dynamic_models(crud.load_table_config())      # the tables boot makes: the owner's and the shipped
 Base.metadata.create_all(bind=engine)
 '''
 API = PATH + '''

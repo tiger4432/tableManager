@@ -2149,21 +2149,20 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         needs_items = len(results) <= BROADCAST_ITEM_LIMIT
                         msg_items = []
 
-                        # 🔴 EVERY CELL IS WRAPPED, as every other sender's is (총괄 9eb902922 ① 여섯째).
-                        #    Only an empty one was: a value rode bare, so a datetime cell reached
-                        #    `json.dumps` as a Python datetime and the group's row broadcast was lost.
-                        def _cell(value):
-                            return {"value": value, "is_overwrite": False, "sources": {},
-                                    "updated_by": "system"}
+                        # 🔴 EVERY CELL AS THE PAGE MERGES IT (lead 11-08, 클라B's L2) - the same merge and the
+                        #    same writers as a grid read, so a written_by rule colours a chain-written cell on a
+                        #    screen that did not read it again. The cells used to be bare ({value, is_overwrite
+                        #    False}): a datetime one lost the group's broadcast (총괄 9eb902922 ①), and none said
+                        #    who wrote it.
+                        if needs_items and results:
+                            import grid_read
 
-                        for row, is_new in (results if needs_items else ()):
-                            c_at_str = to_local_str(row.created_at)
-                            u_at_str = to_local_str(row.updated_at)
-                            r_data = {col: _cell(getattr(row, col)) for col in user_cols}
-                            r_data["created_at"] = _cell(c_at_str)
-                            r_data["updated_at"] = _cell(u_at_str)
-                            msg_items.append(event_constants.upsert_item(
-                                row.row_id, r_data, c_at_str, u_at_str, is_new=is_new))
+                            merged, _looks = grid_read.read_as_page(db, target_table, [row for row, _new in results],
+                                                                    user_cols, include_sources=False)
+                            for item, (_row, is_new) in zip(merged, results):
+                                msg_items.append(event_constants.upsert_item(
+                                    item["row_id"], item["data"], item["created_at"], item["updated_at"],
+                                    is_new=is_new))
                         
                         user_name = "chain_worker"
                     

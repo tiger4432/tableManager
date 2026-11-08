@@ -53,7 +53,6 @@ import paths  # single override point for config/ + ingestion_workspace/ (ASSY_D
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 import grid_pivot  # the main grid's pivot read (소유자 10-22)
-import grid_look  # what a table's cells look like - colour rules and hand paint (owner 11-06)
 import grid_order  # a table read in its entered order, and the places people dragged (소유자 11-06)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
@@ -1443,197 +1442,7 @@ def inject_system_columns(row):
     # irreversible and is a separate ruling. New rows simply leave them NULL.
 
 
-def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
-    """
-    기본 데이터 테이블의 row 객체들에 cell_overwrites 및 cell_sources 정보를 병합하여 
-    API 응답 포맷인 { value, is_overwrite, sources, updated_by } 딕셔너리로 합성합니다.
-    include_sources=False이면 cell_sources 조회를 생략하여 대량 조회 성능을 최적화합니다.
-    """
-    if not rows:
-        return []
-
-    # 🔴 A VIEW HAS NO LAYERING METADATA, so there is nothing to merge (S-186). Cell
-    # sources and overwrites are written by the write door, and that door refuses this
-    # relation by name - so every row of a view has exactly one value per column, the one
-    # the view selected. Asking for its `row_id` here raised `AttributeError` and the route
-    # answered 500, which is the FIFTH seat in this path that assumed the framework
-    # columns: the sort, the tiebreaker, the paging, the jump, and now the merge.
-    #
-    # ⚠️ SHAPED LIKE A NORMAL ROW, not skipped. The grid reads `{value, is_overwrite,
-    # sources, updated_by}` per cell, so returning the raw ORM objects here would move the
-    # break one layer up into the serializer.
-    from ledger.setup_bundle import catalog_kind
-
-    if catalog_kind(crud.TABLE_CONFIG.get(table_name)) == "view":
-        # 🔴 THE SAME WRAPPER EVERY ROW USES. The grid reads `{row_id, table_name, data,
-        # created_at, updated_at}` for EVERY row (`grid.js` reaches for `dataObj.data[col]`),
-        # so a flat dict here stopped it drawing a view it had been drawing — the response
-        # SHAPE is a contract even where the content underneath is thinner.
-        #
-        # ⚠️ THE CELL IS `{value}` AND NOTHING ELSE. A view has no layering, and writing
-        # `is_overwrite: False` / `sources: {}` would be INVENTING an absent marker as a
-        # value — 「없는 것」 and 「0인 것」 must not render the same, which is the defect this
-        # repository has paid for more than once.
-        #
-        # ⚠️ Times go through `to_local_str`: a raw datetime makes the payload
-        # non-JSON-native and the route's own warning prices that at ~10x.
-        # 🔴 [S-229] THE ROW'S IDENTITY IS ITS KEY, COMPOSED THE WAY THE TABLE DECLARES.
-        # The grid needs one `row_id` per row, and a composite-keyed view has no single
-        # column carrying it - so the parts are joined by `crud.compose_business_key`, the
-        # one spelling of an identity, rather than by a separator invented here.
-        key_names = [key.key for key in
-                     total_order_keys(models.DYNAMIC_TABLES.get(table_name), table_name)]
-        out = []
-        for row in rows:
-            cells = {}
-            for col in user_cols:
-                value = getattr(row, col, None)
-                cells[col] = {"value": wire_text(
-                    to_local_str(value) if isinstance(value, datetime) else value)}
-            out.append({
-                "row_id": (getattr(row, key_names[0], None) if len(key_names) == 1
-                           else crud.compose_business_key(
-                               table_name, [getattr(row, name, None) for name in key_names],
-                               key_names)),
-                "table_name": table_name,
-                "data": cells,
-                "created_at": to_local_str(getattr(row, "created_at", None)),
-                "updated_at": to_local_str(getattr(row, "updated_at", None)),
-            })
-        return out
-
-    row_ids = [r.row_id for r in rows]
-    
-    # 1. cell_overwrites 일괄 로딩 (Tuple 쿼리로 ORM 인스턴스화 오버헤드 제거)
-    overwrites = db.query(
-        models.CellOverwrite.row_id,
-        models.CellOverwrite.column_name,
-        models.CellOverwrite.is_overwrite,
-        models.CellOverwrite.updated_by,
-        models.CellOverwrite.manual_priority_source
-    ).filter(
-        models.CellOverwrite.table_name == table_name,
-        models.CellOverwrite.row_id.in_(row_ids)
-    ).all()
-    
-    overwrites_map = {}
-    for row_id, column_name, is_ow, updated_by, manual_priority_source in overwrites:
-        overwrites_map[(row_id, column_name)] = (is_ow, updated_by, manual_priority_source)
-        
-    # 2. cell_sources 일괄 로딩 (include_sources가 True일 때만 실행)
-    sources_map = {}
-    ingested_map = {}
-    if include_sources:
-        # [ORDER BY source_name] Same reason as the crud SELECTs: this list feeds
-        # `compute_priority_value`, so its order is stated rather than inherited from
-        # the heap. `source_name` is UNIQUE per cell (`idx_sources_lookup_source`).
-        #
-        # [tiebreak] `ingested_at` is selected because recency breaks a tie between
-        # equally-ranked sources. Without it this READ path would resolve ties
-        # alphabetically while the WRITE path resolved them by recency, so the
-        # `priority_source` badge could name a different layer than the materialised
-        # `value` actually came from.
-        sources = db.query(
-            models.CellSource.row_id,
-            models.CellSource.column_name,
-            models.CellSource.source_name,
-            models.CellSource.value,
-            models.CellSource.ingested_at
-        ).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id.in_(row_ids)
-        ).order_by(models.CellSource.source_name.asc()).all()
-
-        for row_id, column_name, source_name, value, ingested_at in sources:
-            key = (row_id, column_name)
-            if key not in sources_map:
-                sources_map[key] = {}
-                ingested_map[key] = {}
-            sources_map[key][source_name] = value
-            ingested_map[key][source_name] = ingested_at
-
-    data_list = []
-    for row in rows:
-        r_dict = row.__dict__
-        r_id = r_dict.get("row_id") or row.row_id
-        r_data = {}
-        c_at_str = to_local_str(r_dict.get("created_at") or row.created_at)
-        u_at_str = to_local_str(r_dict.get("updated_at") or row.updated_at)
-        
-        for col in user_cols:
-            val_raw = r_dict.get(col) if col in r_dict else getattr(row, col, None)
-            key = (r_id, col)
-            
-            ow_info = overwrites_map.get(key)
-            col_srcs = sources_map.get(key, {})
-            
-            is_ow = ow_info[0] if ow_info else False
-            updated_by = ow_info[1] if ow_info else "system"
-            manual_pin = ow_info[2] if ow_info else None
-            
-            # [성능 최적화] include_sources=False 일 때는 소스 쿼리를 건너뛰었으므로 Overwrite 테이블 정보로 즉시 유도
-            if not include_sources:
-                if manual_pin == "collision_merge" or updated_by == "collision_merge":
-                    priority_source = "collision_merge"
-                elif is_ow or updated_by == "user" or manual_pin == "user":
-                    priority_source = "user"
-                else:
-                    _, priority_source = crud.compute_priority_value({}, None, table_name, cell=(table_name, col, row))
-            else:
-                # `col_srcs` is `{source: value}` because that dict IS the client-facing
-                # cell contract and cannot carry a timestamp; the timestamps travel
-                # beside it. The response shape is unchanged.
-                _, priority_source = crud.compute_priority_value(
-                    col_srcs, manual_pin, table_name,
-                    ingested_at_by_source=ingested_map.get(key), cell=(table_name, col, row))
-
-            is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
-            has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
-            
-            r_data[col] = {
-                # S-190: the SAME function the view arm and the export use. A dynamic
-                # table builds only String/Float/DateTime columns so nothing here is a
-                # dict today -- it is here so 「this cell as text」 has one author and not
-                # one per arm.
-                "value": wire_text(val_raw),
-                "is_overwrite": has_overwrite,
-                "is_collision_merge": is_collision,
-                "sources": col_srcs,
-                "updated_by": updated_by,
-                "manual_priority_source": manual_pin,
-                "priority_source": priority_source
-            }
-                
-        r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-        
-        # 🔴 그래프 동기화 컬럼 «셋»은 여기서 빠졌습니다 (2026-09-02). 2026-08-31 에
-        # `system_cols` 목록에서는 빠졌는데 «채우는 자리»가 안 빠져서, 선언한 표가 «0개»인
-        # 컬럼 셋이 그리드 «모든 행»에 셀 모양으로 실려 나가고 있었습니다 —
-        # 라우트 자기 타이머의 `Dict Conv` 칸에서, 페이지마다, 행마다.
-        # 실측: 라이브 table_config 44개 표 중 셋 중 «하나라도» column_types/display_columns
-        # 에 선언한 표 «0». 즉 아무도 묻지 않은 것을 나르고 있었습니다.
-        # DB 컬럼(models.py)은 «진짜 컬럼»이고 그대로 있습니다 — 그것을 지우는 것은 별건입니다.
-
-        # dynamic data attribute 바인딩
-        row.data = r_data
-        
-        data_list.append({
-            "row_id": r_id,
-            "table_name": table_name,
-            "data": r_data,
-            "created_at": c_at_str,
-            "updated_at": u_at_str
-        })
-
-    # ⚰️ [S-283] THE VERIFIED JOIN'S `expose` COLUMNS WERE ATTACHED HERE, and only here,
-    # because this is the single serialization point for row payloads (grid page, single-row
-    # read, batch-update response, WS items) - so a joined column could not be present on one
-    # of those and absent on another. Read-time joins are retired (ruling 461): a payload now
-    # carries the table's stored columns and nothing is computed into it on the way out.
-
-
-    return data_list
+from grid_read import cell_layers, fetch_and_merge_metadata, read_as_page  # noqa: E402 - moved whole: the chain worker's items merge as the page does (lead 11-08)
 
 @app.get("/tables")
 def list_tables(request: Request = None):
@@ -2894,10 +2703,9 @@ def grid_page(
     # [성능 최적화] 그리드 목록 조회에서는 cell_sources 로딩을 생략(include_sources=False)하여
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
-    data_list = fetch_and_merge_metadata(db, table_name, raw_rows, user_cols, include_sources=False)
+    data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
-    looks = grid_look.read(db, table_name, data_list)
     t_dict = time.time() - t_dict_start
         
     t_total = time.time() - t_total_start
@@ -2980,12 +2788,11 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns(), places=item_places)
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
-    merged = fetch_and_merge_metadata(db, table_name, raw_rows,
-                                      pivoted.keys + [pivoted.column, pivoted.value] + pivoted.carry, include_sources=False)
+    merged, looks = read_as_page(db, table_name, raw_rows,
+                                 pivoted.keys + [pivoted.column, pivoted.value] + pivoted.carry, include_sources=False)
     logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
                 "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
                 len(items), more, skip, limit, order_by, _filtered_column_count(filters))
-    looks = grid_look.read(db, table_name, merged)
     data = grid_pivot.fold(pivoted, page, raw_rows, merged, items)
     if entered:
         for group, out in zip(read, data):
@@ -4005,7 +3812,7 @@ async def apply_batch_updates_endpoint(
     # 루프가 통째로 동결된다(라이브 실측 7초 freeze의 주범). threadpool로 격리한다.
     def _merge_and_build_items():
         if row_objects:
-            fetch_and_merge_metadata(db, table_name, row_objects, user_cols, include_sources=False)
+            read_as_page(db, table_name, row_objects, user_cols, include_sources=False)
         items = []
         for row, is_new in results:
             inject_system_columns(row)
@@ -4337,40 +4144,7 @@ def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = 
     if not row or not hasattr(table_model, col_name):
         raise HTTPException(status_code=404, detail="Cell not found")
         
-    # [ORDER BY source_name] This list feeds `compute_priority_value`; a SELECT that
-    # feeds a decision states its order rather than inheriting the heap's.
-    cell_sources = db.query(models.CellSource).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id == row_id,
-        models.CellSource.column_name == col_name
-    ).order_by(models.CellSource.source_name.asc()).all()
-    
-    ow = db.query(models.CellOverwrite).filter(
-        models.CellOverwrite.table_name == table_name,
-        models.CellOverwrite.row_id == row_id,
-        models.CellOverwrite.column_name == col_name
-    ).first()
-    
-    sources_dict = {
-        s.source_name: {
-            "value": s.value,
-            "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
-            "updated_by": s.updated_by
-        }
-        for s in cell_sources
-    }
-    
-    manual_priority_source = ow.manual_priority_source if ow else None
-    
-    _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source, table_name,
-                                                     cell=(table_name, col_name, row))
-    
-    return {
-        "sources": sources_dict,
-        "manual_priority_source": manual_priority_source,
-        "priority_source": priority_source,
-        "value": getattr(row, col_name)
-    }
+    return cell_layers(db, table_name, {row_id: row}, [(row_id, col_name)])[(row_id, col_name)]
 
 @app.delete("/tables/{table_name}/{row_id}/{col_name}/sources/{source_name}")
 async def delete_cell_source(table_name: str, row_id: str, col_name: str, source_name: str, db: Session = Depends(get_db)):
@@ -4382,10 +4156,11 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
         updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
         if not updated_row:
             return None
-        inject_system_columns(updated_row)
+        col_types = crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {})
+        merged = read_as_page(db, table_name, [updated_row], [
+            c for c in col_types if c not in ["created_at", "updated_at"]], include_sources=True)[0][0]
         return event_constants.upsert_item(
-            row_id, updated_row.data, to_local_str(updated_row.created_at),
-            to_local_str(updated_row.updated_at)), len(changed_cols)
+            row_id, merged["data"], merged["created_at"], merged["updated_at"]), len(changed_cols)
 
     built = await run_in_threadpool(_delete_and_build)
     if not built:
@@ -4420,7 +4195,7 @@ async def set_cell_priority(
         cfg = crud.TABLE_CONFIG.get(table_name, {})
         col_types = cfg.get("column_types", {})
         user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-        merged = fetch_and_merge_metadata(db, table_name, [updated_row], user_cols, include_sources=True)
+        merged, _looks = read_as_page(db, table_name, [updated_row], user_cols, include_sources=True)
         return merged, changed_cols, deleted
 
     merged_rows, changed_cols, deleted_row_ids = await run_in_threadpool(_apply_and_merge_single)
@@ -4489,7 +4264,7 @@ async def set_cell_priority_batch_endpoint(
             cfg = crud.TABLE_CONFIG.get(table_name, {})
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-            merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
+            merged, _looks = read_as_page(db, table_name, changed, user_cols, include_sources=True)
         edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
         return changed, logs, deleted, merged, edits
 
@@ -4555,7 +4330,7 @@ async def delete_cell_source_batch_endpoint(
             cfg = crud.TABLE_CONFIG.get(table_name, {})
             col_types = cfg.get("column_types", {})
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
-            merged = fetch_and_merge_metadata(db, table_name, changed, user_cols, include_sources=True)
+            merged, _looks = read_as_page(db, table_name, changed, user_cols, include_sources=True)
         edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
         return changed, logs, merged, edits
 
@@ -4614,72 +4389,11 @@ def query_cells_sources(
     ).all()
     row_map = {r.row_id: r for r in rows}
     
-    # [정규화 스키마] N+1 문제를 방지하기 위해 단 2개의 배치 쿼리로 원천 데이터와 오버라이트 정보 일괄 로드
-    # [ORDER BY source_name] Same reason as the single-cell endpoint above.
-    cell_sources = db.query(models.CellSource).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id.in_(row_ids),
-        models.CellSource.column_name.in_(col_names)
-    ).order_by(models.CellSource.source_name.asc()).all()
-    
-    sources_map = {}
-    for s in cell_sources:
-        key = (s.row_id, s.column_name)
-        if key not in sources_map:
-            sources_map[key] = {}
-        sources_map[key][s.source_name] = {
-            "value": s.value,
-            "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
-            "updated_by": s.updated_by
-        }
-        
-    overwrites = db.query(models.CellOverwrite).filter(
-        models.CellOverwrite.table_name == table_name,
-        models.CellOverwrite.row_id.in_(row_ids),
-        models.CellOverwrite.column_name.in_(col_names)
-    ).all()
-    
-    overwrites_map = {}
-    for ow in overwrites:
-        key = (ow.row_id, ow.column_name)
-        overwrites_map[key] = ow.manual_priority_source
-        
-    result = []
-    for item in req.updates:
-        row_id = item.get("row_id")
-        col_name = item.get("column_name")
-        if not row_id or not col_name:
-            continue
-            
-        row = row_map.get(row_id)
-        if not row or not hasattr(table_model, col_name):
-            result.append({
-                "row_id": row_id,
-                "column_name": col_name,
-                "sources": {},
-                "manual_priority_source": None,
-                "priority_source": None,
-                "value": None
-            })
-            continue
-            
-        key = (row_id, col_name)
-        sources_dict = sources_map.get(key, {})
-        manual_priority_source = overwrites_map.get(key)
-        
-        _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source, table_name,
-                                                         cell=(table_name, col_name, row))
-        
-        result.append({
-            "row_id": row_id,
-            "column_name": col_name,
-            "sources": sources_dict,
-            "manual_priority_source": manual_priority_source,
-            "priority_source": priority_source,
-            "value": getattr(row, col_name)
-        })
-        
-    return result
+    cells = [(item.get("row_id"), item.get("column_name")) for item in req.updates
+             if item.get("row_id") and item.get("column_name")]
+    found = cell_layers(db, table_name, row_map, [(r, c) for r, c in cells if r in row_map and hasattr(table_model, c)])
+    none = {"sources": {}, "manual_priority_source": None, "priority_source": None, "value": None}
+    return [{"row_id": r, "column_name": c, **found.get((r, c), none)} for r, c in cells]
 
 @app.post("/admin/outbox/retry-failed", dependencies=[Depends(require_admin_token)])
 def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None, db: Session = Depends(get_db)):

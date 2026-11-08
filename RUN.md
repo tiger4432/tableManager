@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **다른 화면도 «누가 썼나» 색을 실시간으로 — 행 알림 여섯이 쪽 읽기와 같은 written_by · 파일에 핀한 칸은 노랑 아님** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 무엇     batch_row_upsert 항목 칸에 written_by (Written by 규칙이 있는 표만) — 칸 고치기 · 핀 · 출처 지우기(한 칸 · 묶음) · 체인 쓰기 모두
+>          파일(예: lots.csv)에 핀한 칸은 «쓴 이 = file» — 노란 표시가 꺼지고 «Written by person» 규칙도 안 칠함 (전: 다시 읽으면 노랑 · person)
+> 보는 법   화면 둘: A 가 Written by 규칙 걸린 칸을 고치거나 핀 -> B 는 다시 읽지 않고도 색이 맞음 (전: B 에서 그 칸 색만 빠짐)
+> 값       규칙 없는 표는 알림마다 sys_looks 질의 하나 · 규칙 있으면 cell_sources 하나 더 (100 행 이하 알림만)
+> 되돌리기  git log --oneline -1 --grep="every batch_row_upsert item says who wrote" 의 해시를 git revert -> API · 체인 워커 재기동
+>          되돌리면: 다른 화면은 다시 읽기 전까지 그 칸 색 빠짐 · 파일 핀 칸은 다시 노랑 · «Written by person»
+> ```
+>
+> ---
+>
 > ## [11-08] **«Tables» 화면 첫 판(L1) — 그리드 아래 상태 줄 «Tables» 버튼이 지금 표와 거르기를 새 탭에 연다** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```
