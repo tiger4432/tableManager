@@ -1938,8 +1938,6 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                             db, target_table, batch_data, drop_report=drop_report)
                 written[target_table].extend(batch_data.updates)
-                with alignment_batch_counts.stage("plain layer moved"):
-                    _move_off_the_plain_layer(db, target_table, batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
                     # the columns not written in the words a file and a grid save say them (lead 11-04: one event,
@@ -3879,7 +3877,9 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
 
     A rule's layer read from a row it was handed is settled (today's withdrawal by origin - a deleted row's, an edited
     row's that fed another row); any other of its layers, on a row its answer wrote or covers - but not one keyed by
-    the row it was read from (`_origin_keyed`: one layer per source row, settled by that row only). A person's layer is never its (`cells_written_by`). A key
+    the row it was read from (`_origin_keyed`: one layer per source row, settled by that row only); and its other
+    layer on a cell its answer wrote - one from before ownership included (총괄 09f58844f ⑦). A person's layer is never
+    its (`cells_written_by`). A key
     column's layer stays - the row is still known by its key, and a row left with only the chain's keys goes
     (`cell_layer.shells`, in `_withdraw_and_tell`). READ ONLY: {rule: the layers its answer leaves out}."""
     from chain import cell_layer
@@ -3889,10 +3889,12 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
     origins = defaultdict(set)
     for spec in settles or ():
         origins[spec["declaration"]].update(str(row) for row in spec["origins"] or () if row)
-    rows, answered = defaultdict(set), set()
+    rows, answered, cells = defaultdict(set), set(), defaultdict(set)
     for item, row_id in _row_of_each(db, table, items):
         name = rule_run.item_cell(item, "source_name")
         answered.update((row_id, column, name) for column in rule_run.item_cell(item, "updates") or {})
+        cells[str(rule_run.item_cell(item, "updated_by") or "")].update(
+            (row_id, column) for column in rule_run.item_cell(item, "updates") or {})
         if rows_too and not _origin_keyed(name, rule_run.item_cell(item, "origin_row_id")):
             rows[str(rule_run.item_cell(item, "updated_by") or "")].add(row_id)
     for item in covers or ():
@@ -3902,12 +3904,14 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
         for rule in cover.get("rules") or [str(rule_run.item_cell(item, "updated_by") or "")]:
             rows[str(rule)].update(covered)
     out = {}
-    for rule in sorted(set(rows) | set(origins)):
+    for rule in sorted(set(rows) | set(origins) | set(cells)):
         stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, sorted(origins[rule])) if named == table}
+        written = {row for row, _column in cells[rule]}
         gone = [layer for layer in cell_layer.cells_written_by(db, table, (), (rule,),
-                                                               rows=sorted(rows[rule] | stamped))
+                                                               rows=sorted(rows[rule] | stamped | written))
                 if (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys
-                and (layer[4] in origins[rule] or not _origin_keyed(layer[3], layer[4]) and layer[1] in rows[rule])]
+                and (layer[4] in origins[rule] or not _origin_keyed(layer[3], layer[4]) and (
+                    layer[1] in rows[rule] or (layer[1], layer[2]) in cells[rule]))]
         if gone:
             out[rule] = gone
     return out
@@ -3948,26 +3952,6 @@ def _covered_rows(db, table, covers) -> set:
             found.update(row for (row,) in db.query(model.row_id).filter(
                 target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
     return found
-
-
-def _move_off_the_plain_layer(db, table, items):
-    """⑦ (총괄 09f58844f, option 1): a cell a rule writes sits on its owned layer (`rule_run.layer_of_a_rules_write`);
-    the plain, unowned chain layer that rule wrote on that cell before goes in this commit
-    (`cell_layer.withdraw_layers`), so settling the owned one later leaves no old value behind. Another owned layer
-    of the same rule stays - settle answers for it (owner 11-06 step 2). -> the layers withdrawn."""
-    from chain import cell_layer
-    from database import crud
-
-    cells = defaultdict(dict)                      # writer -> {(row_id, column): the layer it was just written on}
-    for item, row_id in _row_of_each(db, table, [i for i in items or () if crud.layer_owner(i.source_name)]):
-        cells[item.updated_by].update({(row_id, column): item.source_name for column in (item.updates or {})})
-    moved = 0
-    for writer, wanted in sorted(cells.items(), key=lambda kv: str(kv[0])):
-        found = [layer for layer in cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
-                 if layer[3] != wanted.get((layer[1], layer[2])) and not crud.layer_owner(layer[3])]
-        if found:
-            moved += cell_layer.withdraw_layers(db, found, apply=True)["cells_withdrawn"]
-    return moved
 
 
 def _row_of_each(db, table, items):

@@ -101,7 +101,6 @@ def _patch_apply_batch_updates(monkeypatch, num_rows, num_logs):
     # so it answers as an answer that left nothing out would: nothing withdrawn, no row lost
     from chain import ingestion_worker
     monkeypatch.setattr(ingestion_worker, "_settle_or_fail", lambda *args, **kwargs: (0, set(), []))
-    monkeypatch.setattr(ingestion_worker, "_move_off_the_plain_layer", lambda *args, **kwargs: 0)
 
 
 @pytest.mark.anyio
