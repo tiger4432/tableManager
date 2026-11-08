@@ -207,7 +207,7 @@ def _ends_where(pg_engine, monkeypatch, tmp_path, fold):
         crud.delete_rows_batch(db, hw.LOG, ids, "hc")
         db.commit()
         with monkeypatch.context() as by_hand:       # the withdrawal below, row by row - not the round's own
-            by_hand.setattr(worker, "_retract_deleted_rows", lambda db, events: None)
+            by_hand.setattr(worker, "_withdraw_unanswered_deletions", lambda db, events, why: None)
             hw.run_chain(world)
         while followup.drain_outbox_once(world["engine"], world["setup"]) is not None:
             pass

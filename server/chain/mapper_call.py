@@ -73,8 +73,10 @@ def result_row_count(result):
         return 0
     # A proposal that pages states the rows of ALL its pages; its `updates` are the first
     # page's only (총괄 529fc7ce8 ①).
+    from chain import rule_run
+
     total = (int(result["rows_total"]) if result.get("rows_total") is not None
-             else len(result.get("updates") or ()))
+             else rule_run.rows_written(result.get("updates")))
     for batch in result.get("batches") or ():
         if isinstance(batch, dict):
             total += len(batch.get("updates") or ())

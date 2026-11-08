@@ -796,9 +796,14 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"'target_table' and the decorator was given none. The business key "
                     f"is decided from that table's declaration, so there is nothing to "
                     f"decide it from.")
-            rows_in = payloads_to_df(payloads)
             import chain_bindings
+            import event_constants
 
+            # a deleted row (no data, its old values) is not a row the author is handed: what it fed is settled by the
+            # write seat (owner 11-06 step 2), and the whole map it left is read below
+            listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
+            rows_in = payloads_to_df([p for p in listed if not isinstance(p, dict) or p.get("data")
+                                      or not event_constants.old_values_of(p)])
             left = ()
             if chain_bindings.removes_whole_maps(rule):
                 rows_in, left = _with_the_whole_maps(db, rule, table, payloads, rows_in)
@@ -807,6 +812,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
         @functools.wraps(fn)
         def run(db, payloads, rule=None, fetched=None):
             table, rows_in, left = handed(db, payloads, rule) if fetched is None else fetched
+            if rows_in.empty and not left and payloads:
+                return {"updates": []}          # only deletions were handed - the seat settles what they fed
             if "row_id" in rows_in.columns:
                 rows_in[ORIGIN_MARK] = rows_in["row_id"]
             out = fn(rows_in, db)

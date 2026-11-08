@@ -352,7 +352,8 @@ def test_apply_provenance_and_priority(bkfl_env):
         models.CellSource.row_id == new_row.row_id,
     ).all()
     assert srcs, "backfilled cells must be recorded in the layering system"
-    assert {s.source_name for s in srcs} == {crud.CHAIN_SOURCE}
+    assert {crud.layer_ranks_as(s.source_name) for s in srcs} == {crud.CHAIN_SOURCE}
+    assert {crud.layer_owner(s.source_name)[0] for s in srcs} == {enrichment.config.synthesized_rule_names("bkfl_rule")[0]}
     assert {s.updated_by for s in srcs} == {enrichment.config.synthesized_rule_names("bkfl_rule")[0]}
 
     # Layering: the backfill can never outrank user edits, and later chain
@@ -391,7 +392,7 @@ def test_apply_outbox_events_do_not_retrigger_rule(bkfl_env):
     ).all()
     assert _outbox_count(db) > outbox_before
     assert new_events
-    assert all((e.payload or {}).get("source_name") == crud.CHAIN_SOURCE for e in new_events)
+    assert all(crud.layer_ranks_as((e.payload or {}).get("source_name")) == crud.CHAIN_SOURCE for e in new_events)
 
     # ...but running the REAL chain path over them is a no-op for this rule:
     # its trigger table is the SOURCE table, and these events are on the

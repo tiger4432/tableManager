@@ -67,19 +67,55 @@ RULE_LOG_TAG = "ChainRule"
 CHAIN_SOURCE = "chain_ingestion"
 
 
-def layer_of_a_rules_write(name, origin_row_id=None) -> str:
+def rows_written(items) -> int:
+    """How many of a proposal's items write a row - what it covers and writes nothing on is not one (owner 11-06
+    step 2). The page line and the rule's `rows_out` count by this."""
+    return sum(1 for item in items or () if not item_cell(item, "covers"))
+
+
+def owner_of(item, keys=()):
+    """(rule, key) that owns what this proposed item writes (owner 11-06 step 2): its rule (`updated_by`, what `signed`
+    stamps) and the key its kind named (`owner_key` - a join's key, a decide's, a fold's group), else the row it was
+    read from (one layer per source row), else the target row's own key - its `business_key_val`, else `keys` (its
+    table's key columns) read off what it writes, else its `row_id` (auto-confirm's answer names no other). None for
+    an item no rule signed - no owner is made up for it."""
+    rule = item_cell(item, "updated_by")
+    if not rule:
+        return None
+    key = item_cell(item, "owner_key")
+    if key is None:
+        key = item_cell(item, "origin_row_id")
+    if key is None:
+        key = item_cell(item, "business_key_val")
+    if key is None and keys:
+        said = item_cell(item, "updates") or {}
+        key = [said.get(column) for column in sorted(keys)] if all(column in said for column in keys) else None
+    if key is None:
+        key = item_cell(item, "row_id")
+    if isinstance(key, (tuple, list)):          # a key of several columns - its values, `|` between
+        key = "|".join("" if part is None else str(part) for part in key)
+    return str(rule), "" if key is None else str(key)
+
+
+def layer_of_a_rules_write(name, origin_row_id=None, owner=None) -> str:
     """The layer a rule's proposed cell goes under (총괄 09f3cd289 ①, 소유자 10-09 「모든 맵퍼의 소스네임은
     chain_ingestion 에서 못 바꾸게」): chain_ingestion whatever its mapper wrote - an item naming none
     was the person's layer - and a row layer keeps its bracket. An item read from a row is that row's
     layer, `chain_ingestion (<origin_row_id>)` (총괄 8ec008914 - one layer per source row, so taking a
     row back takes only its own). The names the product gave a meaning stay: auto-confirm's two and
     the enrichment backfill's. Asked at the one seat the chain writes through (`ingestion_worker`'s
-    write loop)."""
+    write loop). `owner` (`owner_of`, owner 11-06 step 2): the layer that (rule, key) owns, on the chain's name or
+    auto-confirm's (`crud.owned_layer_name`)."""
     from chain.enrichment import backfill, candidates
     from database import crud
 
     writer = crud.layer_writer(name)
-    if writer in (candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY, backfill.SOURCE_NAME):
+    if writer == backfill.SOURCE_NAME:
+        return name
+    if owner is not None:
+        return crud.owned_layer_name(owner[0], owner[1], writer if writer in (
+            candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY) else CHAIN_SOURCE)
+    if writer in (candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY):
         return name
     if origin_row_id:
         return crud.merged_layer_name(CHAIN_SOURCE, origin_row_id)
@@ -1039,7 +1075,7 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                 if result.get("next_page") is not None:
                     answer["next_page"].append({
                         "call": result["next_page"], "rows_total": result.get("rows_total"),
-                        "pages": result.get("pages"), "first": len(result.get("updates") or ())})
+                        "pages": result.get("pages"), "first": rows_written(result.get("updates"))})
             # 🔴 WHAT ITS OUTPUT SAYS ABOUT WHERE IT CAME FROM (총괄 4c3417ccb ③) - the edit's
             #    withdrawal reads it here, a deletion's warning from `_ORIGIN_SEEN`.
             proposed = list(answer["updates"]) + [item for batch in answer["batches"]

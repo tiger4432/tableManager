@@ -113,12 +113,12 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
             out["by_table"][event.table_name] = out["by_table"].get(event.table_name, 0) + 1
         out["events"] += len(page_ids)
         if apply and page_ids:
-            from chain.ingestion_worker import _deleted_rows_of, _retract_deleted_rows
+            from chain.ingestion_worker import _deleted_rows_of, _withdraw_unanswered_deletions
             deleted = _deleted_rows_of([event for event, _payload in kept])
             # a deletion set aside still happened - its rows' cells go as a run one's do (총괄 fa5417c28 3), in the
             # commit that marks it (총괄 09f58844f). 🔴 BEFORE THE MARK (총괄 11-07): a group ending these events locks
             #    those cells, then the outbox - marked first, the two waited on each other (deadlock, run 7553f6432f49)
-            _retract_deleted_rows(db, deleted)
+            _withdraw_unanswered_deletions(db, deleted, "set-aside")
             for table, marked in _mark(db, page_ids, reason).items():
                 out["marked"] += marked
                 out["marked_by_table"][table] = out["marked_by_table"].get(table, 0) + marked

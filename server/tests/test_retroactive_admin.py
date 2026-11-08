@@ -627,10 +627,11 @@ def _backfill_layer_rows(db):
     """
     from chain import enrichment
 
-    return db.query(models.CellSource).filter(
+    # the chain's layer the decide's rule owns (owner 11-06 step 2)
+    return [s for s in db.query(models.CellSource).filter(
         models.CellSource.table_name == "retro_enrich_derived",
-        models.CellSource.source_name == crud.CHAIN_SOURCE,
         models.CellSource.updated_by == enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]).all()
+        if crud.layer_ranks_as(s.source_name) == crud.CHAIN_SOURCE]
 
 
 class TestTheEnrichmentBackfillRouteIsReachable:
@@ -857,7 +858,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
 
         layer = _backfill_layer_rows(db)
         assert layer, "non-vacuous: the run wrote no layer at all"
-        assert {s.source_name for s in layer} == {crud.CHAIN_SOURCE}
+        assert {crud.layer_ranks_as(s.source_name) for s in layer} == {crud.CHAIN_SOURCE}
         assert crud.get_source_priority(crud.CHAIN_SOURCE) > crud.get_source_priority("user") == 0
 
     def test_a_failed_backfill_does_not_kill_the_scheduler(self, retro_enrich_env):

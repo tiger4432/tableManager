@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint, Float
 from sqlalchemy import event as sa_event
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -659,6 +660,64 @@ def ensure_run_columns(engine, add=True):
 #: The databases `ensure_run_columns` found or made the columns on, in this process.
 _RUN_COLUMNS = weakref.WeakSet()
 
+#: The chain layer's owner (owner 11-06 step 2) - `CellSource.owner_rule` · `owner_key`.
+OWNER_COLUMNS = ("owner_rule", "owner_key")
+
+
+#: How many times the boot asks for cell_sources' lock before it leaves the columns to the next boot.
+OWNER_COLUMNS_TRIES = 5
+
+
+def ensure_owner_columns(engine, add=True):
+    """`cell_sources`' owner columns on a database without them - ADD COLUMN, nullable, no default: metadata only on
+    PostgreSQL 11+, no rewrite whatever the table's size. Added at BOOT only (`sync_dynamic_tables_schema`, lead 11-06:
+    no DDL on a write path), on an autocommit connection of its own under a 5 s lock_timeout, asked again while the
+    lock times out (`OWNER_COLUMNS_TRIES`). `add` False: only look - the write path's question
+    (`require_owner_columns`). Once a process and database when they are there. -> whether they are there."""
+    if engine in _OWNER_COLUMNS:
+        return True
+    import time as _time
+
+    from sqlalchemy import inspect
+    from sqlalchemy.exc import OperationalError
+
+    postgres = engine.dialect.name == "postgresql"
+    with engine.connect() as conn:
+        have = {c["name"] for c in inspect(conn).get_columns("cell_sources")}
+    missing = [name for name in OWNER_COLUMNS if name not in have]
+    if missing and not add:
+        return False
+    for attempt in range(1, OWNER_COLUMNS_TRIES + 1 if missing else 1):
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                if postgres:
+                    conn.execute(text("SET lock_timeout = '5s'"))
+                for name in missing:
+                    conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s%s VARCHAR"
+                                      % ("IF NOT EXISTS " if postgres else "", name)))
+            logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
+            break
+        except OperationalError as exc:
+            if getattr(getattr(exc, "orig", None), "pgcode", None) != "55P03" or attempt == OWNER_COLUMNS_TRIES:
+                raise
+            logger.warning("[Layers] cell_sources: its lock was not given in 5 s (attempt %d/%d) - asked again",
+                           attempt, OWNER_COLUMNS_TRIES)
+            _time.sleep(5)
+    _OWNER_COLUMNS.add(engine)
+    return True
+
+
+def require_owner_columns(engine):
+    """The layer write's question: the owner columns are there, or a refusal that says why and what to do - never a
+    write that fails inside the ORM."""
+    if not ensure_owner_columns(engine, add=False):
+        raise RuntimeError("cell_sources has no owner_rule / owner_key yet - the boot adds them (sync_dynamic_tables_"
+                           "schema); restart the API or the chain worker, and see its log for «[Layers] cell_sources»")
+
+
+#: The databases `ensure_owner_columns` found or made the columns on, in this process.
+_OWNER_COLUMNS = weakref.WeakSet()
+
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
@@ -895,6 +954,12 @@ class CellSource(Base):
     # cannot say (판정 434 ④), rather than this column answering with a second meaning
     # for NULL.
     origin_row_id = Column(String, nullable=True)
+    # owner 11-06 step 2: the (rule, key) that owns a chain layer - what settling, picking and the tests read; its
+    # name (`crud.owned_layer_name`) says the same. NULL = a layer no owner has adopted yet (a person's, a file's, or a
+    # chain layer written before). Deferred: a process reading cell_sources before `ensure_owner_columns` added them
+    # never selects them.
+    owner_rule = deferred(Column(String, nullable=True))
+    owner_key = deferred(Column(String, nullable=True))
 
     __table_args__ = (
         # [index retirement 2026-08-11] `idx_sources_lookup` (table_name, row_id,
@@ -1674,6 +1739,12 @@ def sync_dynamic_tables_schema(engine):
     from sqlalchemy.schema import CreateColumn
 
     import db_safety
+
+    try:
+        ensure_owner_columns(engine)        # cell_sources' owner columns (owner 11-06 step 2) - boot, not the writes
+    except Exception as err:                                     # noqa: BLE001 - said; the write path refuses
+        logger.error("[Layers] cell_sources: the owner columns were not added - layer writes refuse until a boot "
+                     "adds them: %s", told(err), exc_info=err)
 
     inspector = inspect(engine)
     dialect = engine.dialect

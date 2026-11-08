@@ -212,7 +212,7 @@ def run_chain(world, rounds=12):
             for item in events:
                 event_constants.mark_processed(item, "SUCCESS")
             db.commit()
-            worker._retract_deleted_rows(db, deleted)
+            worker._withdraw_unanswered_deletions(db, deleted, "unanswered")
     else:
         raise AssertionError("the chain did not settle")
 

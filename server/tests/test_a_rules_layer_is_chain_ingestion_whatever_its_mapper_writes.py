@@ -109,8 +109,9 @@ def _x(db, k="K1"):
 
 
 def _row_layer(db, k="K1"):
-    """The layer an item read from row `k` goes under - the rule here reads and writes the same row."""
-    return crud.merged_layer_name(crud.CHAIN_SOURCE, db.query(models.DYNAMIC_TABLES[T]).filter_by(
+    """The layer an item read from row `k` goes under - the rule here reads and writes the same row: since owner 11-06
+    step 2 the (rule, row) that owns it."""
+    return crud.owned_layer_name("ln_rule", db.query(models.DYNAMIC_TABLES[T]).filter_by(
         business_key_val=k).one().row_id)
 
 
@@ -142,7 +143,10 @@ def test_5_the_names_the_product_gave_a_meaning_stay(db, meant):
     NAMED["name"] = meant
     _write(db, "user", k="K1", a="v")
     _drain(db)
-    assert _x(db) == ("v!", {meant: "v!"})
+    # auto-confirm's names are owned since owner 11-06 step 2 - its base kept; the backfill's is its own
+    owned = meant == backfill.SOURCE_NAME or crud.owned_layer_name(
+        "ln_rule", db.query(models.DYNAMIC_TABLES[T]).filter_by(business_key_val="K1").one().row_id, meant)
+    assert _x(db) == ("v!", {meant if owned is True else owned: "v!"})
 
 
 def test_2_an_old_chain_layer_is_written_over_not_left_on_top(db):

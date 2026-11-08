@@ -1736,8 +1736,9 @@ def _in_rule_order(table_updates):
                     raise RuntimeError("[rule=%s target=%s] page %d: %s: %s" % (
                         item.rule, target, page, type(exc).__name__, exc)) from exc
                 updates = list(result.get("updates") or ())
-                written += len(updates)
-                said = _page_said(item.rule, target, page, item.pages, len(updates), item.total, written)
+                written += rule_run.rows_written(updates)
+                said = _page_said(item.rule, target, page, item.pages, rule_run.rows_written(updates), item.total,
+                                  written)
                 logger.info("[Chain] %s", said)
                 # the queue's `running` reads this - and its moved seconds start again (총괄 248ae20cd)
                 heartbeat.progress("mapper · %s" % said)
@@ -1752,11 +1753,11 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
                        table_contributors, broadcast_messages, woken_by_a_replay=False,
                        cascade=False, declarations_by_target=None, run=None,
-                       edit_retractions=None):
+                       settles=None):
     """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
 
-    `edit_retractions` {target: [spec]} - what a stamping rule's EDITED source rows no longer
-    feed, withdrawn after every batch is written (총괄 e35500433 · b13de0353).
+    `settles` {target: [{declaration, origins}]} - each rule that ran and the rows it was handed: after every batch
+    is written, what it owned in what its answer covers and the answer left out goes (`_settle`, owner 11-06 step 2).
 
     🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
     This block WAS 368 lines inside `_process_chain_transaction_group_sync`, wired to ten of
@@ -1779,8 +1780,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
     least DECLARED; what it SHOULD be is 「whose write is this」, and that question is answered
     when the hop arrives (㉡), not by this move.
     """
-    # `edit_retractions` too: a rule that proposed nothing this time can still owe a withdrawal
-    if table_updates or map_metadata_updates or scoped_batches or edit_retractions:
+    # `settles` too: a rule that proposed nothing this time can still owe a withdrawal
+    if table_updates or map_metadata_updates or scoped_batches or settles:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
                                       request_chain_depth, request_channel,
@@ -1833,20 +1834,21 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             scoped = [(target, updates, scope is not None, scope, retract, None)
                       for target, updates, scope, retract in scoped_batches]
             written = defaultdict(list)    # target -> the items its batches wrote, keys composed
+            later_covers = defaultdict(list)    # target -> covers answered over every page (`stamped_by`)
             # The tables are read LAZILY: a paging proposal's next page is asked only after
             # the page before it was written (총괄 e10c58e5e).
             for target_table, updates_list, replace_map, scope, retract, page_said in itertools.chain(
                     write_batches, _in_rule_order(table_updates), scoped):
                 writing = target_table          # the target a failure below is about
-                # a recount's blank columns ride on its items, not into the write (`GeneralUpdateItem` has no cell)
-                blanks = [(rule_run.item_cell(item, "updated_by"), rule_run.item_cell(item, "row_id"),
-                           rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "withdraw"))
-                          for item in updates_list if rule_run.item_cell(item, "withdraw")]
-                # 총괄 옛 키: a key no source row holds any more - its row goes after the write, it is not written
-                gone_keys = [(rule_run.item_cell(item, "business_key_val"), rule_run.item_cell(item, "own"))
-                             for item in updates_list if rule_run.item_cell(item, "gone")]
-                if gone_keys:
-                    updates_list = [item for item in updates_list if not rule_run.item_cell(item, "gone")]
+                # owner 11-06 step 2: what an answer covers and writes nothing on - settled after every batch
+                batch_covers = [item for item in updates_list if rule_run.item_cell(item, "covers")]
+                updates_list = [item for item in updates_list if not rule_run.item_cell(item, "covers")]
+                # what layers stamped by rows cover is answered over every page - settled after them (below)
+                later_covers[target_table].extend(
+                    item for item in batch_covers if rule_run.item_cell(item, "covers").get("stamped_by"))
+                batch_covers = [item for item in batch_covers if not rule_run.item_cell(item, "covers").get("stamped_by")]
+                from chain.cell_layer import key_columns
+                owners = [rule_run.owner_of(item, key_columns(target_table)) for item in updates_list]
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
@@ -1856,8 +1858,9 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 )
                 # 🔴 [총괄 09f3cd289 ①] THE LAYER IS THE CHAIN'S, WHATEVER THE MAPPER WROTE - here, where
                 #    every proposed row passes. A mapper's own name ranked 99 under the old chain layer's 4.
-                for item in batch_data.updates:
-                    item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
+                #    Named by the (rule, key) that owns it (owner 11-06 step 2).
+                for item, owner in zip(batch_data.updates, owners):
+                    item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id, owner)
 
                 # [ChainKeyGate] 🔴 THE GATE. Every chain-emitted row reaches
                 # `apply_batch_updates` through this loop and only through this loop, so
@@ -1926,14 +1929,15 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # Per TABLE, because a group writing several targets has to be able to
                 # say WHICH one it waited on - one number for "the writes" would leave the
                 # next question unanswerable without another round of measuring.
-                with (alignment_batch_counts.stage("write:%s" % target_table, said=page_said),
-                      outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
-                      written_by((declarations_by_target or {}).get(target_table, ()))):
-                    results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
-                        db, target_table, batch_data, drop_report=drop_report)
+                # a page that only covers writes nothing - its settle below still runs (owner 11-06 step 2)
+                results, changed_cells, created_logs, deleted_row_ids = [], [], [], []
+                if batch_data.updates or replace_map:
+                    with (alignment_batch_counts.stage("write:%s" % target_table, said=page_said),
+                          outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
+                          written_by((declarations_by_target or {}).get(target_table, ()))):
+                        results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
+                            db, target_table, batch_data, drop_report=drop_report)
                 written[target_table].extend(batch_data.updates)
-                with alignment_batch_counts.stage("plain layer moved"):
-                    _move_off_the_plain_layer(db, target_table, batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
                     # the columns not written in the words a file and a grid save say them (lead 11-04: one event,
@@ -2033,37 +2037,19 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 f"stale rows may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
-                # 🔴 [총괄 bc9710454 가] A RECOUNT THAT CAME BACK BLANK TAKES BACK WHAT ITS RULE WROTE THERE - after
-                #    this batch's write, before the shells below ask the rows it left. Contained like the edit's
-                #    withdrawal: a failure leaves the old value, never a hole.
-                withdrawn = set()
-                if blanks:
-                    with alignment_batch_counts.stage("blank withdrawal"):
-                        try:
-                            withdrawn = _withdraw_blanks(db, target_table, blanks)
-                            # the grid hears them with this batch - a row whose write changed nothing is not in `results`
-                            results = list(results) + _rows_not_in(db, target_table, withdrawn, results)
-                        except Exception as retract_err:               # noqa: BLE001
-                            session_contract.undo_step(db)
-                            logger.error(
-                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | a blank "
-                                f"recount's withdrawal failed after the write; old values may remain: "
-                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+                # 🔴 [owner 11-06 step 2] SETTLE, THE ROWS THIS BATCH ANSWERED: what its rules owned there and left out
+                #    goes - before the shells below ask the rows it left, so the grid hears them with this batch. What
+                #    the rules' handed rows fed is settled after every page (below). A failure fails the group.
+                with alignment_batch_counts.stage("settle rows"):
+                    _taken, withdrawn, settled_away = _settle_or_fail(db, chain_tx_id, target_table, (),
+                                                                      batch_data.updates, batch_covers, ask_shells=False)
+                    if settled_away:
+                        from sqlalchemy import inspect as identity_of
 
-                if gone_keys:
-                    # 🔴 355ee9840 5: a failed delete fails the GROUP - it is retried, and its recount writes the same
-                    #    values again - not a line beside a success
-                    with alignment_batch_counts.stage("gone rows"):
-                        try:
-                            deleted_row_ids = list(deleted_row_ids or []) + _delete_gone(db, target_table, gone_keys)
-                        except Exception as gone_err:                   # noqa: BLE001
-                            session_contract.undo_step(db)
-                            logger.error(
-                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | deleting "
-                                f"{len(gone_keys)} row(s) whose key no source row holds failed - the group "
-                                f"fails (retried up to its rules' max_group_attempts, then FAILED): "
-                                f"[{type(gone_err).__name__}] {gone_err}")
-                            raise
+                        results = [(row, is_new) for row, is_new in results
+                                   if identity_of(row).identity[0] not in set(settled_away)]
+                        deleted_row_ids = list(deleted_row_ids or []) + settled_away
+                    results = list(results) + _rows_not_in(db, target_table, withdrawn, results)
 
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
                 #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
@@ -2080,7 +2066,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     # the columns this write wrote blank, outside the keys - read off its items, no query
                     blanked = {column for item in batch_data.updates for column, value in (item.updates or {}).items()
                                if column not in keys and crud.is_blank_value(value)}
-                    # and the rows a blank recount just took a layer from
+                    # and the rows the settle above just took a layer from
                     asked = [row_id for row_id, column in changed_cells if column in blanked] + sorted(withdrawn)
                     # their identity, so an expired row is not loaded to be asked
                     created = {identity_of(row).identity[0] for row, is_new in results if is_new} if asked else ()
@@ -2091,7 +2077,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         gone_ids = set(gone)
                         results = [(row, is_new) for row, is_new in results
                                    if identity_of(row).identity[0] not in gone_ids]
-                        cell_layer.delete_shells(db, target_table, gone)
+                        try:
+                            cell_layer.delete_shells(db, target_table, gone)
+                        except Exception as shell_err:                  # noqa: BLE001 - the settle's rows: said, failed
+                            _settle_failed(db, chain_tx_id, target_table, shell_err)
                         deleted_row_ids = list(deleted_row_ids or []) + gone
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
@@ -2229,42 +2218,15 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             exc_info=True,
                         )
 
-            # 🔴 [총괄 e35500433 · b13de0353] AN EDITED SOURCE ROW TAKES BACK WHAT IT NO LONGER FEEDS:
-            #   the layers it stamped in the columns of the rule that ran, off the rows that rule's
-            #   write did not just put it on. After every batch, so a row `plan_retraction` purged
-            #   has no layers left to find. Contained like that one: a failure leaves stale layers,
-            #   never a hole.
-            for target_table, specs in sorted((edit_retractions or {}).items()):
-                with alignment_batch_counts.stage("edit retraction:%s" % target_table):
-                    keep = _rows_written_from(db, target_table, written.get(target_table))
-                    for spec in specs:
-                        # 🔴 THE COLUMNS FROM THIS WRITE (총괄 09f58844f ⑥): what the rule's items wrote, every page of
-                        #    it, or what it declares - not what this process last saw it write
-                        spec["columns"] = rule_run.columns_a_rule_writes(spec["rule"], [
-                            item for item in written.get(target_table, ())
-                            if rule_run.item_cell(item, "updated_by") == spec["declaration"]], more=True) \
-                            or _columns_its_layers_hold(db, target_table, spec["declaration"], spec["origins"])
-                        if not spec["columns"]:
-                            logger.warning(
-                                "[ChainRetract] rule %s: it wrote nothing here this time and declares no columns - "
-                                "the old cells of %d edited source row(s) were not withdrawn",
-                                (spec["rule"] or {}).get("name"), len(spec["origins"]))
-                            continue
-                        try:
-                            _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
-                                               declarations=(spec["declaration"],),
-                                               table=target_table, columns=spec["columns"],
-                                               keep=keep)
-                        except Exception as retract_err:               # noqa: BLE001
-                            session_contract.undo_step(db)
-                            limit = _limit_that_stopped(
-                                retract_err, time.time() - _group_claim().get("started", time.time()))
-                            logger.error(
-                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | "
-                                f"rule: {spec['declaration']} | the edit's withdrawal failed after the "
-                                f"write; old layers may remain: "
-                                + ("statement timeout · %g s - " % limit if limit else "")
-                                + f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+            # 🔴 [owner 11-06 step 2] SETTLE, WHAT THE RULES' HANDED ROWS FED - the second half of the one seat (the
+            #    rows each batch answered were settled with it): after every batch and page, so no page takes back what
+            #    the next writes. A failure fails the group (it is retried, and its rules answer again) - never a hole,
+            #    never a stale value left beside a success.
+            for target_table in sorted(set(settles or {}) | set(later_covers)):
+                with alignment_batch_counts.stage("settle:%s" % target_table):
+                    _settle_or_fail(db, chain_tx_id, target_table, (settles or {}).get(target_table, ()),
+                                    written.get(target_table, ()), later_covers.get(target_table, ()),
+                                    rows_too=False)
             if opened:
                 session_contract.release_hold(db)       # nothing committed - the caller's one commit takes it
 
@@ -2435,9 +2397,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # The declarations writing each target - stamped on what that write stages, so none of
     # their rules is woken by it (총괄 ebefd20e8). Filled at the same place, from the rule.
     declarations_by_target = defaultdict(set)
-    # target -> what each stamping rule's EDITED trigger rows no longer feed (총괄 b13de0353):
-    # only here is a rule's own output still apart from the others' on its target.
-    edit_retractions = defaultdict(list)
+    # target -> each rule that ran on it and the rows it was handed (owner 11-06 step 2, `_settle`): only here is a
+    # rule's own output still apart from the others' on its target.
+    settles = defaultdict(list)
 
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
@@ -2525,14 +2487,11 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                                   depth=incoming_depth,
                                                   woken_by_a_replay=woken_by_a_replay,
                                                   cascade=cascade, run=run)
-                edited = [p.get("row_id") for e in trigger_events if e.event_type == "EDIT"
-                          for p in expanded[outbox_expand.event_key(e)] if p.get("row_id")]
-                # the edited source rows only - the write seat builds what they no longer feed from what it wrote
-                # (총괄 09f58844f ⑥). A run that proposed nothing still owns what it wrote before (총괄 10-08).
-                if edited:
-                    edit_retractions[target_table].append({
-                        "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),
-                        "origins": edited, "rule": rule})
+                # every row it was handed - made, edited, deleted - is a key its answer settles (owner 11-06 step 2).
+                # A run that proposed nothing still owns what it wrote before (총괄 10-08).
+                settles[target_table].append({"declaration": rule_shape.declaration_of(rule), "origins": [
+                    p.get("row_id") for e in trigger_events for p in expanded[outbox_expand.event_key(e)]
+                    if p.get("row_id")]})
                 if target_payload["updates"]:
                     table_updates[target_table].extend(target_payload.get("updates"))
                     if rule.get("name") not in table_contributors[target_table]:
@@ -2593,7 +2552,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         map_metadata_updates, scoped_batches, table_contributors,
         broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade,
         declarations_by_target=declarations_by_target, run=run,
-        edit_retractions=edit_retractions)
+        settles=settles)
     if not written_ok:
         return False, write_error, []
 
@@ -2795,7 +2754,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
                     with alignment_batch_counts.stage("replay cursor"):
                         from chain import replay as _replay
                         _replay.advance_cursors(db, events)
-                    _retract_deleted_rows(db, deleted)
+                    _withdraw_unanswered_deletions(db, deleted, "unanswered")
                     with alignment_batch_counts.stage("mark processed"):
                         # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
                         _ran_though_set_aside(db, tx_id, events)
@@ -3433,8 +3392,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         retrying_count += 1
 
                 with alignment_batch_counts.stage("commit"):
-                    await _step_beating(db, "failure marks", _commit_after, _retract_deleted_rows, db,
-                                        _deleted_rows_of(events_in_tx) if isolate_group else {})
+                    await _step_beating(db, "failure marks", _commit_after, _withdraw_unanswered_deletions, db,
+                                        _deleted_rows_of(events_in_tx) if isolate_group else {}, "failed")
 
                 if failed_permanently_count > 0:
                     say_failure(tx_id, failure, failed_permanently_count, error_reason)
@@ -3725,14 +3684,12 @@ def another_chain_loop_is_running(now=None):
 #   (`rule_run.RULE_LOG_TAG`), which is the vocabulary 판정 498 ③ made single.
 
 
-def _retract_what_those_rows_fed(db, table, row_ids):
-    """Withdraw the cells these deleted rows were the source of, and NAME what cannot be.
+def _withdraw_what_those_rows_fed(db, table, row_ids, why):
+    """Withdraw the cells these deleted rows were the source of by their origin stamp, and NAME what cannot be - for a
+    deletion no rule answered (`_withdraw_unanswered_deletions`; one the rules answered was settled, `_settle`).
 
-    🔴 [S-280 · 판정 435 ④ · 총괄 796f04605 ①] ASKED WHERE THE CHAIN ENDS A GROUP (`_retract_deleted_rows`), not
-    behind the ledger's follow-up: a deletion is the chain's result and is withdrawn when the ledger stops too. The
-    withdrawal is `cell_layer.withdraw_by_origin` - `withdraw_source`'s per-cell pass, with `apply`.
-    The ruling behind the CREATE/EDIT gate (endless cascade) stays intact: a DELETE enters the rule loop only
-    for a rule that declares `allow_delete_trigger` (총괄 옛 키 - widened by that cell, not reversed).
+    🔴 [S-280 · 판정 435 ④ · 총괄 796f04605 ①] ASKED WHERE THE CHAIN ENDS A GROUP, not behind the ledger's follow-up:
+    a deletion is the chain's result and is withdrawn when the ledger stops too.
 
     🔴 [판정 434 ④] AND THE KINDS THAT CANNOT BE REVERTED ARE NAMED. A rule whose kind does
     not stamp its origin leaves cells this cannot find, and answering that with a quiet zero
@@ -3746,14 +3703,21 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     lead says otherwise (총괄 11-07: kept - box logs 0, tests 1 on purpose; again when there is evidence).
     """
     import db_safety
+    from chain import cell_layer
     from database.context import channel
 
     for attempt in (1, 2):
+        # 🔴 ONE SAVEPOINT FOR THE WHOLE WITHDRAWAL (QA 11-08): a lock lost on a later page, at a shell's delete or
+        #    at the EDIT it stages undoes every page before it too - the retry finds what it should take back
+        nested = db.begin_nested()
         try:
             # The follow-up lap is the chain's own write - said, so it does not lean on the
             # source name the way events queued before the channel do.
             with channel(event_constants.CHANNEL_CHAIN):
-                _withdraw_and_tell(db, table, row_ids, "deleted")
+                # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
+                for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
+                    _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
+            nested.commit()
             # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
             #   There is one set now, so it walks the loader's - and that is WIDER, which is
             #   right: a rule that cannot be reverted is worth naming whichever path runs it.
@@ -3765,7 +3729,8 @@ def _retract_what_those_rows_fed(db, table, row_ids):
                     logger.warning("[ChainRetract] %s", refusal)
             return
         except Exception as err:                                   # noqa: BLE001
-            session_contract.undo_step(db)
+            if nested.is_active:
+                nested.rollback()
             if db_safety.lost_a_lock(err):
                 if attempt == 2:
                     raise
@@ -3787,17 +3752,19 @@ def _deleted_rows_of(events):
     return deleted
 
 
-def _retract_deleted_rows(db, deleted):
-    """What the deleted rows `{table: row ids}` (`_deleted_rows_of`) fed, withdrawn - once, where the chain ends their
-    events: a group's SUCCESS commit or its quarantine, a depth refusal, an operator's set-aside. A row deleted is a
-    fact whether or not a rule runs on it (총괄 fa5417c28 3). Table by table. 🔴 IN THE COMMIT THAT ENDS THEM, BEFORE
+def _withdraw_unanswered_deletions(db, deleted, why):
+    """A deletion NO RULE ANSWERED (owner 11-06 step 2 - one the rules answered was settled, `_settle`): what the deleted
+    rows `{table: row ids}` (`_deleted_rows_of`) fed, withdrawn by its origin stamp - once, where the chain ends their
+    events, after settle in the same commit: a group's SUCCESS commit (an AI rule's answers - it is not woken by a
+    deletion; nothing settle took is left), its quarantine, a depth refusal, an operator's set-aside. `why` names
+    which. A row deleted is a fact whether or not a rule runs on it (총괄 fa5417c28 3). Table by table. 🔴 IN THE COMMIT THAT ENDS THEM, BEFORE
     IT (총괄 09f58844f): its steps are held (`session_contract.held`), so the caller's commit takes them with its marks."""
     if not any(deleted.values()):
         return
     with session_contract.held(db):
         for table, row_ids in sorted(deleted.items()):
             if row_ids:
-                _retract_what_those_rows_fed(db, table, row_ids)
+                _withdraw_what_those_rows_fed(db, table, row_ids, why)
 
 
 def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, ask_shells=True, **scope):
@@ -3846,88 +3813,75 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
     return stats
 
 
-def _withdraw_blanks(db, table, blanks):
-    """A recount that came back blank takes back what its rule wrote there (총괄 bc9710454 가): `blanks` are the
-    batch's `(updated_by, row_id, business_key_val, columns)` whose items named columns in `withdraw` - left out of
-    the write. One withdrawal per rule that wrote some of those cells last, by the one door - none, and no line, when
-    it wrote none of them. -> the row ids that lost a layer."""
+def _settle_or_fail(db, tx_id, table, settles, items, covers, **how) -> tuple:
+    """`_settle`, or the one line that says it failed and fails the group (it is retried, and its rules answer again)
+    - never a hole, never a stale value left beside a success."""
+    try:
+        return _settle(db, table, settles, items, covers, **how)
+    except Exception as settle_err:                                    # noqa: BLE001
+        _settle_failed(db, tx_id, table, settle_err)
+
+
+def _settle_failed(db, tx_id, table, err):
+    """The one line a settle that failed says - its withdrawal, or the rows it emptied refusing to go - and the group
+    fails with it."""
+    session_contract.undo_step(db)
+    limit = _limit_that_stopped(err, time.time() - _group_claim().get("started", time.time()))
+    logger.error(
+        f"🔴 [ChainRetract] Table: '{table}' | TX: '{tx_id}' | settling what its rules own failed after the write - "
+        f"the group fails (retried up to its rules' max_group_attempts, then FAILED): "
+        + ("statement timeout · %g s - " % limit if limit else "") + f"[{type(err).__name__}] {err}")
+    raise err
+
+
+def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True, why="settled") -> tuple:
+    """`_unsettled`'s layers withdrawn, one rule at a time, by the one body (`_withdraw_and_tell`); a row whose key no
+    source row holds any more that another writer keeps is named (뒤집음 · 소유자 10-28). Asked twice by the write
+    seat: the rows each batch answered, before its shells and the grid's message (`ask_shells` False - the seat asks
+    them), and what the rules' handed rows fed, after every page (`rows_too` False). -> (cells withdrawn, the rows
+    that lost a layer, the rows deleted - a key no source row holds and nobody else on its row)."""
     from chain import cell_layer
-    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
-    from database import models
-
-    model = models.DYNAMIC_TABLES[table]
-    cells, by_key = defaultdict(set), {}
-    for writer, row_id, key, columns in blanks:
-        if row_id:
-            cells[writer].update((row_id, column) for column in columns)
-        elif key is not None:
-            by_key.setdefault(key, []).append((writer, columns))
-    keys = list(by_key)
-    for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
-        for row_id, key in (db.query(model.row_id, model.business_key_val)
-                            .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE]))):
-            for writer, columns in by_key[key]:
-                cells[writer].update((row_id, column) for column in columns)
-    lost = set()
-    for writer, wanted in sorted(cells.items()):
-        found = cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
-        if not found:
-            continue
-        stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in found}), "blank",
-                                   declarations=(writer,), layers=found, ask_shells=False)
-        lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
-    return lost
-
-
-def _delete_gone(db, table, gone):
-    """The rows of these keys go - a decide's key no source row holds any more (총괄 옛 키): the grid's delete (its
-    layers, a history line, one DELETE). `gone` [(key, the declaration's rules)] - the rules by the name their writes
-    carry in `updated_by` (`rule_shape.declaration_of`, what `rule_run.signed` stamps). A row another writer is on
-    stays, and is named (355ee9840 2).
-    🔴 뒤집음 · 소유자 10-28: A ROW A PERSON WROTE ON STAYS - these rules' layers on it go (`cells_written_by`,
-    the key columns' kept, so the row is still known by its key), the person's stay, and it is named with the cells
-    withdrawn. It went, named, from 10-14 (총괄 4abf68886 «A row a person wrote on goes too»). -> the deleted row
-    ids."""
-    from chain import cell_layer
-    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import crud, models
 
-    model = models.DYNAMIC_TABLES[table]
-    own = {key: tuple(names or ()) for key, names in gone if key is not None}
-    keys = list(own)
-    found = {}
-    for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
-        found.update(db.query(model.row_id, model.business_key_val)
-                     .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE])))
-    others = cell_layer.rows_others_wrote(db, table, {row_id: own[key] for row_id, key in found.items()})
-    for row_id, names in sorted(others.items()):
-        logger.warning("[ChainRetract] kept %s %s: no source rows, but %s wrote on it", table, found[row_id],
-                       ", ".join(names))
-    doomed = [row_id for row_id in found if row_id not in others]
-    if not doomed:
-        return []
-    persons = cell_layer.person_rows(db, table, doomed)
-    keys = cell_layer.key_columns(table)
-    columns = [c for c in (crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {} if c not in keys]
-    by_rules = defaultdict(list)
-    for row_id in sorted(persons):
-        by_rules[own[found[row_id]]].append(row_id)
-    for rules, row_ids in sorted(by_rules.items()):
-        layers = cell_layer.cells_written_by(db, table, [(r, c) for r in row_ids for c in columns], rules)
-        if layers:
-            _withdraw_and_tell(db, table, row_ids, "gone", declarations=rules, layers=layers)
-        for row_id in row_ids:
-            logger.warning("[ChainRetract] kept %s %s: no source rows, a person's value is on it - withdrew %d "
-                           "cell(s)", table, found[row_id], sum(1 for layer in layers if layer[1] == row_id))
-    doomed = [row_id for row_id in doomed if row_id not in persons]
-    if doomed:
-        crud.delete_rows_batch(db, table, doomed, cell_layer.GONE_DELETER)
-    logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(doomed))
-    return doomed
+    taken, lost, deleted = 0, set(), []
+    for rule, gone in sorted(_unsettled(db, table, settles, items, covers, rows_too).items()):
+        stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in gone}), why,
+                                   declarations=(rule,) if rule else (), layers=gone, ask_shells=ask_shells)
+        taken += stats.get("cells_withdrawn", 0)
+        lost.update(row for _columns, rows in stats["lost_a_layer"].values() for row in rows)
+    left = {}
+    landed = {row for _item, row in _row_of_each(db, table, items)} if covers else set()
+    for item in covers or ():
+        cover = rule_run.item_cell(item, "covers") or {}
+        if cover.get("where"):
+            rules = tuple(cover.get("rules") or [str(rule_run.item_cell(item, "updated_by") or "")])
+            # a row the answer wrote is answered, not left
+            left.update((row, rules) for row in _covered_rows(db, table, {"where": cover["where"]}) if row not in landed)
+    if left:
+        model = models.DYNAMIC_TABLES[table]
+        kept = dict(db.query(model.row_id, model.business_key_val).filter(model.row_id.in_(sorted(left))))
+        others = cell_layer.rows_others_wrote(db, table, {row: left[row] for row in kept})
+        persons = cell_layer.person_rows(db, table, list(kept))
+        doomed = []
+        for row_id, key in sorted(kept.items(), key=lambda kv: str(kv[1])):
+            writers = sorted(set(others.get(row_id, ())) | ({crud.USER_SOURCE} if row_id in persons else set()))
+            if writers:
+                logger.warning("[ChainRetract] kept %s %s: no source rows, but %s wrote on it", table, key,
+                               ", ".join(writers))
+            else:
+                doomed.append(row_id)
+        # nobody else on it - it goes, the grid's delete (its layers, a history line, one DELETE)
+        if doomed:
+            crud.delete_rows_batch(db, table, doomed, cell_layer.SHELL_DELETER)
+            deleted.extend(doomed)
+            logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(doomed))
+    return taken, lost - set(deleted), deleted
 
 
 def _rows_not_in(db, table, row_ids, results):
     """[(row, False)] for these row ids that `results` - a write's `(row, is_new)` - does not hold."""
+    if not row_ids:
+        return []
     from sqlalchemy import inspect as identity_of
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import models
@@ -3937,6 +3891,100 @@ def _rows_not_in(db, table, row_ids, results):
     rest = sorted(set(row_ids) - held)
     return [(row, False) for i in range(0, len(rest), DEFAULT_CHUNK_SIZE)
             for row in db.query(model).filter(model.row_id.in_(rest[i:i + DEFAULT_CHUNK_SIZE]))]
+
+
+def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
+    """SETTLE (owner 11-06 step 2 - «f, g 를 선언하면 켤레로 회수»): each rule's answer on `table` replaces what that
+    rule owned in what the answer covers, and what it left out goes - one seat for a key a row left, a row deleted,
+    a recount gone blank, a key no row holds any more.
+
+      settles   [{declaration, origins}] - each rule that ran and the rows it was handed (made, edited, deleted)
+      items     what the batches wrote (named by `rule_run.layer_of_a_rules_write`, so the name says its owner)
+      covers    items that write nothing and say what the answer covers (`covers`: rows · where · stamped_by, and
+                `rules` when it speaks for more than its own)
+
+    A rule's layer read from a row it was handed is settled (today's withdrawal by origin - a deleted row's, an edited
+    row's that fed another row); any other of its layers, on a row its answer wrote or covers - but not one keyed by
+    the row it was read from (`_origin_keyed`: one layer per source row, settled by that row only); and its other
+    layer on a cell its answer wrote - one from before ownership included (총괄 09f58844f ⑦). A person's layer is never
+    its (`cells_written_by`). A key
+    column's layer stays - the row is still known by its key, and a row left with only the chain's keys goes
+    (`cell_layer.shells`, in `_withdraw_and_tell`). READ ONLY: {rule: the layers its answer leaves out}."""
+    from chain import cell_layer
+
+    keys = cell_layer.key_columns(table)
+
+    origins = defaultdict(set)          # "" - rows a deletion no rule answered handed: what they fed, any writer's
+    for spec in settles or ():
+        origins[spec["declaration"] or ""].update(str(row) for row in spec["origins"] or () if row)
+    rows, answered, cells = defaultdict(set), set(), defaultdict(set)
+    for item, row_id in _row_of_each(db, table, items):
+        name = rule_run.item_cell(item, "source_name")
+        answered.update((row_id, column, name) for column in rule_run.item_cell(item, "updates") or {})
+        cells[str(rule_run.item_cell(item, "updated_by") or "")].update(
+            (row_id, column) for column in rule_run.item_cell(item, "updates") or {})
+        if rows_too and not _origin_keyed(name, rule_run.item_cell(item, "origin_row_id")):
+            rows[str(rule_run.item_cell(item, "updated_by") or "")].add(row_id)
+    for item in covers or ():
+        cover = rule_run.item_cell(item, "covers")
+        covered = _covered_rows(db, table, cover)
+        # `rules`: the declarations one answer speaks for - a decide's two halves on the row its key left
+        for rule in cover.get("rules") or [str(rule_run.item_cell(item, "updated_by") or "")]:
+            rows[str(rule)].update(covered)
+    out = {}
+    if origins.get(""):
+        gone = [layer for layer in cell_layer.cells_stamped_by(db, sorted(origins.pop(""))) if layer[0] == table
+                and (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys]
+        if gone:
+            out[""] = gone
+    for rule in sorted(set(rows) | set(origins) | set(cells)):
+        stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, sorted(origins[rule])) if named == table}
+        written = {row for row, _column in cells[rule]}
+        gone = [layer for layer in cell_layer.cells_written_by(db, table, (), (rule,),
+                                                               rows=sorted(rows[rule] | stamped | written))
+                if (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys
+                and (layer[4] in origins[rule] or not _origin_keyed(layer[3], layer[4]) and (
+                    layer[1] in rows[rule] or (layer[1], layer[2]) in cells[rule]))]
+        if gone:
+            out[rule] = gone
+    return out
+
+
+def _origin_keyed(name, origin) -> bool:
+    """A layer one row's reading owns - its key is the row it was read from (`rule_run.owner_of`), or it is that row's
+    layer from before ownership (`chain_ingestion (<row>)`)."""
+    from database import crud
+
+    owner = crud.layer_owner(name)
+    key = owner[1] if owner else (origin if origin and name == crud.merged_layer_name(crud.CHAIN_SOURCE, origin)
+                                  else None)
+    return bool(key) and key == origin
+
+
+def _covered_rows(db, table, covers) -> set:
+    """The rows of `table` an answer covers: `rows` named, the rows `where` {column: value} finds (a key no source row
+    holds, a map or job), the rows the layers `stamped_by` these source rows sit on (a fold's group)."""
+    from sqlalchemy import tuple_
+    from chain import cell_layer
+    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
+    from database import models
+
+    covers = covers or {}
+    found = {str(row) for row in covers.get("rows") or () if row}
+    if covers.get("stamped_by"):
+        found.update(row for named, row, *_ in cell_layer.cells_stamped_by(db, covers["stamped_by"]) if named == table)
+    by_columns = defaultdict(list)
+    for where in covers.get("where") or ():
+        by_columns[tuple(sorted(where))].append(tuple(where[column] for column in sorted(where)))
+    model = models.DYNAMIC_TABLES[table] if by_columns else None
+    for columns, values in sorted(by_columns.items()):
+        target = (getattr(model, columns[0]) if len(columns) == 1
+                  else tuple_(*(getattr(model, column) for column in columns)))
+        values = sorted({v[0] for v in values} if len(columns) == 1 else set(values), key=str)
+        for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
+            found.update(row for (row,) in db.query(model.row_id).filter(
+                target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
+    return found
 
 
 def _row_of_each(db, table, items):
@@ -3960,47 +4008,6 @@ def _row_of_each(db, table, items):
                             .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE]))):
             landed.extend((item, row_id) for item in by_key.get(key, ()))
     return landed
-
-
-def _rows_written_from(db, table, items):
-    """{(origin_row_id, row_id)} - the rows these written items put each origin's output on, by
-    the key the write composed (`dt_map_derivation.derived_keys_of` reads it the same way)."""
-    return {(item.origin_row_id, row_id)
-            for item, row_id in _row_of_each(db, table, [i for i in items or () if getattr(i, "origin_row_id", None)])}
-
-
-def _columns_its_layers_hold(db, table, declaration, origins):
-    """The columns of `table` whose layers `declaration` wrote from these source rows - what an edited row's rule
-    wrote there before, read off the layers when this write and its declaration name none (총괄 09f58844f ⑥: not
-    what this process last saw it write)."""
-    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
-    from database import models
-
-    S, ids, columns = models.CellSource, [str(o) for o in origins or () if o], set()
-    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        columns.update(c for (c,) in db.query(S.column_name).filter(
-            S.table_name == table, S.updated_by == declaration, S.origin_row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))
-            .distinct())
-    return columns or None
-
-
-def _move_off_the_plain_layer(db, table, items):
-    """⑦ (총괄 09f58844f, option 1): a cell written with the row it came from sits on that row's layer
-    (`rule_run.layer_of_a_rules_write`); the plain chain layer its rule wrote on that cell before - when its mapper
-    did not carry the row - goes in this commit (`cell_layer.withdraw_layers`), so withdrawing that row later leaves
-    no old value behind. Nothing of the kind there, nothing done. -> the layers withdrawn."""
-    from chain import cell_layer
-
-    cells = defaultdict(dict)                      # writer -> {(row_id, column): the layer it was just written on}
-    for item, row_id in _row_of_each(db, table, [i for i in items or () if getattr(i, "origin_row_id", None)]):
-        cells[item.updated_by].update({(row_id, column): item.source_name for column in (item.updates or {})})
-    moved = 0
-    for writer, wanted in sorted(cells.items(), key=lambda kv: str(kv[0])):
-        found = [layer for layer in cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
-                 if layer[3] != wanted.get((layer[1], layer[2]))]
-        if found:
-            moved += cell_layer.withdraw_layers(db, found, apply=True)["cells_withdrawn"]
-    return moved
 
 
 def _analyze_stale_tables_sync(db_session_factory, built=(),
@@ -4474,8 +4481,8 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
 
     if depth_refused:
         # the FAILED marks, so they are not re-read
-        await _step_beating(db, "depth refusal", _commit_after, _retract_deleted_rows, db,
-                            _deleted_rows_of(depth_refused))
+        await _step_beating(db, "depth refusal", _commit_after, _withdraw_unanswered_deletions, db,
+                            _deleted_rows_of(depth_refused), "depth")
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and

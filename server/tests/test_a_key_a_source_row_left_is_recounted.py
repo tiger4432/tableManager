@@ -192,7 +192,7 @@ def test_an_edit_that_moves_the_only_row_off_its_key_takes_the_keys_row(db, coll
         _chain(db)
 
     assert _inv(db) == {"J1": ("A, B", 2), "J4": ("C", 1)}
-    assert _deletions(db) == [cell_layer.GONE_DELETER]
+    assert _deletions(db) == [cell_layer.SHELL_DELETER]
     assert _gone_lines(caplog) == ["[ChainRetract] table=%s rows_deleted=1 - no source row holds their key" % INV]
 
 
@@ -217,7 +217,7 @@ def test_a_deleted_only_row_takes_its_keys_row(db, door, caplog):
         _chain(db)
 
     assert _inv(db) == {"J1": ("A, B", 2)}
-    assert _deletions(db) == [cell_layer.GONE_DELETER]
+    assert _deletions(db) == [cell_layer.SHELL_DELETER]
     assert not [line for line in _gone_lines(caplog) if "a person's value" in line]
 
 
@@ -251,8 +251,7 @@ def test_a_keys_row_a_person_wrote_on_stays_without_its_rules_cells_and_is_named
     assert _inv(db) == {"J1": ("A, B", 2), "J3": (None, None)}
     assert db.query(models.DYNAMIC_TABLES[INV]).filter_by(job="J3").one().note == "checked"
     assert _deletions(db) == []
-    assert ("[ChainRetract] kept %s J3: no source rows, a person's value is on it - withdrew 3 cell(s)" % INV
-            in _gone_lines(caplog))
+    assert ("[ChainRetract] kept %s J3: no source rows, but user wrote on it" % INV) in _gone_lines(caplog)
 
 
 def test_the_chains_deletion_is_a_chain_event_and_a_persons_is_not(db):
@@ -279,7 +278,8 @@ def test_the_chains_deletion_is_a_chain_event_and_a_persons_is_not(db):
     assert len(by_person) == 1 and worker.wakes(watcher, by_person[0])
 
 
-def test_a_rule_without_the_cell_is_not_handed_a_deletion(db):
+def test_every_rule_is_handed_a_deletion(db):
+    """판정 435 ④ widened (owner 11-06 step 2): a deletion wakes every rule that settles - no cell asks for it."""
     _seed(db)
     _write(db, [{"row_id": _src(db, "L1").row_id, "updates": {"t": "9"}}])
     _chain(db)
@@ -287,12 +287,12 @@ def test_a_rule_without_the_cell_is_not_handed_a_deletion(db):
     crud.delete_rows_batch(db, SRC, [_src(db, "L2").row_id], "okey")
     _chain(db)
 
-    assert len(HANDED) == 1
+    assert len(HANDED) == 2 and HANDED[1]["data"] == {} and HANDED[1]["old"]["log_id"] == "L2"
     assert _inv(db) == {"J1": ("A", 1), "J3": ("C", 1)}, "the decide on the same table took the deletion"
 
 
-def test_a_group_with_an_edit_and_a_deletion_hands_the_plain_rule_only_the_edit(db):
-    """The plain rule wakes on the group's edit; the group's deletion is the decide's alone."""
+def test_a_group_with_an_edit_and_a_deletion_hands_the_plain_rule_both(db):
+    """The plain rule wakes on the group's edit and on its deletion (owner 11-06 step 2, 판정 435 ④ widened)."""
     _seed(db)
     with crud.transaction_context("okey", "tx-mixed", crud.USER_SOURCE):
         _src(db, "L1").t = "9"
@@ -300,7 +300,7 @@ def test_a_group_with_an_edit_and_a_deletion_hands_the_plain_rule_only_the_edit(
         db.commit()
     _chain(db)
 
-    assert [p["row_id"] for p in HANDED] == [_src(db, "L1").row_id]
+    assert len(HANDED) == 2 and _src(db, "L1").row_id in [p["row_id"] for p in HANDED]
     assert _inv(db) == {"J1": ("A", 1), "J3": ("C", 1)}
 
 
@@ -596,7 +596,7 @@ def test_an_edit_that_takes_a_row_out_of_the_gate_leaves_its_keys_count(db, gate
 def test_a_row_that_was_never_inside_is_not_handed_and_one_that_left_is_handed_as_it_was():
     from chain import rule_run
 
-    rule = {"name": "r", "require": ["t"], "allow_delete_trigger": True}
+    rule = {"name": "r", "require": ["t"]}
     never = {"row_id": 1, "data": {"t": {"value": ""}, "job": {"value": "J1"}}, "old": {"job": "J0"}}
     left = {"row_id": 2, "data": {"t": {"value": ""}, "job": {"value": "J1"}}, "old": {"t": "1"}}
     inside = {"row_id": 3, "data": {"t": {"value": "2"}, "job": {"value": "J1"}}}
@@ -604,8 +604,9 @@ def test_a_row_that_was_never_inside_is_not_handed_and_one_that_left_is_handed_a
     handed, missed = rule_run.held_back(rule, [never, left, inside])
     assert handed == [{"row_id": 2, "data": {}, "old": {"t": "1", "job": "J1"}}, inside]
     assert missed == {"t": 2}
-    assert rule_run.held_back({**rule, "allow_delete_trigger": False}, [never, left, inside])[0] == [inside], \
-        "a rule that does not read rows that left is not handed them"
+    from chain import ask_rule
+    assert rule_run.held_back({**rule, "mapper": ask_rule.ASK_MAPPER}, [never, left, inside])[0] == [inside], \
+        "an AI rule is not asked again by a row that left"
 
 
 # ------------------------------------------------------------------------------ a deletion set aside, run again

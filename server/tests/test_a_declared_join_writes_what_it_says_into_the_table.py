@@ -349,11 +349,12 @@ def test_the_written_layer_is_the_rules_own_name(db, monkeypatch):
     seen.clear()
     run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
-    # The LAYER is the chain's - its source row's, named at the write seat (총괄 8ec008914) - so the wake filter
-    # treats this write like every other chain write, and the AUTHOR is the rule's (so an operator can still see
-    # who wrote it).
+    # The LAYER is the chain's - the one its rule and join key own, named at the write seat (owner 11-06 step 2) - so
+    # the wake filter treats this write like every other chain write, and the AUTHOR is the rule's (so an operator can
+    # still see who wrote it).
     item = seen and seen[0].updates[0]
-    assert item and item.source_name == crud.merged_layer_name(join_into.CHAIN_LAYER, item.origin_row_id)
+    assert item and crud.layer_writer(item.source_name) == join_into.CHAIN_LAYER
+    assert crud.layer_owner(item.source_name)[0] == DECLARATION["name"]
     assert seen[0].updates[0].updated_by == DECLARATION["name"]
 
 
@@ -559,7 +560,8 @@ def test_this_module_does_not_borrow_the_other_doors_engine():
 
 def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_written():
     """The row-level net (principle 2). Two answers for one left row means neither is the
-    answer; that row is skipped by name and every other row is still written.
+    answer; that row is skipped by name and every other row is still written. A row skipped or matched by nothing is
+    COVERED, once (owner 11-06 step 2 ㄴ, C-1): what this rule owned there goes - it is no longer left standing.
 
     🔴 [판정 567] ASKED OF THE SEAT THAT BUILDS THE ITEMS, not of the one that writes
     them. The net lives in `_update_items` now, which is also the body the dynamic mapper
@@ -581,9 +583,10 @@ def test_a_left_row_with_two_right_answers_is_skipped_by_name_and_the_rest_are_w
 
     items = join_into._update_items(None, "left_t", rows, spec, "rule_x")
 
-    assert len(items) == 1
-    assert [i.row_id for i in items] == ["ok"]
-    assert items[0].updates == {"v": "C"}
+    written = [i for i in items if "covers" not in i]
+    assert [i["row_id"] for i in written] == ["ok"]
+    assert written[0]["updates"] == {"v": "C"}
+    assert sorted(i["covers"]["rows"][0] for i in items if "covers" in i) == ["fan", "miss"]
 # ---------------------------------------------------------------------------
 # 2026-09-15 - a numeric join key is folded by the machine, not refused by the database
 # ---------------------------------------------------------------------------

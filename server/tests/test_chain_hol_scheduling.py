@@ -286,9 +286,9 @@ def test_group_target_tables_derivation():
     e_chain = FakeEvent("u2", "tblA_src", "tx2", event_type="CREATE", source_name="chain_ingestion")
     assert ciw._group_target_tables([e_chain], RULES) == set()
 
-    # DELETE 이벤트는 트리거 대상이 아님(CREATE/EDIT만)
+    # a person's DELETE wakes every rule on its table (owner 11-06 step 2, 435 ④ widened)
     e_del = FakeEvent("u3", "tblA_src", "tx3", event_type="DELETE", source_name="user")
-    assert ciw._group_target_tables([e_del], RULES) == set()
+    assert ciw._group_target_tables([e_del], RULES) == {"table_A"}
 
     # 규칙 없는 트리거 테이블 → 빈 집합
     e_norule = FakeEvent("u4", "unknown_src", "tx4", event_type="CREATE", source_name="user")

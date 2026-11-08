@@ -253,7 +253,7 @@ def test_an_output_row_its_mapper_left_without_its_source_gets_it_by_key(db):
     assert ok, error
     src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
     [(row, column, source, origin)] = _layers(db)
-    assert (column, origin) == ("w", src_row) and source == crud.merged_layer_name(crud.CHAIN_SOURCE, src_row)
+    assert (column, origin) == ("w", src_row) and source == crud.owned_layer_name("oc_copy", src_row)
 
 
 def test_the_plain_layer_it_sat_on_moves_and_a_deleted_source_leaves_no_old_value(db):
@@ -266,8 +266,7 @@ def test_the_plain_layer_it_sat_on_moves_and_a_deleted_source_leaves_no_old_valu
     _push(db, [{"k": "K1", "v": "new"}])
     ok, error, _ = _group(db, [rule])
     assert ok, error
-    assert [layer[2] for layer in _layers(db)] == [crud.merged_layer_name(crud.CHAIN_SOURCE, layer[3])
-                                                  for layer in _layers(db)], "the plain layer went"
+    assert [crud.layer_owner(layer[2]) is not None for layer in _layers(db)] == [True], "the plain layer went"
     src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
     crud.delete_rows_batch(db, SRC, [src_row], "oc")
     ok, error, _ = _group(db, [rule])
@@ -430,3 +429,40 @@ def test_a_deletion_run_again_after_its_set_aside_withdrew_it_withdraws_nothing_
     ok, error, _ = _group(db, [rule])
     assert ok, error
     assert (_layers(db), _dst(db), _count(db)) == before and _waiting(db, SRC) == []
+
+
+def test_only_the_plain_layer_moves_and_another_source_rows_layer_of_the_same_rule_stays(db):
+    """The settle (owner 11-08: one seat): the plain, unowned layer a rule wrote on a cell goes when it writes that
+    cell on a layer it owns; the layer another source row of the same rule owns there is that row's and stays."""
+    from chain import ingestion_worker as worker
+    from chain import rule_shape
+
+    signed = rule_shape.declaration_of(_rule("oc_copy"))
+    for name, origin in ((crud.CHAIN_SOURCE, None), (crud.owned_layer_name(signed, "S1"), "S1")):
+        crud.apply_batch_updates(db, DST, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            updates={"k": "K1", "w": name}, source_name=name, updated_by=signed, origin_row_id=origin)]))
+    row_id = db.query(models.DYNAMIC_TABLES[DST]).one().row_id
+    now = schemas.GeneralUpdateItem(row_id=row_id, updates={"w": "new"}, source_name=crud.owned_layer_name(signed, "S2"),
+                                    updated_by=signed, origin_row_id="S2")
+    crud.apply_batch_updates(db, DST, schemas.GeneralUpdateBatch(updates=[now]))
+    assert len(_layers(db)) == 3, "non-vacuous: the plain layer and two source rows' layers sit on the cell"
+
+    worker._settle(db, DST, [], [now], [])
+
+    assert sorted(layer[2] for layer in _layers(db)) == sorted([crud.owned_layer_name(signed, "S1"), now.source_name])
+
+
+def test_a_deletion_no_rule_answered_takes_back_what_its_row_fed_through_the_settle(db):
+    """Owner 11-08 (one seat): what a deleted row no rule answered fed (a failed group, a depth refusal, a set-aside)
+    is settled as an answer of no rule - every writer's layer its origin stamps goes."""
+    from chain import ingestion_worker as worker
+
+    _push(db, [{"k": "K1", "v": "a"}])
+    ok, error, _ = _group(db, [_rule("oc_copy")])
+    assert ok, error
+    src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
+    assert [layer[3] for layer in _layers(db)] == [src_row], "non-vacuous: the copy's layer names its source row"
+
+    worker._withdraw_unanswered_deletions(db, {SRC: [src_row]}, "unanswered")
+
+    assert _layers(db) == []

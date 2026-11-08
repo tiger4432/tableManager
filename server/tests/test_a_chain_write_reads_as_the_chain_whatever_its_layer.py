@@ -199,7 +199,7 @@ def test_an_auto_confirm_write_asks_the_join_for_its_opt_in(db, opts_in):
 
     _drain(db, _decide_and_join(opts_in))
 
-    confirmed = [p for p in _events(db, DST) if p.get("source_name") == "enrichment_auto_confirm"]
+    confirmed = [p for p in _events(db, DST) if crud.layer_writer(p.get("source_name")) == "enrichment_auto_confirm"]
     assert confirmed, "the fixture no longer auto-confirms, so the join's answer means nothing"
     assert {p.get(event_constants.CHANNEL_KEY) for p in confirmed} == {"chain"}
     assert _values(db, DST, "grade") == ["LOT"]
