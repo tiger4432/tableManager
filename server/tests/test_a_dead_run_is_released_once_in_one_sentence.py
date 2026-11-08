@@ -113,6 +113,8 @@ def test_the_chain_s_release_is_the_one_release_and_the_x_says_the_same(db):
     assert "runner gone" in _state(db, "c1")[1]
     items = running._retroactive(db, datetime.now(timezone.utc))
     assert [item["waiting"] for item in items] == [retroactive.HELD_UNSEEN]
+    assert {run["run_id"]: run["waiting"] for run in retroactive.runs(db)}["c2"] == retroactive.HELD_UNSEEN, \
+        "the runs list says what the queue says (lead 11-09)"
     retroactive.request_cancel(db, "c2")
     state, error = _state(db, "c2")
     assert state == retroactive.RUN_FAILED and error.startswith("runner gone: chain/elsewhere/"), error

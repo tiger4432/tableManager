@@ -2265,8 +2265,8 @@ def built_tables(cuts=None):
 
 
 def left_in_round():
-    """How many builds this thread's open round left for later (`comes_again`) so far."""
-    return len(getattr(_ROUND, "left", None) or ())
+    """The names this thread's open round left for later (`comes_again`) so far, in order."""
+    return list(getattr(_ROUND, "left", None) or ())
 
 
 def _note_failure(engine, name, err):

@@ -202,19 +202,7 @@ def _retroactive(db, now):
                   None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
                   else {"run_id": run["run_id"]},
                   state=run_state(run.get("runner")),
-                  waiting=_held(run) or retroactive._stages_of(db, [run["run_id"]]).get(run["run_id"],
-                                                                                     (None, None, None))[2])]
-
-
-def _held(run):
-    """`HELD_UNSEEN` for a run whose runner reads orphaned but not provably gone - only the × releases it."""
-    from admin import retroactive
-    from utils import heartbeat
-
-    runner = run.get("runner")
-    if heartbeat.runner_state(runner) != "orphaned" or heartbeat.runner_gone(runner, run["run_id"]):
-        return None
-    return retroactive.HELD_UNSEEN
+                  waiting=run.get("waiting"))]
 
 
 def _collectors(scheduler_pid):

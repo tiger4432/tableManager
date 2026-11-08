@@ -150,6 +150,8 @@ def test_the_queue_s_running_item_carries_the_wait_and_none_without_one(world, p
         assert _record(pg_engine) == ("Page 1: write", control.waiting)
         items = running._retroactive(db, datetime.now(timezone.utc))
         assert [item["waiting"] for item in items] == ["waiting Lock:relation on pid 7 (chain-slot-1 · tx A) · 4 s"]
+        assert [run["waiting"] for run in retroactive.runs(db) if run["run_id"] == RUN] == [control.waiting], \
+            "the runs list says what the queue says (lead 11-09)"
     finally:
         db.close()
     control.stop_telling()

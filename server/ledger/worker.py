@@ -559,10 +559,11 @@ def ledger_index_rounds(db_session_factory, stop=None):
     from runtime import maintenance_line
 
     stop = stop or threading.Event()
-    works = [(models.ensure_model_indexes_sync, db_session_factory, ("ledger",), logger.warning)]
-    while works:
-        works = maintenance_line._round(db_session_factory, works)
-        if works and stop.wait(maintenance_line.POLL_SECONDS):
+    left = [((models.ensure_model_indexes_sync, db_session_factory, ("ledger",), logger.warning), {})]
+    while left:                                   # each round starts from the cuts the last one left (lead 11-09)
+        left = maintenance_line._round(db_session_factory, [work for work, _cuts in left],
+                                       cuts=maintenance_line._cuts_of(left))
+        if left and stop.wait(maintenance_line.POLL_SECONDS):
             return
 
 

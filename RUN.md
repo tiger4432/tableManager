@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **소급 실행 목록도 «무엇을 기다리나»를 싣는다 · 잘린 인덱스의 다음 시각은 그 일이 든다** — git pull · 런처 재기동(스케줄러 · 체인 워커 · 원장 · API)
+>
+> ```
+> 무엇     GET /admin/retroactive/runs 의 실행 중 행에 waiting — 큐 줄 밑 한 줄과 같은 글(한 함수가 둘 다 짓는다)
+>          판정 못 하는 러너면 «held by a runner this host cannot see - press × to release», 막혔으면 «waiting Lock:… on pid …»
+> 인덱스   잘린 짓기의 «다음 시각»을 그 일이 들고 다님 — 폴 · Reload · 원장 프로세스의 다음 바퀴가 그 시각 전엔 다시 안 짓는다
+>          로그 줄은 그대로(cut N time(s) - next try after <시각> / not tried - …)
+> 읽는 법  목록과 큐의 waiting 이 다르면 결함 — 둘은 같은 함수의 답이다
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-09] **잘린 인덱스 짓기는 «다음에 다시» · 원장 부모 인덱스는 20 s 기다리고 끊음 · 키 없는 요청은 닫힘** — git pull · 런처 재기동(스케줄러 · 체인 워커 · API)
 >
 > ```

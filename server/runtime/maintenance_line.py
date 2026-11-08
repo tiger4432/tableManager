@@ -162,52 +162,61 @@ def _each(works):
 BUILT_WHY = "an index was just built on it and the planner had no statistics for it"
 
 
-#: The line's works that left an index for later (`models.comes_again`), each as (where it came from, work) - asked
-#: again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met. An index request's
-#: (INDEX_WANTED) is its row, open until settled (`_take_asks`, 총괄 11-07 ㄱ), not kept here.
+#: The line's works that left an index for later (`models.comes_again`), each as (where it came from, work, its cuts
+#: {name: (cuts, next try)}) - asked again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it
+#: was met, and its cuts go with it (lead 11-09 ㄱ). An index request's (INDEX_WANTED) is its row, open until
+#: settled (`_take_asks`, 총괄 11-07 ㄱ), its cuts on the row - not kept here.
 _LEFT = []
-#: {index name: (cuts, next try)} of the start's and the declared work's builds (`models.cuts_in_round`) - kept beside
-#: `_LEFT`, as an ask's are on its row (lead 11-08 ④a).
-_CUTS = {}
 #: Where the declared work's came from - a Reload runs it anew with the rules as they stand and its old ones go.
 DECLARED = "declared"
 
 
 def _keep(left, source, replacing=False):
-    """`left` (a round's works that left one) kept for the polls under `source`, a work once whatever its source.
+    """`left` (a round's (work, cuts) that left one) kept for the polls under `source`, a work once whatever its
+    source - a work kept already takes the newer cuts.
     `replacing`: that source's old ones taken out first - a work holds the rules it was made with, and a rule changed
     or gone must not be asked for again (총괄 11-06)."""
     if replacing:
         _LEFT[:] = [kept for kept in _LEFT if kept[0] != source]
-    for work in left:
-        if work not in left_works():
-            _LEFT.append((source, work))
+    for work, cuts in left:
+        if work in left_works():
+            _LEFT[:] = [(kept[0], kept[1], cuts) if kept[1] == work else kept for kept in _LEFT]
+        else:
+            _LEFT.append((source, work, cuts))
 
 
 def left_works():
     """The works kept for the next poll."""
-    return [work for _source, work in _LEFT]
+    return [work for _source, work, _cuts in _LEFT]
 
 
-def _round(db_session_factory, works, words=None, cuts=_CUTS):
+def _cuts_of(kept):
+    """{name: (cuts, next try)} the kept works hold, each's last part - the round after starts from them."""
+    out = {}
+    for each in kept:
+        out.update(each[-1])
+    return out
+
+
+def _round(db_session_factory, works, words=None, cuts=None):
     """Index works (`_each`), then one ANALYZE of every table the round built an index on (`models.built_tables` -
     the one builder notes it, 총괄 11-05 ㄴ): without statistics for a new index the planner guesses (owner 11-04 ·
-    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> the works that left one for later;
-    `words` gets each name's word (`models.words_in_round`); `cuts` the round's cuts, which it starts from."""
+    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> [(work, its cuts)] of the works that
+    left one for later; `words` gets each name's word (`models.words_in_round`); the round starts from `cuts`."""
     from chain import ingestion_worker as worker
     from database import models
 
     left = []
     with models.built_tables(cuts) as built:
         for work in works:
-            before = models.left_in_round()
+            before = len(models.left_in_round())
             _each([work])
-            if models.left_in_round() > before:
-                left.append(work)
+            names = models.left_in_round()[before:]
+            if names:
+                cut = models.cuts_in_round()
+                left.append((work, {name: cut[name] for name in names if name in cut}))
         if words is not None:
             words.update(models.words_in_round())
-        cuts.clear()
-        cuts.update(models.cuts_in_round())
     if built:
         try:
             worker._analyze_stale_tables_sync(db_session_factory, built=set(built), built_why=BUILT_WHY)
@@ -223,8 +232,8 @@ def _start(db_session_factory):
     declared = _declared_work(db_session_factory)
     left = _round(db_session_factory, _start_work(db_session_factory))
     _LEFT[:] = []
-    _keep([work for work in left if work not in declared], "start")
-    _keep([work for work in left if work in declared], DECLARED)
+    _keep([each for each in left if each[0] not in declared], "start")
+    _keep([each for each in left if each[0] in declared], DECLARED)
 
 
 def _declared_work(db_session_factory):
@@ -291,13 +300,14 @@ def poll_once(db_session_factory, mark):
     if latest != mark:
         mark = latest
     fresh = _declared_work(db_session_factory) if declared else None
+    carried = _cuts_of(kept for kept in _LEFT if kept[0] == DECLARED)  # a Reload's work keeps the old one's cuts
     if fresh is not None:
         _keep((), DECLARED, replacing=True)                       # the old rules' are not asked for again
     if _LEFT:
-        left = _round(db_session_factory, left_works())
-        _LEFT[:] = [kept for kept in _LEFT if kept[1] in left]
+        left = _round(db_session_factory, left_works(), cuts=_cuts_of(_LEFT))
+        _LEFT[:] = [(source, work, cuts) for source, work, _old in _LEFT for done, cuts in left if done == work]
     if fresh is not None:
-        _keep(_round(db_session_factory, fresh), DECLARED)
+        _keep(_round(db_session_factory, fresh, cuts=carried), DECLARED)
     if asks:
         _take_asks(db_session_factory, asks, cuts)
     return mark
@@ -328,10 +338,12 @@ def _take_asks(db_session_factory, asks, cuts=None):
     names = {row_id: index_wants.index_name(*each) for row_id, each in asks}
     cuts, before = dict(cuts or {}), dict(cuts or {})
     words = {}
-    _round(db_session_factory, _ask_works(db_session_factory, [asks[0][1]]), words, cuts)
+    cuts.update(_cuts_of(_round(db_session_factory, _ask_works(db_session_factory, [asks[0][1]]), words, cuts)))
     if asks[1:]:
         with models.waits_before(0):
-            _round(db_session_factory, _ask_works(db_session_factory, [each for _id, each in asks[1:]]), words, cuts)
+            cuts.update(_cuts_of(_round(db_session_factory, _ask_works(db_session_factory,
+                                                                       [each for _id, each in asks[1:]]),
+                                        words, cuts)))
     closed = {}
     for row_id, (table, columns, why) in asks:
         word = words.get(index_wants.index_name(table, columns, why))

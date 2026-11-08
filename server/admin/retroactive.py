@@ -3144,6 +3144,7 @@ def in_flight(db, now=None, stall_after=None):
         # process, so an operator asking "is anything actually doing this" had nothing to
         # look at. NULL means the row predates this column - unknown, not "nobody".
         "runner": row.runner,
+        "waiting": _waiting_of(row, _stages_of(db, [row.run_id])),
         # 🔴 THE GATE'S OWN STATE, SAID OUT LOUD. `moving` was computed here and thrown
         # away: the response carried "a run is in flight" and the screen could not tell
         # "about to finish" from "stopped and blocking everything behind it". Those are
@@ -3286,6 +3287,19 @@ def _shown(row):
     if row["blocker"] is not None:
         shown["blocker"] = dict(row["blocker"], query=(row["blocker"]["query"] or "")[:BEAT_QUERY_CHARS])
     return shown
+
+
+def _waiting_of(row, stages):
+    """What run `row` waits on, the same in every window that shows it (`runs`, `in_flight`, lead 11-09):
+    `HELD_UNSEEN` for a runner orphaned but not provably gone - only the × releases it - else its stage's wait
+    (`tell`, `stages` from `_stages_of`); None for a run not in flight."""
+    from utils import heartbeat
+
+    if row.state not in IN_FLIGHT_STATES:
+        return None
+    if heartbeat.runner_state(row.runner) == "orphaned" and not heartbeat.runner_gone(row.runner, row.run_id):
+        return HELD_UNSEEN
+    return stages.get(row.run_id, (None, None, None))[2]
 
 
 def _waiting(rows):
@@ -3797,7 +3811,7 @@ def runs(db, limit: int = 50) -> list:
             return {"phase": None, "phase_seconds": None, "rows_per_second": None, "seconds_left": None}
         rate, left = pace(row.processed_rows, row.total_rows,
                           row.started_at and (now - _utc(row.started_at)).total_seconds())
-        phase, phase_at, _waiting = stages.get(row.run_id, (None, None, None))
+        phase, phase_at = stages.get(row.run_id, (None, None, None))[:2]
         return {"phase": phase,
                 "phase_seconds": phase_at and round((now - _utc(phase_at)).total_seconds()),
                 "rows_per_second": rate and round(rate, 1), "seconds_left": left and round(left)}
@@ -3824,6 +3838,7 @@ def runs(db, limit: int = 50) -> list:
                              if row.last_progress_at else None),
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
         **told(row),
+        "waiting": _waiting_of(row, stages),
     } for row in rows]
     # Where a run picks up next, from the operation that knows (총괄 3a1446982) - null for an
     # operation with no such idea, and for a run still going.

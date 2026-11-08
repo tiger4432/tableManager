@@ -136,6 +136,6 @@ def test_the_same_work_deferred_at_the_start_and_again_at_a_reload_is_kept_once(
     assert maintenance_line.left_works() == [work] and len(builder["calls"]) == 2
     _poll(monkeypatch)
     assert maintenance_line.left_works() == [work] and len(builder["calls"]) == 3, "one ask a poll"
-    maintenance_line._keep([work], "asked")
-    maintenance_line._keep([work], "asked")
+    maintenance_line._keep([(work, {})], "asked")
+    maintenance_line._keep([(work, {})], "asked")
     assert maintenance_line.left_works() == [work], "a work kept once, whatever asked for it"
