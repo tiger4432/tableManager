@@ -212,13 +212,17 @@ def fixture_loop(monkeypatch):
     seen = {"load": 0, "refresh": 0, "evict": 0, "warmup": 0, "index_rules": []}
 
     def load():
+        # what the real load does for its readers: `loaded_chain_rules` hands a copy of these, not another load
         seen["load"] += 1
-        return [{"name": "loaded_%d" % seen["load"]}]
+        rules = [{"name": "loaded_%d" % seen["load"]}]
+        worker._LOADED_RULES = [dict(rule) for rule in rules]
+        return rules
 
     async def no_sweep(*a, **k):
         return None
 
     monkeypatch.setattr(worker, "load_chain_rules", load)
+    monkeypatch.setattr(worker, "_LOADED_RULES", None)
     monkeypatch.setattr(worker, "reload_worker_process_cache",
                         lambda: seen.__setitem__("evict", seen["evict"] + 1))
     monkeypatch.setattr(worker, "warmup_worker",

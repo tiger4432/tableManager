@@ -141,6 +141,28 @@ def _the_fixtures_fake_mappers_load():
             sys.modules[name] = module
 
 
+@pytest.fixture
+def system_catalogue_wakes():
+    """Ask for it to let a declaration read wake the system catalogue's sync thread, as in the product."""
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _the_system_catalogue_sleeps(request):
+    """The chain loop's declaration read wakes the system catalogue's sync thread (owner 11-06) - a daemon that
+    outlives the test and reads the next one's rules. Shut unless the test asks `system_catalogue_wakes`.
+    Not through `monkeypatch`, for the reason above."""
+    if "system_catalogue_wakes" in request.fixturenames:
+        yield
+        return
+    import system_catalog
+
+    wake = system_catalog.wake
+    system_catalog.wake = lambda: None
+    yield
+    system_catalog.wake = wake
+
+
 @pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`

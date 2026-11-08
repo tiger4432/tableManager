@@ -45,7 +45,6 @@ QUIET_KEPT = {
     "server/internal_event_client.py": {"cleanup": 2, "parse": 2, "probe": 1},
     "server/ledger/backfill.py": {"elsewhere": 1},
     "server/ledger/config.py": {"import": 1},
-    "server/ledger/config_authoring.py": {"elsewhere": 1},
     "server/ledger/config_explorer_service.py": {"elsewhere": 1},
     "server/ledger/observability.py": {"hot": 3},
     "server/ledger/roleframe.py": {"parse": 1},
@@ -79,7 +78,7 @@ QUIET_KEPT = {
     "server/scripts/seed_syn_valid_die_floors.py": {"import": 1, "parse": 1},
     "server/scripts/support/finding_kinds.py": {"import": 1},
     "server/transfer_plan.py": {"parse": 4},
-    "server/utils/heartbeat.py": {"probe": 7, "elsewhere": 1},
+    "server/utils/heartbeat.py": {"probe": 8, "elsewhere": 1},  # runner_gone: unknown = not gone (86418412c)
     "server/utils/logger.py": {"cleanup": 1, "logging": 1},
     "server/utils/payload_helper.py": {"parse": 1},
     "server/utils/time_format.py": {"elsewhere": 1},

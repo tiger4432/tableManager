@@ -78,9 +78,9 @@ def fixture_env(tmp_path, monkeypatch):
     for name, attr in WRITERS.items():
         real = getattr(crud, attr)
 
-        def counting(db, rows, _real=real, _name=name):
+        def counting(db, rows, *args, _real=real, _name=name, **kwargs):
             written[_name] += len(rows)
-            return _real(db, rows)
+            return _real(db, rows, *args, **kwargs)
         monkeypatch.setattr(crud, attr, counting)
     yield tmp_path, written
     engine.dispose()
