@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from database.crud import clean_str_value, is_blank_key_part
+from database.crud import clean_str_value, is_blank_key_part, is_blank_value
 from declaration_names import bare_name
 from utils import time_format
 
@@ -196,21 +196,12 @@ def is_blank_source_value(value: Any) -> bool:
     on top: a key part made of spaces names nothing.
     (Here beside `_is_missing` since 10-14 so a sentence's `when` asks it too; `event_frame` keeps the name.)
     """
-    return _is_missing(value) or (isinstance(value, str) and not value.strip())
+    return is_blank_value(value)
 
 
 def _is_missing(value: Any) -> bool:
-    if value is None:
-        return True
-    try:
-        missing = pd.isna(value)
-    except (TypeError, ValueError):
-        return False
-    if isinstance(missing, bool):
-        return missing
-    if getattr(missing, "shape", None) == ():
-        return bool(missing)
-    return False
+    """Absent - `is_blank_value(spaces=False)`: a text of spaces is a present value here (판정 194 ㉢)."""
+    return is_blank_value(value, spaces=False)
 
 
 @dataclass(frozen=True)

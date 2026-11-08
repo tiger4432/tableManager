@@ -32,7 +32,7 @@ TABLE = {"business_key": "k",
 #: (value written, what the text cell stores). The left five fold; the rest are today's answer.
 FOLDS = [(1.0, "1"), (np.int64(3), "3"), (1.5, "1.5"), (1e16, "10000000000000000"),
          (np.float64(2.0), "2")]
-TODAY = [(True, True), ("1.0", "1.0"), (float("inf"), float("inf"))]
+TODAY = [(True, True), ("1.0", "1.0")]
 
 
 @pytest.mark.parametrize("value, stored", FOLDS)
@@ -46,8 +46,10 @@ def test_a_number_into_a_text_column_is_stored_as_the_reader_spells_it(value, st
 def test_everything_else_keeps_todays_path(value, stored):
     assert crud.cast_value_by_type(value, "string", "v") == stored
     assert type(crud.cast_value_by_type(value, "string", "v")) is type(stored)
-    nan = crud.cast_value_by_type(float("nan"), "string", "v")
-    assert nan != nan, "NaN is passed on as it was"
+    # TURNED (owner 11-08 1ㄱ 2ㄱ, was «NaN is passed on as it was» and inf kept): a NaN is blank, inf refused by name
+    assert crud.cast_value_by_type(float("nan"), "string", "v") is None
+    with pytest.raises(crud.CellRefused):
+        crud.cast_value_by_type(float("inf"), "string", "v")
     assert crud.cast_value_by_type(1.0, "number", "n") == 1.0
     assert isinstance(crud.cast_value_by_type(1.0, "number", "n"), float)
 

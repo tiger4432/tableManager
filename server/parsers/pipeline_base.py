@@ -56,26 +56,25 @@ class BasePipelineParser:
     def clean_for_postgres(self, df: pd.DataFrame) -> list[dict]:
         """
         PostgreSQL JSONB 컬럼에 에러 없이 저장되도록 DataFrame 내의 비정상 값을 정리합니다.
-        - NaN, NaT, Inf 값들을 JSON 표준에 맞는 None(null)으로 치환합니다.
+        - 빈 값(NaN · NaT · NA, crud.is_blank_value)을 None(null)으로 치환합니다. 무한대는 그대로 — 쓰기가 칸 이름으로 거절 (소유자 11-08 2ㄱ).
         """
         if df is None or df.empty:
             return []
+        from database import crud
+
 
         # 1. replace numpy NaN and float('nan') with None
         df = df.replace({np.nan: None})
         
-        # 2. Iterate and fix remaining Infinity/NaN which replace() might miss depending on types
+        # 2. Iterate and fix remaining NaN / NaT / NA which replace() might miss depending on types
         records = df.to_dict(orient='records')
         cleaned_records = []
         for record in records:
             clean_record = {}
             for k, v in record.items():
-                if pd.isna(v):  # Covers None, NaN, NaT
-                    clean_record[k] = None
-                elif isinstance(v, float) and (math.isinf(v) or math.isnan(v)):
-                    clean_record[k] = None
-                else:
-                    clean_record[k] = v
+                # absent (None · NaN · NaT · NA) -> None; an infinite number goes on and the write refuses it by
+                # name (owner 11-08 2ㄱ)
+                clean_record[k] = None if crud.is_blank_value(v, spaces=False) else v
             cleaned_records.append(clean_record)
             
         return cleaned_records

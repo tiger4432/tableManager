@@ -116,8 +116,8 @@ def test_values_that_are_not_missing_still_key_the_row(composite_table, value):
 # which this repository forbids. What is pinned below is the predicate they now share.
 
 
-def test_the_blankness_predicate_itself_is_left_alone():
-    """Deliberate, and pinned so the next round cannot widen it by accident: whether a
-    NaN counts as blank where blankness decides WRITES is unmeasured."""
-    assert crud.is_blank_value(float("nan")) is False
+def test_a_nan_is_blank_to_the_one_judgement_and_no_key_part():
+    """TURNED (owner 11-08 1ㄱ, was «the blankness predicate is left alone»): one judgement, `is_blank_value`, and a NaN
+    is blank to it - the key part's answer is the same judgement's (identity=True)."""
+    assert crud.is_blank_value(float("nan")) is True
     assert crud.is_blank_key_part(float("nan")) is True

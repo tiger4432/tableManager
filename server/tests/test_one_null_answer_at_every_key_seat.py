@@ -113,15 +113,15 @@ MISSING = (pd.NA, pd.NaT, decimal.Decimal("NaN"))
 def test_a_missing_scalar_is_no_key_part(blank):
     assert crud.is_blank_key_part(blank) is True
     assert crud.fold_key_value(PLAIN, "slot", blank) is None
-    assert crud.is_blank_value(blank) is False, "the write door's predicate is not this round's"
+    assert crud.is_blank_value(blank) is True, "one judgement (owner 11-08 1ㄱ, was: the write door's said value)"
 
 
 def test_a_non_finite_float_is_still_not_an_identity():
-    """⛔ THE NARROWER PREDICATE WOULD HAVE LET THIS BACK IN. `is_blank_value(nan)` is
-    False and `compose_business_key("t", ["A", nan, "C"])` is `"A_nan_C"` — a string that
-    behaves as an identity. The identity path keeps its own superset, and the fold uses it."""
+    """`compose_business_key("t", ["A", nan, "C"])` was `"A_nan_C"` - a string that behaves as an identity. A NaN is
+    blank to the one judgement now (owner 11-08 1ㄱ), and the key's identity=True adds inf and the inexact floats."""
     assert crud.fold_key_value(PLAIN, "slot", float("nan")) is None
-    assert crud.is_blank_value(float("nan")) is False
+    assert crud.fold_key_value(PLAIN, "slot", float("inf")) is None
+    assert crud.is_blank_value(float("nan")) is True and crud.is_blank_value(float("inf")) is False
 
 
 # ---------------------------------------------------------------------------

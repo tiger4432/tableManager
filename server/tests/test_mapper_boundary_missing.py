@@ -48,14 +48,21 @@ def test_a_nan_deep_inside_the_payload_becomes_none():
 
 
 @pytest.mark.parametrize("missing", [
-    float("nan"), np.nan, np.float64("nan"), float("inf"), float("-inf"),
-    pd.NaT, pd.NA, None,
+    float("nan"), np.nan, np.float64("nan"), pd.NaT, pd.NA, None,
 ])
 def test_every_marker_the_pipeline_calls_missing_is_missing_here_too(missing):
-    """The same rule as `parsers/pipeline_base.py:73-75`, INCLUDING the infinities. Two
-    spellings of "no value" would make one source value a number on one path and a blank
-    on the other."""
+    """The same rule as `parsers/pipeline_base.clean_for_postgres` - one judgement, `crud.is_blank_value`. Two
+    spellings of "no value" would make one source value a number on one path and a blank on the other."""
     assert worker.without_missing({"v": missing})["v"] is None
+
+
+@pytest.mark.parametrize("infinite", [float("inf"), float("-inf")])
+def test_both_entrances_pass_an_infinite_number_on_alike(infinite):
+    """Both entrances pass an infinite number on alike - TURNED (owner 11-08 2ㄱ, was «inf is missing here too»): it is
+    a value, refused by name at the write's cast; a mapper now RECEIVES it instead of None."""
+    from parsers.pipeline_base import BasePipelineParser
+    assert worker.without_missing({"v": infinite})["v"] == infinite
+    assert BasePipelineParser().clean_for_postgres(pd.DataFrame({"v": [infinite]}))[0]["v"] == infinite
 
 
 def test_missing_becomes_none_and_never_zero():

@@ -82,28 +82,12 @@ def result_row_count(result):
     return total
 
 def _is_missing_scalar(value) -> bool:
-    """Is this ONE value a missing marker? Same rule as `parsers/pipeline_base.py:73-75`.
+    """Is this ONE value a missing marker - `crud.is_blank_value(spaces=False)`, as `pipeline_base` asks it (owner
+    11-08 1ㄱ). An infinite number is not missing: it goes on and the write refuses it by name (2ㄱ). A container is not
+    one value and is left alone."""
+    from database import crud
 
-    🔴 THE SPELLING IS COPIED FROM THERE ON PURPOSE, INCLUDING `inf`. That file already
-    decided what "no value" means when a frame becomes rows - `pd.isna` for None/NaN/NaT,
-    and a second clause turning float infinities into None as well - and the mapper
-    boundary is the same decision in a third place, not a new one. If these two ever
-    disagree, the same source value becomes a number on one path and a blank on the other.
-
-    ⚠️ `pd.isna` ANSWERS ELEMENTWISE FOR CONTAINERS, so a DataFrame or an ndarray comes
-    back as an array of booleans rather than one. Those are not scalars and are left
-    alone; taking their truth value here would raise, which is how this kind of guard
-    usually fails - loudly, on the one payload shape nobody tested.
-    """
-    if value is None:
-        return True
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return True
-    try:
-        answer = pd.isna(value)
-    except (TypeError, ValueError):                      # unhashable / odd objects
-        return False
-    return bool(answer) if isinstance(answer, (bool, np.bool_)) else False
+    return crud.is_blank_value(value, spaces=False)
 
 
 def _missing_as_none(value):

@@ -25,6 +25,8 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+
+from database import crud
 from datetime import datetime, timezone
 
 logger = logging.getLogger("Mappers.ContrastWalk")
@@ -48,18 +50,12 @@ def _route_default(name):
     return getattr(default, "default", default)
 
 
-def _blank(value) -> bool:
-    from database import crud
-
-    return crud.is_blank_value(value)
-
-
 def _walk_arguments(row) -> tuple:
     """The run row -> (keyword arguments for the walk route, refusal or None)."""
     args = {}
     for cell in LIST_CELLS:
         raw = getattr(row, cell, None)
-        if _blank(raw):
+        if crud.is_blank_value(raw):
             args[cell] = []
             continue
         try:
@@ -68,36 +64,34 @@ def _walk_arguments(row) -> tuple:
             return None, "%s is not a JSON list: %r" % (cell, raw)
         if not isinstance(value, list):
             return None, "%s is not a JSON list: %r" % (cell, raw)
-        args[cell] = [str(item) for item in value if not _blank(item)]
+        args[cell] = [str(item) for item in value if not crud.is_blank_value(item)]
     for cell in NUMBER_CELLS:
         raw = getattr(row, cell, None)
-        args[cell] = _route_default(cell) if _blank(raw) else int(float(raw))
+        args[cell] = _route_default(cell) if crud.is_blank_value(raw) else int(float(raw))
     for cell in TEXT_CELLS:
         raw = getattr(row, cell, None)
-        args[cell] = _route_default(cell) if _blank(raw) else str(raw).strip()
+        args[cell] = _route_default(cell) if crud.is_blank_value(raw) else str(raw).strip()
     # A run naming no world walks the operating one BY NAME, and the run row is told which
     # (총괄 71ecd8223 · 0c918c2eb): left empty it would read as whatever operates later. Several,
     # comma separated, are walked together (총괄 092a6f9e5).
     raw = getattr(row, "world", None)
-    if _blank(raw):
+    if crud.is_blank_value(raw):
         from ledger import schema
 
         args["world"] = [schema.operating_world()]
     else:
         args["world"] = [name.strip() for name in str(raw).split(",") if name.strip()]
     raw = getattr(row, "include_superseded", None)
-    if _blank(raw):
+    if crud.is_blank_value(raw):
         args["include_superseded"] = _route_default("include_superseded")
     else:
-        from database import crud
-
         try:
             args["include_superseded"] = crud.boolean_text_read(raw, "include_superseded")
         except ValueError as refused:
             return None, str(refused)
     for cell in ("since", "until"):
         raw = getattr(row, cell, None)
-        args[cell] = None if _blank(raw) else (raw.isoformat() if hasattr(raw, "isoformat")
+        args[cell] = None if crud.is_blank_value(raw) else (raw.isoformat() if hasattr(raw, "isoformat")
                                                else str(raw))
     if args["until"] is None:
         return None, "until is empty - the walk would read what arrives after this run"
@@ -138,7 +132,7 @@ def contrast_walk(db, payload, rule=None):
     updates, refusals, runs = [], [], []
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         run_id = getattr(row, "run_id", None)
-        if _blank(run_id):
+        if crud.is_blank_value(run_id):
             refusals.append("%s: run_id is empty" % row.row_id)
             continue
         args, why = _walk_arguments(row)
@@ -160,7 +154,7 @@ def contrast_walk(db, payload, rule=None):
                      "candidates": len(ranked), "contrast": block.get("contrast"),
                      "complete": crud.boolean_text_value(block.get("complete")),
                      **({"world": ",".join(args["world"])}
-                        if _blank(getattr(row, "world", None)) else {})},
+                        if crud.is_blank_value(getattr(row, "world", None)) else {})},
             origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
         for item in ranked:
             reach = list(item.get("reach") or [None, None])

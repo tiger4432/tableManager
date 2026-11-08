@@ -1205,6 +1205,10 @@ def normalize_stored_text(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
 
 
+#: What a cell refused for an infinite number is told it expected (owner 11-08 2ㄱ) - `cast_value_by_type`.
+INFINITE_EXPECTED = "a finite value (not an infinite value)"
+
+
 class CellRefused(ValueError):
     """A value its column's type does not take - ONE sentence for it, whichever door wrote the
     row (총괄 bed890af2 ②: the grid said it in Korean, a file load stored a traceback).
@@ -1233,6 +1237,11 @@ NOT_WRITTEN_NEXT = {
 }
 
 
+def _first_shown(value):
+    """A refused value as the not-written sentence shows it - an infinite number by name (owner 11-08 2ㄱ)."""
+    return "an infinite value" if isinstance(value, float) and math.isinf(value) else repr(value)
+
+
 def not_written_sentence(by_reason, tail, firsts=None, rows=None):
     """`Next: <actions>. <tail>: <reason> <columns> · ...[ over N row(s).]` - ONE spelling for the
     columns offered and not written, a file's and a grid save's (lead 10-29), whether some rows were
@@ -1248,7 +1257,7 @@ def not_written_sentence(by_reason, tail, firsts=None, rows=None):
     for reason in reasons:
         columns = by_reason[reason]
         named.append("%s %s" % (reason, ", ".join(
-            "%s=%s%s" % (column, columns[column], " (first %r)" % (firsts[column],) if column in firsts else "")
+            "%s=%s%s" % (column, columns[column], " (first %s)" % _first_shown(firsts[column]) if column in firsts else "")
             for column in sorted(columns))
             if isinstance(columns, dict) else ", ".join(sorted(columns))))
     return "Next: %s. %s: %s%s" % ("; ".join(NOT_WRITTEN_NEXT[reason] for reason in reasons),
@@ -1288,6 +1297,8 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
     # times, 0 and 0.0 and False included.
     if none_if_blank(value) is None:
         return None
+    if isinstance(value, numbers.Real) and not isinstance(value, bool) and not math.isfinite(value):
+        raise CellRefused(col_name, value, INFINITE_EXPECTED)          # owner 11-08 2ㄱ: every column, by name
 
     if col_type == "datetime":
         # 🔴 SCHEMA_CANON R5 IS ENFORCED HERE FOR THE FIRST TIME (S-182 ⓐ, 판정 289).
@@ -1346,15 +1357,16 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
                 parsed = None
             if parsed is not None and math.isfinite(parsed):
                 return parsed
-            raise CellRefused(col_name, value, "a number") from None
+            raise CellRefused(col_name, value, INFINITE_EXPECTED if parsed is not None and math.isinf(parsed)
+                              else "a number") from None
 
     # 🔴 [총괄 c6a8c069c ㉡, 소유자 「문자타입에 숫자 들어올때 정수형으로 접어서」] A NUMBER INTO A
     # TEXT COLUMN IS STORED IN `clean_str_value`'S SPELLING, the one every reader already uses.
     # Passed through, the layer kept a JSON number (1.0) while PostgreSQL wrote '1.0' into the
     # text column - Python read '1', `->>` read '1.0', one cell with two answers - and a notation
-    # rule, which reads text, never met it. A bool is a number to Python and stays as it came;
-    # NaN never gets here (blank, above) and inf is not data, so both keep today's path.
-    if isinstance(value, numbers.Real) and not isinstance(value, bool) and math.isfinite(value):
+    # rule, which reads text, never met it. A bool is a number to Python and stays as it came; a NaN is blank and an
+    # infinite number refused above, so every number here is finite.
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
         value = clean_str_value(value)
     # Strip BEFORE sanitizing: the UTF-8 scrub can only remove bytes, so it can turn
     # `"abc\udcff"` into `"abc"` but never introduces whitespace - order is not
@@ -1487,29 +1499,41 @@ def none_if_blank(value: Any) -> Any:
     return None if is_blank_value(value) else value
 
 
-def is_blank_value(val: Any) -> bool:
-    """THE emptiness predicate, Python side. Its SQL twin is `blank_sql_condition`.
+def is_blank_value(val: Any, *, containers: bool = False, identity: bool = False, spaces: bool = True) -> bool:
+    """THE blank judgement (owner 11-08 1ㄱ): None · a text of only whitespace · a NaN (float, Decimal) · pandas' NA
+    and NaT. The text «nan» is a value; so is an infinite number (the write refuses it by name, `cast_value_by_type`).
+    Every seat asks this; where one differs on purpose it is an argument here, not a second function:
+      containers   a list or tuple of blanks and an empty dict are blank too - the expression language's
+      identity     a key part: a float not finite or from KEY_EXACT_LIMIT up names nothing (`is_blank_key_part`)
+      spaces=False «absent» rather than «blank»: a text of spaces is a present value (판정 194 ㉢ - the ledger's role
+                   frame, and the entrances turning pandas' markers into None: `mapper_call`, `pipeline_base`)
+    SQL twin: `blank_sql_condition`.
 
-    One name for what was previously written out as `clean_str_value(x) == ""` in
-    `virtual_join_executor._resolve_one`, `AutoConfirmCollector.flush` and
-    `enrichment_candidates`. Same meaning, so those keep working unchanged; having a
-    name is what lets the SQL spelling below point at something instead of re-deriving
-    the rule from a comment.
+    🔴 `str(x or "").strip() == ""` IS NOT THIS: `or ""` calls 0, 0.0, False, [] and {} blank (2026-09-03, a
+    twelve-value matrix - five disagreements)."""
+    if val is None:
+        return True
+    if isinstance(val, str):
+        return spaces and not val.strip()
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, numbers.Real):
+        if val != val:                                                  # NaN, any float kind
+            return True
+        return identity and isinstance(val, float) and not (math.isfinite(val) and abs(val) < KEY_EXACT_LIMIT)
+    if isinstance(val, decimal.Decimal):
+        return val.is_nan()
+    if isinstance(val, (list, tuple)):
+        return containers and all(is_blank_value(v, containers=True, identity=identity, spaces=spaces) for v in val)
+    if isinstance(val, dict):
+        return containers and not val
+    if type(val).__module__.startswith(("pandas", "numpy")):
+        import pandas as pd
 
-    🔴 `str(x or "").strip() == ""` IS NOT THIS, AND MUST NOT BE FOLDED INTO IT. It looks
-    like the same test and it is a DIFFERENT PREDICATE: `or ""` swallows every falsy value
-    before `str` ever sees it, so it calls `0`, `0.0`, `False`, `[]` and `{}` blank while
-    this function calls all five NON-blank. Measured over a twelve-value matrix on
-    2026-09-03: this spelling and `v is None or str(v).strip() == ""` disagree ZERO times,
-    and the `or ""` spelling disagrees FIVE.
-
-    The warning lives HERE rather than beside each of the 67 `or ""` sites for the reason
-    that round was about: a judgement copied to 67 places is 67 chances to disagree, and
-    anyone folding one of them has to arrive at this function to do it. What each site
-    still owes is only "can a falsy non-string reach ME", which is a fact about that site
-    and not about blankness.
-    """
-    return clean_str_value(val) == ""
+        missing = pd.isna(val)
+        if missing is True or (getattr(missing, "shape", None) == () and bool(missing)):
+            return True
+    return spaces and clean_str_value(val) == ""
 
 
 def row_is_blank(values) -> bool:
@@ -1546,6 +1570,13 @@ def blank_sql_condition(col_expr):
     not a style preference.
     """
     from sqlalchemy import or_
+    from sqlalchemy.sql import sqltypes
+    from sqlalchemy.sql.elements import Cast
+
+    # a number column's NaN is blank too, by the column's type (owner 11-08 1ㄱ): its text is 'NaN' only there - a text
+    # column's «NaN» is a value, as in Python
+    if isinstance(col_expr, Cast) and isinstance(getattr(col_expr.clause, "type", None), sqltypes.Numeric):
+        return or_(col_expr.is_(None), col_expr == "", col_expr == "NaN")
     return or_(col_expr.is_(None), col_expr == "")
 
 
@@ -1563,16 +1594,12 @@ def blank_to_null(col_expr):
 
 
 def not_blank_sql_condition(col_expr):
-    """Negation of `blank_sql_condition`, spelled so NULL never leaks through.
-
-    `~blank_sql_condition(c)` would be `NOT (c IS NULL OR c = '')`, which is correct in
-    SQL's three-valued logic, but this form is the one that reads the same as the
-    `notBlank` filter already in `main.get_column_filter_condition`.
+    """Negation of `blank_sql_condition` - derived, so the two cannot answer differently (a number column's 'NaN',
+    owner 11-08 1ㄱ). `NOT (c IS NULL OR ...)` lets no NULL through: a NULL c makes the inner OR true.
 
     Same text-typed precondition as `blank_sql_condition`; see there.
     """
-    from sqlalchemy import and_
-    return and_(col_expr.isnot(None), col_expr != "")
+    return ~blank_sql_condition(col_expr)
 
 
 # The BIGINT-safe magnitude guard in `numeric_text_sql`. Conservative: 9.2e18 < 2**63,
@@ -1623,11 +1650,12 @@ def numeric_text_sql(col_expr):
       only when the cast round-trips EQUAL to the original value, i.e. only when the
       value was integral to begin with.
     """
-    from sqlalchemy import case, cast, String, BigInteger, and_
+    from sqlalchemy import case, cast, String, BigInteger, and_, null
     as_big = cast(col_expr, BigInteger)
     folded = case((as_big == col_expr, cast(as_big, String)),
                   else_=cast(col_expr, String))
     return case(
+        (col_expr == float("nan"), null()),                            # a NaN is blank (owner 11-08 1ㄱ)
         (and_(col_expr >= -BIGINT_SAFE_NUMERIC_TEXT_BOUND,
               col_expr <= BIGINT_SAFE_NUMERIC_TEXT_BOUND), folded),
         else_=cast(col_expr, String),
@@ -3650,44 +3678,11 @@ def fold_key_value(table_name: str, column: str, value):
 
 
 def is_blank_key_part(value) -> bool:
-    """`is_blank_value`, PLUS: a non-finite float is not an identity.
-
-    🔴 WHY THE IDENTITY PATH NEEDS ITS OWN ANSWER AND `is_blank_value` DOES NOT CHANGE.
-    `clean_str_value(float("nan"))` is the STRING `"nan"`, so a NaN key part does not
-    look empty to anything - it looks like a value. Measured 2026-09-04:
-
-        compose_business_key("t", ["A", float("nan"), "C"])  ->  "A_nan_C"
-
-    That string then behaves as an identity, and two rows whose key part is missing for
-    unrelated reasons land on the SAME one. Worse, the row whose value arrives later gets
-    a different key, so the first is orphaned with nothing raised anywhere. This is the
-    class this repository already knows - a guard goes wrong the day it becomes reachable
-    - and the door is open today: seed scripts write table rows directly, bypassing
-    `cast_value_by_type`, which is the one place that refuses nan/inf into a column.
-
-    ⚠️ IT IS DELIBERATELY NOT FOLDED INTO `is_blank_value`. That predicate is read by the
-    virtual join's "only fill an empty cell", by the enrichment gate and by
-    `blank_to_null` - places where calling a NaN blank would change what gets WRITTEN, not
-    just what gets refused. Whether that is also right is a separate measurement (lead PM,
-    2026-09-04); until it is made, only identity is answered here.
-
-    🔴 A FLOAT FROM `KEY_EXACT_LIMIT` UP IS NOT AN IDENTITY EITHER (lead 10-31): it cannot tell neighbouring whole
-    numbers apart, and PostgreSQL and Python spell some of them differently (1e23: '9.999999999999999e+22' / '1e+23').
-    """
-    if isinstance(value, float) and not (math.isfinite(value) and abs(value) < KEY_EXACT_LIMIT):
-        return True
-    # pandas' missing scalars (pd.NA · NaT) and a numeric NaN were the text keys '<NA>' · 'NaT' · 'NaN' - the ledger's
-    # key seats ask this one judge too (lead 11-01; box: 0 such keys over 55 tables)
-    if isinstance(value, decimal.Decimal):
-        if value.is_nan():
-            return True
-    elif value is not None and not isinstance(value, (str, numbers.Number)):
-        import pandas as pd
-
-        missing = pd.isna(value)
-        if missing is True or (getattr(missing, "shape", None) == () and bool(missing)):
-            return True
-    return is_blank_value(value)
+    """A key part that names nothing - `is_blank_value(identity=True)`: blank, and a float not finite or from
+    KEY_EXACT_LIMIT up (it cannot tell neighbouring whole numbers apart, and PostgreSQL and Python spell some of them
+    differently: 1e23 '9.999999999999999e+22' / '1e+23', lead 10-31). A NaN key part composed «A_nan_C», one identity
+    for unrelated rows (measured 2026-09-04)."""
+    return is_blank_value(value, identity=True)
 
 
 #: The float magnitude from which a key part is blank (`is_blank_key_part`) - written into `notation_norm.KEY_NUMBER_SQL`

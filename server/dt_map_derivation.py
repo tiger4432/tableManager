@@ -94,6 +94,7 @@ import time
 
 import map_overlay
 import event_constants
+from database import crud
 
 logger = logging.getLogger(__name__)
 
@@ -510,10 +511,6 @@ def frame_trigger_scope(db, source_table: str, filters: dict) -> dict:
 # The gate
 # ---------------------------------------------------------------------------
 
-def _blank(v):
-    return v is None or str(v).strip() == ""
-
-
 def load_attribution(db, table: str, key_columns: list, keys: set, wanted: list) -> dict:
     """(key tuple) -> {column: value} for the attribution rows covering `keys`.
 
@@ -569,7 +566,7 @@ def resolve_frame(attribution_row: dict):
     if not attribution_row:
         return None, HOLD_FRAME_MISSING
     value = attribution_row.get(FRAME_COLUMN)
-    if _blank(value):
+    if crud.is_blank_value(value):
         return None, HOLD_FRAME_MISSING
     if parse_frame(value) is None:
         return None, HOLD_FRAME_UNREADABLE
@@ -583,7 +580,7 @@ def resolve_frame_candidates(values):
     is wrong, and picking either writes a whole wafer's worth of correct-looking cells
     at wrong coordinates.
     """
-    distinct = {str(v).strip() for v in values if not _blank(v)}
+    distinct = {str(v).strip() for v in values if not crud.is_blank_value(v)}
     if not distinct:
         return None, HOLD_FRAME_MISSING
     if len(distinct) > 1:
@@ -724,7 +721,7 @@ def derive_cells(db, rows, source_table: str, target_table: str,
         missing_attribution = False
         for col in ident_cols:
             raw = conf.get(ident_sources[col])
-            if _blank(raw):
+            if crud.is_blank_value(raw):
                 missing_attribution = True
                 break
             ident_values[col] = map_overlay.canonical_bind_value(target_table, col, raw)
@@ -1080,7 +1077,7 @@ def normalize_retraction_request(request, rule_name=None) -> tuple:
         raise ValueError("%s: retract envelope declares no 'source_column', so what this "
                          "source owns could not be selected and the fallback would be a "
                          "set difference over the whole table" % who)
-    if _blank(value):
+    if crud.is_blank_value(value):
         raise ValueError("%s: retract envelope carries a blank 'source_value' for column "
                          "'%s'. A blank value would select every row whose source is "
                          "blank - the widening this envelope exists to avoid."

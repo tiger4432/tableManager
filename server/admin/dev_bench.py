@@ -426,7 +426,7 @@ def input_for_mapper(table_or_sample, *, rows=None, row_ids=None, where=None):
                       `is_batch`; the bench always hands the whole list
                       (`rule_run.py` 467-469)
         ② input     the seat passes it through `mapper_call.without_missing`, which folds
-                      missing markers (NaN, inf, the parser's sentinels) to None; the bench
+                      missing markers (NaN, the parser's sentinels; not inf) to None; the bench
                       does not, so a sample can carry a marker production never delivers
         ③ answer    the seat folds the mapper's RESULT the same way; the bench reports the
                       result raw (`rule_run.py` 473-476)
@@ -631,7 +631,7 @@ def frame_delta(before, after):
 
 #: What the census treats as ordinary in a record on its way to the database.
 #: ⚠️ THIS IS THE BENCH'S JUDGEMENT, NOT PRODUCTION'S PREDICATE — say so wherever it is
-#: shown. `clean_for_postgres` folds NaN / NaT / Inf to `None` and nothing else, so a
+#: shown. `clean_for_postgres` folds NaN / NaT / NA to `None` and nothing else, so a
 #: `Decimal` or a `set` reaches the driver exactly as the parser produced it. The list is
 #: here, named, so it can be argued with rather than being buried in a notebook cell.
 JSON_SAFE_TYPES = ("str", "int", "float", "bool", "NoneType",
@@ -642,7 +642,7 @@ def value_types(rows, *, sample=2000):
     """The census of Python types in the records, and which of them are not ordinary.
 
     🔴 THE TYPE THAT ARRIVES IS THE TYPE THAT IS STORED. `clean_for_postgres` repairs NaN,
-    NaT and Inf; it does not repair a `Decimal`, a `set`, or a numpy scalar, and those reach
+    NaT and NA (inf goes on, refused at the write); it does not repair a `Decimal`, a `set`, or a numpy scalar, and those reach
     the driver as the parser made them. Casting belongs in `process_dataframe`, and this is
     where an author finds out that it is needed.
 

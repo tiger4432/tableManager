@@ -18,20 +18,16 @@ from __future__ import annotations
 import json
 import logging
 
+from database import crud
+
 logger = logging.getLogger("Mappers.AgentWalk")
 
 UNWALKED, ON_NODE, STUCK, END = "unwalked", "on_node", "stuck", "end"
 HOP, END_ROW = "hop", "end"
 
 
-def _blank(value) -> bool:
-    from database import crud
-
-    return crud.is_blank_value(value)
-
-
 def _number(value):
-    return None if _blank(value) else int(float(value))
+    return None if crud.is_blank_value(value) else int(float(value))
 
 
 def hop_cap(hop_budget):
@@ -72,7 +68,7 @@ def _path(db, request_id):
         item = _as_dict(row, ("step", "kind", "position", "chosen", "reason", "answer"))
         item["step"] = _number(item["step"])
         try:
-            item["cards"] = json.loads(row.cards) if not _blank(row.cards) else []
+            item["cards"] = json.loads(row.cards) if not crud.is_blank_value(row.cards) else []
         except ValueError:
             item["cards"] = []
         out.append(item)
@@ -88,12 +84,12 @@ def _ask(text, ids, end):
         said = llm.ask_json(text)
     except llm.LlmRefused as refused:
         return None, "the language model call was refused: %s" % refused
-    if not end and not _blank(said.get("go")):
+    if not end and not crud.is_blank_value(said.get("go")):
         if str(said["go"]).strip() not in ids:
             return None, "'%s' is not one of the listed node identifiers" % said["go"]
         return {"go": ids[str(said["go"]).strip()], "chosen": str(said["go"]).strip(),
                 "reason": str(said.get("reason") or "")}, None
-    if _blank(said.get("answer")):
+    if crud.is_blank_value(said.get("answer")):
         return None, ("the answer has neither 'answer' nor 'go'" if not end else "the answer has no 'answer'")
     evidence = said.get("evidence") or []
     if not isinstance(evidence, list):
@@ -131,7 +127,7 @@ def _one_hop(db, position, limit):
 
 def _edge_limit(recipe, state):
     for row in recipe:
-        if str(row.get("state")) == state and str(row.get("card")) == "edges" and not _blank(row.get("card_limit")):
+        if str(row.get("state")) == state and str(row.get("card")) == "edges" and not crud.is_blank_value(row.get("card_limit")):
             return int(float(row["card_limit"]))
     return None
 
@@ -179,8 +175,8 @@ def _hop(db, request, recipe_rows):
     cap, why_cap = hop_cap(_number(request.hop_budget))
     call_budget = _number(request.call_budget)
     calls_left = None if call_budget is None else call_budget - len(path)
-    position = request.position if not _blank(request.position) else (
-        request.start_node if not _blank(request.start_node) else None)
+    position = request.position if not crud.is_blank_value(request.position) else (
+        request.start_node if not crud.is_blank_value(request.start_node) else None)
     recipe = [row for row in recipe_rows if str(row.get("recipe")) == str(request.recipe or "")]
     meanings_rows = [_as_dict(row, ("target_kind", "target_name", "meaning"))
                      for row in _rows(db, product_tables.MEANING_TABLE) or ()]
@@ -242,7 +238,7 @@ def _advance(db, rows):
 
     latest = {}
     for row in sorted(rows, key=lambda r: (_number(r.step) or 0, r.kind == END_ROW)):
-        if _blank(row.request_id):
+        if crud.is_blank_value(row.request_id):
             continue
         cells = latest.setdefault(row.request_id, {"request_id": row.request_id})
         cells["step"] = _number(row.step)
@@ -271,7 +267,7 @@ def agent_walk(db, payload, rule=None):
     recipe = _recipe_rows(db)
     updates = []
     for request in rows:
-        if _blank(request.request_id):
+        if crud.is_blank_value(request.request_id):
             logger.warning("[AgentWalk] %s: a request row with no request_id - nothing walked", request.row_id)
             continue
         updates.extend(_hop(db, request, recipe))
@@ -318,7 +314,7 @@ def meaning_draft(db, payload, rule=None):
     row_ids = _row_ids(payload)
     if model is None or not row_ids:
         return {"updates": [], "refusal": "no meaning rows reached this mapper"}
-    rows = [row for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all() if _blank(row.meaning)]
+    rows = [row for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all() if crud.is_blank_value(row.meaning)]
     layer = models.CellSource
     written = {row_id for (row_id,) in db.query(layer.row_id).filter(
         layer.table_name == product_tables.MEANING_TABLE, layer.column_name == "meaning",
@@ -335,7 +331,7 @@ def meaning_draft(db, payload, rule=None):
     updates = []
     for row in rows:
         draft = drafts.get("%s:%s" % (row.target_kind, row.target_name))
-        if not _blank(draft):
+        if not crud.is_blank_value(draft):
             updates.append(schemas.GeneralUpdateItem(
                 updates={"target_kind": row.target_kind, "target_name": row.target_name, "meaning": str(draft)},
                 source_name=crud.LLM_DRAFT_SOURCE, updated_by=str((rule or {}).get("name") or "")))

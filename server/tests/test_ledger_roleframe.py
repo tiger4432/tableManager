@@ -498,6 +498,7 @@ CAPABILITY_FORBIDDEN = ("sqlalchemy", "psycopg2", "database", "ledger.store",
 CAPABILITY_ALLOWED = {
     ("database.crud", "clean_str_value"): "pure helper, no session (roleframe's docstring)",
     ("database.crud", "is_blank_key_part"): "pure predicate, pinned by contracts/blank_predicate",
+    ("database.crud", "is_blank_value"): "pure predicate - the one blank judgement (owner 11-08 1ㄱ)",
     ("virtual_join.config", "INDEX_PREFIX"): "a bare string constant; binds no module",
 }
 

@@ -42,16 +42,11 @@ def _is_num(v):
 
 
 def is_blank(v):
-    """Empty: None, a text of only whitespace, a list of only empties, a dict with no keys. 0 · False · NaN are values."""
-    if v is None:
-        return True
-    if isinstance(v, str):
-        return all(ch.isspace() for ch in v)
-    if isinstance(v, (list, tuple)):
-        return all(is_blank(x) for x in v)
-    if isinstance(v, dict):
-        return not v
-    return False
+    """Empty - `crud.is_blank_value(containers=True)`: blank, and a list of only empties, a dict with no keys. 0 and
+    False are values; a NaN is blank (owner 11-08 3ㄱ)."""
+    from database import crud
+
+    return crud.is_blank_value(v, containers=True)
 
 
 def number_of(v):
