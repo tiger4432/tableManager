@@ -4366,6 +4366,11 @@ def run_claimed(run_id: str, log=print) -> dict:
         row = (session.query(models.RetroactiveRun)
                .filter(models.RetroactiveRun.run_id == run_id).first())
         if row is None or row.state != RUN_RUNNING:
+            # a × between the claim and this start (lead 11-09): it ends as the × meant - cancelled - not left
+            # in flight for the tick to read as a dead runner («run it again», untrue)
+            if row is not None and row.state == RUN_CANCEL_REQUESTED and _mark_run(
+                    run_id, state=RUN_CANCELLED, finished=True, expect_state=RUN_CANCEL_REQUESTED):
+                logger.info("[Retroactive] cancelled run_id=%s op=%s before it started", run_id, row.op)
             raise RetroactiveRefused("run_id=%s is %s, not running - nothing to run"
                                      % (run_id, row.state if row else "unknown"))
         op, params = row.op, json.loads(row.params) if row.params else {}

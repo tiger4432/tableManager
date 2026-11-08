@@ -157,3 +157,15 @@ def test_a_live_runner_in_its_first_seconds_is_asked_and_a_reused_pid_is_release
         child.kill()
         if other is not None:
             other.kill()
+
+
+def test_a_run_cancelled_before_its_child_starts_ends_cancelled_not_runner_gone(db):
+    """Lead 11-09 (box): × asked a run the scheduler had just handed to its child; the child read cancel_requested
+    and left, and a minute later the tick released it «failed - runner gone - run it again». The child ends it."""
+    _row(db, "x1", "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, HOST, _dead_pid()))
+    db.query(models.RetroactiveRun).filter_by(run_id="x1").update({"state": retroactive.RUN_CANCEL_REQUESTED})
+    db.commit()
+    with pytest.raises(retroactive.RetroactiveRefused):
+        retroactive.run_claimed("x1", log=lambda line: None)
+    assert _state(db, "x1") == (retroactive.RUN_CANCELLED, None)
+    assert retroactive.release_dead_runs(log=lambda line: None) == [], "nothing left in flight for the tick"
