@@ -166,6 +166,9 @@ BUILT_WHY = "an index was just built on it and the planner had no statistics for
 #: again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met. An index request's
 #: (INDEX_WANTED) is its row, open until settled (`_take_asks`, 총괄 11-07 ㄱ), not kept here.
 _LEFT = []
+#: {index name: (cuts, next try)} of the start's and the declared work's builds (`models.cuts_in_round`) - kept beside
+#: `_LEFT`, as an ask's are on its row (lead 11-08 ④a).
+_CUTS = {}
 #: Where the declared work's came from - a Reload runs it anew with the rules as they stand and its old ones go.
 DECLARED = "declared"
 
@@ -186,16 +189,16 @@ def left_works():
     return [work for _source, work in _LEFT]
 
 
-def _round(db_session_factory, works, words=None):
+def _round(db_session_factory, works, words=None, cuts=_CUTS):
     """Index works (`_each`), then one ANALYZE of every table the round built an index on (`models.built_tables` -
     the one builder notes it, 총괄 11-05 ㄴ): without statistics for a new index the planner guesses (owner 11-04 ·
     11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> the works that left one for later;
-    `words` gets each name's word (`models.words_in_round`)."""
+    `words` gets each name's word (`models.words_in_round`); `cuts` the round's cuts, which it starts from."""
     from chain import ingestion_worker as worker
     from database import models
 
     left = []
-    with models.built_tables() as built:
+    with models.built_tables(cuts) as built:
         for work in works:
             before = models.left_in_round()
             _each([work])
@@ -203,6 +206,8 @@ def _round(db_session_factory, works, words=None):
                 left.append(work)
         if words is not None:
             words.update(models.words_in_round())
+        cuts.clear()
+        cuts.update(models.cuts_in_round())
     if built:
         try:
             worker._analyze_stale_tables_sync(db_session_factory, built=set(built), built_why=BUILT_WHY)
@@ -256,6 +261,8 @@ def declarations_changed():
 def poll_once(db_session_factory, mark):
     """One read: the Reload button's rows past `mark`, or a changed rules file (`declarations_changed`) -> the
     declared work again; INDEX_WANTED -> its automatic index. -> the new mark."""
+    import json
+
     import event_constants
     from runtime import index_wants, system_reload
 
@@ -271,6 +278,9 @@ def poll_once(db_session_factory, mark):
         for row, each in asks:
             if each is None:                                       # unreadable - nothing to build (its line said it)
                 event_constants.mark_processed(row, "FAILED")
+        # an open ask's cuts, kept on its row (lead 11-08 ④a)
+        cuts = {index_wants.index_name(*each): tuple(json.loads(row.payload or "{}")["cut"])
+                for row, each in asks if each is not None and "cut" in json.loads(row.payload or "{}")}
         asks = [(row.id, each) for row, each in asks if each is not None]
         db.commit()
     finally:
@@ -289,7 +299,7 @@ def poll_once(db_session_factory, mark):
     if fresh is not None:
         _keep(_round(db_session_factory, fresh), DECLARED)
     if asks:
-        _take_asks(db_session_factory, asks)
+        _take_asks(db_session_factory, asks, cuts)
     return mark
 
 
@@ -304,20 +314,24 @@ def _ask_works(db_session_factory, asked):
             + ([(models.ensure_auto_indexes_sync, db_session_factory, auto, logger.warning, False)] if auto else []))
 
 
-def _take_asks(db_session_factory, asks):
+def _take_asks(db_session_factory, asks, cuts=None):
     """The open index requests [(row id, (table, columns, why))], oldest first: the oldest built with the whole wait
     before it, the others only if nothing holds them now (`models.waits_before(0)` - a poll waits for one, 총괄 11-07
     ⑴). Each row closed by its index's word - built or there: SUCCESS; ruled out: FAILED (its sentence said where it
     was met); put off: left open, taken again next poll (총괄 11-07 ㄱ)."""
+    import json
+
     import event_constants
     from database import models
     from runtime import index_wants
 
+    names = {row_id: index_wants.index_name(*each) for row_id, each in asks}
+    cuts, before = dict(cuts or {}), dict(cuts or {})
     words = {}
-    _round(db_session_factory, _ask_works(db_session_factory, [asks[0][1]]), words)
+    _round(db_session_factory, _ask_works(db_session_factory, [asks[0][1]]), words, cuts)
     if asks[1:]:
         with models.waits_before(0):
-            _round(db_session_factory, _ask_works(db_session_factory, [each for _id, each in asks[1:]]), words)
+            _round(db_session_factory, _ask_works(db_session_factory, [each for _id, each in asks[1:]]), words, cuts)
     closed = {}
     for row_id, (table, columns, why) in asks:
         word = words.get(index_wants.index_name(table, columns, why))
@@ -327,12 +341,15 @@ def _take_asks(db_session_factory, asks):
             closed[row_id] = "FAILED"
             logger.warning("[Indexes] the request for an index on %s (%s, %s) is closed: %s - see its line above",
                            table, ", ".join(columns), why, word)
-    if not closed:
+    if not closed and cuts == before:
         return
     db = db_session_factory()
     try:
-        for row in db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id.in_(sorted(closed))):
-            event_constants.mark_processed(row, closed[row.id])
+        for row in db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id.in_(sorted(names))):
+            if row.id in closed:
+                event_constants.mark_processed(row, closed[row.id])
+            elif names[row.id] in cuts:                  # an open ask keeps its cuts on its row (lead 11-08 ④a)
+                row.payload = json.dumps(dict(json.loads(row.payload or "{}"), cut=list(cuts[names[row.id]])))
         db.commit()
     finally:
         db.close()

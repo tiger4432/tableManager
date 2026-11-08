@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **잘린 인덱스 짓기는 «다음에 다시» · 원장 부모 인덱스는 20 s 기다리고 끊음 · 키 없는 요청은 닫힘** — git pull · 런처 재기동(스케줄러 · 체인 워커 · API)
+>
+> ```
+> 무엇     오늘 있던 위험: 원장 부모 인덱스(ON ONLY · ATTACH)가 lock_timeout 0(끝없이)으로 기다리며 그 뒤의 원장 쓰기를 전부 세웠음
+>          이제 20 s(db_safety.DDL_LOCK_TIMEOUT) 기다리고 끊음 -> 다음에 다시 시도
+> 다시     잘린 인덱스는 60 s 뒤, 잘릴 때마다 두 배, 길어야 하루 뒤에 다시 — 그 사이엔 «not tried»
+> 로그     [Indexes] <이름> cut - waited past <기다림> ... ; cut N time(s) - next try after <시각>
+>          [Indexes] ... '<이름>' not tried - cut N time(s) - next try after <시각>
+>          [Indexes] <표>: no business key is declared - its unique index has nothing to build   (요청이 닫힘, 다시 안 물음)
+>          [Indexes] index_build_wait_seconds <n> s is past the longest a lock wait can be - 2147483 s is used   (한 번만)
+> 읽는 법  cut 줄은 고장이 아님 — 그 시각에 쓰는 쪽이 표를 쥐고 있었다는 뜻, 시각이 되면 스스로 다시 짓는다
+>          같은 이름의 N 이 하루 단위로 계속 늘면 그 표를 늘 쥐는 쓰기가 있다는 뜻 — 그때 그 시각의 잠금을 본다
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-08] **죽은 소급 실행 풀기가 하나 · 실행마다 자기 출력 파일 · 막 뜬 자식은 안 풀림** — git pull · 런처 재기동(스케줄러 · 체인 워커 · API)
 >
 > ```

@@ -2009,13 +2009,61 @@ def comes_again(word):
 
 
 def _ensure_one_index(engine, name, *args, **kwargs):
-    """`_ensure_one_index_once`, and a name it left for later (`comes_again`) noted on this thread's round - its word
-    too (`note_word`)."""
-    word = _ensure_one_index_once(engine, name, *args, **kwargs)
+    """`_ensure_one_index_once`, noted on this thread's round (`_noted`)."""
+    return _noted(name, _ensure_one_index_once(engine, name, *args, **kwargs))
+
+
+def _noted(name, word):
+    """A build's word on this thread's round (`note_word`), and a name it left for later (`comes_again`) - the
+    CONCURRENTLY seat's and the ledger parent's alike. -> `word`."""
     if comes_again(word) and getattr(_ROUND, "left", None) is not None:
         _ROUND.left.append(name)
     note_word(name, word)
     return word
+
+
+#: A build cut past its lock wait is not tried again before INDEX_CUT_AGAIN_SECONDS x 2^(cuts-1), at most a day
+#: (lead 11-08 ④a: a 30-minute build cut late was thrown away and built again every poll).
+INDEX_CUT_AGAIN_SECONDS = 60.0
+INDEX_CUT_AGAIN_MOST = 86400.0
+
+
+def next_try_after(cuts, now):
+    """When a build cut `cuts` times in a row is tried again - the one backoff."""
+    return now + min(INDEX_CUT_AGAIN_MOST, INDEX_CUT_AGAIN_SECONDS * 2 ** (max(cuts, 1) - 1))
+
+
+def cut_sentence(name):
+    """«cut N times - next try after <time>» of `name` on this thread's round - the one sentence the build line, the
+    put-off line and both paths say (lead 11-08)."""
+    import datetime as _dt
+
+    if name not in cuts_in_round():                    # outside the line's round nothing keeps cuts
+        return _comes_back()
+    cuts, at = cuts_in_round()[name]
+    return "cut %d time(s) - next try after %s" % (cuts, _dt.datetime.fromtimestamp(at).strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _count_cut(name):
+    """`name` was cut now: one more cut on this thread's round, its next try put off (`next_try_after`)."""
+    import time
+
+    cuts = getattr(_ROUND, "cuts", None)
+    if cuts is not None:
+        count = cuts.get(name, (0, 0.0))[0] + 1
+        cuts[name] = (count, next_try_after(count, time.time()))
+
+
+def held_off(name):
+    """Whether `name`'s next try (`_count_cut`) is still to come on this thread's round."""
+    import time
+
+    return (getattr(_ROUND, "cuts", None) or {}).get(name, (0, 0.0))[1] > time.time()
+
+
+def cuts_in_round():
+    """{name: (cuts, next try)} of this thread's round - the caller keeps them where its path keeps its asks."""
+    return dict(getattr(_ROUND, "cuts", None) or {})
 
 
 #: A wanted index that will not be built however often it is asked - a view, no row_id, its table at
@@ -2082,6 +2130,9 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
     import db_waits
     from parsers.directory_watcher import index_build_wait
 
+    if held_off(name):
+        say(f"[Indexes] {what} index '{name}' not tried - {cut_sentence(name)}")
+        return INDEX_DEFERRED
     limit = index_build_wait()
     try:
         with engine.connect().execution_options(
@@ -2144,8 +2195,9 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     raise
                 held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema,
                                               older_than=limit) if table else []
+                _count_cut(name)
                 say(f"[Indexes] {what} index '{name}' cut - waited past index_build_wait_seconds ({limit:.0f}s)"
-                    + (f" for pid {', pid '.join(held)}" if held else "") + f"; {_comes_back()}")
+                    + (f" for pid {', pid '.join(held)}" if held else "") + f"; {cut_sentence(name)}")
                 return INDEX_DEFERRED
             finally:
                 with contextlib.suppress(Exception):       # a broken connection is dropped with it
@@ -2201,14 +2253,15 @@ _ROUND = threading.local()
 
 
 @contextlib.contextmanager
-def built_tables():
+def built_tables(cuts=None):
     """A round of index work on this thread - the set of tables an index was built on in it (`_ensure_one_index`),
-    for the line's one ANALYZE after the round (`runtime.maintenance_line`, 총괄 11-05)."""
-    _ROUND.built, _ROUND.left, _ROUND.words = set(), [], {}
+    for the line's one ANALYZE after the round (`runtime.maintenance_line`, 총괄 11-05). `cuts`: {name: (cuts, next
+    try)} its caller kept from the rounds before (`cuts_in_round`)."""
+    _ROUND.built, _ROUND.left, _ROUND.words, _ROUND.cuts = set(), [], {}, dict(cuts or {})
     try:
         yield _ROUND.built
     finally:
-        _ROUND.built = _ROUND.left = _ROUND.words = None
+        _ROUND.built = _ROUND.left = _ROUND.words = _ROUND.cuts = None
 
 
 def left_in_round():
@@ -2890,6 +2943,11 @@ def _build_ledger_index(engine, row, say):
 
     from ledger import schema
 
+    import db_safety
+
+    if held_off(row["name"]):
+        say("[Indexes] %s not tried - %s" % (row["name"], cut_sentence(row["name"])))
+        return _noted(row["name"], INDEX_DEFERRED)
     names = schema.world_names(row["world"])
     index, columns, predicate, child, _serves = next(item for item in schema.partitioned_indexes(names)
                                                      if schema.in_space(names, item[0]) == row["name"])
@@ -2900,12 +2958,19 @@ def _build_ledger_index(engine, row, say):
     try:
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = 0")
-            cursor.execute("SET lock_timeout = 0")
+            # the parent's ON ONLY takes SHARE and its ATTACH waits on the parent too: while either waits, every
+            # writer of the ledger queues behind it - the short DDL wait, not the build's (lead 11-08 ④d)
+            cursor.execute("SET lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
         connection.commit()
         done = schema.build_partitioned_index(connection, names, index, columns, predicate, apply=True,
                                               say=lambda line: say("[Indexes] " + line), child_name=child,
                                               build_child=ledger_child_builder(engine, say))
     except Exception as exc:                                            # noqa: BLE001 - said, the rest go on
+        if db_safety.waited_past_the_lock_timeout(exc):
+            _count_cut(row["name"])
+            say("[Indexes] %s cut - waited past %s for the ledger's lock; %s" % (
+                row["name"], db_safety.DDL_LOCK_TIMEOUT, cut_sentence(row["name"])))
+            return _noted(row["name"], INDEX_DEFERRED)
         say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, error_said.told(exc)))
         return INDEX_FAILED
     finally:

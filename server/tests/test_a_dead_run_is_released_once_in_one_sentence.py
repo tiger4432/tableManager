@@ -77,7 +77,7 @@ def test_a_child_beating_for_its_run_is_not_released_under_a_dead_scheduler_s_na
     assert _state(db, "w1")[0] == retroactive.RUN_RUNNING
     os.remove(heartbeat.heartbeat_path(retroactive.RUN_HERE_HEARTBEAT))
     assert retroactive.release_dead_runs(log=lambda line: None) == ["w1"], "canary: no beat holds it - released"
-    assert heartbeat.holding("w1") == "holds run w1", "the note a child beats is this one"
+    assert heartbeat.holding_note("w1") == "holds run w1", "the note a child beats is this one"
 
 
 def test_a_child_names_itself_only_on_a_row_still_running(db):

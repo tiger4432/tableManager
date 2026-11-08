@@ -576,10 +576,25 @@ def count_max_age_seconds(settings=None):
     return _timeout_seconds(settings, COUNT_MAX_AGE_SETTING, COUNT_MAX_AGE_DEFAULT)
 
 
+#: The longest wait a build's lock_timeout can hold - PostgreSQL's int milliseconds (lead 11-08 ④b: 3,000,000 s
+#: overflowed it and every build failed).
+INDEX_BUILD_WAIT_MOST = 2147483
+
+
 def index_build_wait(settings=None):
-    """Seconds a building index may wait for one lock, None = no limit."""
+    """Seconds a building index may wait for one lock, None = no limit; at most INDEX_BUILD_WAIT_MOST (said once)."""
     settings = load_ingestion_settings() if settings is None else settings
-    return _timeout_seconds(settings, INDEX_BUILD_WAIT_SETTING, INDEX_BUILD_WAIT_DEFAULT)
+    seconds = _timeout_seconds(settings, INDEX_BUILD_WAIT_SETTING, INDEX_BUILD_WAIT_DEFAULT)
+    if seconds is None or seconds <= INDEX_BUILD_WAIT_MOST:
+        return seconds
+    if seconds not in _SAID_TOO_LONG:
+        _SAID_TOO_LONG.add(seconds)
+        logger.warning("[Indexes] %s %.0f s is past the longest a lock wait can be - %d s is used",
+                       INDEX_BUILD_WAIT_SETTING, seconds, INDEX_BUILD_WAIT_MOST)
+    return float(INDEX_BUILD_WAIT_MOST)
+
+
+_SAID_TOO_LONG = set()
 
 
 def grid_auto_index_after(settings=None):

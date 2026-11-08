@@ -228,7 +228,7 @@ def test_the_worker_s_line_given_asks_builds_the_automatic_ones_alone(monkeypatc
     monkeypatch.setattr(event_constants, "mark_processed", lambda row, status: None)
     from types import SimpleNamespace
 
-    monkeypatch.setattr(index_wants, "taken", lambda db: [(SimpleNamespace(id=1), (TABLE, ["s"], "slow sort"))])
+    monkeypatch.setattr(index_wants, "taken", lambda db: [(SimpleNamespace(id=1, payload="{}"), (TABLE, ["s"], "slow sort"))])
     maintenance_line.poll_once(_Db, 0)
     maintenance_line._each(maintenance_line._declared_work(None))
     assert ran == [("auto", [(TABLE, ["s"], "slow sort")], False), "declared", "models", ("auto", None, True)]

@@ -4316,6 +4316,12 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
         built, refused, invalid = [], [], []
         with engine.connect() as conn:
             tables = uq.tables_with_business_key(conn)
+            # a request for a table with no business key closes on a word (lead 11-08 ④c) - left open it held the
+            # index line's one full wait every poll
+            for table in sorted(set(only or ()) - set(tables)):
+                logger.warning("[Indexes] %s: no business key is declared - its unique index has nothing to build",
+                               table)
+                models.note_word(uq.unique_index_name(table), models.INDEX_REFUSED)
             # `only`: the tables a fold just merged (총괄 10-20) - the start-up builds every table
             for table in [t for t in tables if only is None or t in only]:
                 found = uq.existing_unique_index(conn, table)

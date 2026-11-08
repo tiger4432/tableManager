@@ -644,20 +644,20 @@ def another_process_beats(name, now=None):
 
 
 
-def holding(run_id):
+def holding_note(run_id):
     """A beat's note while its process holds retroactive run `run_id` (`runner_gone`)."""
     return "holds run %s" % run_id
 
 
 def runner_gone(runner, run_id=None) -> bool:
     """`runner_state` says «orphaned» AND that pid is provably not alive on THIS host AND no fresh beat holds `run_id`
-    (`holding`) - what a release may act on without an operator (총괄 11-07). A child that has not beaten yet is
+    (`holding_note`) - what a release may act on without an operator (총괄 11-07). A child that has not beaten yet is
     orphaned but alive: not gone. A child that beats holding the run before its row names it - its scheduler died
     between the start and the stamp (lead 11-08 ③): not gone. A pid on another host, or no psutil: not gone -
     「모르면 안 한다」."""
     if runner_state(runner) != "orphaned":
         return False
-    if run_id is not None and any(not entry.get("stale") and entry.get("note") == holding(run_id)
+    if run_id is not None and any(not entry.get("stale") and entry.get("note") == holding_note(run_id)
                                   for entry in read_all().values()):
         return False
     import socket as _socket

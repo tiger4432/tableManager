@@ -4317,7 +4317,9 @@ def run_here(op: str, params: dict, log=print) -> dict:
 
 
 def run_claimed(run_id: str, log=print) -> dict:
-    """The scheduler's child (총괄 7d2c5845b · f453968fe ③): run a row the scheduler already
+    """Beats first, then the name - for a child whose scheduler died before stamping it (lead 11-08 ③).
+
+    The scheduler's child (총괄 7d2c5845b · f453968fe ③): run a row the scheduler already
     claimed, in THIS process, the way `run_here` runs a CLI's - one way to run in a process
     of its own. The row must still be `running`: a screen cancel or a release while the
     child was starting ends it here instead.
@@ -4330,7 +4332,7 @@ def run_claimed(run_id: str, log=print) -> dict:
 
     # first: beat holding the run, then name itself on the row - a scheduler that died between the start and its own
     # stamp leaves a row naming a dead pid, and the next one must not release it while this runs (lead 11-08 ③)
-    heartbeat.beat(RUN_HERE_HEARTBEAT, note=heartbeat.holding(run_id), force=True)
+    heartbeat.beat(RUN_HERE_HEARTBEAT, note=heartbeat.holding_note(run_id), force=True)
     _restamp_runner(run_id, runner_identity(), only_running=True)
     session = SessionLocal()
     try:
