@@ -512,6 +512,12 @@ const GUIDE_ANSWER = { guides: Object.entries(JSON.parse(readFileSync(path.join(
 // The header's last stall (owner 10-29 «ㄴ», A 63a69b97a): while STALL.on /health carries `stall` - STALL.next, the server's
 // shape: {line, at} after a freeze, null before one. The recorded /health is an older server's, without the key.
 const STALL = { on: false, next: null };
+// «Not adopted» under the chain rules (owner 11-08 ㄱ): while NOT_ADOPTED.on /admin/chain/rules carries `not_adopted` -
+// NOT_ADOPTED.next: null (no census pass ended), {names: []} (none), {names: [...]} (who wrote the layers no rule owns).
+const NOT_ADOPTED = { on: false, next: null };
+const NOT_ADOPTED_ROWS = { at: 1762560000, layers: 2598311, names: [
+  { name: 'chain_worker', layers: 2412004, tables: [['dt_map', 2100422], ['lot_event', 290118], ['wafer_lot', 21464]] },
+  { name: 'retired_lot_copy', layers: 186307, tables: [['lot_event', 186307]] }] };
 const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00' };
 // The whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page - a
 // line that does not fit goes down at a space, it is not cut or slid.
@@ -522,6 +528,10 @@ const STALL_WHOLE = `(() => { const box = document.querySelector('.stall-line:no
   const b = box.getBoundingClientRect(); if (b.left < 0 || b.right > innerWidth) return false;
   return [...t.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5); })()`;
 const answerOf = (u) => {
+  if (NOT_ADOPTED.on && u.pathname === '/admin/chain/rules') {
+    const a = ANSWERS['/admin/chain/rules'];
+    return { ...a, body: { ...bodyOf(a), not_adopted: NOT_ADOPTED.next } };
+  }
   if (STALL.on && u.pathname === '/health') {
     const a = ANSWERS['/health'];
     return { ...a, body: { ...bodyOf(a), stall: STALL.next } };
@@ -3558,6 +3568,18 @@ const DRIVE = {
       await until(c, "Boolean(document.querySelector('.stall-line[hidden]'))");
       STALL.on = false;
     }],
+    // «Not adopted» under the chain rules (owner 11-08 ㄱ): its three states, each from the rules answer - counting (no pass
+    // ended), the names with their layers and tables and the way out, none.
+    ...[['counting', null], ['rows', NOT_ADOPTED_ROWS], ['none', { at: 1762560000, layers: 0, names: [] }]]
+      .map(([state, next]) => [`Chain, not adopted - ${state}`, async (c) => {
+        NOT_ADOPTED.on = true;
+        NOT_ADOPTED.next = next;
+        await evaluate(c, "location.hash = '#chain'; true");
+        await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
+        await until(c, `document.querySelector('.not-adopted')?.dataset.state === '${state}'`);
+        await evaluate(c, "document.querySelector('.not-adopted').scrollIntoView({ block: 'center' }); true");
+        if (state === 'none') NOT_ADOPTED.on = false;
+      }]),
     // The admin help (owner 10-29 «ㄴ»): the header's Help opens the side panel over the Tables tab - an ask held, Cancel, the
     // answer that came after, then not sure · the model not asked · a count refused · a tool outside the tab, and the form
     // the first answer opens on the Retroactive tab, filled; Help again closes it.

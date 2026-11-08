@@ -104,6 +104,7 @@ import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 import { HelpPanel } from './help_panel.js';
 import { StallLine, stallOf } from './stall_line.js';
+import { NotAdopted, notAdoptedOf } from './not_adopted.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -297,6 +298,9 @@ const outboxListBody = byId('outbox-list-body');
 const fileListBody = byId('file-list-body');
 const workspaceListBody = byId('workspace-list-body');
 const chainListBody = byId('chain-list-body');
+// «Not adopted» under the rules - one part, made on first use (the chain tab may never open)
+let notAdoptedPart = null;
+const notAdopted = () => (notAdoptedPart ||= new NotAdopted(byId('not-adopted-mount')));
 const mapperListBody = byId('mapper-list-body');
 const autoUpdateListBody = byId('autoupdate-list-body');
 const autoLinkedBody = byId('autoupdate-linked-body');
@@ -992,7 +996,10 @@ async function fetchData(options = {}) {
       // 🔴 200 이어도 본문이 오류를 나를 수 있다 (main.py:4913). `data` 는 그때 «빈 목록»이라
       //    그대로 넘기면 화면이 「선언된 규칙 없음」을 그린다 — 깨진 것과 없는 것이 같아진다.
       const rulesFailure = errorText(rules);
-      if (rules && !rulesFailure) { chainData = rules.data || []; renderChainTable(); markSectionAbsent('chain-rule-count', absentPath(rules)); }
+      if (rules && !rulesFailure) {
+        chainData = rules.data || []; renderChainTable(); markSectionAbsent('chain-rule-count', absentPath(rules));
+        notAdopted().render(notAdoptedOf(rules));
+      }
       else {
         markSectionUnread('chain-rule-count'); allRead = false;
         if (rulesFailure) bodyFailures.push(rulesFailure);
