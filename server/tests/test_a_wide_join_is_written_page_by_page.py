@@ -213,27 +213,6 @@ def test_the_later_rule_still_writes_last_on_every_page(monkeypatch, join_first)
     assert set(_cells(db).values()) == {expected}, _cells(db)
 
 
-def test_the_rule_declared_later_shows_whatever_order_the_group_ran_them_in(monkeypatch):
-    """Lead 11-08 ㄴ: on a cell two rules write, the one declared later in the rules file shows - the order a person
-    wrote, not the order a group ran them in, nor their names. Declared [join, other], run [other, join]."""
-    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", PAGE)
-    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "wide_other", _other)
-    db = _db()
-    _seed_wide(db)
-    join = _rules()[0]
-    other = {"name": "wide_other", "enabled": True, "trigger_table": RIGHT,
-             "target_table": LEFT, "mapper": "wide_other", "is_batch": True}
-    monkeypatch.setattr(worker, "_LOADED_RULES", [join, other])
-    monkeypatch.setattr(worker, "_RULES_DOCUMENT", {"rules": [{"name": rule_shape.declaration_of(join)},
-                                                              {"name": "wide_other"}]})
-    monkeypatch.setattr(rule_shape, "_PRIORITIES", [None, {}, {}])
-
-    ok, writes, _stages = _run(db, [other, join], RIGHT, monkeypatch)
-
-    assert ok and len(writes) >= 4, writes
-    assert set(_cells(db).values()) == {"OTHER"}, _cells(db)
-
-
 def _writes_right_value(db, payloads, rule=None):
     """An earlier rule in the same group writing the value the join TAKES (the right table)."""
     right = models.DYNAMIC_TABLES[RIGHT]

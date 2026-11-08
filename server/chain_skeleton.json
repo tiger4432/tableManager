@@ -384,14 +384,6 @@
         }
       },
       {
-        "key": "priority",
-        "required": false,
-        "node": {
-          "kind": "leaf",
-          "hint": "number"
-        }
-      },
-      {
         "key": "rows_per_run",
         "required": false,
         "node": {

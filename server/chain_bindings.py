@@ -319,8 +319,6 @@ RULE_ROUTING_OPTIONAL = tuple(
     "allow_replace_map", "allow_retraction",
     *COLUMN_BINDING_KEYS,
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
-    # owner 11-06 step 2 1ㄱ: which of two rules' layers on one cell shows (`rule_shape.priorities`)
-    "priority",
     # 총괄 72f419bd1: how many trigger rows one group of the rule takes; `run_in` is retired and
     # still read, so an old declaration loads (`RETIRED_CELLS`).
     "run_in", "rows_per_run",
@@ -757,7 +755,6 @@ _SKELETON_HINTS = {
     "allow_replace_map": "flag",
     "allow_retraction": "flag",
     "max_group_attempts": "number",
-    "priority": "number",
     "max_group_rows": "number",
     "rows_per_run": "number",
     "idempotent": "flag",
