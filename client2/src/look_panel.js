@@ -3,7 +3,7 @@
 // (main.js), no module state. What a cell shows is grid_look.lookOf's; this writes sys_looks rows and draws.
 // The form is built once: a read of the page draws the list and the paint again, never what a person is typing.
 
-import { ROLES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, ruleRefusal } from './grid_look.js';
+import { ROLES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
 import { placeBetween, dropPlace } from './grid_order.js';
 import { escapeHtml } from './utils.js';
 import { localShort } from './server_time.js';
@@ -12,6 +12,10 @@ const NO_CELL = 'Pick a cell of the table';
 const NOT_PAINTABLE = 'A key or carried cell is no one row - pick a value cell';
 const options = (pairs) => pairs.map(([word, name]) => `<option value="${word}">${name}</option>`).join('');
 
+/** The panel's line for what a swatch paints - the picked cell's name, or «N cells · M skipped (key or carried)». */
+const paintLabel = ({ targets, skipped, single }) => (single ? single.label : targets.length || skipped
+  ? `${targets.length} ${targets.length === 1 ? 'cell' : 'cells'}${skipped ? ` · ${skipped} skipped (key or carried)` : ''}` : '');
+
 export class LookPanel {
   /**
    * @param {HTMLElement} mount
@@ -19,6 +23,7 @@ export class LookPanel {
    *          write: (update: object, stopped: string) => Promise<boolean>, history: (rowId: string) => Promise<object|null>,
    *          by: string, written: () => void, newId: () => string, say: (text: string) => void}} deps
    *   picked: the picked cell - {rowId, column, label} (paintable), {label} (not), or null
+   *   range: a selection of more than one cell - {targets: [{rowId, column}], skipped} - or null
    *   say: a drop that cannot be placed, said with what to do
    */
   constructor(mount, deps) {
@@ -78,7 +83,15 @@ export class LookPanel {
     const drop = dropPlace(rules.map((rule) => rule.position), from, to);
     if (!drop) return;
     if (drop.refused) { this.deps.say(`Rule not moved: ${drop.refused}`); return; }
-    if (await this.deps.write(ruleMove(table, id, drop.place, this.deps.by), 'Rule not moved')) this.deps.written();
+    if (await this.deps.write([ruleMove(table, id, drop.place, this.deps.by)], 'Rule not moved')) this.deps.written();
+  }
+
+  /** The cells a swatch paints: the selection's, or the picked one - {targets, skipped, single}; single the picked cell. */
+  paintable() {
+    const range = this.deps.range();
+    if (range) return { targets: range.targets, skipped: range.skipped, single: null };
+    const picked = this.deps.picked();
+    return { targets: picked && picked.rowId ? [{ rowId: picked.rowId, column: picked.column }] : [], skipped: 0, single: picked };
   }
 
   draw() {
@@ -96,15 +109,19 @@ export class LookPanel {
       cols.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
     }
 
-    const picked = this.deps.picked();
-    const paint = picked && picked.rowId ? (looks.paints || {})[`${picked.rowId}/${picked.column}`] : null;
-    this.root.querySelector('.look-target').textContent = picked ? picked.label : '';
+    const aim = this.paintable();
+    const { targets, single } = aim;
+    const label = paintLabel(aim);
+    const paintOf = (rowId, column) => (looks.paints || {})[paintKey(rowId, column)];
+    const roles = targets.map((t) => (paintOf(t.rowId, t.column) || {}).role || '');
+    const on = roles.length && roles.every((role) => role === roles[0]) ? roles[0] : null;   // the role they all have
+    this.root.querySelector('.look-target').textContent = label;
     const swatches = [...ROLES, ['', 'None']].map(([word, name]) => `<button type="button" class="look-swatch${word ? ` look-${word}` : ''}${
-      (paint ? paint.role : '') === word ? ' is-on' : ''}" data-paint="${word}" aria-label="${name}" title="${name}">${word ? '' : '∅'}</button>`).join('');
-    this.root.querySelector('.look-paint').innerHTML = !picked ? `<p class="look-empty">${NO_CELL}</p>`
-      : !picked.rowId ? `<p class="look-empty">${NOT_PAINTABLE}</p>`
+      on === word ? ' is-on' : ''}" data-paint="${word}" aria-label="${name}" title="${name}">${word ? '' : '∅'}</button>`).join('');
+    this.root.querySelector('.look-paint').innerHTML = !label ? `<p class="look-empty">${NO_CELL}</p>`
+      : !targets.length ? `<p class="look-empty">${NOT_PAINTABLE}</p>`
         : `<div class="look-swatches">${swatches}</div><p class="look-hist"></p>`;
-    this.fillHistory(paint);
+    this.fillHistory(single && single.rowId ? paintOf(single.rowId, single.column) : null);
   }
 
   /** The paint's last change - «Danger · lee · 11-06 14:02 — before: none». */
@@ -127,11 +144,12 @@ export class LookPanel {
     if (!table || (!remove && !swatch)) return;
     let done = false;
     if (remove) {
-      done = await this.deps.write(ruleOff(table, remove.dataset.remove, this.deps.by), 'Rule not removed');
+      done = await this.deps.write([ruleOff(table, remove.dataset.remove, this.deps.by)], 'Rule not removed');
     } else {
-      const picked = this.deps.picked();
-      if (!picked || !picked.rowId) return;
-      done = await this.deps.write(paintUpdate(table, picked.rowId, picked.column, swatch.dataset.paint, this.deps.by), 'Paint not saved');
+      const { targets } = this.paintable();
+      if (!targets.length) return;
+      done = await this.deps.write(targets.map((t) => paintUpdate(table, t.rowId, t.column, swatch.dataset.paint, this.deps.by)),
+        'Paint not saved');
     }
     if (done) this.deps.written();
   }
@@ -148,8 +166,8 @@ export class LookPanel {
     const rules = (this.deps.looks() || { rules: [] }).rules;
     const last = rules.length ? rules[rules.length - 1].position : null;
     const columns = form.getAll('columns').map(String);
-    const done = await this.deps.write(ruleUpdate(table, this.deps.newId(), { role: String(form.get('role')), when, written_by: writtenBy,
-      columns: columns.length ? columns : null, position: placeBetween(last, null) }, this.deps.by), 'Rule not saved');
+    const done = await this.deps.write([ruleUpdate(table, this.deps.newId(), { role: String(form.get('role')), when, written_by: writtenBy,
+      columns: columns.length ? columns : null, position: placeBetween(last, null) }, this.deps.by)], 'Rule not saved');
     if (!done) return;
     this.form.reset();
     this.deps.written();

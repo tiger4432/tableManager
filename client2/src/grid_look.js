@@ -5,7 +5,7 @@
 // that says which: a paint over every rule, a later rule over an earlier one (lead 11-07 ㄱ).
 
 import { compile, run } from './expression.js';
-import { LOOK_TABLE, lookUpdate } from './grid_order.js';
+import { LOOK_TABLE, cellOf, lookUpdate, placesOn } from './grid_order.js';
 
 export const RULE = 'rule';
 /** Said on the document when the looks or the picked cell changed - the Colours tab and the legend draw again. */
@@ -77,10 +77,22 @@ export const ruleMove = (table, id, position, by) => lookUpdate(table, RULE, id,
 /** A rule taken off - its role wiped; its condition, writer and columns stay (its history says what it was). */
 export const ruleOff = (table, id, by) => lookUpdate(table, RULE, id, { role: '' }, by);
 
+/** The paints a selection asks: `cells` {rowIndex, colId}, `targetOf(cell)` the stored cell it is (grid.lookTarget) or
+ *  null -> {targets: [{rowId, column}] once each, skipped: the cells that are no one row's (a pivot's key or carried)}. */
+export function paintTargets(cells, targetOf) {
+  const seen = new Map();
+  let skipped = 0;
+  for (const cell of cells) {
+    const at = targetOf(cell);
+    if (!at || !at.rowId) { skipped += 1; continue; }
+    seen.set(paintKey(at.rowId, at.column), { rowId: at.rowId, column: at.column });
+  }
+  return { targets: [...seen.values()], skipped };
+}
+
 /** A paint's write - `role` '' wipes it. */
 export const paintUpdate = (table, rowId, column, role, by) => lookUpdate(table, PAINT, paintKey(rowId, column), { role }, by);
 
-const cellOf = (item, col) => { const c = item && item.data && item.data[col]; return c && typeof c === 'object' ? c.value : c; };
 const columnsOf = (text) => { try { const v = JSON.parse(text); return Array.isArray(v) && v.length ? v.map(String) : null; } catch { return null; } };
 
 /** `looks` with a sys_looks broadcast's rows on `table` taken in -> the new looks, or null when it names none of them. */
@@ -106,6 +118,21 @@ export function looksOn(msg, table, looks) {
   }
   const order = (a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return { rules: [...rules.values()].sort(order), paints };
+}
+
+/** What a sys_looks broadcast does to the screen showing `table` (`entered`: read in entered order, `written`: the
+ *  places it wrote) -> {reread: true} - a rule (a writer rule's cells say their writer only on a read), a place moved,
+ *  or a message with no rows (past the server's BROADCAST_ITEM_LIMIT, or a delete) - unless its `edits_of` (the
+ *  tables written, server access.edits_of) leaves this one out - or {looks} drawn from the message, or {} when it
+ *  is not this table's. */
+export function lookBroadcast(msg, table, looks, { entered = false, written = new Set() } = {}) {
+  const items = msg && Array.isArray(msg.items) ? msg.items : [];
+  if (!items.length) return Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) ? {} : { reread: true };
+  const taken = looksOn(msg, table, looks);
+  if ((taken && items.some((item) => cellOf(item, 'look_axis') === RULE)) || (entered && placesOn(msg, table, written))) {
+    return { reread: true };
+  }
+  return taken ? { looks: taken } : {};
 }
 
 /** A page's looks taken in: `append` keeps the paints of the pages already shown (rules are the table's, whole). */

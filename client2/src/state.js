@@ -325,6 +325,37 @@ export function visibleRangeColIds() {
     .map(c => c.colId);
 }
 
+/**
+ * The cells of the grid's selection, as {rowIndex, colId}: the ctrl-clicked cells when there are any, else the dragged
+ * rectangle - its columns in `visibleColIndexMap`'s order, the one `isCellInRange` highlights by. `keep(colId)` the
+ * columns counted (data columns unless said); `rectangle` the rectangle alone (what a drag commits into the map).
+ * Bulk fill, a drag's commit and the Colours tab's paint ask here (lead 11-08); copy, paste, clear and the sources
+ * dialog through `cellsToActOn`.
+ */
+export function selectedCells({ keep = isDataColumn, rectangle = false } = {}) {
+  const clicked = Object.values(state.selectedCellsMap || {});
+  if (!rectangle && clicked.length) return clicked.filter((cell) => keep(cell.colId));
+  const from = state.dragStartCell, to = state.dragEndCell;
+  const map = state.visibleColIndexMap || {};
+  if (!from || !to || map[from.colId] === undefined || map[to.colId] === undefined) return [];
+  const [lo, hi] = [Math.min(map[from.colId], map[to.colId]), Math.max(map[from.colId], map[to.colId])];
+  const cols = Object.keys(map).filter((id) => map[id] >= lo && map[id] <= hi && keep(id)).sort((a, b) => map[a] - map[b]);
+  const cells = [];
+  for (let r = Math.min(from.rowIndex, to.rowIndex); r <= Math.max(from.rowIndex, to.rowIndex); r++) {
+    for (const colId of cols) cells.push({ rowIndex: r, colId });
+  }
+  return cells;
+}
+
+/** The cells a command on the grid acts on: the selection (`selectedCells`, the same `keep`), else the focused cell. */
+export function cellsToActOn({ keep = isDataColumn } = {}) {
+  const cells = selectedCells({ keep });
+  if (cells.length) return cells;
+  const focused = state.gridApi && state.gridApi.getFocusedCell();
+  const colId = focused && focused.column && focused.column.getId();
+  return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];
+}
+
 export function updateVisibleColIndexMap() {
   if (!state.gridApi) return;
   const colState = state.gridApi.getColumnState() || [];

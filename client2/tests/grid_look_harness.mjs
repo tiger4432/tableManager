@@ -7,10 +7,17 @@
 //   L  a broadcast's rule and paint rows taken in, a wiped role gone, rules in their order; another table's left alone
 //   W  the writes - a rule's cells, a paint's key «<row>/<column>», a wipe; a place still a place (grid_order)
 //   O  a rule dragged: its place between its new neighbours' (grid_order.dropPlace), only its position written
-//   M  mutants - a copy of the whole grid_look.js (its imports pointed at the real modules), one change, P and S again
+//   R  the grid's selection (state.selectedCells, the one count bulk fill, copy, a drag's commit and paint ask): the
+//      ctrl-clicked cells first, else the rectangle in column order; data columns unless said; the rectangle alone
+//   T  what a selection paints: each stored cell once, a pivot's key or carried cell skipped and counted
+//   B  what a sys_looks broadcast does: a paint drawn from the message; a rule, a place moved, or a count-only message
+//      (past the server's BROADCAST_ITEM_LIMIT) reads the page again unless its edits_of leaves the table out;
+//      another table's nothing
+//   M  mutants - a copy of the whole module (its imports pointed at the real ones), one change, its cases again
 //
 // Run: node client2/tests/grid_look_harness.mjs
-import { lookOf, ruleRefusal, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, looksOn, pageLooks, RULE_EMPTY_NOTE } from '../src/grid_look.js';
+import { lookOf, ruleRefusal, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, paintTargets, lookBroadcast, looksOn, pageLooks, RULE_EMPTY_NOTE } from '../src/grid_look.js';
+import * as stateModule from '../src/state.js';
 import { placeUpdate, placesOn, dropPlace } from '../src/grid_order.js';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -95,30 +102,110 @@ eq('O2 a move writes its position only - its role, condition, writer and columns
 eq('W4 a place is still a place', placeUpdate('T', 'row', 'f1', '08', 'kim'),
   { updates: { look_table: 'T', look_axis: 'row', look_key: 'f1', position: '08' }, source_name: 'user', updated_by: 'kim' });
 
-// ── mutants: the whole grid_look.js copied, its two imports pointed at the real modules, one change ──
+// ── R: the selection, T: what it paints ──
+const selecting = (m, { clicked = {}, from = null, to = null } = {}) => {
+  Object.assign(m.state, { visibleColIndexMap: { '#': 0, lot: 1, owner: 2, value: 3 }, selectedCellsMap: clicked, dragStartCell: from, dragEndCell: to });
+};
+const choose = (m) => {
+  const said = [];
+  selecting(m, { from: { rowIndex: 2, colId: 'value' }, to: { rowIndex: 1, colId: '#' } });
+  said.push(m.selectedCells().map((c) => `${c.rowIndex}${c.colId}`));
+  said.push(m.selectedCells({ keep: () => true }).length);
+  selecting(m, { clicked: { '5_lot': { rowIndex: 5, colId: 'lot', rowId: 'x' }, '5_#': { rowIndex: 5, colId: '#' } },
+    from: { rowIndex: 0, colId: 'lot' }, to: { rowIndex: 0, colId: 'owner' } });
+  said.push(m.selectedCells().map((c) => `${c.rowIndex}${c.colId}`), m.selectedCells({ rectangle: true }).map((c) => `${c.rowIndex}${c.colId}`));
+  selecting(m);
+  said.push(m.selectedCells().length);
+  // the cells a command acts on: the selection, else the focused cell when its column counts
+  const focusing = (colId) => { m.state.gridApi = { getFocusedCell: () => (colId ? { rowIndex: 7, column: { getId: () => colId } } : null) }; };
+  const acts = (opts) => m.cellsToActOn(opts).map((c) => `${c.rowIndex}${c.colId}`);
+  focusing('owner');
+  selecting(m, { from: { rowIndex: 0, colId: 'lot' }, to: { rowIndex: 0, colId: 'owner' } });
+  const withRange = acts();
+  selecting(m);
+  const focusedData = acts();
+  focusing('#');
+  const focusedGutter = [acts(), acts({ keep: () => true })];
+  focusing(null);
+  const none = acts();
+  m.state.gridApi = null;
+  said.push([withRange, focusedData, focusedGutter, none]);
+  return said;
+};
+const chosen = choose(stateModule);
+eq('R1 the rectangle, rows then columns in column order, data columns only - the gutter «#» not counted',
+  chosen[0], ['1lot', '1owner', '1value', '2lot', '2owner', '2value']);
+eq('R2 every column when asked (copy): 2 rows x 4', chosen[1], 8);
+eq('R3 ctrl-clicked cells first (the rectangle not added), data ones; the rectangle alone when asked (a drag\'s commit)',
+  [chosen[2], chosen[3]], [['5lot'], ['0lot', '0owner']]);
+eq('R4 no selection: none', chosen[4], 0);
+eq('R5 the cells a command acts on: the selection over the focused cell; no selection - the focused cell when its column'
+  + ' counts (the gutter not, unless every column is asked); no focus - none', chosen[5],
+  [['0lot', '0owner'], ['7owner'], [[], ['7#']], []]);
+// a pivot page: «K» its key column, «I:a» an item whose cells are long rows' value cells - two grid cells, one stored cell
+const LONG = { 'g1|I:a': 'r1', 'g1|I:b': 'r2', 'g2|I:a': 'r1' };
+const targetOf = ({ rowIndex, colId }) => (colId === 'K' ? null : { rowId: LONG[`g${rowIndex}|${colId}`], column: 'value' });
+const paintsOf = (m) => m.paintTargets([{ rowIndex: 1, colId: 'K' }, { rowIndex: 1, colId: 'I:a' }, { rowIndex: 1, colId: 'I:b' },
+  { rowIndex: 2, colId: 'I:a' }], targetOf);
+eq('T1 a selection\'s paints - each stored cell once, the key cell skipped and counted', paintsOf({ paintTargets }),
+  { targets: [{ rowId: 'r1', column: 'value' }, { rowId: 'r2', column: 'value' }], skipped: 1 });
+eq('T2 a range painted is one write of its paints', [paintsOf({ paintTargets }).targets.map((t) => paintUpdate('T', t.rowId, t.column, 'warn', 'kim').updates.look_key)],
+  [['r1/value', 'r2/value']]);
+
+const told = (m) => {
+  const item = (table, axis, key, more = {}) => ({ row_id: `id-${key}`, data: { look_table: { value: table }, look_axis: { value: axis },
+    look_key: { value: key }, ...Object.fromEntries(Object.entries(more).map(([k, v]) => [k, { value: v }])) } });
+  const said = (msg, entered = false) => {
+    const out = m.lookBroadcast(msg, 'T', { rules: [], paints: {} }, { entered });
+    return out.reread ? 'reread' : out.looks ? `draw ${Object.keys(out.looks.paints).join(',')}` : 'nothing';
+  };
+  return [said({ items: [item('T', 'paint', 'r1/a', { role: 'warn' })] }), said({ count: 300 }), said({ items: [] }),
+    said({ items: [item('T', 'rule', 'q1', { role: 'warn', rule_when: '[value] > 1' })] }),
+    said({ items: [item('U', 'paint', 'r1/a', { role: 'warn' })] }),
+    said({ items: [item('T', 'row', 'r9', { position: '8' })] }, true), said({ items: [item('T', 'row', 'r9', { position: '8' })] }, false),
+    said({ count: 300, edits_of: ['S', 'T'] }), said({ count: 300, edits_of: ['U'] }), said({ count: 300, edits_of: [] }),
+    said({ count: 300, truncated: { edits_of: { cut: true, omitted: 120 } } }),
+    said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['T'] }), said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['U'] })];
+};
+eq('B1 a paint drawn from the message; a count-only message read again (two shapes); a rule read again; another table\'s nothing;'
+  + ' a place on a table read in entered order read again, not on another; a count-only message naming this table in edits_of'
+  + ' read again, naming others or none nothing, its edits_of cut read again; a delete the same (D 538297673)', told({ lookBroadcast }),
+  ['draw r1/a', 'reread', 'reread', 'reread', 'nothing', 'reread', 'nothing', 'reread', 'nothing', 'nothing', 'reread', 'reread', 'nothing']);
+
+// ── mutants: the whole module copied, its imports pointed at the real modules, one change ──
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const decide = (m) => {
   const on = (rowId, column, value, writtenBy) => m.lookOf(LOOKS, rowId, column, { value, ...(writtenBy ? { written_by: writtenBy } : {}) });
   return [on('row-1', 'etch', '0.52'), on('row-2', 'cmp', '0.52', 'ai'), on('row-1', 'cmp', '0.12', 'ai'), on('row-1', 'etch', '0.12', 'ai'),
     on('row-1', 'cmp', '0.12', 'chain'), on('row-1', 'cmp', '0.12')];
 };
-const real = JSON.stringify(decide({ lookOf }));
+const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js'], (m) => [decide(m), paintsOf(m), told(m)]];
+const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js'], choose];
 const MUTANTS = [
-  ['M1 a paint not over the rules', 'if (paint && paint.role) return { role: paint.role, hand: true };', ''],
-  ['M2 the first rule wins, not the later', '    role = rule.role;', '    role = role || rule.role;'],
-  ['M3 a rule on every column, its columns ignored', '(rule.columns && !rule.columns.includes(column))', 'false'],
-  ['M4 a writer rule on any writer', '    if (rule.written_by && !(cell && cell.written_by === rule.written_by)) continue;\n', ''],
+  ['M1 a paint not over the rules', LOOK, 'if (paint && paint.role) return { role: paint.role, hand: true };', ''],
+  ['M2 the first rule wins, not the later', LOOK, '    role = rule.role;', '    role = role || rule.role;'],
+  ['M3 a rule on every column, its columns ignored', LOOK, '(rule.columns && !rule.columns.includes(column))', 'false'],
+  ['M4 a writer rule on any writer', LOOK, '    if (rule.written_by && !(cell && cell.written_by === rule.written_by)) continue;\n', ''],
+  ['M5 a key cell skipped without being counted', LOOK, 'if (!at || !at.rowId) { skipped += 1; continue; }', 'if (!at || !at.rowId) continue;'],
+  ['M8 a count-only broadcast not read again (a big paint never reaches another screen)', LOOK, '  if (!items.length) return Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) ? {} : { reread: true };\n', ''],
+  ['M9 edits_of ignored (every screen reads again on any big paint)', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', 'false'],
+  ['M10 a count-only message without edits_of not read again', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', '!(msg.edits_of || []).includes(table)'],
+  ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && clicked.length) return', 'if (false) return'],
+  ['M7 the gutter and every column counted', STATE, 'map[id] <= hi && keep(id))', 'map[id] <= hi)'],
+  ['M11 no focused cell when nothing is selected', STATE, 'return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];', 'return [];'],
+  ['M12 the focused cell whatever its column', STATE, 'return colId && keep(colId) ?', 'return colId ?'],
 ];
-for (const [name, from, to] of MUTANTS) {
+for (const [name, [module, deps, cases], from, to] of MUTANTS) {
   const dir = mkdtempSync(path.join(tmpdir(), 'look-mutant-'));
   try {
-    let { text } = readSourceText(path.join(SRC, 'grid_look.js'));     // LF whatever the checkout did
-    if (!text.includes(from)) { eq(`${name}: its anchor is in grid_look.js`, false, true); continue; }
-    for (const dep of ['expression.js', 'grid_order.js']) text = text.replace(`'./${dep}'`, `'${pathToFileURL(path.join(SRC, dep)).href}'`);
-    const file = path.join(dir, 'grid_look.js');
+    let { text } = readSourceText(path.join(SRC, module));     // LF whatever the checkout did
+    if (!text.includes(from)) { eq(`${name}: its anchor is in ${module}`, false, true); continue; }
+    for (const dep of deps) text = text.replace(`'./${dep}'`, `'${pathToFileURL(path.join(SRC, dep)).href}'`);
+    const file = path.join(dir, module);
     writeFileSync(file, text.replace(from, to));
+    const real = JSON.stringify(cases(module === 'state.js' ? stateModule : { lookOf, paintTargets, lookBroadcast }));
     let caught;
-    try { caught = JSON.stringify(decide(await import(pathToFileURL(file).href))) !== real; } catch (e) { caught = `threw ${e.message}`; }
+    try { caught = JSON.stringify(cases(await import(pathToFileURL(file).href))) !== real; } catch (e) { caught = `threw ${e.message}`; }
     eq(`${name}: caught`, caught, true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

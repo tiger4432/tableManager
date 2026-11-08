@@ -55,7 +55,8 @@ export function lookUpdate(table, axis, key, cells, by) {
 /** The write of a place. */
 export const placeUpdate = (table, axis, first, position, by) => lookUpdate(table, axis, first, { position }, by);
 
-const cellOf = (item, col) => { const c = item && item.data && item.data[col]; return c && typeof c === 'object' ? c.value : c; };
+/** A broadcast item's cell value. */
+export const cellOf = (item, col) => { const c = item && item.data && item.data[col]; return c && typeof c === 'object' ? c.value : c; };
 /** A place as this screen remembers writing it. */
 export const placeWord = (first, position) => `${first} ${position}`;
 

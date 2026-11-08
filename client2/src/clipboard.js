@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown, selectedCells, cellsToActOn } from './state.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped, cellToSend } from './write_guard.js';
@@ -17,6 +17,7 @@ import { getLocalTimeString } from './utils.js';
 import { parseTsv, serializeTsv } from './tsv.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 import { markWork } from './ui_stall.js';
+import { saidLooksChanged } from './grid_look.js';
 
 /**
  * 참조 사이드바 «안»에서 일어난 복사인가 — 그러면 격자는 비켜선다.
@@ -68,6 +69,12 @@ export function isCellInRange(rowIndex, colId) {
  * Written from the arguments rather than from `state`, because `refreshRange` is also called
  * on mouse-up with the OLD rectangle after `state` has already been nulled.
  */
+/** A range change said to what draws it - the readout under the grid and the Colours tab's count. */
+function saidRangeChanged(startCell, endCell) {
+  writeRangeReadout(startCell, endCell);
+  saidLooksChanged();
+}
+
 function writeRangeReadout(startCell, endCell) {
   const readout = document.getElementById('range-readout');
   if (!readout) return;
@@ -84,7 +91,7 @@ function writeRangeReadout(startCell, endCell) {
 }
 
 export function refreshRange(api, startCell, endCell) {
-  writeRangeReadout(startCell, endCell);
+  saidRangeChanged(startCell, endCell);
   if (!startCell || !endCell || !api) return;
   const startRow = startCell.rowIndex;
   const endRow = endCell.rowIndex;
@@ -113,7 +120,7 @@ export function refreshRange(api, startCell, endCell) {
 }
 
 export function refreshSelectedRangeDiff(api, startCell, prevEndCell, newEndCell) {
-  writeRangeReadout(startCell, newEndCell);
+  saidRangeChanged(startCell, newEndCell);
   if (!startCell || !newEndCell || !api) return;
 
   const startRow = startCell.rowIndex;
@@ -204,30 +211,11 @@ export function clearRangeSelection() {
 }
 
 export function commitDragSelection(api) {
-  if (!state.dragStartCell || !state.dragEndCell || !api) return;
-
-  const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
-  const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
-
-  if (startColIdx !== undefined && endColIdx !== undefined) {
-    const minCol = Math.min(startColIdx, endColIdx);
-    const maxCol = Math.max(startColIdx, endColIdx);
-    const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-    const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-
-    const visibleColIds = Object.keys(state.visibleColIndexMap);
-    const targetCols = visibleColIds.filter((_, idx) => idx >= minCol && idx <= maxCol && isDataColumn(_));
-
-    for (let r = minRow; r <= maxRow; r++) {
-      const node = api.getDisplayedRowAtIndex(r);
-      if (!node || !node.data) continue;
-      const rowId = node.data.row_id;
-
-      targetCols.forEach(colId => {
-        const key = `${r}_${colId}`;
-        state.selectedCellsMap[key] = { rowIndex: r, colId, rowId };
-      });
-    }
+  if (!api) return;
+  for (const { rowIndex, colId } of selectedCells({ rectangle: true })) {
+    const node = api.getDisplayedRowAtIndex(rowIndex);
+    if (!node || !node.data) continue;
+    state.selectedCellsMap[`${rowIndex}_${colId}`] = { rowIndex, colId, rowId: node.data.row_id };
   }
 }
 
@@ -241,40 +229,9 @@ function copiedCell(data, col) {
 export function getRangeSelectedTSV() {
   if (!state.gridApi) return '';
 
-  let selectedCells = Object.values(state.selectedCellsMap);
-  
-  if (selectedCells.length === 0) {
-    if (!state.dragStartCell || !state.dragEndCell) {
-      // Fallback: If no custom selection map, get current focused cell
-      const focusedCell = state.gridApi.getFocusedCell();
-      if (focusedCell) {
-        selectedCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
-      } else {
-        return '';
-      }
-    } else if (selectedCells.length === 0) {
-      if (state.dragStartCell && state.dragEndCell) {
-        const visibleCols = (state.gridApi.getColumnState() || [])
-          .filter(c => !c.hide)
-          .map(c => c.colId);
-        const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
-        const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
-        if (startColIdx !== -1 && endColIdx !== -1) {
-          const minCol = Math.min(startColIdx, endColIdx);
-          const maxCol = Math.max(startColIdx, endColIdx);
-          const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-          const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-          for (let r = minRow; r <= maxRow; r++) {
-            for (let c = minCol; c <= maxCol; c++) {
-              selectedCells.push({ rowIndex: r, colId: visibleCols[c] });
-            }
-          }
-        } else {
-          selectedCells.push({ rowIndex: state.dragStartCell.rowIndex, colId: state.dragStartCell.colId });
-        }
-      }
-    }
-  }
+  // every column counted here - the copy's own columns are chosen below, inside the bounds these cells give
+  const picked = cellsToActOn({ keep: () => true });
+  if (picked.length === 0) return '';
 
   const visibleCols = (state.gridApi.getColumnState() || [])
     .filter(c => !c.hide)
@@ -285,7 +242,7 @@ export function getRangeSelectedTSV() {
   let minColIdx = Infinity;
   let maxColIdx = -Infinity;
 
-  selectedCells.forEach(cell => {
+  picked.forEach(cell => {
     const cIdx = visibleCols.indexOf(cell.colId);
     if (cIdx !== -1) {
       if (cell.rowIndex < minRow) minRow = cell.rowIndex;
@@ -627,35 +584,7 @@ export function setupClipboardHandlers() {
     // C-84. 뷰에는 붙여넣지 않는다. 조용히 지나가면 「자막 없는 실패」라 한 줄 적는다.
     if (refuseWrite()) { e.preventDefault(); return; }
 
-    // Determine target cells from selection map or drag bounds
-    let targetCells = Object.values(state.selectedCellsMap);
-    const focusedCell = state.gridApi.getFocusedCell();
-
-    if (targetCells.length === 0) {
-      if (state.dragStartCell && state.dragEndCell) {
-        // Fallback to drag bounds
-        const visibleCols = (state.gridApi.getColumnState() || [])
-          .filter(c => !c.hide)
-          .map(c => c.colId);
-        const startColIdx = visibleCols.indexOf(state.dragStartCell.colId);
-        const endColIdx = visibleCols.indexOf(state.dragEndCell.colId);
-        if (startColIdx !== -1 && endColIdx !== -1) {
-          const minCol = Math.min(startColIdx, endColIdx);
-          const maxCol = Math.max(startColIdx, endColIdx);
-          const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-          const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-          
-          const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && isDataColumn(_));
-          for (let r = minRow; r <= maxRow; r++) {
-            targetCols.forEach(colId => {
-              targetCells.push({ rowIndex: r, colId });
-            });
-          }
-        }
-      } else if (focusedCell) {
-        targetCells.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
-      }
-    }
+    const targetCells = cellsToActOn();
 
     if (targetCells.length === 0) return;
 
@@ -726,34 +655,7 @@ export async function clearSelectedCells() {
   // C-84. 지우기도 쓰기다.
   if (refuseWrite()) return;
 
-  let cellsToClear = []; // Array of { rowIndex, colId }
-  const selectedCells = Object.values(state.selectedCellsMap);
-
-  if (selectedCells.length > 0) {
-    cellsToClear = selectedCells;
-  } else if (state.dragStartCell && state.dragEndCell) {
-    const allCols = state.gridApi.getColumns().map(c => c.getColId());
-    const startColIdx = allCols.indexOf(state.dragStartCell.colId);
-    const endColIdx = allCols.indexOf(state.dragEndCell.colId);
-    if (startColIdx !== -1 && endColIdx !== -1) {
-      const minColIdx = Math.min(startColIdx, endColIdx);
-      const maxColIdx = Math.max(startColIdx, endColIdx);
-      const minRowIdx = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-      const maxRowIdx = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-
-      for (let r = minRowIdx; r <= maxRowIdx; r++) {
-        for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
-          cellsToClear.push({ rowIndex: r, colId: allCols[cIdx] });
-        }
-      }
-    }
-  } else {
-    // Single focused cell
-    const focusedCell = state.gridApi.getFocusedCell();
-    if (focusedCell) {
-      cellsToClear.push({ rowIndex: focusedCell.rowIndex, colId: focusedCell.column.getId() });
-    }
-  }
+  const cellsToClear = cellsToActOn();
 
   if (cellsToClear.length === 0) return;
 

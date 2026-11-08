@@ -1321,20 +1321,21 @@ async function editCell(event) {
 /** A dragged row, group or item's place, written: one row of the shipped sys_looks through its write door (owner 11-06).
  *  -> true when it was written; a refusal is said. */
 export async function writePlace(axis, first, position) {
-  const done = await writeLook(placeUpdate(state.currentTable, axis, first, position, CURRENT_USER), 'Move not saved');
+  const done = await writeLook([placeUpdate(state.currentTable, axis, first, position, CURRENT_USER)], 'Move not saved');
   if (done) state.placesWritten.add(placeWord(first, position));
   return done;
 }
 
-/** One look row written (a place, a rule, a paint - `update` from grid_order.lookUpdate); `stopped` names what was not
- *  saved. Written at once, Tx on or off - a look is not a staged cell. */
-export async function writeLook(update, stopped) {
+/** Look rows written in one request (places, rules, paints - `updates` from grid_order.lookUpdate): one transaction,
+ *  one broadcast, all refused when one is; `stopped` names what was not saved. Written at once, Tx on or off - a look is
+ *  not a staged cell. */
+export async function writeLook(updates, stopped) {
   if (refuseWrite()) return false;
   try {
     const res = await fetch(`${API_BASE}/tables/${LOOK_TABLE}/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: [update] }),
+      body: JSON.stringify({ updates }),
     });
     if (!res.ok) {
       const said = await res.json().catch(() => ({}));

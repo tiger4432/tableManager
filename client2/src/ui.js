@@ -1,5 +1,5 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown, selectedCells } from './state.js';
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
@@ -139,28 +139,7 @@ export async function applyValueToSelectedRange(newValue) {
   // C-84. 일괄 채우기도 쓰기다. C-107: 묻는 자리는 «한 곳».
   if (refuseWrite()) return;
 
-  let cellsToUpdate = Object.values(state.selectedCellsMap);
-  if (cellsToUpdate.length === 0) {
-    if (!state.dragStartCell || !state.dragEndCell) return;
-
-    const startIdx = state.visibleColIndexMap[state.dragStartCell.colId];
-    const endIdx = state.visibleColIndexMap[state.dragEndCell.colId];
-    if (startIdx === undefined || endIdx === undefined) return;
-
-    const minColIdx = Math.min(startIdx, endIdx);
-    const maxColIdx = Math.max(startIdx, endIdx);
-    const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-    const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-
-    const visibleColIds = Object.keys(state.visibleColIndexMap);
-    const targetCols = visibleColIds.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && isDataColumn(_));
-    for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
-      targetCols.forEach(colId => {
-        cellsToUpdate.push({ rowIndex: rIdx, colId });
-      });
-    }
-  }
-
+  const cellsToUpdate = selectedCells();
   if (cellsToUpdate.length === 0) return;
 
   const updatesArray = [];

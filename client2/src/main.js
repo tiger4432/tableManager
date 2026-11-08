@@ -15,7 +15,7 @@ import { openInTables } from './tables/handoff.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state, isDataColumn, pivotShown } from './state.js';
+import { state, isDataColumn, pivotShown, selectedCells, cellsToActOn } from './state.js';
 import { headerWord, itemOf } from './grid_pivot.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
@@ -49,7 +49,7 @@ import {
   writeLook
 } from './api.js';
 import { LookPanel } from './look_panel.js';
-import { LOOKS_CHANGED } from './grid_look.js';
+import { LOOKS_CHANGED, paintTargets } from './grid_look.js';
 import { FormulaPopover } from './formula_popover.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -741,6 +741,14 @@ function setupEventListeners() {
       const row = pivotShown() && state.pivotView ? (node.data.data[state.pivotView.keys[0]] || {}).value : `#${at.rowIndex + 1}`;
       const label = `${row} · ${itemOf(at.colId) ?? at.colId}`;
       return target ? { rowId: target.rowId, column: target.column, label } : { label };
+    },
+    // the selection when it is more than one cell: the cells it paints, and the ones that are no one row's
+    range: () => {
+      const cells = selectedCells({ keep: (col) => isDataColumn(col) && !isSystemColumn(col) });
+      return cells.length > 1 ? paintTargets(cells, ({ rowIndex, colId }) => {
+        const node = state.gridApi && state.gridApi.getDisplayedRowAtIndex(rowIndex);
+        return node && node.data ? lookTarget(node.data, colId) : null;
+      }) : null;
     },
     write: writeLook,
     history: async (rowId) => {
@@ -1597,44 +1605,12 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-
-  if (state.dragStartCell && state.dragEndCell) {
-    const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
-    const endColIdx = state.visibleColIndexMap[state.dragEndCell.colId];
-    if (startColIdx !== undefined && endColIdx !== undefined) {
-      const minColIdx = Math.min(startColIdx, endColIdx);
-      const maxColIdx = Math.max(startColIdx, endColIdx);
-      const minRowIdx = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-      const maxRowIdx = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
-
-      const visibleColIds = Object.keys(state.visibleColIndexMap);
-      for (let r = minRowIdx; r <= maxRowIdx; r++) {
-        for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
-          const colId = visibleColIds[cIdx];
-          if (isSystemColumn(colId) || !isDataColumn(colId) || /^\d+$/.test(colId)) continue;
-
-          const rowNode = state.gridApi.getDisplayedRowAtIndex(r);
-          if (rowNode && rowNode.data) {
-            const rowId = rowNode.data.row_id;
-            cells.push({ rowId, colId, rowIndex: r });
-          }
-        }
-      }
-    }
-  } else {
-    // Focused cell fallback
-    const focusedCell = state.gridApi.getFocusedCell();
-    if (focusedCell) {
-      const colId = focusedCell.column.getId();
-      if (!isSystemColumn(colId) && isDataColumn(colId) && !/^\d+$/.test(colId)) {
-        const rowNode = state.gridApi.getDisplayedRowAtIndex(focusedCell.rowIndex);
-        if (rowNode && rowNode.data) {
-          cells.push({ rowId: rowNode.data.row_id, colId, rowIndex: focusedCell.rowIndex });
-        }
-      }
-    } else if (state.selectedCell) {
-      cells.push({ rowId: state.selectedCell.rowId, colId: state.selectedCell.colId, rowIndex: state.selectedCell.rowIndex });
-    }
+  for (const { rowIndex, colId } of cellsToActOn({ keep: (col) => !isSystemColumn(col) && isDataColumn(col) && !/^\d+$/.test(col) })) {
+    const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
+    if (rowNode && rowNode.data) cells.push({ rowId: rowNode.data.row_id, colId, rowIndex });
+  }
+  if (!cells.length && !state.gridApi.getFocusedCell() && state.selectedCell) {
+    cells.push({ rowId: state.selectedCell.rowId, colId: state.selectedCell.colId, rowIndex: state.selectedCell.rowIndex });
   }
   return cells;
 }
