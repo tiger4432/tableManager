@@ -79,10 +79,10 @@ def test_a_corrected_cell_is_remembered_and_an_agreeing_one_is_not(world):
     _person(world, "P1-2", "deposit")
     _person(world, "P1-3", "etch")                       # the person wrote the AI's own answer - nothing to learn
     answer = ask_rule.answer(world, _half(), ["P1-1", "P1-2", "P1-3"])
-    rows = [u["updates"] for u in answer["updates"] if not u.get("gone")]
+    rows = [u["updates"] for u in answer["updates"] if not u.get("covers")]
     assert [(json.loads(r["situation"]), r["cell"], r["ai"], r["right"], r["who"]) for r in rows] == [
         ({"product": "P1", "step_seq": "P12"}, "process_kind", "etch", "deposit", "kim")]
-    assert answer["calls"] == 0 and not [u for u in answer["updates"] if u.get("gone")]
+    assert answer["calls"] == 0 and not [u for u in answer["updates"] if u.get("covers")]
 
 
 def test_a_correction_put_back_takes_its_memory_row_away(world):
@@ -94,9 +94,8 @@ def test_a_correction_put_back_takes_its_memory_row_away(world):
         world.add(m(row_id="mem%d" % n, business_key_val=ask_rule._key_of("am_memory", row), **row))
     world.commit()
     answer = ask_rule.answer(world, _half(), ["P1-2"])    # no person layer on P1-2 any more
-    assert [u["business_key_val"] for u in answer["updates"] if u.get("gone")] == [
+    assert [where["business_key_val"] for u in answer["updates"] if u.get("covers") for where in u["covers"]["where"]] == [
         ask_rule._key_of("am_memory", held)], "only the handed row's situation - P2's memory untouched"
-    assert answer["updates"][0]["own"] == ["step_kind"]
 
 
 def test_the_prompt_carries_this_scopes_newest_corrections_up_to_the_limit(world):

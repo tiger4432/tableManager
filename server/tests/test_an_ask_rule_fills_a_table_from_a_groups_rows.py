@@ -68,7 +68,7 @@ def test_a_product_is_one_call_and_its_rows_carry_the_product(world):
     rule = rule_shape.as_chain_rule(rule_shape.from_declaration(DECLARATION))
     answer = ask_rule.answer(db, rule, ["P1-0", "P2-3"])
     assert answer["calls"] == len(calls) == 2, "one product a request: batch_chars 100 holds one product's text"
-    written = [u for u in answer["updates"] if not u.get("gone")]
+    written = [u for u in answer["updates"] if not u.get("covers")]
     rows = sorted((u["updates"]["product"], u["updates"]["structure"], u["updates"].get("kind")) for u in written)
     assert rows == [("P1", "M1", "line"), ("P1", "V1", "no common"), ("P2", "M1", "line"), ("P2", "V1", "no common")]
     assert all("row_id" not in u for u in answer["updates"])
@@ -99,10 +99,9 @@ def test_a_row_of_the_group_the_answer_no_longer_gives_is_handed_as_gone(world):
                  business_key_val=crud.compose_business_key("ak_structure", [product, structure], ["product", "structure"])))
     db.commit()
     answer = ask_rule.answer(db, rule_shape.as_chain_rule(rule_shape.from_declaration(DECLARATION)), ["P1-0"])
-    gone = [u for u in answer["updates"] if u.get("gone")]
-    assert [u["business_key_val"] for u in gone] == [crud.compose_business_key("ak_structure", ["P1", "OLD"],
-                                                                             ["product", "structure"])]
-    assert gone[0]["own"] == ["structure_of_product"]
+    # what the answer covers and no longer gives - its rule's cells there go, by the write's settle (owner 11-06 step 2)
+    gone = [where["business_key_val"] for u in answer["updates"] if u.get("covers") for where in u["covers"]["where"]]
+    assert gone == [crud.compose_business_key("ak_structure", ["P1", "OLD"], ["product", "structure"])]
 
 
 def test_one_group_handed_twice_is_asked_once(world):

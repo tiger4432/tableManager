@@ -466,3 +466,22 @@ def test_a_deletion_no_rule_answered_takes_back_what_its_row_fed_through_the_set
     worker._withdraw_unanswered_deletions(db, {SRC: [src_row]}, "unanswered")
 
     assert _layers(db) == []
+
+
+@pytest.mark.parametrize("owners", ["one", "two"])
+def test_one_answer_giving_a_cell_two_values_writes_neither(db, owners):
+    """Owner 11-08: two values for one cell inside ONE answer (one owner - a rule and its key) is refused by name and
+    neither is written; two owners writing one cell is not that - both are written and the later shows."""
+    first = crud.owned_layer_name("r_two", "K1")
+    second = first if owners == "one" else crud.owned_layer_name("r_other", "K1")
+    report = {}
+    crud.apply_batch_updates(db, DST, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"k": "K1", "w": "a"}, source_name=first, updated_by="r_two"),
+        schemas.GeneralUpdateItem(updates={"k": "K1", "w": "b"}, source_name=second, updated_by="r_two")]),
+        drop_report=report)
+    refused = (report.get("by_reason") or {}).get(crud.DROP_TWO_VALUES, 0)
+    if owners == "one":
+        assert refused == 2 and _dst(db).get("K1") in (None, "")
+        assert "fix the rule" in crud.not_written_sentence(report["by_reason_column"], "Not written")
+    else:
+        assert refused == 0 and _dst(db) == {"K1": "b"}

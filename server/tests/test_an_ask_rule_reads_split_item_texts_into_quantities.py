@@ -70,7 +70,7 @@ def world(db_session, monkeypatch):
 
 
 def _rows(answer):
-    return sorted((u["updates"]["item_text"], u["updates"]["quantity"]) for u in answer["updates"] if not u.get("gone"))
+    return sorted((u["updates"]["item_text"], u["updates"]["quantity"]) for u in answer["updates"] if not u.get("covers"))
 
 
 def test_each_distinct_item_text_is_asked_once_and_its_choices_say_what_they_are(world):

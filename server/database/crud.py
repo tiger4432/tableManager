@@ -214,6 +214,9 @@ DROP_UNMAPPED_COLUMN = "unmapped_column"
 #: column stopped a file, a grid paste and a chain group (owner 10-29 «데이터 값은 멈추지 않는다» ㄱ): now that cell
 #: is not entered, the rest of its row is written, and the cell is counted here with its value.
 DROP_VALUE_REFUSED = "value_refused"
+#: One answer gave one cell two values - the items one owner (`layer_owner`: a rule and its key) proposed (owner 11-08:
+#: «한 답 안의 한 칸 두 값 = 오류»). Neither is written. Different owners on one cell are not this: the later shows.
+DROP_TWO_VALUES = "two_values_in_one_answer"
 
 # Both caps exist for the same reason the undeclared-column registry has a budget: every
 # name and every row id in this report comes from the PAYLOAD, so a malformed file must
@@ -251,6 +254,26 @@ def _new_drop_stats() -> dict:
         # counts them (a blank lost nothing; a column of blanks only is still named, at 0) - not_written_sentence's
         "by_reason_column": {},
     }
+
+
+def _refuse_two_values_in_one_answer(table_name, items, drop_stats):
+    """The cells one owner's items give two different values in this batch, taken off every such item and counted
+    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked."""
+    types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    seen = {}
+    for item in items:
+        if layer_owner(item.source_name) is None:
+            continue
+        row = item.row_id or item.business_key_val
+        for column, value in (item.updates or {}).items():
+            seen.setdefault((row, item.source_name, column), []).append((item, value))
+    for (row, _name, column), said in seen.items():
+        first = said[0][1]
+        if not any(values_differ(first, value, types.get(column, "string")) for _item, value in said[1:]):
+            continue
+        for item, value in said:
+            item.updates.pop(column, None)
+            _record_dropped_cell(drop_stats, item.row_id, item.business_key_val, column, DROP_TWO_VALUES, value)
 
 
 def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
@@ -1272,6 +1295,7 @@ NOT_WRITTEN_NEXT = {
     DROP_UNMAPPED_COLUMN: "reload or restart so this process holds the unmapped columns, "
                           "then Retry the file",
     DROP_VALUE_REFUSED: "fix the values their columns' types do not take - the rest of each row was written",
+    DROP_TWO_VALUES: "fix the rule - one answer gave these cells two values, neither was written",
 }
 
 
@@ -6244,6 +6268,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # Whole rows refused before the loop, by name. They are not cell drops - no cell
         # was read - so they ride beside the cell accounting rather than inside it.
         drop_stats["row_refusals"] = vjoin_refusals
+        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats)
 
         # [phantom row] Row ids that ended the loop having received CONTENT. A row is in
         # here iff some item resolved onto it and produced at least one changed column,
