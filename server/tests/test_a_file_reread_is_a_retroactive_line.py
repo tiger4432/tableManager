@@ -267,8 +267,8 @@ class _Slot:
     def __init__(self, index):
         self.index, self.pid, self.line, self.ready, self.leaving = index, 100 + index, None, False, False
 
-    def ask(self, line, rows=None):
-        self.line, self.ready, self.rows = line, False, rows
+    def ask(self, line, rows=None, fit=None):
+        self.line, self.ready, self.rows, self.fit = line, False, rows, fit
         return True
 
     def release(self):

@@ -187,11 +187,11 @@ class _Slot:
         except (OSError, ValueError):
             return False
 
-    def ask(self, line, rows=None):
-        """Run a batch of `line` - of at most `rows` rows (a retroactive line's budget; None: the chain's).
-        -> False when it can no longer be asked (it is reaped next tick)."""
+    def ask(self, line, rows=None, fit=None):
+        """Run a batch of `line` - of at most `rows` rows (a retroactive line's budget; None: the chain's), `fit` its
+        batches' `keyset_scan.Fit` sums. -> False when it can no longer be asked (it is reaped next tick)."""
         self.line, self.ready = line, False
-        if self._send({"line": line["line"], "run": line["run"], "rows": rows}):
+        if self._send({"line": line["line"], "run": line["run"], "rows": rows, "fit": fit}):
             return True
         self.line = None
         return False
@@ -234,6 +234,7 @@ class SlotPool:
         self._ran = {}                # line key -> monotonic time a batch of it last ran
         self._batches = {}            # retroactive line key -> batches run, for its pace
         self._rows = {}               # retroactive line key -> its next batch's rows (`next_row_budget`)
+        self._fits = {}               # retroactive line key -> its batches' fit sums (`keyset_scan.Fit`)
         self._started = {}            # slot index -> monotonic time it was last started
         self._wanted = DEFAULT_SLOTS
         self._read_at, self._waiting = -READ_EVERY_SECONDS, []
@@ -290,7 +291,7 @@ class SlotPool:
                     slot.release()                           # its line rests, or is over its share, and nothing waits
                 continue
             retro += bool(nxt["run"])
-            if slot.ask(nxt, self._rows.get(nxt["line"]) if nxt["run"] else None):
+            if slot.ask(nxt, *((self._rows.get(nxt["line"]), self._fits.get(nxt["line"])) if nxt["run"] else ())):
                 asked += 1
                 if nxt is not mine:
                     logger.info("[Chain] slot %d (pid %d) runs line %s", slot.index, slot.pid, nxt["line"])
@@ -327,6 +328,7 @@ class SlotPool:
                     self._ran[key] = now
                     if slot.line["run"]:
                         self._rows[key] = answer.get("rows") or self._rows.get(key)
+                        self._fits[key] = answer.get("fit") or self._fits.get(key)
                         self._rest_by_pace(db, key, now)
                 else:
                     if outcome == FAILED:
@@ -335,6 +337,7 @@ class SlotPool:
                         self._ran.pop(key, None)
                         self._batches.pop(key, None)
                         self._rows.pop(key, None)
+                        self._fits.pop(key, None)
                         # the window read before it drained still lists it: given again from there, it
                         # was asked, drained at once and given again every few ms until the next read
                         self._waiting = [line for line in self._waiting if line["line"] != key]
@@ -586,22 +589,24 @@ async def _serve(index, answers):
         if outcome != RAN:
             heartbeat.record_lap(name, HOLDS)
             heartbeat.beat(name, note=ingestion_worker._worker_note(), force=True)
-        answers.write(json.dumps({"line": ask["line"], "outcome": outcome, "rows": rows}) + "\n")
+        answers.write(json.dumps({"line": ask["line"], "outcome": outcome, "rows": rows, "fit": ask.get("fit")}) + "\n")
 
 
-def next_row_budget(rows, seconds, target=None):
+def next_row_budget(rows, seconds, target=None, fit=None):
     """A retroactive line's next batch, in rows, after `rows` ran in `seconds`: the page rule
-    (`keyset_scan.next_size`) at the page time (`pacing.page_seconds`) - at most double, 1 to the chain's budget
-    (총괄 10-28: a batch that ran a cheap event in 0.15 s sized the next at 30 times, and it took 174 s). None when
-    nothing ran: the line keeps its budget."""
+    (`keyset_scan.next_size`) at the page time (`pacing.page_seconds`) on the line's `fit` (`keyset_scan.Fit`, this
+    batch added - the fit `PageSize` reads, QA 11-08) - at most double, 1 to the chain's budget (총괄 10-28: a batch
+    that ran a cheap event in 0.15 s sized the next at 30 times, and it took 174 s). None when nothing ran: the line
+    keeps its budget."""
     import event_constants
     import pacing
-    from chain.keyset_scan import next_size
+    from chain.keyset_scan import Fit, next_size
 
     if rows <= 0 or seconds <= 0:
         return None
     target = pacing.page_seconds() if target is None else target
-    return next_size(rows, seconds, target, event_constants.OUTBOX_GROUP_MAX_ROWS, (rows / seconds,))
+    fit = (fit if fit is not None else Fit()).add(rows, seconds).value()
+    return next_size(rows, seconds, target, event_constants.OUTBOX_GROUP_MAX_ROWS, (rows / seconds,), fit)
 
 
 def _rows_ran(db, events, ids):
@@ -621,7 +626,7 @@ async def _run_batch(ask, rules, seen):
     `rows` (first: the chain's budget), a live line's the chain's -> (outcome, rules, seen, a retroactive line's next
     `rows`: None when the batch did not run)."""
     import event_constants
-    from chain import activity, control, ingestion_worker
+    from chain import activity, control, ingestion_worker, keyset_scan
     from database.database import SessionLocal
     from runtime import system_reload
     from utils import heartbeat
@@ -654,7 +659,9 @@ async def _run_batch(ask, rules, seen):
         if budget is not None:
             took = time.monotonic() - started
             ran = await ingestion_worker._step_beating(db, "rows ran", _rows_ran, db, events, ids)
-            rows = next_row_budget(ran, took)
+            fit = keyset_scan.Fit(ask.get("fit"))
+            rows = next_row_budget(ran, took, fit=fit)
+            ask["fit"] = fit.sums                   # goes back with the answer - the line's next batch reads it
             logger.info("[Chain] line %s: this batch ran %d ingested rows in %.1f s - the next covers ~%d ingested rows.",
                         key, ran, took, rows or budget)
     except Exception as exc:                                            # noqa: BLE001

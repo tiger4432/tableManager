@@ -96,14 +96,44 @@ def _sizes(monkeypatch, fixed, per_row, pages=40):
 
 
 def test_a_fixed_cost_a_page_is_read_apart_and_the_pages_still_grow_to_the_cap(monkeypatch):
-    """B's board 11-08 on a fake clock (소유자 11-08): 2.5 s a page held pages at ~190 rows; read apart, they reach the
-    cap. c 60 ms a row stays at ~49 - c is not F's to take off; no fixed cost stays at the cap. The fit leaves the
-    first page's one-off out."""
+    """B's board 11-08 on a fake clock (소유자 11-08): 2.5 s a page held pages at ~190 rows; read apart, the rows fill
+    what F leaves of the page time - the whole page, F with it, within it (QA 11-08: past F it took F + 3 s). c 60 ms
+    a row stays at ~49 - c is not F's to take off; no fixed cost stays at the cap. The fit leaves the first page's
+    one-off out."""
     sizes, size = _sizes(monkeypatch, 2.5, 0.002)
-    assert sizes[-1] == 1000, sizes
-    assert keyset_scan.fixed_and_per_row(size.timed) == (pytest.approx(2.5), pytest.approx(0.002))
+    assert sizes[-1] == 250, sizes
+    assert size.fit.value() == (pytest.approx(2.5), pytest.approx(0.002))
+    sizes = _sizes(monkeypatch, 2.5, 0.003, pages=200)[0]
+    assert max(2.5 + 0.003 * n for n in sizes[1:]) <= 3 + 0.003, sizes
     assert 45 <= _sizes(monkeypatch, 0.0, 0.06)[0][-1] <= 51
     assert _sizes(monkeypatch, 0.0, 0.002)[0][-1] == 1000
+    # 총괄 11-08: the rows' share under the noise (c read <= 0) doubles - on the board it grew 1.2x, 30 pages to 1000
+    sizes = _sizes(monkeypatch, 2.5, 0.0)[0]
+    assert 1000 in sizes[:14], sizes
+
+
+def test_a_fixed_cost_at_the_page_time_is_said_once_and_pages_stay_at_one_row(monkeypatch):
+    """QA 11-08: F 3.1 s against a 3 s page - no size fits, so pages stay at one row and the run says so once, with F."""
+    said = []
+    monkeypatch.setattr(keyset_scan, "say", lambda line: said.append(line) or True)
+    sizes = _sizes(monkeypatch, 3.1, 0.0, pages=10)[0]
+    assert sizes == [1] * 10, sizes
+    assert len(said) == 1 and "fixed cost is 3.1 s" in said[0] and "cannot fit" in said[0], said
+
+
+def test_a_retroactive_chain_lines_batch_reads_the_fit_a_page_reads(monkeypatch):
+    """QA 11-08: the same F and c size a chain line's batch (`slots.next_row_budget`) as `PageSize` sizes a page - the
+    line's fit crosses to the slot and back as its sums."""
+    from chain import slots
+
+    sizes, size = _sizes(monkeypatch, 2.5, 0.002)
+    fit, rows = None, 1
+    for n in range(40):
+        took = 2.5 + 0.002 * rows + (2.9 if n == 0 else 0)
+        line = keyset_scan.Fit(fit)
+        rows = slots.next_row_budget(rows, took, target=3, fit=line)
+        fit = line.sums
+    assert rows == sizes[-1] == 250, (rows, sizes)
 
 
 @pytest.mark.pg

@@ -35,34 +35,50 @@ DEFAULT_CHUNK_SIZE = 1000
 FIRST_PAGE = 1
 
 
-def fixed_and_per_row(timed):
-    """(F, c): least squares page seconds = F + c x rows over `timed` [(rows, seconds), ...] in page order, the first
-    page left out - its one-off ~2.9 s (the first reload and progress) read c 60 ms as F 0.61 / c 48 (B's board 11-08).
-    None until two pages past it, while every size is one, or when the line has no fixed cost or no cost a row to read
-    (F < 0, c <= 0). `PageSize`'s and the run's progress line's one fit (소유자 11-08: the page size reads F apart)."""
-    points = timed[1:]
-    n = len(points)
-    if n < 2:
-        return None
-    mx, my = sum(x for x, _ in points) / n, sum(y for _, y in points) / n
-    sxx = sum((x - mx) ** 2 for x, _ in points)
-    if not sxx:
-        return None
-    c = sum((x - mx) * (y - my) for x, y in points) / sxx
-    fixed = my - c * mx
-    return (fixed, c) if fixed >= 0 and c > 0 else None
+class Fit:
+    """(F, c): least squares page seconds = F + c x rows over the pages after the first - its one-off ~2.9 s (the first
+    reload and progress) read c 60 ms as F 0.61 / c 48 (B's board 11-08). Kept as running sums (QA 11-08: refit over
+    every page cost 87.7 ms a page at 200k pages); `sums` is a list, so it crosses to a slot and back as it is
+    (`slots.next_row_budget`). `PageSize`'s and a retroactive chain line's one fit."""
+
+    def __init__(self, sums=None):
+        self.sums = list(sums) if sums else [0, 0, 0.0, 0.0, 0.0, 0.0, None, None]   # pages n Σx Σy Σx² Σxy min max
+
+    def add(self, rows, seconds):
+        s = self.sums
+        s[0] += 1
+        if s[0] > 1:
+            s[1:6] = [s[1] + 1, s[2] + rows, s[3] + seconds, s[4] + rows * rows, s[5] + rows * seconds]
+            s[6], s[7] = min(rows, rows if s[6] is None else s[6]), max(rows, rows if s[7] is None else s[7])
+        return self
+
+    def value(self):
+        """None until two pages past the first, while every size is the same, or when the line reads no fixed cost
+        (F < 0). c <= 0 - the rows' share under the timing noise - comes back as it is, and `next_size` doubles on it
+        (총괄 11-08: the F 2.5 s ramp took 30 pages at the 1.2x of the rate rule)."""
+        _, n, sx, sy, sxx, sxy, low, high = self.sums
+        if n < 2 or low == high:
+            return None
+        c = (sxy - sx * sy / n) / (sxx - sx * sx / n)
+        fixed = (sy - c * sx) / n
+        return (fixed, c) if fixed >= 0 else None
 
 
 def next_size(size, took, seconds, most, rates, fit=None):
-    """The page after one of `size` rows that took `took` s. With `fit` (F, c - `fixed_and_per_row`): F is taken off
-    the page, so a page is what c fills in `seconds` and takes F longer (소유자 11-08 - a 2.5 s fixed cost held pages at
-    190 rows, 24 rows a second). Without: what the slowest of `rates` (rows a second, None unknown) fills. A page whose
-    rows alone overshoot `seconds` cuts the next by that overshoot; else at most double; never above `most`.
-    `PageSize`'s rule, and a retroactive chain line's batch (`slots.next_row_budget`)."""
-    fixed, rate = (fit[0], 1 / fit[1]) if fit else (0.0, min((r for r in rates if r), default=None))
-    if took - fixed > seconds:
-        return max(1, int(size * seconds / (took - fixed)))
-    return min(most, size * 2, math.ceil(rate * seconds) if rate else size * 2)
+    """The page after one of `size` rows that took `took` s: the whole page, F with it, within `seconds` (소유자 「한 배치에
+    5 초 이내 무조건」; QA 11-08: read past F a page took F + seconds). With `fit` (F, c - `Fit.value`) the rows fill
+    what F leaves (소유자 11-08 - a 2.5 s fixed cost held pages at 190 rows, 24 rows a second); without, what the slowest
+    of `rates` (rows a second, None unknown) fills. A page over `seconds` cuts the next by its overshoot; else at most
+    double; never above `most`; 1 when F alone fills `seconds` (`PageSize` says so). `PageSize`'s rule, and a
+    retroactive chain line's batch (`slots.next_row_budget`)."""
+    fixed, rate = ((fit[0], 1 / fit[1] if fit[1] > 0 else None) if fit     # c <= 0: no row cost to fill - doubles
+                   else (0.0, min((r for r in rates if r), default=None)))
+    room = seconds - fixed
+    if room <= 0:
+        return 1
+    if took > seconds:
+        return max(1, int(size * room / (took - fixed)))
+    return min(most, size * 2, math.ceil(rate * room) if rate else size * 2)
 
 
 class PageSize:
@@ -71,8 +87,8 @@ class PageSize:
     (`pacing.page_seconds`) doubles the next, one under the page time grows the next to what the slower of its own and
     the page before's rate fills in that time (at most double - a fixed cost between half and the whole page time held
     a one-row page there; the slower rate - 총괄 2ea5ee2a7, 응용: a page sized by a fast page before it took 5.2 s), one
-    that took longer cuts the next by its overshoot; once a fixed cost a page is read apart (`fixed_and_per_row`) the
-    rates are c alone and the overshoot is past F (`next_size`); never above `most`
+    that took longer cuts the next by its overshoot; once a fixed cost a page is read apart (`Fit`) the
+    rows fill what F leaves of the page time (`next_size`); never above `most`
     (a hand-given chunk_size is the ceiling). A page's time runs from one `next()` to the next - the read and whatever
     its caller did with it - less the pace's rests (`rest`). A live proposal's pages (`pages`) stay fixed: there one
     write is one event (총괄 a02ad0f2b NO-GO ①)."""
@@ -84,16 +100,22 @@ class PageSize:
         self.seconds = pacing.page_seconds() if seconds is None else seconds
         self.size = min(FIRST_PAGE, self.most)
         self._since = self._rate = None
-        self.timed = []                         # (rows, seconds) of every page so far - `fixed_and_per_row`'s input
+        self.fit, self._said = Fit(), False
 
     def next(self) -> int:
         now = time.monotonic()
         if self._since is not None:
             took = now - self._since
             rate = self.size / took if took > 0 else None
-            self.timed.append((self.size, took))
-            self.size = next_size(self.size, took, self.seconds, self.most, (rate, self._rate),
-                                  fixed_and_per_row(self.timed))
+            fit = self.fit.add(self.size, took).value()
+            fixed = fit[0] if fit else took if self.size == 1 and self.fit.sums[0] > 1 else 0.0
+            if fixed >= self.seconds and not self._said:
+                self._said = True
+                line = ("[Pages] a page's fixed cost is %.1f s, at or over the page time %g s - a page cannot fit it; "
+                        "pages stay at 1 row" % (fixed, self.seconds))
+                if not say(line):
+                    logger.warning(line)
+            self.size = next_size(self.size, took, self.seconds, self.most, (rate, self._rate), fit)
             self._rate = rate
         self._since = now
         return self.size
