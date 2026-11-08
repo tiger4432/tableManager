@@ -672,13 +672,13 @@ def pid_here(runner, run_id=None, since=None):
     as is a dead one. None when it cannot be told - another host, no psutil, no access."""
     import socket as _socket
     try:
+        import psutil
+    except ImportError:
+        return None
+    try:
         _name, host, pid = str(runner).split("/")
         if host != _socket.gethostname():
             return None
-        import psutil
-    except Exception:                                            # noqa: BLE001
-        return None
-    try:
         process = psutil.Process(int(pid))
         if run_id is not None and str(run_id) in process.cmdline():
             return True
