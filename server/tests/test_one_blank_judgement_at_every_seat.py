@@ -172,9 +172,11 @@ def _inline_counts_as_bound(session):
     try:
         nan = [{"f": NAN}] if session.get_bind().dialect.name == "postgresql" else []
         session.execute(table.insert(), [{"f": 7.0}, {"f": 7.5}, {"f": None}, *nan])
-        query = select(func.count()).select_from(table).where(crud.not_blank_sql_condition(crud.numeric_text_sql(table.c.f)))
-        inline = str(query.compile(dialect=session.get_bind().dialect, compile_kwargs={"literal_binds": True}))
-        assert session.execute(query).scalar() == session.execute(text(inline)).scalar() == 2, inline
+        def query():
+            return select(func.count()).select_from(table).where(crud.not_blank_sql_condition(crud.numeric_text_sql(table.c.f)))
+        inline = str(query().compile(dialect=session.get_bind().dialect, compile_kwargs={"literal_binds": True}))
+        assert session.execute(query()).scalar() == session.execute(text(inline)).scalar() == 2, inline
+        assert query()._generate_cache_key().key == query()._generate_cache_key().key, "missed the statement cache"
     finally:
         session.rollback()
         table.drop(session.get_bind())

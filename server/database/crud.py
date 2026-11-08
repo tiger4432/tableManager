@@ -1,3 +1,5 @@
+from sqlalchemy import Float
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm.attributes import flag_modified
@@ -1602,20 +1604,22 @@ def not_blank_sql_condition(col_expr):
     return ~blank_sql_condition(col_expr)
 
 
-def _nan_sql():
+class _NaN(TypeDecorator):
     """A NaN a number column is compared with: bound as the float, drawn inline as the dialect spells one -
     PostgreSQL 'NaN'::float8, SQLite NULL (it stores a NaN as NULL). A bare float('nan') drawn inline is the word
-    nan, which both read as a column (A 11-08: the hold count's gates, `hold_copy._gated`)."""
-    from sqlalchemy import Float, literal
-    from sqlalchemy.types import TypeDecorator
+    nan, which both read as a column (A 11-08: the hold count's gates, `hold_copy._gated`). One class at module
+    level: the statement cache keys on it - a class made per call missed the cache every time (lead 11-08)."""
+    impl, cache_ok = Float, True
 
-    class NaN(TypeDecorator):
-        impl, cache_ok = Float, True
+    def literal_processor(self, dialect):
+        return lambda _value: "'NaN'::float8" if dialect.name == "postgresql" else "NULL"
 
-        def literal_processor(self, dialect):
-            return lambda _value: "'NaN'::float8" if dialect.name == "postgresql" else "NULL"
 
-    return literal(float("nan"), NaN())
+def _nan_sql():
+    """-> the NaN a number column is compared with (`_NaN`)."""
+    from sqlalchemy import literal
+
+    return literal(float("nan"), _NaN())
 
 
 # The BIGINT-safe magnitude guard in `numeric_text_sql`. Conservative: 9.2e18 < 2**63,
