@@ -104,8 +104,9 @@ CREATE TABLE lot_lineage (
 #:
 #: `die_inspection` is the shipped source that gives both, and the two come from the
 #: DECLARATION rather than from anything invented here: its entity key is the column
-#: `base_wafer_id` (blank -> `no_identity`) and its `occurred_at` is the column `observed_at`
-#: (blank -> a missing instant). Two blanks, two reasons, one run. (`process_param_num_measure`
+#: `base_wafer_id` (blank -> `no_identity`) and its `occurred_at` is the datetime column `observed_time`
+#: (blank -> a missing instant) - a chain formula fills it from the text `observed_at` (83d2654bf: a source reads
+#: its time from a datetime column only); the seed writes what the formula would. Two blanks, two reasons, one run. (`process_param_num_measure`
 #: gave both until it left the sample with the view sources, c193986a8.)
 INSPECTION_RUN_DDL = """
 CREATE TABLE inspection_run (
@@ -115,6 +116,7 @@ CREATE TABLE inspection_run (
     base_x        DOUBLE PRECISION,
     base_y        DOUBLE PRECISION,
     observed_at   TIMESTAMPTZ,
+    observed_time TIMESTAMPTZ,
     created_at    TIMESTAMPTZ DEFAULT now()
 )
 """
@@ -153,10 +155,10 @@ def _seed_inspection_run(connection, rows):
         cursor.execute("TRUNCATE inspection_run")
         for index, r in enumerate(rows):
             cursor.execute(
-                "INSERT INTO inspection_run (run_uid, row_id, base_wafer_id, base_x, base_y, observed_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO inspection_run (run_uid, row_id, base_wafer_id, base_x, base_y, observed_at, "
+                "observed_time) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                 (r["run_uid"], f"i{index}", r.get("base_wafer_id"), r.get("base_x"), r.get("base_y"),
-                 r.get("observed_at")))
+                 r.get("observed_at"), r.get("observed_at")))
     connection.commit()
 
 
@@ -935,7 +937,7 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     assert gate.REFUSE_NO_IDENTITY not in said, said[:400]
     assert gate.REFUSE_MISSING_OCCURRED_AT in said, said[:400]
     # ⛔ AND THE COLUMN IS NAMED. "one was refused" sends an operator looking; the address is what they open.
-    assert "observed_at" in said, said[:400]
+    assert "observed_time" in said, said[:400]
 
 
 # ---------------------------------------------------------------- S-113 ⓑ-1: the registry row
