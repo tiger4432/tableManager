@@ -2967,7 +2967,7 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
     """
     # [C-1 Fix] async 핸들러 내 동기 DB 호출 → threadpool 격리(이벤트 루프 동결 방지)
     from fastapi.concurrency import run_in_threadpool
-    edits = access.may_delete(request, db, table_name, [row_id])
+    edits = await run_in_threadpool(access.may_delete, request, db, table_name, [row_id])   # reads the rows (access QA ②)
     author = sso.who(request, user_name or event_constants.AUTHOR_NOT_STATED)
     success = await run_in_threadpool(crud.delete_row, db, table_name, row_id, author)
     if not success:
@@ -2986,9 +2986,9 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
 async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, request: Request,
                                      db: Session = Depends(get_db)):
     """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
-    edits = access.may_delete(request, db, table_name, batch.row_ids)
-    author = sso.who(request, batch.user_name)
     from fastapi.concurrency import run_in_threadpool
+    edits = await run_in_threadpool(access.may_delete, request, db, table_name, batch.row_ids)  # reads the rows (QA ②)
+    author = sso.who(request, batch.user_name)
 
     # [C-1 Fix] 동기 crud 삭제 + 감사 로그 조회를 threadpool로 격리(이벤트 루프 동결 방지).
     # 기존 삭제행별 get_deleted_row_business_key N+1 쿼리(대량 삭제 시 최악의 루프 블로커)는

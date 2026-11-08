@@ -104,3 +104,26 @@ def test_a_deny_on_a_plain_table_says_remove_the_name_there(signed, monkeypatch,
                   "lot": "L9", "itemid": "z"}, "updated_by": "web_client"}]}))
     assert answer.status_code == 403, answer.text
     assert answer.json()["detail"] == access.DENIED_BY % ("kim", what, TABLE), answer.json()
+
+
+@pytest.mark.parametrize("door", ["delete", "batch_delete"])
+def test_a_delete_door_judges_its_rows_off_the_event_loop(signed, db_session, monkeypatch, door):
+    """Access QA ②: may_delete reads each row's edit_by cell - a database read, so on a worker thread like the delete
+    beside it ([C-1 Fix]), not on the event loop."""
+    import asyncio
+
+    client, who = signed
+    row_id = _row(client, who, db_session, "r-loop-%s" % door)
+    seen, judge = [], access.may_delete
+
+    def watched(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            seen.append("event loop")
+        except RuntimeError:
+            seen.append("worker")
+        return judge(*args, **kwargs)
+    monkeypatch.setattr(access, "may_delete", watched)
+    who["name"] = "kim"
+    assert _door(client, door, row_id, None).status_code == 200
+    assert seen == ["worker"], seen

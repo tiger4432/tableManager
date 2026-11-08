@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **edit_by 표(sys_looks 등)의 행 지우기 — 행마다 «무엇의 편집인가» 읽기가 이벤트 루프 밖으로** — git pull · API 재기동
+>
+> ```
+> 무엇     DELETE rows/<id> · POST rows/batch_delete 가 edit_by 칸을 읽는 질의(900 행마다 하나, 1만 행이면 12)를 스레드풀에서
+>          전: 그 질의 동안 API 의 이벤트 루프가 멈춤 — 다른 화면의 읽기 · 알림이 같이 기다림
+> 안 바뀜   답 · 403 문구 · 지우는 행 · 알림 (edit_by 없는 표는 전에도 질의 없음)
+> 되돌리기  git log --oneline -1 --grep="judge an edit_by table's rows off the event loop" 의 해시를 git revert -> API 재기동
+> ```
+>
+> ---
+>
 > ## [11-08] **edit_by 표(sys_looks 등) 자기 칸의 거절이 먼저 — 그 표에서 거절된 사람은 행이 가리키는 표에 edit.allow 여도 못 씀 · 못 지움** — git pull · API 재기동
 >
 > ```
