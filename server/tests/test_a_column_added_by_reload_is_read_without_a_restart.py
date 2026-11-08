@@ -43,6 +43,11 @@ def fixture_table(pg_engine, tmp_path, monkeypatch):
     # own DDL (S-260) - so this process sees this table alone while it runs. The registry
     # comes back before `retire_dynamic_model` takes the table out of it (S-191).
     monkeypatch.setattr(models, "DYNAMIC_TABLES", {T: models.DYNAMIC_TABLES[T]})
+    # ... and its reload reads this file alone: `shipped.merged` adds the shipped system tables, which the narrowed
+    # registry does not hold, so the reload built each again on the Table `Base.metadata` kept - a second Index of
+    # each name - and a later file's `create_all` died «index ... already exists» (the leak `retire_dynamic_model` names)
+    import shipped
+    monkeypatch.setattr(shipped, "merged", dict)
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
         conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
