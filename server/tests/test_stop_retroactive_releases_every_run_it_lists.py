@@ -42,7 +42,7 @@ def test_every_listed_run_leaves_the_queue(retro_env, no_taskkill):
     assert stop_retroactive.main(["--yes"], say=lambda *_: None) == 0
 
     states = _states(retro_env)
-    assert states["dead"][0] == retroactive.RUN_FAILED and "ghost lock" in states["dead"][1]
+    assert states["dead"][0] == retroactive.RUN_FAILED and "runner gone" in states["dead"][1]
     assert states["unstamped"] == (retroactive.RUN_FAILED, stop_retroactive.HAND_RELEASE)
     assert states["waiting"][0] == retroactive.RUN_CANCELLED
     assert states["over"] == (retroactive.RUN_DONE, None)
