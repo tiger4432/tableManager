@@ -3895,9 +3895,9 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
     row's that fed another row); any other of its layers, on a row its answer wrote or covers - but not one keyed by
     the row it was read from (`_origin_keyed`: one layer per source row, settled by that row only); and its other
     layer on a cell its answer wrote - one from before ownership included (총괄 09f58844f ⑦). A person's layer is never
-    its (`cells_written_by`). A key
-    column's layer stays - the row is still known by its key, and a row left with only the chain's keys goes
-    (`cell_layer.shells`, in `_withdraw_and_tell`). READ ONLY: {rule: the layers its answer leaves out}."""
+    its (`cells_written_by`). What a handed row fed goes whole, its keys too (as the withdrawal by origin took them); on
+    a row its answer only covers a key column's layer stays - the row is still known by its key, and a row left with
+    only the chain's keys goes (`cell_layer.shells`, in `_withdraw_and_tell`). READ ONLY: {rule: the layers its answer leaves out}."""
     from chain import cell_layer
 
     keys = cell_layer.key_columns(table)
@@ -3921,8 +3921,9 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
             rows[str(rule)].update(covered)
     out = {}
     if origins.get(""):
+        # every column, its keys too - as the withdrawal by origin stamp always took them; the row left a shell goes
         gone = [layer for layer in cell_layer.cells_stamped_by(db, sorted(origins.pop(""))) if layer[0] == table
-                and (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys]
+                and (layer[1], layer[2], layer[3]) not in answered]
         if gone:
             out[""] = gone
     for rule in sorted(set(rows) | set(origins) | set(cells)):
@@ -3930,8 +3931,8 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
         written = {row for row, _column in cells[rule]}
         gone = [layer for layer in cell_layer.cells_written_by(db, table, (), (rule,),
                                                                rows=sorted(rows[rule] | stamped | written))
-                if (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys
-                and (layer[4] in origins[rule] or not _origin_keyed(layer[3], layer[4]) and (
+                if (layer[1], layer[2], layer[3]) not in answered
+                and (layer[4] in origins[rule] or layer[2] not in keys and not _origin_keyed(layer[3], layer[4]) and (
                     layer[1] in rows[rule] or (layer[1], layer[2]) in cells[rule]))]
         if gone:
             out[rule] = gone

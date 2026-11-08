@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """A withdrawal of what deleted rows fed that loses a lock (a deadlock, a lock timeout - `db_safety.lost_a_lock`) is
-never only a log line (총괄 11-07): lost once, it withdraws again and the cells go; lost twice, it is raised - the group
-rewinds, a × is told 409 `SAVE_AGAIN`, and the cells and the events stay as they were for the next try."""
+never only a log line (총괄 11-07): it is raised at once (QA 11-08 - a retry inside ran after its pages had released
+their steps and found nothing) - the group rewinds, a × is told 409 `SAVE_AGAIN`, and the cells and the events stay
+as they were for the next try."""
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -56,19 +57,22 @@ def _fed(world, ids):
                                {"t": hw.OFFICIAL, "i": ids}).scalar()
 
 
-def test_lost_once_it_withdraws_again_and_the_cells_go(world, monkeypatch):
+def test_lost_once_it_is_raised_and_the_cells_stay_for_the_next_try(world, monkeypatch):
     ids, _events = _deleted(world)
-    assert _fed(world, ids) > 0
+    fed = _fed(world, ids)
+    assert fed > 0
     calls = _losing(monkeypatch, 1)
-    worker._withdraw_unanswered_deletions(world["db"], {hw.LOG: ids}, "unanswered")
-    world["db"].commit()
-    assert len(calls) == 2 and _fed(world, ids) == 0
+    with pytest.raises(OperationalError):
+        worker._withdraw_unanswered_deletions(world["db"], {hw.LOG: ids}, "unanswered")
+    world["db"].rollback()
+    world["db"].expire_all()
+    assert len(calls) == 1 and _fed(world, ids) == fed
 
 
-def test_lost_twice_the_group_rewinds_and_nothing_is_ended(world, monkeypatch):
+def test_lost_the_group_rewinds_and_nothing_is_ended(world, monkeypatch):
     ids, events = _deleted(world)
     fed = _fed(world, ids)
-    _losing(monkeypatch, 2)
+    _losing(monkeypatch, 1)
     tx_id = get_payload_dict(events[0]).get("transaction_id")
     ok, reason = worker._claimed_group_sync(tx_id, events, world["db"], world["rules"])[:2]
     world["db"].rollback()
@@ -78,10 +82,10 @@ def test_lost_twice_the_group_rewinds_and_nothing_is_ended(world, monkeypatch):
     assert {e.processed_chain for e in world["db"].query(OUTBOX).filter(OUTBOX.id.in_([e.id for e in events]))} == {False}
 
 
-def test_lost_twice_a_cross_is_raised_to_its_409_and_marks_nothing(world, monkeypatch):
+def test_lost_a_cross_is_raised_to_its_409_and_marks_nothing(world, monkeypatch):
     ids, events = _deleted(world)
     fed = _fed(world, ids)
-    _losing(monkeypatch, 2)
+    _losing(monkeypatch, 1)
     tx_id = get_payload_dict(events[0]).get("transaction_id")
     with pytest.raises(OperationalError) as raised:
         set_aside.set_aside_line(world["db"], tx_id, set_aside.OPERATOR)
