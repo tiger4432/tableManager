@@ -457,8 +457,11 @@ def chain_rule_raw_view(name: str = None) -> dict:
         out["declaration"] = rule_shape.with_aggregation_records(named.get(name))
         out["raw"] = json.dumps(out["declaration"], ensure_ascii=False, indent=2)
 
-        # The switch's one judge (총괄 872f6cb6b 6-3), not a second truth test beside it.
-        out["enabled"] = not rule_shape.is_switched_off(named.get(name) or {})
+        # The switch's one judge (총괄 872f6cb6b 6-3), not a second truth test beside it - on the rule as it runs now,
+        # a rule the chain switched off read OFF (lead 11-08)
+        from chain import control as chain_control
+
+        out["enabled"] = not rule_shape.is_switched_off(chain_control.with_rules_off([named.get(name) or {}])[0])
         # 🔴 [총괄 6ef4ab1f2] AN OLD-SHAPE JOIN IS SAID HERE, so the screen offers the one
         #   conversion that stands its `:target` half (`to=unified`) instead of guessing from
         #   the cells. The judgement is `modernize_join`'s, the same the conversion runs.

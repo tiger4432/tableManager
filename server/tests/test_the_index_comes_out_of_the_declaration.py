@@ -156,6 +156,6 @@ def test_a_switched_off_rule_asks_for_no_decision_key_index(monkeypatch):
     rules = [{"name": "on", "params": {"alignment": True, "source_table": "t_on", "decision_key": ["a"]}},
              {"name": "off", "enabled": False,
               "params": {"alignment": True, "source_table": "t_off", "decision_key": ["a"]}}]
-    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: rules)
+    monkeypatch.setattr(ingestion_worker, "declared_chain_rules", lambda: rules)
     rows = models.derived_key_indexes({"t_on": {"kind": "table"}, "t_off": {"kind": "table"}})
     assert [name for _table, name, shape in rows if shape["purpose"] == "decision key"] == ["idx_t_on_decision_key"]

@@ -1069,12 +1069,21 @@ def _reset_right_keys():
         logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", told(_reset_error), exc_info=_reset_error)
 
 
-def loaded_chain_rules():
-    """The rules as last loaded; loads once if this process has not. A copy - a caller that
-    edits a rule must not edit every later caller's."""
+def declared_chain_rules():
+    """The rules as declared - the last load's copy; loads once if this process has not. A copy - a caller that
+    edits a rule must not edit every later caller's. What builds structure reads this (an index must not come and go
+    with a rule's failures, lead 11-08)."""
     if _LOADED_RULES is None:
         return load_chain_rules()
     return copy.deepcopy(_LOADED_RULES)
+
+
+def loaded_chain_rules():
+    """The rules as they run now - the declared rules with each the chain switched off read OFF
+    (`control.with_rules_off`, lead 11-08: the catalogue, a replay and the rule list see what the drain sees)."""
+    from chain import control as chain_control
+
+    return chain_control.with_rules_off(declared_chain_rules())
 
 
 #: The rules the last read of the declaration found still carrying the retired `run_in: operation`.

@@ -93,7 +93,7 @@ def test_a_folded_join_key_is_learned_once_and_refuses_its_duplicates(monkeypatc
             "key": {"unique": True},
             "params": {"right_table": TABLE, "on": [{"left": "job", "right": "job"}], "take": ["lot"]}}
     loads = []
-    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: loads.append(1) or [dict(rule)])
+    monkeypatch.setattr(ingestion_worker, "declared_chain_rules", lambda: loads.append(1) or [dict(rule)])
     monkeypatch.setattr(join_key_index, "unique_index_covering", lambda db, table, columns, folds=None: "uq_w652")
 
     def batch():

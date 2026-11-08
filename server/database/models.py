@@ -2358,7 +2358,7 @@ def derived_key_indexes(tables=None, rules=None):
         tables = crud.TABLE_CONFIG
     if rules is None:
         from chain import ingestion_worker, rule_shape
-        rules = [rule for rule in ingestion_worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
+        rules = [rule for rule in ingestion_worker.declared_chain_rules() if not rule_shape.is_switched_off(rule)]
     out, seen = [], set()
 
     def keep(table, name, shape):

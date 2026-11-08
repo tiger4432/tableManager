@@ -111,8 +111,8 @@ def test_on_postgresql_the_line_builds_them_and_the_rules_list_said_so_before(pg
     engine = pg_session.get_bind()
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
     stood = [{"name": RULE["name"], "params": RULE}]
-    # the rules as this process loaded them - the scheduler's own reading (`loaded_chain_rules`), no other
-    monkeypatch.setattr(worker, "loaded_chain_rules", lambda: stood)
+    # the rules as this process loaded them - the scheduler's own reading (`declared_chain_rules`), no other
+    monkeypatch.setattr(worker, "declared_chain_rules", lambda: stood)
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)
     monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda *a: None)
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])

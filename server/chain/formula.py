@@ -143,7 +143,7 @@ def view(table: str) -> dict:
         said = of_declaration(opened.get("declaration"))
         if said and said[0] == table:
             out.append({"column": said[1], "formula": said[2], "rule": name,
-                        "enabled": not rule_shape.is_switched_off(opened.get("declaration") or {})})
+                        "enabled": opened.get("enabled", True)})
     return {"table": table, "formulas": out, "base": listed["base"]}
 
 

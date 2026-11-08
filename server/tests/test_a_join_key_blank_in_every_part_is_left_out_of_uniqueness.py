@@ -45,7 +45,7 @@ def test_the_write_gate_lets_every_blank_key_through_and_still_refuses_a_shared_
     from chain import ingestion_worker
 
     monkeypatch.setattr(crud, "TABLE_CONFIG", dict(crud.TABLE_CONFIG, **TABLES))
-    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: [_rule(["k1", "k2"])])
+    monkeypatch.setattr(ingestion_worker, "declared_chain_rules", lambda: [_rule(["k1", "k2"])])
     monkeypatch.setattr(join_key_index, "unique_index_covering", lambda db, table, columns, folds=None: "uq_eb")
     rows = [("r1", "", ""), ("r2", None, None), ("r3", "", "V"), ("r4", "", "V"), ("r5", "K", "Z"), ("r6", "K", "Z")]
     batch = schemas.GeneralUpdateBatch(updates=[
