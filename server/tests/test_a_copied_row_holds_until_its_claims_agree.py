@@ -107,7 +107,7 @@ def test_a_deleted_row_that_fed_nothing_stages_no_event(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     before = world["db"].query(models.DatabaseOutbox).count()
-    worker._retract_what_those_rows_fed(world["db"], hw.LOG, ["01890000-0000-7000-8000-000000000000"])
+    worker._withdraw_what_those_rows_fed(world["db"], hw.LOG, ["01890000-0000-7000-8000-000000000000"], "deleted")
     world["db"].commit()
     assert world["db"].query(models.DatabaseOutbox).count() == before
 
@@ -193,7 +193,7 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
                              source_name="user", value="x", origin_row_id=a, updated_by="t"))
     db.commit()
     last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
-    worker._retract_what_those_rows_fed(db, hw.LOG, [a])
+    worker._withdraw_what_those_rows_fed(db, hw.LOG, [a], "deleted")
     new = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last).all()
     assert "note" not in named and named
     assert [(e.event_type, e.table_name) for e in new] == [("EDIT", hw.OFFICIAL)]

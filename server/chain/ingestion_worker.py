@@ -2880,12 +2880,6 @@ async def _step_beating(db, stage, step, *args, **kwargs):
     return await _await_group_beating(asyncio.to_thread(claimed), db)
 
 
-def _commit_after(work, db, *args):
-    """`work(db, *args)`, then the commit that keeps it - one step for `_step_beating`."""
-    work(db, *args)
-    db.commit()
-
-
 async def _await_group_beating(group, db):
     """Wait for a group while beating «alive» every `HEARTBEAT_SLICE_SECONDS`, and say once
     per episode what a group that stopped moving is waiting on (fc1c0781d ③④).
@@ -3374,6 +3368,12 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 #   each of its events, and the log says it once.
                 failure = (_failure_record(events_in_tx, error_reason, tx_id, attempts_cap)
                            if isolate_group else None)
+                # 🔴 WHAT THEIR DELETED ROWS FED IS TAKEN BACK BEFORE THE MARKS (QA 11-08, 63610b80e's order): target
+                #    rows, then the outbox - as a × does; marked first, the withdrawal's savepoint flushed the marks
+                #    and a group at its last attempt and a × deadlocked on each other's rows
+                if isolate_group:
+                    await _step_beating(db, "failure withdrawal", _withdraw_unanswered_deletions, db,
+                                        _deleted_rows_of(events_in_tx), "failed")
                 for event in events_in_tx:
                     if isolate_group:
                         payload_copy = dict(get_payload_dict(event) or {})
@@ -3392,8 +3392,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         retrying_count += 1
 
                 with alignment_batch_counts.stage("commit"):
-                    await _step_beating(db, "failure marks", _commit_after, _withdraw_unanswered_deletions, db,
-                                        _deleted_rows_of(events_in_tx) if isolate_group else {}, "failed")
+                    await _step_beating(db, "failure marks", db.commit)
 
                 if failed_permanently_count > 0:
                     say_failure(tx_id, failure, failed_permanently_count, error_reason)
@@ -3696,8 +3695,9 @@ def _withdraw_what_those_rows_fed(db, table, row_ids, why):
     is the picture this round exists to end. The seat says which, and it says it per rule.
 
     🔴 A LOST LOCK IS NOT SWALLOWED (총괄 11-07): this runs inside the commit that ends the events (09f58844f), so
-    a deadlock or a lock timeout (`db_safety.lost_a_lock`) undoes this step and withdraws ONCE more; lost again, it
-    is raised - the group rewinds, a × answers 409 `SAVE_AGAIN`, a cancelled run ends failed with it. Logged and
+    a deadlock or a lock timeout (`db_safety.lost_a_lock`) is raised at once - the group rewinds whole, a × answers
+    409 `SAVE_AGAIN`, a cancelled run ends failed with it (QA 11-08: a retry here ran after its pages had released
+    their steps, found nothing and told nothing - 1a501ad8b's «once more» withdrawn). Logged and
     gone, the cells it should have withdrawn stayed. ⚠️ ANY OTHER FAILURE IS STILL SWALLOWED (this step undone, one
     error line, the events end as they are): «a withdrawal does not cost the group» stands for those until the
     lead says otherwise (총괄 11-07: kept - box logs 0, tests 1 on purpose; again when there is evidence).
@@ -3706,40 +3706,28 @@ def _withdraw_what_those_rows_fed(db, table, row_ids, why):
     from chain import cell_layer
     from database.context import channel
 
-    for attempt in (1, 2):
-        # 🔴 ONE SAVEPOINT FOR THE WHOLE WITHDRAWAL (QA 11-08): a lock lost on a later page, at a shell's delete or
-        #    at the EDIT it stages undoes every page before it too - the retry finds what it should take back
-        nested = db.begin_nested()
-        try:
-            # The follow-up lap is the chain's own write - said, so it does not lean on the
-            # source name the way events queued before the channel do.
-            with channel(event_constants.CHANNEL_CHAIN):
-                # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
-                for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
-                    _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
-            nested.commit()
-            # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
-            #   There is one set now, so it walks the loader's - and that is WIDER, which is
-            #   right: a rule that cannot be reverted is worth naming whichever path runs it.
-            for rule in loaded_chain_rules():
-                if not watches_table(rule, table):
-                    continue
-                refusal = rule_run.retraction_refusal(rule)
-                if refusal:
-                    logger.warning("[ChainRetract] %s", refusal)
-            return
-        except Exception as err:                                   # noqa: BLE001
-            if nested.is_active:
-                nested.rollback()
-            if db_safety.lost_a_lock(err):
-                if attempt == 2:
-                    raise
-                logger.warning("[ChainRetract] retraction for table %s lost a lock - withdrawing again: %s",
-                               table, told(err))
+    try:
+        # The follow-up lap is the chain's own write - said, so it does not lean on the
+        # source name the way events queued before the channel do.
+        with channel(event_constants.CHANNEL_CHAIN):
+            # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
+            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
+                _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
+        # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
+        #   There is one set now, so it walks the loader's - and that is WIDER, which is
+        #   right: a rule that cannot be reverted is worth naming whichever path runs it.
+        for rule in loaded_chain_rules():
+            if not watches_table(rule, table):
                 continue
-            logger.error("[ChainRetract] retraction failed for table %s "
-                         "(the events are marked as they are): %s", table, told(err), exc_info=err)
-            return
+            refusal = rule_run.retraction_refusal(rule)
+            if refusal:
+                logger.warning("[ChainRetract] %s", refusal)
+    except Exception as err:                                       # noqa: BLE001
+        if db_safety.lost_a_lock(err):
+            raise
+        session_contract.undo_step(db)
+        logger.error("[ChainRetract] retraction failed for table %s "
+                     "(the events are marked as they are): %s", table, told(err), exc_info=err)
 
 
 def _deleted_rows_of(events):
@@ -4473,16 +4461,19 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
                 "the queue behind it runs. Raise `max_chain_depth` in "
                 "chain_rules.json if this cascade is meant to be this long.",
                 event.id, event.table_name, depth, max_depth)
-            mark_processed(event, "FAILED")
-            depth_refused.append(event)
+            depth_refused.append(event)                 # marked FAILED below, after what it fed is taken back
             continue
 
         normalized_events.append(event)
 
     if depth_refused:
-        # the FAILED marks, so they are not re-read
-        await _step_beating(db, "depth refusal", _commit_after, _withdraw_unanswered_deletions, db,
-                            _deleted_rows_of(depth_refused), "depth")
+        # what their deleted rows fed first, then the FAILED marks (target rows before the outbox, QA 11-08), so they
+        # are not re-read
+        await _step_beating(db, "depth refusal", _withdraw_unanswered_deletions, db, _deleted_rows_of(depth_refused),
+                            "depth")
+        for event in depth_refused:
+            mark_processed(event, "FAILED")
+        await _step_beating(db, "depth refusal", db.commit)
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and

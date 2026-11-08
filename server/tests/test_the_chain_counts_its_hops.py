@@ -172,9 +172,9 @@ def test_the_refused_row_is_finished_not_left_pending():
     from chain import ingestion_worker as worker
 
     loop = inspect.getsource(worker.drain_events)
-    head = loop.split("[Chain Depth]", 1)[1][:600]
-    assert "mark_processed(event" in head
-    assert "_commit_after" in loop.split("[Chain Depth]", 1)[1][:1200]     # committed on a beating thread
+    after = loop.split("[Chain Depth]", 1)[1][:1600]
+    # what it fed taken back, then marked, then committed on a beating thread (QA 11-08: target rows before the outbox)
+    assert after.index("_withdraw_unanswered_deletions") < after.index('mark_processed(event, "FAILED")') <         after.index("db.commit")
 
 
 def test_the_static_cycle_check_is_untouched():

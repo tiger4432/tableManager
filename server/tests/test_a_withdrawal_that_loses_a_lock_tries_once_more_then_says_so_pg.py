@@ -60,7 +60,7 @@ def test_lost_once_it_withdraws_again_and_the_cells_go(world, monkeypatch):
     ids, _events = _deleted(world)
     assert _fed(world, ids) > 0
     calls = _losing(monkeypatch, 1)
-    worker._retract_deleted_rows(world["db"], {hw.LOG: ids})
+    worker._withdraw_unanswered_deletions(world["db"], {hw.LOG: ids}, "unanswered")
     world["db"].commit()
     assert len(calls) == 2 and _fed(world, ids) == 0
 

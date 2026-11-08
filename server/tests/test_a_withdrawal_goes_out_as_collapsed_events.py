@@ -105,7 +105,7 @@ def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monke
     while not any(kind == "DELETE" for _t, kind, _r in calls):
         assert followup.drain_outbox_once(world["engine"], world["setup"]) is not None
     deleted = next(n for _t, kind, n in calls if kind == "DELETE")
-    worker._retract_what_those_rows_fed(db, hw.LOG, [r for r in ids])
+    worker._withdraw_what_those_rows_fed(db, hw.LOG, [r for r in ids], "deleted")
     db.commit()
     staged = [p for _i, (table, _k, _s, _d, p) in sorted(_events(world).items())
               if _i > last and table == hw.OFFICIAL and p.get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
@@ -213,7 +213,7 @@ def _ends_where(pg_engine, monkeypatch, tmp_path, fold):
             pass
         with monkeypatch.context() as before_the_fix:
             before_the_fix.setattr("database.context.outbox_mode", lambda mode: contextlib.nullcontext())
-            worker._retract_what_those_rows_fed(db, hw.LOG, ids)
+            worker._withdraw_what_those_rows_fed(db, hw.LOG, ids, "deleted")
             db.commit()
         queued = [p for _t, _k, _s, d, p in _events(world).values()
                   if not d and p.get("row_id") and p.get("updated_by") == cell_layer.R2_AUDIT_SOURCE]

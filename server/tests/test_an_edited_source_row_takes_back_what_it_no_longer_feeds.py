@@ -395,7 +395,7 @@ def test_rows_left_behind_before_this_landing_are_cleaned_by_replaying_the_recou
     hw.settle(world)
     real = worker.apply_chain_writes
     monkeypatch.setattr(worker, "apply_chain_writes",
-                        lambda *a, **k: real(*a, **dict(k, edit_retractions=None)))
+                        lambda *a, **k: real(*a, **dict(k, settles=None)))
     hw.push(world, [MOVED])
     hw.settle(world)
     monkeypatch.setattr(worker, "apply_chain_writes", real)
