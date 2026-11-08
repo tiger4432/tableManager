@@ -74,7 +74,7 @@ def test_a_withdrawal_that_empties_a_row_deletes_it(db, why):
     gone = _copy(db, "a", "src-a")
     _copy(db, "b", "src-b")
     mark = _mark(db)
-    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], why)
+    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], why, (), cell_layer.cells_stamped_by(db, ["src-a"]))
 
     assert stats["rows_deleted"] == 1
     assert _rows(db) == [("b", "b", "x")], "the row src-a fed stands with its key blank"
@@ -89,7 +89,7 @@ def test_a_row_another_source_still_holds_stays_and_is_told(db):
     row_id = _copy(db, "a", "src-a")
     _copy(db, "a", None, source="file_a.csv")
     mark = _mark(db)
-    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], "edited")
+    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], "edited", (), cell_layer.cells_stamped_by(db, ["src-a"]))
 
     assert stats["rows_deleted"] == 0
     assert _rows(db) == [("a", "a", "x")]
@@ -98,7 +98,7 @@ def test_a_row_another_source_still_holds_stays_and_is_told(db):
 
 def test_a_blank_recount_leaves_the_row_to_its_write(db):
     _copy(db, "a", "src-a")
-    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], "blank", ask_shells=False)
+    stats = worker._withdraw_and_tell(db, SRC, ["src-a"], "blank", (), cell_layer.cells_stamped_by(db, ["src-a"]), ask_shells=False)
 
     assert stats["rows_deleted"] == 0
     assert _rows(db) == [("a", None, None)], "canary: the withdrawal emptied the row"

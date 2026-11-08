@@ -7,7 +7,8 @@
   "page_seconds": 3,
   "jobs": {
     "chain_followup": "fast",
-    "ledger_row_census": "background"
+    "ledger_row_census": "background",
+    "chain_unowned_census": "slow"
   },
   "paces": {
     "fast": {

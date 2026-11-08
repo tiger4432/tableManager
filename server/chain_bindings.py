@@ -300,10 +300,9 @@ def gate_item_refused(item) -> bool:
 #: 총괄 a7b67be28 ㄱ (소유자 「ㄴ」): the target-table columns a rule writes. Whatever its mapper hands over, the rest
 #: is not written (`written_columns`); a rule without the cell writes what it hands over, as before.
 TARGET_COLUMNS_KEY = "target_columns"
-#: Each row gate as a rule recounting another rule's output reads it - `source_<gate>`, stamped at load
-#: by the mapper that pairs the two, not written by hand (총괄 016a766af ㄴ · 0117a0048: both gates).
+#: `source_<gate>` - the twin of each row gate the loader stamped for the hold recount (총괄 016a766af · 0117a0048),
+#: retired with it (lead 11-08 ㄱ). Still read, so an old declaration loads (`RETIRED_CELLS`); it changes nothing.
 SOURCE_GATE_KEYS = {gate: "source_" + gate for gate in ROW_GATE_KEYS}
-SOURCE_EXCLUDE_KEY = SOURCE_GATE_KEYS[EXCLUDE_KEY]
 #: What a refusal of an unknown gate column says, per cell.
 _GATE_WORDS = {REQUIRE_KEY: ("requires", "no row could ever be handed to it"),
                EXCLUDE_KEY: ("excludes by", "no row could ever be held back"),
@@ -319,6 +318,8 @@ RULE_ROUTING_OPTIONAL = tuple(
     "allow_replace_map", "allow_retraction",
     *COLUMN_BINDING_KEYS,
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
+    # owner 11-06 step 2 1ㄱ: which of two rules' layers on one cell shows (`rule_shape.priorities`)
+    "priority",
     # 총괄 72f419bd1: how many trigger rows one group of the rule takes; `run_in` is retired and
     # still read, so an old declaration loads (`RETIRED_CELLS`).
     "run_in", "rows_per_run",
@@ -690,8 +691,8 @@ RUN_IN_VALUES = (RUN_IN_CHAIN, RUN_IN_OPERATION)
 #: (`event_constants.trim_events_to_row_budget`), so a rule of 1 runs one text a group and a
 #: wrong answer fails that text only (총괄 72f419bd1). Not written: no cut of its own.
 ROWS_PER_RUN_KEY = "rows_per_run"
-#: A DELETE wakes this rule - one that reads the deleted rows' old values (총괄 옛 키 ㄱ). Not written: it does not -
-#: unless it answers for whole maps (`takes_deletions`).
+#: ⚰️ RETIRED (owner 11-06 step 2, lead: 판정 435 ④ widened, not reversed): a DELETE wakes every rule that settles
+#: (`takes_deletions`). Still read, so an old declaration loads (`RETIRED_CELLS`); it changes nothing.
 ALLOW_DELETE_TRIGGER_KEY = "allow_delete_trigger"
 
 
@@ -732,11 +733,16 @@ def finding_columns(rule) -> set:
 
 
 def takes_deletions(rule) -> bool:
-    """A deleted source row wakes this rule: it declares `allow_delete_trigger`, or it answers for whole maps - a map a
-    row left is that map changed (소유자 10-21 「자동 회수 안 됨?」, 총괄 c67aa93bb ㄱ-a)."""
-    return bool((rule or {}).get(ALLOW_DELETE_TRIGGER_KEY)) or removes_whole_maps(rule)
+    """A deleted source row wakes this rule - THE ONE SEAT THAT ASKS. 판정 435 ④ («DELETE 는 규칙 루프에 안 든다»)
+    widened a second time, not reversed (owner 11-06 step 2, lead ㄱ; the first: 총괄 옛 키, `allow_delete_trigger`):
+    every rule that settles is woken, so the group the row left is answered again without it (g′ = g(group − row)) -
+    every rule but an AI's, which is not asked again by itself. A deletion the chain made still wakes none without
+    `allow_chain_trigger` (`fires`)."""
+    from chain import ask_rule, report_shape
+
+    return (rule or {}).get("mapper") not in (ask_rule.ASK_MAPPER, report_shape.REPORT_MAPPER)
 #: Cells the loader still reads, so an old declaration loads, and the form no longer offers.
-RETIRED_CELLS = (RUN_IN_KEY,)
+RETIRED_CELLS = (RUN_IN_KEY, ALLOW_DELETE_TRIGGER_KEY, *SOURCE_GATE_KEYS.values())
 
 
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
@@ -750,11 +756,11 @@ _SKELETON_HINTS = {
     "enabled": "flag",
     "is_batch": "flag",
     "allow_chain_trigger": "flag",
-    "allow_delete_trigger": "flag",
     "allow_map_metadata_upsert": "flag",
     "allow_replace_map": "flag",
     "allow_retraction": "flag",
     "max_group_attempts": "number",
+    "priority": "number",
     "max_group_rows": "number",
     "rows_per_run": "number",
     "idempotent": "flag",

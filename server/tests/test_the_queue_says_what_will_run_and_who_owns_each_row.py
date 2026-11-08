@@ -120,9 +120,10 @@ def test_a_delete_row_is_not_listed_because_nothing_will_run_for_it(
     ⚠️ DELETE 는 `fires` 가 «못 거르는» 갈래다 — 그 술어에 event_type 이 없다(독스트링이
        그렇게 적는다). `_is_trigger_event` 가 그 좌석이고, 총괄 지시의 「`any(fires)` 하나로
        다 빠진다」는 이 한 칸이 모자랐다. 변이: `_is_trigger_event` 갈래를 빼면 여기가 빨강.
+    소유자 11-06 2단계 · 총괄 ㄱ: 정산하는 규칙은 지운 행에도 돈다 — 이 표의 규칙이 AI 규칙뿐이라 안 돈다.
     """
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [
-        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u", "mapper": "declared:ask"}])
     kept = row(db_session, event_type="EDIT", table_name="t")
     deleted = row(db_session, event_type="DELETE", table_name="t")
     _body, by_id = rows_of(client)
@@ -133,11 +134,11 @@ def test_a_delete_row_is_not_listed_because_nothing_will_run_for_it(
 
 def test_a_delete_row_is_listed_for_a_rule_that_takes_deletions_and_the_other_says_why(
         client, db_session, monkeypatch):
-    """총괄 옛 키 ㄱ: the same seat (`wakes`) - a rule that declares `allow_delete_trigger` runs on a deletion, one
-    that does not is listed with the reason."""
+    """The same seat (`wakes`) - a rule that settles runs on a deletion (owner 11-06 step 2 · lead ㄱ), an AI's is not
+    asked again by itself and is listed with the reason."""
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [
-        {"name": "takes", "enabled": True, "trigger_table": "t", "target_table": "u", "allow_delete_trigger": True},
-        {"name": "skips", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+        {"name": "takes", "enabled": True, "trigger_table": "t", "target_table": "u"},
+        {"name": "skips", "enabled": True, "trigger_table": "t", "target_table": "u", "mapper": "declared:ask"}])
     deleted = row(db_session, event_type="DELETE", table_name="t")
     _body, by_id = rows_of(client)
 
@@ -193,8 +194,8 @@ def test_a_page_whose_rows_are_all_dropped_still_hands_back_a_cursor(client, db_
     첫 쪽(limit=2)은 안 도는 행 둘을 읽고 «아무것도 싣지 않는다». 그래도 뒤가 있다고 말하고,
     다음 쪽이 그 뒤에서 시작해 도는 행을 찾아야 한다.
     """
-    monkeypatch.setattr(worker, "load_chain_rules", lambda: [
-        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u"}])
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [   # an AI rule: a deletion wakes none (step 2)
+        {"name": "on", "enabled": True, "trigger_table": "t", "target_table": "u", "mapper": "declared:ask"}])
     first = row(db_session, event_type="DELETE", table_name="t")
     second = row(db_session, event_type="DELETE", table_name="t")
     behind = row(db_session, event_type="EDIT", table_name="t")

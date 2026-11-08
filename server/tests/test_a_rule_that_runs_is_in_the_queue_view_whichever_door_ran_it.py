@@ -322,7 +322,10 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
     #   `updates` - the same name every other mapper answers in, which is what this test is
     #   named for. The property is unchanged: a confirmed row must be countable by the seat,
     #   or the outcome column stays at 「아직 평가 안 됨」 however many rows were confirmed.
-    assert len(result["updates"]) == result["confirmed"] == 4
+    # counted by the seat that counts (`rule_run.rows_written`) - the answer also says what it covers (owner 11-06
+    # step 2), an item that writes no row
+    from chain import rule_run
+    assert rule_run.rows_written(result["updates"]) == result["confirmed"] == 4
     assert result["refused"] == 1
 
 

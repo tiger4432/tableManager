@@ -12,9 +12,10 @@ the same updates (one commit), under the plain chain layer - its blank is a chai
 that blank leaves with only the chain's keys goes after the write (총괄 5eee501eb - the chain's
 write seat asks `cell_layer.shells`).
 
-Two rules call it. On the source table it copies and holds; on the target table (trigger =
-target, `source_table` named) it only recounts the hold - a source row deleted or moved to another key
-(its layer is withdrawn either way, 총괄 b13de0353), or a person's edit.
+One rule calls it, on the source table: it copies and holds, and counts again the hold of a key a row left - deleted,
+moved to another key or out of the rule's require / exclude (lead 11-08 ㄱ: the recount rule on the target table, 총괄
+e11bb4de0, retired - two rules on one hold cell showed the older count). A recount rule still declared is refused by
+name at load.
 
 🔴 THE KEYS ARE COMPARED WITH `=` WHERE THEY HAVE A VALUE: `IS NOT DISTINCT FROM` takes no
 index, so on a table of a million rows every count was a full scan. A key holding a NULL is
@@ -24,11 +25,12 @@ read. The raw function goes into the same registry with its `params`.
 """
 from __future__ import annotations
 
-import json
 
 NAME = "copy_rows_with_hold"
 #: what each argument must be - a list written as text was read a letter at a time (총괄 67dffd619)
-PARAMS = {"key_columns": list, "columns": list, "hold_column": str, "source_table": str}
+PARAMS = {"key_columns": list, "columns": list, "hold_column": str,
+          # the retired recount's - read by none, kept so its rule is refused as retired, not as a misspelling
+          "source_table": str}
 AGREED = "agreed"
 
 
@@ -37,19 +39,21 @@ def copy_rows_with_hold(db, payloads, rule=None):
     from database import crud
     from mapper_sdk import df_to_updates, payloads_to_df
 
-    df = payloads_to_df(payloads)
-    if df.empty:
-        return {"updates": []}
     import chain_bindings
+    import event_constants
 
+    # a deleted row (no data, its old values) copies nothing - the write seat settles the layer it fed - and the key it
+    # left is counted again here, as the key an edit moved a row off or took it out of the gates (lead 11-08 ㄱ: the
+    # recount rule retired, this is the one seat that counts a hold)
+    listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
+    df = payloads_to_df([p for p in listed if not isinstance(p, dict) or p.get("data")
+                         or not event_constants.old_values_of(p)])
     params = rule["params"]
     keys, columns, hold = list(params["key_columns"]), list(params["columns"]), params["hold_column"]
-    target = rule["target_table"]
-    rows = df.astype(object).where(df.notna(), None).to_dict("records")
-    holds_only = _holds_only(rule)
-    source = params["source_table"] if holds_only else rule["trigger_table"]
+    target, source = rule["target_table"], rule["trigger_table"]
+    rows = df.astype(object).where(df.notna(), None).to_dict("records") if not df.empty else []
     result = {"updates": []}
-    if not holds_only:
+    if rows:
         result = df_to_updates(df[list(dict.fromkeys(keys + columns))], target,
                                source_name=crud.CHAIN_SOURCE, updated_by=NAME)
         for item, row in zip(result["updates"], rows):     # the write seat names its row layer
@@ -57,16 +61,44 @@ def copy_rows_with_hold(db, payloads, rule=None):
 
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
 
-    batch_keys = list(dict.fromkeys(tuple(row[key] for key in keys) for row in rows))
-    claims = {}
-    gates = {gate: rule.get(stamp) or () for gate, stamp in chain_bindings.SOURCE_GATE_KEYS.items()}
-    for start in range(0, len(batch_keys), DEFAULT_CHUNK_SIZE):   # 10,000 keys overran the parser
-        claims.update(_claims(db, source, keys, columns, batch_keys[start:start + DEFAULT_CHUNK_SIZE], gates))
+    def chunked(asked, table, read, gates=None):
+        found = {}
+        for start in range(0, len(asked), DEFAULT_CHUNK_SIZE):   # 10,000 keys overran the parser
+            found.update(_claims(db, table, keys, read, asked[start:start + DEFAULT_CHUNK_SIZE], gates))
+        return found
+
+    live = list(dict.fromkeys(tuple(row[key] for key in keys) for row in rows))
+    left = list(dict.fromkeys(key for key in (event_constants.key_left(p, keys) for p in listed if isinstance(p, dict))
+                              if key is not None and not any(crud.is_blank_value(v) for v in key)))
+    held = chunked(left, target, []) if left else {}                # the keys with a row to hold, read once
+    left = [key for key in left if key in held]
+    batch_keys, spelled = [], set()
+    for key in live + left:
+        owner = _spelled(target, keys, key)
+        if owner not in spelled:                       # one hold a key, whichever spelling it came in
+            spelled.add(owner)
+            batch_keys.append((key, owner))
+    if not batch_keys:
+        return result
+    gates = {gate: rule.get(gate) or () for gate in chain_bindings.ROW_GATE_KEYS}
+    claims = chunked([key for key, _owner in batch_keys], source, columns, gates)
     held = pd.DataFrame([{**dict(zip(keys, key)), hold: AGREED if claims.get(key) == 1 else ""}
-                         for key in batch_keys])
-    result["updates"] += df_to_updates(held, target, source_name=crud.CHAIN_SOURCE,
-                                       updated_by=NAME)["updates"]
+                         for key, _owner in batch_keys])
+    items = df_to_updates(held, target, source_name=crud.CHAIN_SOURCE, updated_by=NAME)["updates"]
+    for item, (_key, owner) in zip(items, batch_keys):
+        item["owner_key"] = owner                      # the hold's one layer per key (`rule_run.owner_of`)
+    result["updates"] += items
     return result
+
+
+def _spelled(target, keys, key) -> str:
+    """The target row's key as the write spells it (`crud.assemble_composite_business_key`), else its parts."""
+    from database import crud, schemas
+
+    one = schemas.GeneralUpdateItem(updates=dict(zip(keys, key)), source_name=crud.CHAIN_SOURCE)
+    crud.assemble_composite_business_key(target, one)
+    return str(one.business_key_val) if one.business_key_val is not None else "|".join(
+        "" if part is None else str(part) for part in key)
 
 
 def _claims(db, source, keys, columns, batch_keys, gates=None) -> dict:
@@ -129,62 +161,30 @@ def _gated(db, source, gates) -> str:
                    for condition in gate_conditions(gates or {}, models.DYNAMIC_TABLES.get(source)))
 
 
-def _holds_only(rule) -> bool:
-    """The recount half: it runs on the target table and reads `params.source_table`."""
-    return (rule or {}).get("trigger_table") == (rule or {}).get("target_table")
-
-
 def _writes(rule) -> list:
-    """The columns this rule writes - what a run that proposed nothing still owns (총괄 016a766af):
-    the keys and the hold, and on the copy half the copied columns."""
+    """The columns this rule writes - what a run that proposed nothing still owns (총괄 016a766af): the keys, the copied
+    columns and the hold."""
     params = (rule or {}).get("params") or {}
-    return list(dict.fromkeys(list(params.get("key_columns") or ())
-                              + ([] if _holds_only(rule) else list(params.get("columns") or ()))
+    return list(dict.fromkeys(list(params.get("key_columns") or ()) + list(params.get("columns") or ())
                               + ([params["hold_column"]] if params.get("hold_column") else [])))
 
 
-def _paired(rules) -> list:
-    """At load (총괄 016a766af · 0117a0048): a copy rule's row gates (`require` · `exclude`) are what its
-    recount counts by too - stamped as `source_<gate>` on both halves, the copy's own on the copy and the
-    pair's on the recount (the copies from its `source_table` into its target). -> [(recount, sentence)]
-    for a recount whose copies gate by different columns - it cannot know which, so it is refused by name."""
-    import chain_bindings
+#: The load line of a recount rule (lead 11-08 ㄱ) - it would copy the target table onto itself.
+RECOUNT_RETIRED = ("the recount is retired - delete this rule; its copy rule into %s counts the holds again (lead "
+                   "11-08)")
 
-    stamps = chain_bindings.SOURCE_GATE_KEYS
 
-    def gated(rule):
-        # the items spelled as one text each - a {column: [values]} item (총괄 9a5206e0b) is not hashable
-        return tuple((gate, json.dumps(rule.get(gate) or [], sort_keys=True)) for gate in chain_bindings.ROW_GATE_KEYS)
-
-    copies = {}
-    for rule in rules:
-        if not _holds_only(rule):
-            copies.setdefault((rule.get("trigger_table"), rule.get("target_table")), []).append(rule)
-            for gate in chain_bindings.ROW_GATE_KEYS:
-                if rule.get(gate):
-                    rule[stamps[gate]] = list(rule[gate])
-    refused = []
-    for rule in rules:
-        if not _holds_only(rule):
-            continue
-        said = sorted({gated(copy) for copy in copies.get(
-            ((rule.get("params") or {}).get("source_table"), rule.get("target_table")), ())})
-        if len(said) > 1:
-            refused.append((rule, "its copy rules into %s require or exclude by different columns %s - the "
-                                  "hold count cannot know which; write the same require and exclude on every "
-                                  "copy rule" % (rule.get("target_table"),
-                                                 [{gate: json.loads(items) for gate, items in s} for s in said])))
-        elif said:
-            for gate, items in said[0]:
-                if json.loads(items):
-                    rule[stamps[gate]] = json.loads(items)
-    return refused
+def _recount_retired(rules) -> list:
+    """At load: a rule of this mapper on its own target - the retired recount - refused by name.
+    -> [(rule, code, sentence)]"""
+    return [(rule, "recount_retired", RECOUNT_RETIRED % rule.get("target_table")) for rule in rules
+            if rule.get("trigger_table") == rule.get("target_table")]
 
 
 def _register():
     import mapper_sdk
     mapper_sdk.register(NAME, copy_rows_with_hold, params=PARAMS, facts={
-        "columns": _writes, "stamps_origin": lambda rule: not _holds_only(rule), "at_load": _paired})
+        "columns": _writes, "stamps_origin": True, "at_load": _recount_retired})
 
 
 _register()

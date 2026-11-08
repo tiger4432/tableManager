@@ -85,7 +85,7 @@ def test_a_corrected_text_cell_is_remembered_the_file_cell_and_an_agreeing_one_a
     _person(world, "W1", "report_file", "/elsewhere/W1.html")     # not a text slot of the declaration
     _person(world, "W2", "summary_text", "scratch led")            # the AI's own answer - nothing to learn
     out = ask_rule.answer(world, _half(), ["W1", "W2"])
-    rows = [u["updates"] for u in out["updates"] if not u.get("gone")]
+    rows = [u["updates"] for u in out["updates"] if not u.get("covers")]
     assert rows == [{"purpose": "eval_summary", "situation": '{"wafer_id": "W1"}', "cell": "summary_text",
                      "ai": "scratch led", "right": "particle led", "who": "kim", "at": rows[0]["at"]}], rows
 

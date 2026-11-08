@@ -15,7 +15,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from chain import ask_rule, report_html, report_loop, report_shape, report_template, rule_shape
-from chain import ingestion_worker as worker
 from database import crud, models, schemas
 from database.database import Base
 
@@ -91,9 +90,9 @@ def _row_id(db, wafer):
 
 def _remember(db, half, wafers):
     out = ask_rule.answer(db, half, [_row_id(db, w) for w in wafers])
+    assert not [u for u in out["updates"] if u.get("covers")], "a first correction takes nothing back"
     crud.apply_batch_updates(db, MEMORY_TABLE, schemas.GeneralUpdateBatch(
-        updates=[schemas.GeneralUpdateItem(**u) for u in out["updates"] if not u.get("gone")]))
-    worker._delete_gone(db, MEMORY_TABLE, [(u["business_key_val"], u["own"]) for u in out["updates"] if u.get("gone")])
+        updates=[schemas.GeneralUpdateItem(**u) for u in out["updates"]]))
     db.commit()
     return db.query(models.DYNAMIC_TABLES[MEMORY_TABLE]).all()
 

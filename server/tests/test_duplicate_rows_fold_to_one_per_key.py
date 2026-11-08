@@ -357,16 +357,17 @@ def test_a_mark_deletes_nothing_names_the_row_kept_and_a_marked_row_ranks_no_mor
     assert (again["rows_to_mark"], again["rows_already_marked"]) == (0, 2)
 
 
-def test_a_mark_with_no_recount_paired_says_the_holds_stay(db, monkeypatch):
+def test_a_mark_says_the_rules_it_wakes_take_back_and_count_again(db, monkeypatch):
+    """Lead 11-08 ㄱ: no recount rule runs after them - the woken copy counts its keys' holds again itself."""
     copy = {"name": "fr_copy", "trigger_table": TABLE, "target_table": "elsewhere", "exclude": ["mark"]}
     monkeypatch.setattr(replay, "load_rules", lambda: [copy])
     _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "2026-10-01 10:00:00"},
                {"log_id": "a2", "wafer": "W1", "ts": "2026-10-01 10:05:00"}])
     said = retroactive.count(db, "fold_duplicate_rows",
                              {"table": TABLE, "keys": "wafer", "order": "ts", "mark_column": "mark"})
-    assert (said["extra"]["rules_woken"], said["extra"]["rules_recounting"]) == (["fr_copy"], [])
-    assert "the rules that exclude by mark (fr_copy) run on them and take back what they fed; no recount rule " \
-           "paired - holds stay as they are." in said["detail"], said["detail"]
+    assert said["extra"]["rules_woken"] == ["fr_copy"] and "rules_recounting" not in said["extra"]
+    assert "the rules that exclude by mark (fr_copy) run on them, take back what they fed and count their keys' " \
+           "holds again." in said["detail"], said["detail"]
 
 
 def test_a_mark_column_that_is_not_text_is_refused(db):

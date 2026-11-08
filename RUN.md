@@ -1,5 +1,37 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **체인 층에 주인 — 규칙이 다시 답하면 그 규칙이 쥔 것 중 빠진 것만 거둔다 · 보류 재셈 규칙 은퇴(그 한 줄을 지운다)** — git pull · API · 체인 워커 · 감시자 «모두» 재기동 · 재셈 규칙 한 줄 삭제
+>
+> ```
+> 먼저 ①   API · 체인 워커 · 감시자를 «모두» 재기동 -> 로그에 이 줄이 나와야 한다:
+>          [Layers] cell_sources: owner_rule and owner_key added      (첫 기동 한 번 · PG 11+ 는 표를 다시 쓰지 않음)
+>          «[Layers] cell_sources: the owner columns were not added …» 가 나오면 다시 재기동 — 그동안 층 쓰기(체인 · 저장)는
+>          «cell_sources has no owner_rule / owner_key yet …» 로 거절된다. 잠금 5 초를 못 받으면 «… (attempt n/5) - asked again»
+> 먼저 ②   chain_rules.json 에서 보류 다시 세기 규칙(copy_rows_with_hold 를 공식 표 -> 공식 표에 건 것) 한 줄을 지운다
+>          남겨 두면 로드가 그 규칙을 이름으로 거절한다(체인 로드 줄):
+>          [ChainRules] <규칙> refused: recount_retired - the recount is retired - delete this rule; its copy rule into <표> counts the holds again (lead 11-08)
+>          복사 규칙이 지운 행 · 키가 옮겨 간 행 · require/exclude 에서 빠진 행의 옛 키 보류를 직접 다시 센다
+> 무엇     체인 층 이름 = chain_ingestion (<규칙> <키>). 다시 답하면 그 규칙이 쥔 층 중 답에 없는 것만 거둔다(빈 재계산 · 사라진 키 · 편집 · 지운 행 한 길)
+>          지운 행은 AI 규칙(ask · report)만 빼고 모든 규칙을 깨운다 — allow_delete_trigger 칸은 은퇴(적혀 있어도 읽기만 함)
+>          두 규칙이 한 칸에 다른 값: 둘 다 써지고, 보이는 것 = 규칙의 "priority"(작은 수 먼저 · 적은 규칙이 먼저) -> 규칙 파일에서 뒤에 적힌 규칙. 들어온 시각은 안 봄
+>          (예외: 주인 없는 옛 체인 층이 그 칸에 남아 있는 동안은 그 칸의 체인 층들이 시각 순)
+>          한 답에 한 칸 값 둘 -> 둘 다 안 씀
+> 볼 줄    ⚠️ [Chain Write Discard] ... Next: fix the rule - one answer gave these cells two values, neither was written. Not written: two_values_in_one_answer <칸>=<수>
+>          [ChainUnowned] pass: N layer(s) under M name(s) no rule owns, R row(s) read in S s      (체인 워커 - 앞 바퀴가 끝나야, 그 시작 10 분 뒤부터 다음 바퀴)
+>          실패 줄에 statement timeout · N s · stage settle      (거두기가 문장 상한에 걸림 - 그 그룹은 실패하고 다시 돈다)
+> 화면     어드민 Chain 탭, 규칙 표 밑 «Not adopted» — 주인 없는 옛 체인 층의 쓴 이름 · 층 수 · 많이 든 표 셋
+>          Counting - the first pass has not ended   재기동 뒤 첫 바퀴 전(박스 cell_sources 약 3,800만 행: slow 한 바퀴 약 2 시간)
+>          None - every chain layer has its rule     옛 층 없음
+>          이름이 있으면                              그 규칙을 «다시 돌리기» -> 옛 이름을 R2 로 withdraw. 지우지 않고 보이기만 한다
+>          체인 대기열에서 지움이 안 깨운 규칙의 사유: «a deletion; an ask or report rule is not run again by one» (전: «… does not declare allow_delete_trigger»)
+>          소급 «Fold duplicate rows» 표시 문장: «… take back what they fed and count their keys' holds again» (전: «then the recount rules (…) run on the rows they fed»)
+> 답의 뜻  two_values_in_one_answer 는 «규칙»을 고친다 - 데이터 문제가 아님
+> 바뀐 것  지운 행 거두기가 잠금을 잃으면 다시 거두지 않고 그룹이 통째로 되감겨 다시 돈다
+>          시험 이름: test_a_withdrawal_that_loses_a_lock_rewinds_its_group_pg.py (옛 이름으로 -k 하던 명령은 이 이름으로)
+> 끄는 곳  센서스가 무거우면 server/pacing.json 의 "chain_unowned_census" 를 "background" 로 (재기동 없이 다음 바퀴부터)
+>          [ChainUnowned] the census failed: … 는 센서스만 멈춘 것 - 체인은 돈다
+> ```
+
 > ## [11-08] **한 몫의 새 파일이 옛 값을 되풀이하면 다른 몫의 고침에서 칸을 되찾는다 · 고아 id 에 만든 행은 남은 층대로 보인다 · 새 행 COPY 가 쪼개 보내고 느린 요청 줄에 잡힌다** — git pull · 런처 재기동(API · 감시기 · 체인 워커 · 스케줄러)
 >
 > ```

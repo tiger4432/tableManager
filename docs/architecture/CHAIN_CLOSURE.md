@@ -19,7 +19,7 @@
 |---|---|---|---|
 | insert | 있음 | 모든 규칙 | ✅ a_join_runs_on_the_trigger_path_like_any_mapper |
 | update | 있음 `trigger_columns` | `ingestion_worker` | ✅ a_rule_runs_only_when_its_wake_columns_change |
-| delete | 있음 `allow_delete_trigger` · 기본값: 안 깨우고 origin 층만 거둠 | `chain_bindings.takes_deletions` · `_retract_deleted_rows` | ✅ a_deleted_row_takes_back_the_cells_it_fed · ⏳ a_key_a_source_row_left_is_recounted |
+| delete | 선언 없음 · AI 규칙(ask · report) 빼고 전부 깨어 그 묶음을 다시 답함, 아무도 답 안 한 지움은 origin 층을 거둠 (11-08 2단계) | `chain_bindings.takes_deletions` · `_settle` · `_withdraw_unanswered_deletions` | ✅ a_deleted_row_takes_back_the_cells_it_fed · ⏳ a_key_a_source_row_left_is_recounted |
 | key move | 기본값 — 옛 값을 실은 update, 옛 키도 다시 셈 | `rule_run.held_back` | ✅ a_map_a_row_left_is_handed_whole |
 | 위쪽 체인의 쓰기 | 있음 `allow_chain_trigger` · 자기 선언의 쓰기는 늘 안 깨움 | `_rule_accepts_event` | ✅ chain_cascade |
 | 사람 코멘트 | 있음 `memory.comment` (AI 다시 돌림) | `chain/ask_rule` · report | 읽기 |
@@ -71,7 +71,7 @@
 | 평행 목록 둘을 짝지어 펼침 | **없음?** — lot_slot_wafer 맵퍼가 코드로. decide 펼침이 덮는지 안 쟀다 | — | 읽기 |
 | N→M 다시 묶음 | 있음 ask · 맵퍼 `group_by` | ask_rule | ✅ an_ask_rule_fills_a_table_from_a_groups_rows |
 | 0→1 없으면 만듦 | 일부 — decide · ask · mapper 는 만든다. **join 은 없음**(있는 행만 씀) | `join_into._update_items` | 읽기 |
-| 1→0 지움 | 있음 gone · 빈 껍데기 · replace_map | `_delete_gone` · `cell_layer.shells` | ✅ a_withdrawal_that_empties_a_row_deletes_it · replace_map · ⏳ a_row_left_with_only_the_chains_keys_is_deleted |
+| 1→0 지움 | 있음 gone · 빈 껍데기 · replace_map | `_settle`(11-08, 전 `_delete_gone`) · `cell_layer.shells` | ✅ a_withdrawal_that_empties_a_row_deletes_it · replace_map · ⏳ a_row_left_with_only_the_chains_keys_is_deleted |
 
 ## 5 계산
 
@@ -116,7 +116,7 @@
 |---|---|---|---|---|
 | 다시 계산 (모으는 규칙) | ✅ | ⏳ | ⏳ 떠난 행으로 넘김 | `rule_run.held_back` |
 | 칸 거둠 | ⏳ an_edited_source_row_takes_back_what_it_no_longer_feeds | ✅ a_deleted_row_takes_back_the_cells_it_fed | exclude ⏳ · require ⏳ | `_withdraw_and_tell` |
-| 만든 행 지움 | — | ⏳ gone | — | `_delete_gone` · 빈 껍데기 ✅ |
+| 만든 행 지움 | — | ⏳ gone | — | `_settle`(11-08, 전 `_delete_gone`) · 빈 껍데기 ✅ |
 | 남김 | 기본값 — origin 안 찍는 규칙(자동 확정 · 안 찍는 파일 맵퍼)은 남고 로그에 이름 댐 | | | `rule_run.retraction_refusal` |
 | 규칙마다 남김/거둠 고르기 | **없음** | | | — |
 

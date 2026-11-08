@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-11-08 [체인 층에 주인 — 다시 답하면 쥔 것 중 빠진 것만 거둔다 · 보류는 복사 규칙 하나가 센다(재셈 규칙 한 줄 지움)](#2026-11-08--체인-층에-주인--규칙이-다시-답하면-그-규칙이-쥔-것-중-빠진-것만-거둔다--보류는-복사-규칙-하나가-센다) · 적는 곳 chain_rules.json 의 priority · 재셈 규칙 삭제
 - 2026-11-04 [보통 조인(키 유니크 아님)의 값 표 키에도 조회 색인 · 세운 뒤 ANALYZE · 없으면 규칙 줄에 한 마디](#2026-11-04--보통-조인키-유니크-아님의-값-표-키에도-조회-색인--세운-뒤-analyze--없으면-규칙-줄에-한-마디) — 적는 곳 없음 · 보는 곳 체인 탭 규칙 목록 · auto_update.log
 - 2026-11-04 [고침 — 키로 깨어나 값만 가져오는 조인이 column_loop 로 거절되지 않음](#2026-11-04--고침--키로-깨어나-값만-가져오는-조인이-column_loop-로-거절되지-않음) — 적는 곳 chain_rules.json target_columns
 - 2026-10-29 [새 기능 — 리포트 그림을 누르면 원본이 새 탭에 열린다(로그인 · 서명 링크 둘 다)](#2026-10-29--새-기능--리포트-그림을-누르면-원본이-새-탭에-열린다로그인--서명-링크-둘-다) — 적을 것 없음 · 보는 곳 리포트 페이지의 그림
@@ -715,6 +716,19 @@
 
 
 
+
+## 2026-11-08 · 체인 층에 주인 — 규칙이 다시 답하면 그 규칙이 쥔 것 중 빠진 것만 거둔다 · 보류는 복사 규칙 하나가 센다
+
+- **무엇** — 체인이 쓴 층 이름이 `chain_ingestion (<규칙> <키>)` 입니다. 그 규칙 · 그 키가 층의 주인입니다. 규칙이 다시 답하면(새 행 · 편집 · 지운 행 · 빈 재계산 · 사라진 키) 그 규칙이 쥔 층 중 답에 없는 것만 거둡니다 — 거두는 자리는 하나입니다(소유자 11-06 · 11-08).
+- **두 규칙이 한 칸에** — 값이 다르면 둘 다 써지고, 보이는 값은 규칙의 `priority` 칸(작은 수가 먼저, 적은 규칙이 안 적은 규칙보다 먼저) → 규칙 파일에서 뒤에 적힌 규칙입니다. 들어온 시각으로는 고르지 않습니다(소유자 11-08 ㄱ). 적는 곳: `chain_rules.json` 의 규칙에 `"priority": 1`.
+- **한 답에 한 칸 값 둘** — 둘 다 안 쓰고 `⚠️ [Chain Write Discard] ... Not written: two_values_in_one_answer <칸>=<수>` 한 줄. 데이터가 아니라 «규칙»을 고칩니다.
+- **보류(hold) 재셈 규칙 은퇴** — `copy_rows_with_hold` 를 공식 표 → 공식 표에 건 «다시 세기» 규칙(총괄 e11bb4de0)을 은퇴했습니다. 복사 규칙이 지운 원천 행 · 키가 옮겨 간 행 · require/exclude 에서 빠진 행의 «옛 키» 보류를 자기 답에서 다시 셉니다 — 보류 칸에 층이 하나라, 새 값과 그 보류가 한 커밋에 보입니다(전에는 재셈 규칙의 옛 «agreed» 가 복사의 새 보류를 가렸음). **재셈 규칙 한 줄을 `chain_rules.json` 에서 지웁니다** — 지우기 전에는 로드 줄 `[ChainRules] <규칙> refused: recount_retired - the recount is retired - delete this rule; its copy rule into <표> counts the holds again (lead 11-08)` 가 보이고 그 규칙은 안 섭니다. 소급 «Fold duplicate rows» 의 표시 문장에서 «then the recount rules (…) run on the rows they fed» 가 «… take back what they fed and count their keys' holds again» 으로 바뀝니다.
+- **주인 없는 옛 층** — 어드민 Chain 탭, 규칙 표 밑 «Not adopted»: 주인 없는 옛 체인 층의 쓴 이름 · 층 수 · 많이 든 표 셋. 체인 일꾼이 `pacing.json` 의 `chain_unowned_census`(기본 slow)로 한 바퀴씩 셉니다(앞 바퀴가 끝나고, 그 시작 10 분 뒤부터 다음 바퀴). 정리는 그 규칙을 다시 돌린 뒤 옛 이름을 R2 로 withdraw.
+- **실패의 모양** — 거두기가 문장 상한에 걸리면 그 그룹이 실패하고 다시 돕니다(`statement timeout · N s · stage settle`). 지운 행 거두기가 잠금을 잃으면 바로 올려 그룹이 통째로 되감깁니다.
+- **지운 행** — AI 규칙(ask · report)만 빼고 모든 규칙을 깨워 그 행이 빠진 묶음을 다시 답합니다. `allow_delete_trigger` 칸은 은퇴(적혀 있어도 읽기만 합니다). 체인 대기열에서 지움이 안 깨운 규칙의 사유는 «a deletion; an ask or report rule is not run again by one» 입니다.
+- **기동** — 첫 기동에 `cell_sources` 에 `owner_rule` · `owner_key` 칸을 더합니다(PostgreSQL 11+ 는 표를 다시 쓰지 않음). 잠금을 못 받으면 층 쓰기가 «cell_sources has no owner_rule / owner_key yet …» 로 거절되고, 잡은 연결을 닫고 재기동하면 됩니다.
+- **필요한 조건** — git pull · 런처 재기동. 재셈 규칙이 있으면 그 한 줄을 지우고 Reload Configs & Code.
+- **자세히** — `chain/ingestion_worker.py` 의 `_settle` · `_unsettled`, `rule_run.owner_of`, `crud.compute_priority_value`, `mappers/hold_copy.py`, RUN.md 맨 위 블록.
 
 ## 2026-11-06 · 그리드 칸 필터에 Pick · Paste list — 값 여럿을 골라서, 붙여 넣어서
 

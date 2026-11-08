@@ -11,9 +11,8 @@ on the retroactive channel, the replay door, the chain's group body, the ledger 
   the fold again                 nothing to mark
   a rule without exclude         takes the marked row - nothing taken back
   a row that lost require        its layers go in a fresh process too (the census's 4 -> 4, now 0)
-  the pair                       both halves carry `source_exclude`; copies that disagree refuse the recount
+  the hold                       the copy counts the marked row's key again (lead 11-08 ㄱ - no recount rule)
 """
-import json
 import logging
 import os
 import sys
@@ -25,7 +24,6 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-import chain_bindings                                                # noqa: E402
 import event_constants                                               # noqa: E402
 from chain import ingestion_worker as worker                         # noqa: E402
 from chain import cell_layer, replay, rule_run                       # noqa: E402
@@ -85,10 +83,9 @@ def test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed(world,
     with caplog.at_level(logging.WARNING):
         hw.settle(world)
     log = _log(world)
-    assert (out["rows_to_mark"], out["rows_marked"], out["rules_woken"], out["rules_recounting"]) == (
-        1, 1, [hw.RULE["name"]], [hw.RECOUNT["name"]])
-    # 총괄 10-09: the copy rule first, then its recount on the official row the marked row fed - one run line
-    assert staged == [(hw.LOG, hw.RULE["name"], 1), (hw.OFFICIAL, hw.RECOUNT["name"], 1)]
+    assert (out["rows_to_mark"], out["rows_marked"], out["rules_woken"]) == (1, 1, [hw.RULE["name"]])
+    # the copy rule alone, the marked row handed as one that left - it counts that key's hold again (lead 11-08 ㄱ)
+    assert staged == [(hw.LOG, hw.RULE["name"], 1)]
     taken_back = [e for e in world["db"].query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last)
                   if e.table_name == hw.OFFICIAL and (e.payload or {}).get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
     assert taken_back and not [(r["name"], e.id) for e in taken_back for r in world["rules"]
@@ -121,7 +118,7 @@ def test_a_rule_without_exclude_still_takes_the_marked_row(plain_world):
     before = _layers_of(world, "B")
     out = _fold(world)
     hw.settle(world)
-    assert (out["rows_marked"], out["rules_woken"], out["rules_recounting"]) == (1, [], [])
+    assert (out["rows_marked"], out["rules_woken"]) == (1, [])
     assert (_layers_of(world, "B"), hw.hold(world) or "") == (before, "")
 
 
@@ -135,24 +132,6 @@ def test_a_row_that_lost_require_is_taken_back_in_a_fresh_process(world, monkeyp
         world["db"].commit()
     hw.settle(world)
     assert (_layers_of(world, "B"), float(hw.official(world).netdie), hw.hold(world)) == (0, 7.0, "agreed")
-
-
-def test_both_halves_carry_the_copy_rules_exclude(world):
-    by_name = {rule["name"]: rule for rule in world["rules"]}
-    assert [by_name[name].get(chain_bindings.SOURCE_EXCLUDE_KEY) for name in (hw.RULE["name"], hw.RECOUNT["name"])] \
-        == [[MARK], [MARK]]
-
-
-def test_copies_that_exclude_by_different_columns_refuse_their_recount(world, tmp_path, monkeypatch, caplog):
-    second = {**hw.RULE, "name": "hc_copy_2", "exclude": ["kind"], "is_batch": True}
-    path = tmp_path / "chain_rules_pair.json"
-    path.write_text(json.dumps({"rules": [{**hw.RULE, "is_batch": True, "exclude": [MARK]}, second,
-                                          {**hw.RECOUNT, "is_batch": True}]}), encoding="utf-8")
-    monkeypatch.setattr(worker, "RULES_PATH", str(path))
-    with caplog.at_level(logging.ERROR):
-        names = [rule.get("name") for rule in worker.load_chain_rules()]
-    assert hw.RECOUNT["name"] not in names and {hw.RULE["name"], "hc_copy_2"} <= set(names)
-    assert any("pair_mismatch" in r.getMessage() and hw.RECOUNT["name"] in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.parametrize("folded", [False, True])

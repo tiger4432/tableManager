@@ -181,12 +181,14 @@ def test_a_delete_event_cannot_wake_the_chain():
     assert worker._group_triggered_rules([ev("CREATE")], [rule]) == [rule]
     assert worker._group_target_tables([ev("CREATE")], [rule]) == {"u"}
 
-    assert worker._is_trigger_event(ev("DELETE")) is False
-    assert worker._group_triggered_rules([ev("DELETE")], [rule]) == []
-    assert worker._group_target_tables([ev("DELETE")], [rule]) == set()
-    # 총괄 옛 키: WIDENED BY ONE CELL, NOT REVERSED - a rule that declares it takes deletions
-    taker = dict(rule, allow_delete_trigger=True)
-    assert worker._group_triggered_rules([ev("DELETE")], [taker]) == [taker]
+    # owner 11-06 step 2 · lead ㄱ: WIDENED A SECOND TIME, NOT REVERSED - every rule that settles takes deletions (it
+    # answers its group again without the row); an AI's does not, and a deletion the chain made wakes none without
+    # `allow_chain_trigger` (`fires`)
+    assert worker._group_triggered_rules([ev("DELETE")], [rule]) == [rule]
+    asker = dict(rule, mapper="declared:ask")
+    assert worker._is_trigger_event(ev("DELETE"), asker) is False
+    assert worker._group_triggered_rules([ev("DELETE")], [asker]) == []
+    assert worker._group_target_tables([ev("DELETE")], [asker]) == set()
 
     # 🔴 그리고 DELETE 가 «갈래»로 되살아나지 않는지는 여전히 텍스트가 주어다 —
     #    「이 낱말이 코드에 없다」는 돌려서는 못 재는 주장이다.

@@ -790,8 +790,7 @@ def _one_wafer(db, rule, spec, name, keys, written, comments, situation, wafer, 
     for row_id in rows:
         updates.append({"row_id": row_id, "source_name": crud.CHAIN_SOURCE, "updated_by": name,
                         "origin_row_id": row_id,
-                        "updates": {c: v for c, v in cells.items() if not crud.is_blank_value(v)},
-                        "withdraw": sorted(c for c, v in cells.items() if crud.is_blank_value(v))})
+                        "updates": {c: v for c, v in cells.items() if not crud.is_blank_value(v)}})
     return updates
 
 

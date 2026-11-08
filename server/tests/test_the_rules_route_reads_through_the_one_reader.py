@@ -106,7 +106,10 @@ def test_a_missing_file_is_still_ABSENT_and_not_empty(rules_file):
 
 def test_a_document_with_no_rules_key_is_empty_and_not_absent(rules_file):
     rules_file.write_text(json.dumps({"note": "nothing yet"}), encoding="utf-8")
-    assert _call() == {"status": "success", "data": []}
+    answer = _call()
+    # «Not adopted» rides every rules answer - the census is the chain's, whatever the file holds (owner 11-08)
+    assert "not_adopted" in answer and {k: v for k, v in answer.items() if k != "not_adopted"} == {
+        "status": "success", "data": []}
 
 
 def test_broken_json_is_an_error_with_the_reason_in_it(rules_file):

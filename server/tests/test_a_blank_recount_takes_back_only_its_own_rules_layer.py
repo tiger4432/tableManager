@@ -91,9 +91,18 @@ def _row(db, job, table=INV):
     return db.query(models.DYNAMIC_TABLES[table]).filter_by(business_key_val=job).one_or_none()
 
 
+#: the decide's own layer, whatever key owns it (owner 11-06 step 2: `crud.owned_layer_name`)
+OWN = "<the decide's own>"
+
+
+def _label(name):
+    owner = crud.layer_owner(name)
+    return OWN if owner and owner[0] == DEDUP else name
+
+
 def _layers(db, job, column, by=False):
     row = _row(db, job)
-    return {layer.source_name: (layer.value, layer.updated_by) if by else layer.value
+    return {_label(layer.source_name): (layer.value, layer.updated_by) if by else layer.value
             for layer in db.query(models.CellSource).filter_by(
                 table_name=INV, row_id=str(row.row_id), column_name=column)}
 
@@ -118,7 +127,7 @@ def _confirm_may_write(db, job, column):
 def _blank_lines(caplog):
     """The withdrawal door's line for a blank recount on INV, up to its counts (`_withdraw_and_tell`)."""
     return [r.getMessage().split("[ChainRetract] ")[1].split(" protected_skipped")[0] for r in caplog.records
-            if "[ChainRetract] table=%s blank_rows=" % INV in r.getMessage()]
+            if "[ChainRetract] table=%s settled_rows=" % INV in r.getMessage()]
 
 
 def _clear_lot(db, tx, log_id):
@@ -133,7 +142,7 @@ def test_each_aggregation_fills_its_target_signed_by_its_rule_and_a_person_stays
     _chain(db, "t1")
     row = _row(db, "J1")
     assert (row.lot, row.first_t, row.last_t, row.n) == ("A, B", "2026-10-01", "2026-10-03", 2)
-    assert _layers(db, "J1", "lot", by=True) == {crud.CHAIN_SOURCE: ("A, B", DEDUP)}
+    assert _layers(db, "J1", "lot", by=True) == {OWN: ("A, B", DEDUP)}
     assert not _in_queue(db, "J1"), "every target is filled, as a confirmed row is"
 
     _write(db, INV, "p1", crud.USER_SOURCE, [{"business_key_val": "J1", "updates": {"lot": "P"}}])
@@ -142,7 +151,7 @@ def test_each_aggregation_fills_its_target_signed_by_its_rule_and_a_person_stays
     _chain(db, "t2")
     row = _row(db, "J1")
     assert row.lot == "P", "the recount must not overwrite the person"
-    assert _layers(db, "J1", "lot") == {crud.CHAIN_SOURCE: "A, B, C", crud.USER_SOURCE: "P"}
+    assert _layers(db, "J1", "lot") == {OWN: "A, B, C", crud.USER_SOURCE: "P"}
     assert (row.first_t, row.n) == ("2026-09-30", 3)
 
 
@@ -165,17 +174,17 @@ def test_a_blank_recount_takes_back_its_rules_layer_on_that_cell_only_and_the_gr
         {"updates": {"log_id": "L1", "job": "J3", "lot": "X", "t": "2026-10-02"}},
         {"updates": {"log_id": "L5", "job": "J5", "lot": "Y", "t": "2026-10-05"}}])
     _chain(db, "t1")
-    assert _layers(db, "J3", "lot") == {crud.CHAIN_SOURCE: "X"} and not _in_queue(db, "J3")
+    assert _layers(db, "J3", "lot") == {OWN: "X"} and not _in_queue(db, "J3")
 
     caplog.set_level("INFO", logger="Chain")
     said = _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot") == {}, "the rule's own layer of the blank aggregate goes"
-    assert _blank_lines(caplog) == ["table=%s blank_rows=1 groups=1 cells_withdrawn=1" % INV], "one line, what it took"
+    assert _blank_lines(caplog) == ["table=%s settled_rows=1 groups=1 cells_withdrawn=1" % INV],         "one line, what it took"
     assert _row(db, "J3").lot is None
     assert _in_queue(db, "J3") and _confirm_may_write(db, "J3", "lot")
     # the same rule's other columns on that row, and the same column on another row, stay
-    assert _layers(db, "J3", "first_t") == {crud.CHAIN_SOURCE: "2026-10-02"}
-    assert _layers(db, "J5", "lot") == {crud.CHAIN_SOURCE: "Y"} and _row(db, "J5").lot == "Y"
+    assert _layers(db, "J3", "first_t") == {OWN: "2026-10-02"}
+    assert _layers(db, "J5", "lot") == {OWN: "Y"} and _row(db, "J5").lot == "Y"
     # the grid's message carries the row with the value it shows now
     row_id = _row(db, "J3").row_id
     shown = [item["data"]["lot"]["value"] for message in said if message.get("table_name") == INV
@@ -189,7 +198,7 @@ def test_a_joins_layer_on_the_cell_stays(db):
     joined = crud.merged_layer_name(crud.CHAIN_SOURCE, "O9")
     _write(db, INV, "j1", joined, [{"business_key_val": "J3", "origin_row_id": "O9", "updates": {"lot": "JOIN"}}],
            by="some_join")
-    assert set(_layers(db, "J3", "lot")) == {crud.CHAIN_SOURCE, joined}
+    assert set(_layers(db, "J3", "lot")) == {OWN, joined}
 
     _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot") == {joined: "JOIN"}
@@ -201,12 +210,14 @@ def test_another_rule_that_wrote_the_cell_last_keeps_its_value(db, caplog):
     _chain(db, "t1")
     assert _blank_lines(caplog) == [], "a new row's blank aggregate has nothing to take back - no line"
     _write(db, INV, "b1", crud.CHAIN_SOURCE, [{"business_key_val": "J3", "updates": {"lot": "B"}}], by="rule_b")
-    assert _layers(db, "J3", "lot", by=True) == {crud.CHAIN_SOURCE: ("B", "rule_b")}
+    # two rules on one cell are two layers (owner 11-06 step 2, A) - the other rule's no longer overwrites this one's
+    assert _layers(db, "J3", "lot", by=True) == {crud.CHAIN_SOURCE: ("B", "rule_b"), OWN: ("X", DEDUP)}
 
     caplog.clear()
     _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot", by=True) == {crud.CHAIN_SOURCE: ("B", "rule_b")}
-    assert _blank_lines(caplog) == [], "nothing of its rule's on the cell - no withdrawal, no line"
+    assert _blank_lines(caplog) == ["table=%s settled_rows=1 groups=1 cells_withdrawn=1" % INV], \
+        "its own layer under the other rule's goes - one line"
     assert _row(db, "J3").lot == "B"
 
 
@@ -221,7 +232,7 @@ def test_a_backfilled_value_goes_when_its_source_goes_and_the_job_is_recounted(d
     rule = backfill.load_rule("agt_rule", crud.TABLE_CONFIG)
     stats = backfill.run_backfill(db, rule, apply=True, log=lambda *_: None)
     assert stats["created_rows"] == 1, stats
-    assert _layers(db, "J6", "lot", by=True) == {crud.CHAIN_SOURCE: ("X", DEDUP)}
+    assert _layers(db, "J6", "lot", by=True) == {OWN: ("X", DEDUP)}
 
     crud.delete_rows_batch(db, SRC, [_source_row(db, "L1")], "someone")
     db.commit()
@@ -237,7 +248,7 @@ def test_an_old_backfill_layer_goes_with_the_blank(db):
     _write(db, SRC, "t1", "pipeline_parser", [{"updates": {"log_id": "L1", "job": "J3", "lot": "X"}}])
     _chain(db, "t1")
     _write(db, INV, "o1", backfill.SOURCE_NAME, [{"business_key_val": "J3", "updates": {"lot": "OLD"}}])
-    assert _layers(db, "J3", "lot") == {crud.CHAIN_SOURCE: "X", backfill.SOURCE_NAME: "OLD"}
+    assert _layers(db, "J3", "lot") == {OWN: "X", backfill.SOURCE_NAME: "OLD"}
 
     _clear_lot(db, "t2", "L1")
     assert _layers(db, "J3", "lot") == {} and _row(db, "J3").lot is None
@@ -258,7 +269,7 @@ def test_with_a_file_layer_on_the_cell_the_rank_table_says_what_shows(db, file_s
     _chain(db, "t1")
     _write(db, INV, "f1", file_source, [{"business_key_val": "J4", "updates": {"lot": "FILE"}}])
     layers = _layers(db, "J4", "lot")
-    assert layers == {crud.CHAIN_SOURCE: "AGG", file_source: "FILE"}
+    assert layers == {OWN: "AGG", file_source: "FILE"}
     top = min(layers, key=lambda name: crud.get_source_priority(name, INV))
     assert _row(db, "J4").lot == layers[top]
 

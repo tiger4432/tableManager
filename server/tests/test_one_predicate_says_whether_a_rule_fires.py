@@ -63,7 +63,8 @@ def test_the_pair_predicate_does_not_read_the_event_type():
     """🔴 이것이 「두 술어」의 근거다. `group_id` 는 «모든» 종류를 묶으므로 이 술어를
     `_is_trigger_event` «없이» 쓴다. 둘을 한 술어로 접으면 DELETE 행의 그룹 키가 바뀐다."""
     assert worker.fires(RULE, ev("DELETE")) is True
-    assert worker._is_trigger_event(ev("DELETE")) is False
+    # the kind is the rule's (owner 11-06 step 2): a rule that settles takes deletions, an AI's does not
+    assert worker._is_trigger_event(ev("DELETE"), dict(RULE, mapper="declared:ask")) is False
     assert worker._is_trigger_event(ev("CREATE")) is True
     assert worker._is_trigger_event(ev("EDIT")) is True
 

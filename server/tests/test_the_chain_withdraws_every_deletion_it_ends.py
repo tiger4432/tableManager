@@ -100,7 +100,7 @@ def test_a_deletion_past_the_depth_limit_still_takes_back_what_its_row_fed(world
 def test_a_failed_withdrawal_leaves_the_session_usable(world, monkeypatch):
     db = world["db"]
     monkeypatch.setattr(worker, "_withdraw_and_tell", lambda db, *a, **k: db.execute(text("SELECT 1 / 0")))
-    worker._retract_what_those_rows_fed(db, hw.LOG, ["gone"])
+    worker._withdraw_what_those_rows_fed(db, hw.LOG, ["gone"], "deleted")
     assert db.execute(text("SELECT 1")).scalar() == 1
 
 

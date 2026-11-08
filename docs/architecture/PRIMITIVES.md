@@ -75,7 +75,7 @@
 
 ### ⭐⭐ **셀을 쓸 때 «어느 행에서 읽었나»를 도장 찍어 둔다 — 그 행이 지워지면 그 도장으로 겨냥한다** (2026-09-16 등록 · S-280 `e1318d28` · 판정 434)
 - **무엇**: 「이 값은 저 행에서 읽었다」를 셀 옆에 적어 두면, 그 행이 DELETE 될 때 **그 셀들만** 철회할 수 있다. 단위가 «셀»이라 번역 단계가 없다 — 키 단위 도장은 「키→셀」을 풀어 줄 조인이 따로 있어야 한다. 핵심은 **도장을 «소스 이름»으로 철자하지 않는 것**이다 — 그러면 우선순위 사전이 미등재를 99 로 돌려 **도장이 자기가 찍은 값을 강등시킨다.**
-- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_retract_what_those_rows_fed`(후속 드레인의 DELETE 갈래 — 🆕 10-03 거둔 뒤 층을 잃은 행마다 EDIT 하나, `withdraw_by_origin` 의 `lost_a_layer`) · 🆕 10-07 고칠 때 `apply_chain_writes` 의 쓰기 뒤(출처를 찍는 규칙의 EDIT 트리거 행 × 그 규칙의 칸 × 이번 쓰기가 그 출처로 쓴 행 밖) — 둘 다 `_withdraw_and_tell` · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
+- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_withdraw_what_those_rows_fed`(11-08, 전 `_retract_what_those_rows_fed`)(후속 드레인의 DELETE 갈래 — 🆕 10-03 거둔 뒤 층을 잃은 행마다 EDIT 하나, `withdraw_by_origin` 의 `lost_a_layer`) · 🆕 10-07 고칠 때 `apply_chain_writes` 의 쓰기 뒤(출처를 찍는 규칙의 EDIT 트리거 행 × 그 규칙의 칸 × 이번 쓰기가 그 출처로 쓴 행 밖) — 둘 다 `_withdraw_and_tell` · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
 - **언제 재사용**: 「A 가 B 를 읽어 쓴 것을 B 가 사라지면 거둬야 한다」가 필요한 **모든** 쓰기. 회수 문을 새로 만들지 말고 출처 행으로는 `withdraw_by_origin`, 층 이름 하나로는 `withdraw_source` 를 부른다 — 둘 다 같은 한 벌(`cell_layer._withdraw_cells`)을 지난다. `withdraw_source` 는 `columns`+`row_ids`+`apply` 셋을 **다 넘겨야** 겨냥한다.
 - **함정**:
   - 🔴 **마이그레이션은 «선행 조건»이지 최적화가 아니다.** `create_all` 은 있는 표에 컬럼을 안 더하므로, 안 돌리면 `apply_batch_updates` 를 지나는 쓰기가 **전부** `UndefinedColumn` 으로 죽는다.
@@ -2364,7 +2364,7 @@
 ### **규칙이 행을 «받나»는 `chain.rule_run.gate_misses` 한 판정 — SQL 은 같은 판정의 `gate_conditions`** (2026-10-14 등록 · A `b29493bf3`, 총괄 63c747046)
 - **어디**: `gates_of(rule)` → `{require: [칸], exclude: [칸]}` · `gate_misses(gates, cells)` → 행이 걸린 `[(관문, 칸)]`(빈 목록 = 받음, `require` 는 찬 칸 · `exclude` 는 빈 칸, `crud.is_blank_value`) · `gate_conditions(gates, model)` → 같은 판정의 SQL 조건. 부르는 곳: `held_back`(규칙에 넘기기 전) · `enrichment/mapper.py`(decide 다시 세기) · `enrichment/analysis.py` · `enrichment/backfill.py` · `mappers/hold_copy.py`.
 - **언제 재사용**: 규칙이 받을 행을 고르거나 세는 새 자리 — «비었나»를 옆에 다시 적지 않는다.
-- **함정**: 파이썬 쪽과 SQL 쪽이 갈라지면 규칙이 받은 행과 다시 세기가 센 행이 달라진다(10-14 전: 다시 세기가 `require` 를 안 봐 받지 않은 행까지 셈).
+- **함정**: 파이썬 쪽과 SQL 쪽이 갈라지면 규칙이 받은 행과 다시 세기가 센 행이 달라진다(10-14 전: 다시 세기가 `require` 를 안 봐 받지 않은 행까지 셈). 🆕 11-08 보류는 복사 규칙 하나가 자기 `require` · `exclude` 로 센다 — 로더가 찍던 `source_<관문>` 쌍둥이는 재셈 규칙과 함께 은퇴.
 
 ### **decide 집계 `Latest` 는 원천 행의 «원장 원자 시각»으로 고른다 — 시각은 `ledger.followup.time_of_table` 한 자리** (2026-10-14 등록 · A `5cb412070`, 소유자 «원자시각»)
 - **어디**: `chain.enrichment.config.ledger_time(table)` → 운영 세상 선언(`ledger.worker._compiled_setup(None)`) 위의 `followup.time_of_table(setup, table)` — `{occurred_at, excluded_by}` 또는 `(None, 사유)`. 행마다 `row_time(time, row, table)` 가 원장의 읽개(`roleframe.aware_time`)로 ms 를 낸다.

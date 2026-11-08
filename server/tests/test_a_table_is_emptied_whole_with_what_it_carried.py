@@ -84,7 +84,7 @@ def test_the_dry_run_says_what_goes_and_writes_nothing(world):
     _seeded(world)
     found = _reset(world)
     assert (found["rows"], found["user_layers"], found["ledger_atoms"], found["chain_rules"]) \
-        == (2, 1, {hw.SOURCE: 2}, [hw.RECOUNT["name"]])
+        == (2, 1, {hw.SOURCE: 2}, [])          # no rule on the official table (lead 11-08 ㄱ: the recount retired)
     assert found["layers"] > found["user_layers"] and found["overwrites"] > 0
     assert _count(world, 'SELECT count(*) FROM "%s"' % hw.OFFICIAL) == 2
 

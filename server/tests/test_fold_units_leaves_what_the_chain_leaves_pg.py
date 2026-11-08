@@ -172,7 +172,8 @@ def copies(pg_engine):
 
         def run_rule(*args, **kwargs):
             answer = real_run(*args, **kwargs)
-            out["answers"].append((len(answer["updates"]), [m["rows_total"] for m in answer["next_page"]]))
+            # rows written - what the page also covers (its groups, owner 11-06 step 2) is not one
+            out["answers"].append((rule_run.rows_written(answer["updates"]), [m["rows_total"] for m in answer["next_page"]]))
             return answer
         mp.setattr(rule_run, "run_rule", run_rule)
         scratch.create_all(pg_engine)
@@ -244,7 +245,9 @@ def test_fold_units_leaves_what_the_chain_leaves(copies, part):
 def test_the_higher_layer_keeps_its_value_and_takes_the_chains_under_it(copies):
     for copy in ("A", "B"):
         assert _marks(copies[copy])[BY_HAND[0]] == BY_HAND[1], copy
-        assert ("MAN_J3-0", "chain_ingestion (MAN_J3)", "folded into AUTO_J4", "MAN_J3", RULES[0]["name"]) in \
+        # the rule's layer of the unit's group (owner 11-06 step 2 - `owner_key`, the fold's group)
+        assert ("MAN_J3-0", crud.owned_layer_name(RULES[0]["name"], "CW3"), "folded into AUTO_J4", "MAN_J3",
+                RULES[0]["name"]) in \
             copies[copy]["layers"], copy
     assert copies["B_stats"]["rows_higher_layer"] == 1
 
@@ -254,13 +257,15 @@ def test_the_dry_run_counts_what_the_run_does_and_writes_nothing(copies):
             "rows_higher_layer", "marks_withdrawn")
     assert {k: copies["B_dry"][k] for k in said} == {k: copies["B_stats"][k] for k in said}
     assert (copies["B_dry"]["units"], copies["B_dry"]["groups"], copies["B_dry"]["units_losing"],
-            copies["B_dry"]["marks_withdrawn"]) == (9, 5, 4, 4)
+            copies["B_dry"]["marks_withdrawn"]) == (9, 5, 4, 5)   # + AUTO_J5-0's layer from before ownership
     assert copies["B_after_dry"] == copies["seed"]
 
 
 def test_a_rerun_writes_nothing(copies):
     again = copies["B_again"]
-    assert copies["B_stats"]["rows_marked"] == 11, "CANARY: the first run wrote"
+    # 12: AUTO_J5-0, marked so already under its row's old layer, is written again under its rule's (owner 11-06
+    # step 2) and the old one taken back - it is no longer «marked so already»
+    assert copies["B_stats"]["rows_marked"] == 12, "CANARY: the first run wrote"
     assert copies["answers"][0] == (5, [12]), "CANARY: the mapper answers in pages (A, the chain's copy)"
     # fold-units asks the rule seat whole groups at a time - 1, then 2, then 2 of the 5 - in each of its 4 runs, so its
     # first page does not wait on every group's answer (총괄 2ea5ee2a7)

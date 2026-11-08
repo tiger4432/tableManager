@@ -1198,11 +1198,15 @@ def test_a_retracted_row_is_announced_and_remembered_like_any_deleted_row(env, m
                         lambda *a, **k: notices.append(a))
     plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"},
                                       min_population=100)
-    assert derivation.apply_retraction(db, plan) == 2
+    from database.context import channel
+    with channel(event_constants.CHANNEL_CHAIN):          # as the chain's write seat runs it (its group's channel)
+        assert derivation.apply_retraction(db, plan) == 2
     events = _deletes(db)
     assert len(events) == 1
     assert sorted(followup.row_ids_of(get_payload_dict(events[0]))) == ["k2", "k3"]
-    assert ingestion_worker._is_trigger_event(events[0]) is False, "a deletion woke the chain"
+    # the map door's deletion is the chain's: it wakes a rule on that table only if it opts into chain events
+    on_map = {"name": "r", "enabled": True, "trigger_table": MAP, "target_table": "elsewhere"}
+    assert ingestion_worker.wakes(on_map, events[0]) is False, "a deletion woke the chain"
     assert sorted(log.row_id for log in _deletion_logs(db)) == ["k2", "k3"]
     assert notices == [], "the worker announces the deleted ids once; this must add none"
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """The world the hold-copy gates and the table-emptying gates both stand on (PostgreSQL scratch
-schema): a source log and an official table, the copy rule and the recount rule
-(`copy_rows_with_hold`), and a ledger source reading the official table that excludes a blank
+schema): a source log and an official table, the copy rule (`copy_rows_with_hold` - it counts the
+holds too, lead 11-08 ㄱ), and a ledger source reading the official table that excludes a blank
 hold. Every seat is the product's: crud writes, the chain's transaction-group body,
 `followup.drain_once`, the worker's withdrawal after a drained deletion.
 """
@@ -53,11 +53,6 @@ TABLES = {
 RULE = {"name": "hc_copy", "trigger_table": LOG, "target_table": OFFICIAL,
         "mapper": "copy_rows_with_hold", "require": KEYS,
         "params": {"key_columns": KEYS, "columns": ["netdie"], "hold_column": "hold"}}
-#: The same function on the target: recount only. A deleted source row reaches it as the chain's
-#: withdrawal, hence the opt-in.
-RECOUNT = {"name": "hc_recount", "trigger_table": OFFICIAL, "target_table": OFFICIAL,
-           "mapper": "copy_rows_with_hold", "allow_chain_trigger": True,
-           "params": {**RULE["params"], "source_table": LOG}}
 #: The ledger source: the official table, a held row excluded - the RELEASE_LOG's line.
 SOURCE = "hc_official"
 LEDGER_SOURCE = {
@@ -124,12 +119,11 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False, exclude=()):
     scratch.create_all(pg_engine)
     rules_path = tmp_path / "chain_rules.json"
     rules_path.write_text(json.dumps({"rules": [{**RULE, "is_batch": batch,
-                                                 **({"exclude": list(exclude)} if exclude else {})},
-                                                {**RECOUNT, "is_batch": batch}]}),
+                                                 **({"exclude": list(exclude)} if exclude else {})}]}),
                           encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
-    rules = [r for r in worker.load_chain_rules() if r.get("name") in (RULE["name"], RECOUNT["name"])]
-    assert len(rules) == 2
+    rules = [r for r in worker.load_chain_rules() if r.get("name") == RULE["name"]]
+    assert len(rules) == 1
     monkeypatch.setattr(worker, "loaded_chain_rules", lambda: rules)
     monkeypatch.setattr(worker, "_READ_BY_SOURCE_NAME", set())
     table_config = sample("table_config.json.sample")
@@ -212,7 +206,7 @@ def run_chain(world, rounds=12):
             for item in events:
                 event_constants.mark_processed(item, "SUCCESS")
             db.commit()
-            worker._retract_deleted_rows(db, deleted)
+            worker._withdraw_unanswered_deletions(db, deleted, "unanswered")
     else:
         raise AssertionError("the chain did not settle")
 
@@ -245,11 +239,11 @@ def delete(world, log_id):
     db.commit()
 
 
-def recount_writes(world):
-    """Chain events the recount rule's own writes left on the official table."""
+def writes_by(world, name):
+    """Chain events rule `name`'s own writes left on the official table."""
     return [e.id for e in world["db"].query(models.DatabaseOutbox)
             .filter(models.DatabaseOutbox.table_name == OFFICIAL).all()
-            if RECOUNT["name"] in (event_constants.written_by_of(get_payload_dict(e)) or ())]
+            if name in (event_constants.written_by_of(get_payload_dict(e)) or ())]
 
 
 def said(world):

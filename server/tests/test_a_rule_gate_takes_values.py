@@ -8,7 +8,7 @@ them, the cell and the values spelled by the one key speller by the column's dec
   left        an edit into an excluded value is, to a rule that reads rows that left, a row that left
   refused     an item that is neither a name nor {column: [non-empty scalar values]}, or names no column the table has
   the join    `on.exclude` with values: such a value-table row is no answer
-  the reader  a value item's column wakes the rule; a copy and its recount pair by their items
+  the reader  a value item's column wakes the rule
 """
 import json
 import logging
@@ -17,7 +17,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import chain_bindings
 import event_constants
 import mapper_sdk
 from chain import ingestion_worker as worker
@@ -167,13 +166,3 @@ def test_a_join_takes_no_answer_from_a_value_row_its_exclude_names(db):
 def test_a_value_items_column_wakes_the_rule():
     assert worker.wake_columns({"trigger_columns": ["v"], "exclude": [{"status": ["SCRAP"]}, "n"]}) == [
         "v", "status", "n"]
-
-
-def test_a_copy_and_its_recount_pair_by_their_value_items():
-    from mappers import hold_copy
-
-    gate = [{"status": ["SCRAP"]}]
-    copy = {"name": "c", "trigger_table": SRC, "target_table": DST, "exclude": gate}
-    recount = {"name": "r", "trigger_table": DST, "target_table": DST, "params": {"source_table": SRC}}
-    assert hold_copy._paired([copy, recount]) == []
-    assert copy[chain_bindings.SOURCE_GATE_KEYS["exclude"]] == recount[chain_bindings.SOURCE_GATE_KEYS["exclude"]] == gate

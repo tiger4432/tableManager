@@ -23,10 +23,43 @@ CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
                   *chain_bindings.ROW_GATE_KEYS,
                   "target_table", "mapper", "mapper_module", "mapper_function",
                   "params", "group_by", "max_group_rows", "max_group_attempts",
-                  "idempotent", "run_in", "rows_per_run")
+                  "idempotent", "run_in", "rows_per_run", "priority")
 
 _LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent",
                "run_in", "rows_per_run")
+
+#: The rule cell that orders two rules' layers on one cell (owner 11-06 step 2 1ㄱ) - smaller shows first, a rule
+#: that says one before one that does not; then the one declared later (lead 11-08 ㄴ, `crud.compute_priority_value`).
+PRIORITY = "priority"
+_PRIORITIES = [None, {}, {}]
+
+
+def priorities() -> dict:
+    """{rule name: its declared priority} over the loaded rules - read again when the rules are, as `formula.columns`."""
+    return _read_rule_order()[1]
+
+
+def declared_order() -> dict:
+    """{rule name: its place in the rules file} - the order a person wrote them in; the later one shows on a cell two
+    rules write (lead 11-08 ㄴ, e10c58e5e ③). Read again when the rules are."""
+    return _read_rule_order()[2]
+
+
+def _read_rule_order() -> list:
+    """[the loaded rules, {name: priority}, {name: place}] - read off the rules file once per load."""
+    from chain import ingestion_worker as worker
+
+    if worker._LOADED_RULES is None:
+        worker.loaded_chain_rules()
+    if _PRIORITIES[0] is not worker._LOADED_RULES:
+        said, order = {}, {}
+        for place, declaration in enumerate((worker._RULES_DOCUMENT or {}).get("rules") or ()):
+            value = (declaration or {}).get(PRIORITY)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                said[str(declaration.get("name"))] = value
+            order[str((declaration or {}).get("name"))] = place
+        _PRIORITIES[:] = [worker._LOADED_RULES, said, order]
+    return _PRIORITIES
 
 #: The unified declaration's `key` cell (S-240). A translated join carries it beside `params`
 #: under this same name and `chain.synthesis` reads it off the rule, so the chain grammar's
@@ -264,9 +297,6 @@ def as_chain_rule(internal: dict) -> dict:
         derived = join_wake_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
-        # a gathering join recounts the key a value row left - a deletion included (lead 10-20, the gap fill's cell)
-        if join_into.gathers(out["params"]):
-            out[chain_bindings.ALLOW_DELETE_TRIGGER_KEY] = True
         # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
         # TRIGGER PATH. It used to stand `follow_up: True`, which put it on the paced lap
         # instead, and the owner's ruling is that the join is not a follow-up: the outbox
@@ -509,7 +539,7 @@ def companion_rules(internal: dict) -> list:
         companion["name"] = str(name) + COMPANION_SUFFIX
         companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
         companion[COMPANION_MAPPER], companion["mapper"] = companion.get("mapper"), ask_rule.ASK_MAPPER
-        for key in ("trigger_columns", chain_bindings.ALLOW_DELETE_TRIGGER_KEY) + chain_bindings.ROW_GATE_KEYS:
+        for key in ("trigger_columns",) + chain_bindings.ROW_GATE_KEYS:
             companion.pop(key, None)
         companion[COMPANION_CELL] = str(name)
         return [companion]
@@ -531,7 +561,6 @@ def companion_rules(internal: dict) -> list:
     target_key += [str(name) for item in (derive.get("join") or {}).get("take") or () if isinstance(item, dict)
                    for name in item.get(join_into.TAKE_ROW) or () if str(name) not in target_key]
     companion.pop("trigger_columns", None)
-    companion.pop(chain_bindings.ALLOW_DELETE_TRIGGER_KEY, None)     # a target row's deletion feeds no key
     # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
     for key in chain_bindings.ROW_GATE_KEYS:
         companion.pop(key, None)

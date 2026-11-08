@@ -46,11 +46,11 @@ def test_each_split_row_gets_its_value_or_why_and_the_batch_walks_once(world, le
     target_side = next(r for r in rules if r.get("trigger_table") == "sf_rows")
     ledger["walks"].clear()
     answer = join_into.propose(world, target_side, ["r0", "r1", "r2", "r3"])
-    said = {u["row_id"]: (u["updates"].get("value"), u["updates"].get("why"), sorted(u.get("withdraw") or ()))
+    said = {u["row_id"]: (u["updates"].get("value"), u["updates"].get("why"), sorted(set(u["updates"]) & {"value", "why"}))
             for u in answer["updates"]}
     step = _step_label(ledger)
-    assert said == {"r0": ("12.3", None, ["why"]),
-                    "r1": ("12 (est · %s · 3 wf)" % step, None, ["why"]),
-                    "r2": (None, "no value", ["value"]),
-                    "r3": (None, "no mapping", ["value"])}
+    assert said == {"r0": ("12.3", None, ["value"]),
+                    "r1": ("12 (est · %s · 3 wf)" % step, None, ["value"]),
+                    "r2": (None, "no value", ["why"]),
+                    "r3": (None, "no mapping", ["why"])}
     assert len(ledger["walks"]) == 2, "a model walk and a wafer walk for the four rows"

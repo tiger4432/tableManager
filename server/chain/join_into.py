@@ -43,7 +43,7 @@ from error_said import told
 logger = logging.getLogger("Chain.JoinInto")
 
 #: What a `blank: skip` answer leaves in its cell - the source row's edit withdraws what this rule wrote there
-#: (`ingestion_worker._withdraw_and_tell` «edited»), and a skipped answer writes nothing back (lead 10-28: the line read
+#: (`ingestion_worker._settle`), and a skipped answer writes nothing back (lead 10-28: the line read
 #: as «the old value is kept»).
 SKIPPED_CELL = "where this rule wrote the cell before, that value is withdrawn and the cell shows its other layers"
 #: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
@@ -398,8 +398,7 @@ def _fn_takes(spec: dict) -> dict:
 
 
 def gathers(spec: dict) -> bool:
-    """Does this join gather a key's rows (`take ... fn`)? Then a value row that leaves - deleted, or moved to another
-    key - recounts the key it left (`rule_shape` stamps `allow_delete_trigger` on the value side)."""
+    """Does this join gather a key's rows (`take ... fn`)?"""
     return bool(_fn_takes(spec))
 
 
@@ -576,12 +575,12 @@ def _gathered(spec: dict, found, row=None, ref=None, functions=None) -> dict:
 
 
 def old_keys(rule: dict, payload) -> list:
-    """The join keys value rows LEFT, as their events' old values say - a gathering join's value side only (a key a
-    row moved off or was deleted from is recounted, as the gap fill does). Raw, one tuple a row."""
+    """The join keys value rows LEFT, as their events' old values say - the value side's (a key a row moved off or was
+    deleted from is answered again without it, owner 11-06 step 2: g′ = g(group − row)). Raw, one tuple a row."""
     import event_constants
 
     spec = join_spec(rule)
-    if not gathers(spec) or str((rule or {}).get("trigger_table") or "") != str(spec.get("right_table") or ""):
+    if str((rule or {}).get("trigger_table") or "") != str(spec.get("right_table") or ""):
         return []
     columns = [right for _left, right, _fold in _pairs(spec)]
     out = (event_constants.key_left(item or {}, columns) for item in (payload if isinstance(payload, list) else [payload]))
@@ -719,9 +718,10 @@ def _excluded(spec: dict) -> list:
 class _Answer:
     """One row the LEFT JOIN used to return - a left row and its right row, or none."""
 
-    __slots__ = ("_mapping", "matched")
+    __slots__ = ("_mapping", "matched", "key")
 
-    def __init__(self, row_id, origin_row_id, values):
+    def __init__(self, row_id, origin_row_id, values, key=None):
+        self.key = key
         self._mapping = {"row_id": row_id, "origin_row_id": origin_row_id}
         self._mapping.update(("take_%d" % index, value) for index, value in enumerate(values))
         # 🔴 `matched` is 「the right row exists」, never 「the value came back NULL」: a matched
@@ -902,20 +902,24 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
                 str(spec.get("right_table") or "오른쪽 표"),
                 [right for _l, right, _f in _pairs(spec, left_table)]),
             fanned))
-    updates = []
+    updates, covered = [], set()
     for row in rows:
-        if not row.matched or seen.get(row._mapping["row_id"], 0) > 1:
-            continue
         mapping = row._mapping
         values = {into_col: mapping["take_%d" % index]
                   for index, (_right, into_col) in enumerate(takes) if into_col not in fns}
         for column in _unsaid(spec, values):
             del values[column]
-        if takes and not values:
+        if not row.matched or seen.get(mapping["row_id"], 0) > 1 or (takes and not values):
+            # no answer - none, two, or one it does not say: what this rule owned on the row goes (owner 11-06 step 2)
+            if mapping["row_id"] not in covered:
+                covered.add(mapping["row_id"])
+                updates.append({"row_id": mapping["row_id"], "covers": {"rows": [mapping["row_id"]]},
+                                "updated_by": source_name})
             continue
-        updates.append(schemas.GeneralUpdateItem(
+        updates.append(dict(
             row_id=mapping["row_id"],
             updates=values,
+            owner_key=getattr(row, "key", None),
             # 🔴 [S-280 · 판정 434] Only matched rows reach here (the `continue` above), so
             # this is never the id of a row that did not answer.
             origin_row_id=mapping["origin_row_id"],
@@ -1019,7 +1023,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
 
     page, after, pages = keyset_scan.pages(left_rows, start)
     blank = (None,) * len(_takes(spec))
-    rows = [_Answer(row_id, origin, values)
+    rows = [_Answer(row_id, origin, values, key)
             for row_id, key in page
             for origin, values in (answers.get(key) or [(None, blank)])]
     updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
@@ -1031,9 +1035,9 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
         said = {into for into, (_column, record) in fns.items() if formula_of(record["fn"]) is not None}
 
         # 🔴 [lead 10-20] NO ORIGIN, AND A BLANK ONE IS WITHDRAWN - the gap fill's door: a gathered cell has every row
-        #    of its key for a source, so no one row's deletion or move may take it back (`_retract_deleted_rows` aims at
-        #    origins); the recount is its one author, and a key left with no row takes back what this rule wrote
-        #    (`withdraw` -> `_withdraw_blanks`).
+        #    of its key for a source, so no one row's deletion or move may take it back by origin; the recount is its
+        #    one author, and a key left with no row covers its row, so the settle takes back what this rule wrote there
+        #    (owner 11-06 step 2).
         # 🔴 [lead 10-24, owner 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」] ONE CALCULATION A KEY AND THE ROW VALUES IT
         #    IS HANDED, shared by the batch's pages: target rows of one key that hand the same `row` values share it;
         #    each still gets its own write. Measured: 100 keys × 20 target rows called the function 2,000 times.
@@ -1043,11 +1047,12 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
             if asked not in once:
                 once[asked] = _gathered(spec, answers.get(key) or (), mine, ref, functions)
             gathered = once[asked]
-            updates.append({"row_id": row_id, "source_name": CHAIN_LAYER,
-                            "updated_by": str((rule or {}).get("name") or ""),
-                            "updates": {c: v for c, v in gathered.items() if c in said or not crud.is_blank_value(v)},
-                            "withdraw": sorted(c for c, v in gathered.items()
-                                               if c not in said and crud.is_blank_value(v))})
+            # a blank one is not written: what this rule owned there goes (owner 11-06 step 2)
+            cells = {c: v for c, v in gathered.items() if c in said or not crud.is_blank_value(v)}
+            updates.append({"row_id": row_id, "source_name": CHAIN_LAYER, "updated_by": str((rule or {}).get("name") or ""),
+                            "updates": cells, "owner_key": key} if cells else
+                           {"row_id": row_id, "covers": {"rows": [row_id]},
+                            "updated_by": str((rule or {}).get("name") or "")})
     more = after is not None
     unsaid, total = {}, 0
     if not start:
@@ -1076,7 +1081,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
     #    already there. Collapsing them sends half the readers to the wrong repair.
     #    Said only by an answer that is ONE page: an empty first page says nothing of the rest.
     refusal = None
-    if not updates and not more and not start:
+    if not any("covers" not in item for item in updates) and not more and not start:
         differ = [] if answers else _key_types_differ(spec, left_table)
         refusal = ("no row matched - the join key types differ: %s" % "; ".join(differ)
                    if differ else

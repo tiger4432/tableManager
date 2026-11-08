@@ -98,8 +98,9 @@ def _maps(envelope, retract=False):
 
 
 @pytest.mark.parametrize("cells, wakes", [
-    ({}, False), ({"allow_delete_trigger": True}, True), ({"allow_replace_map": True}, True),
-    ({"allow_retraction": True}, True),
+    # owner 11-06 step 2 · lead ㄱ: every rule that settles takes deletions - an AI's is not asked again by itself
+    ({}, True), ({"allow_delete_trigger": True}, True), ({"allow_replace_map": True}, True),
+    ({"allow_retraction": True}, True), ({"mapper": "declared:ask"}, False), ({"mapper": "declared:report"}, False),
 ])
 def test_a_deletion_wakes_a_rule_that_answers_for_whole_maps(cells, wakes):
     assert chain_bindings.takes_deletions(cells) is wakes

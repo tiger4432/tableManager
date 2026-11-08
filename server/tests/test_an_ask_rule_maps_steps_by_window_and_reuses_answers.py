@@ -89,13 +89,13 @@ def world(db_session, monkeypatch):
 
 def _written(answer):
     return sorted([(u["updates"]["product"], u["updates"]["step_seq"], u["updates"].get("item_id"),
-                    u["updates"].get("process_kind")) for u in answer["updates"] if not u.get("gone")],
+                    u["updates"].get("process_kind")) for u in answer["updates"] if not u.get("covers")],
                   key=lambda r: tuple("" if v is None else v for v in r))
 
 
 def _store(db, answer):
     m = models.DYNAMIC_TABLES["st_map"]
-    for n, u in enumerate(u for u in answer["updates"] if not u.get("gone")):
+    for n, u in enumerate(u for u in answer["updates"] if not u.get("covers")):
         row = u["updates"]
         db.add(m(row_id="w%d-%s" % (n, row["product"]), business_key_val=ask_rule._key_of("st_map", row),
                  **{k: v for k, v in row.items()}))
@@ -116,7 +116,7 @@ def test_a_product_is_asked_a_window_at_a_time_and_its_items_ride_their_step(wor
     rows = _written(answer)
     assert [r[1] for r in rows if r[2] is None] == ["AA%03d" % n for n in range(1, 7)], "each step once"
     assert ("P1", "AA003", "T1", "no common") in rows, "an item row; «measure» is not a common name"
-    carried = [u for u in answer["updates"] if not u.get("gone")]
+    carried = [u for u in answer["updates"] if not u.get("covers")]
     assert all("item_id" in u["updates"] for u in carried), "a key column rides the row though blank (the key gate)"
 
 
@@ -151,5 +151,5 @@ def test_one_changed_step_asks_its_window_and_speaks_only_for_its_lines(world):
     answer = ask_rule.answer(db, no_reuse, _p("P1", [5]))
     assert answer["calls"] == len(calls) == 1
     assert {r[1] for r in _written(answer)} == {"AA004", "AA005", "AA006"}
-    gone = [u["business_key_val"] for u in answer["updates"] if u.get("gone")]
+    gone = [where["business_key_val"] for u in answer["updates"] if u.get("covers") for where in u["covers"]["where"]]
     assert gone == [ask_rule._key_of("st_map", stale)], "the window's stale row only - AA001-AA003 untouched"

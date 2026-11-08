@@ -5065,8 +5065,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
     #    ⚠️ RETRYING 은 `processed_chain=false` 라 «그대로» 든다. 다시 돌 것이므로 맞다.
 
     # 🔴 [소유자 2026-09-23 「빼. 안 돌거는 다빼」] 모집단에서 «돌지 않을 행»이 빠진다.
-    #    판정은 좌석 `wakes` 가 한다 — 사건 종류(`_is_trigger_event`, DELETE 는 규칙이
-    #    `allow_delete_trigger` 를 적었을 때만 · 총괄 옛 키)와 쌍(`fires`). 술어를 여기서 다시 적지 않는다.
+    #    판정은 좌석 `wakes` 가 한다 — 사건 종류(`_is_trigger_event`, DELETE 는 AI 규칙
+    #    빼고 전부 · `chain_bindings.takes_deletions`)와 쌍(`fires`). 술어를 여기서 다시 적지 않는다.
     #    ⚠️ 총괄 지시는 「`any(fires)` 하나로 DELETE 까지 빠진다」였는데 «그렇지 않다» —
     #       `fires` 의 독스트링이 적고 있다: 「event_type 은 여기 «없다». 그것은 이벤트
     #       혼자의 성질이고(`_is_trigger_event`)」. 두 좌석 다 이 라우트가 이미 부른다.
@@ -6528,7 +6528,11 @@ def get_chain_rules(db: Session = Depends(get_db)):
     for row in listed:
         row["kind"] = rule_shape.declared_kind(row)
     listed.sort(key=lambda row: (rank.get(row["kind"], len(rank)), str(row.get("name") or "")))
-    return {"status": "success", "data": listed}
+    # the chain's layers no rule owns, as the chain worker's last census lap counted them - None until one ended
+    lap = ((_heartbeat_mod.read_all().get("chain") or {}).get("laps") or {}).get(worker.UNOWNED_CENSUS_LOOP)
+    return {"status": "success", "data": listed,
+            "not_adopted": {"at": lap.get("at"), "layers": lap.get("layers", 0), "names": lap.get("not_adopted") or []}
+            if lap else None}
 
 
 @app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])

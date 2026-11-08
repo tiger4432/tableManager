@@ -119,7 +119,9 @@ def _auto_confirm(db, payload, rule=None, fetched=None):
         return fetched["answer"]
     # ⚠️ NOT `written`. The seat adds that cell to its own count, so reporting it here while
     #   the seat ALSO writes these items would count every confirmed row twice.
-    proposed = []
+    # what it is handed it answers whole (owner 11-06 step 2 D-1): its confirmation there, or nothing - and what it
+    # confirmed before and does not now goes
+    proposed = [{"covers": {"rows": fetched["rows"]}}]
     stats = fetched["collector"].flush(db, propose_into=proposed, read=fetched["read"] or {}) or {}
     confirmed = stats.get("confirmed") or 0
     refused = sum((stats.get("refused") or {}).values())
@@ -152,7 +154,7 @@ def _read_auto_confirm(db, payload, rule=None):
         return {"answer": {"updates": [], "confirmed": 0, "refused": 0,
                            "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}}
     collector.collect_rows(db, rows)
-    return {"collector": collector, "read": collector.read_for_flush(db)}
+    return {"collector": collector, "read": collector.read_for_flush(db), "rows": rows}
 
 
 _auto_confirm.fetch = _read_auto_confirm
@@ -263,7 +265,7 @@ def stamps_origin(name, rule=None):
     ⚠️ None for a file mapper that declares nothing is the honest answer - `GeneralUpdateItem.
     origin_row_id` is on the schema every mapper builds, so it CAN stamp, and whether the live
     ones do is not countable from here (`server/mappers/` is gitignored). A fact may depend on
-    the rule (`copy_rows_with_hold`: the copy stamps, the recount does not).
+    the rule.
     """
     value = _facts(name).get("stamps_origin")
     return bool(value(rule or {})) if callable(value) else value

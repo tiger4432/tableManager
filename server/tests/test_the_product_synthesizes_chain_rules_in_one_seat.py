@@ -122,8 +122,8 @@ def test_the_drain_has_no_rule_loop_left():
     # 총괄 796f04605 ①: the DELETE withdrawal is the chain's - where it ends a group, its SUCCESS and its quarantine
     assert "_retract" not in body, "the withdrawal is behind the ledger again"
     # 총괄 09f58844f: in the commit that ends them - the group's claim (SUCCESS) and the quarantine
-    assert inspect.getsource(worker._claimed_group_sync).count("_retract_deleted_rows(db, deleted)") == 1
-    assert inspect.getsource(worker.process_pending_groups).count("_commit_after, _retract_deleted_rows, db,") == 1
+    assert inspect.getsource(worker._claimed_group_sync).count('_withdraw_unanswered_deletions(db, deleted, "unanswered")') == 1
+    assert inspect.getsource(worker.process_pending_groups).count('"failure withdrawal", _withdraw_unanswered_deletions, db,') == 1
 
 
 def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):

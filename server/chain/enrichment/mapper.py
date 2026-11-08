@@ -320,11 +320,13 @@ def _expanded(key_map: dict, listed: list) -> list:
 
 
 def _gone(enrich: dict, joined: str) -> dict:
-    """The item that takes a derived row away - the worker deletes it unless another writer is on it."""
+    """What a key no source row holds any more covers: the rule's cells on its derived row go, and the row with them
+    unless another writer is on it (owner 11-06 step 2, the write seat's settle) - both halves' cells, its own and its
+    auto-confirm's."""
     from chain import enrichment
 
-    return {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True,
-            "own": list(enrichment.config.synthesized_rule_names(enrich["name"]))}
+    return {"covers": {"where": [{"business_key_val": joined}],
+                       "rules": list(enrichment.config.synthesized_rule_names(enrich["name"]))}}
 
 
 def _off_list(db, enrich: dict, keys: list) -> list:
@@ -576,10 +578,11 @@ def built(rule, got) -> dict:
                         upd_cols[col] = value
 
             # `updated_by` 는 체인이 규칙의 선언 이름으로 찍는다(`rule_run.signed`)
+            # a blank answer is not written: what this rule owned there goes (owner 11-06 step 2)
             item = {
                 "updates": upd_cols,
                 "source_name": "chain_ingestion",
-                "withdraw": blank,
+                "owner_key": key,
             }
             # business_key_val 선(先)조립 — apply_batch_updates의 벌크 프리페치(row/CellSource 캐시)가
             # business_key_val 기준이므로 여기서 확정해야 기존 행 조회가 N+1 없이 배치된다.

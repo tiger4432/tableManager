@@ -11,6 +11,9 @@ held row. Every seat is the product's: crud writes, the chain's transaction-grou
   two rows, different values         blank, the ledger's atom is withdrawn
   two rows, the same values          agreed
   every commit                       a row whose values changed carries the hold of that moment
+  a row deleted · moved · gated out  the copy rule counts its key's hold again - one hold layer a key
+                                     (lead 11-08 ㄱ: the recount rule, 총괄 e11bb4de0, retired)
+  a person's edit of the official    the hold stays - no rule counts on the official table
 """
 import os
 import sys
@@ -22,7 +25,8 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import event_constants                                              # noqa: E402
-from support import hold_world as hw                                 # noqa: E402
+from database import crud                                           # noqa: E402
+from support import hold_world as hw                                # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 pytestmark = pytest.mark.pg
@@ -70,9 +74,50 @@ def test_no_commit_shows_new_values_without_their_hold(world, batches):
     assert hw.hold(world) in (None, "")
     assert world["stale"] == []
     assert hw.said(world) == []
+    # a blank hold on a row made in this batch is absence - no layer; on the row the first batch made, the copy's own
+    assert _hold_layers(world) == ([] if batches == 1 else
+                                   [crud.owned_layer_name("hc_copy", hw.official(world).business_key_val)])
 
 
-# ------------------------------------------------------------------ the recount (3ba1d1dd4)
+def test_a_new_row_is_one_write_of_the_copy_with_its_hold(world):
+    """Lead 11-08 ㄱ gate 3: B's values and its hold land in the copy's one write, and the ledger never reads 9
+    with the old «agreed» (the recount, declared after the copy, showed its older count over the copy's)."""
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    before = len(hw.writes_by(world, hw.RULE["name"]))
+    hw.push(world, [{"log_id": "B", **hw.KEY, "netdie": 9}])
+    hw.settle(world)
+    assert len(hw.writes_by(world, hw.RULE["name"])) - before == 1
+    assert (hw.official(world).netdie, hw.hold(world) or "") == (9, "")
+    assert world["stale"] == []
+
+
+def test_a_persons_edit_of_the_official_row_leaves_its_hold(world):
+    """Lead 11-08 ㄱ gate 2: the hold counts the source rows' claims, so a person's edit of the official row moves
+    no hold - measured the same on the code before (where the recount woke on it and wrote nothing)."""
+    from database import schemas
+    from database.context import channel
+
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    assert hw.hold(world) == "agreed", "CANARY: one claim"
+    with channel(event_constants.CHANNEL_API):
+        crud.apply_batch_updates(world["db"], hw.OFFICIAL, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            row_id=hw.official(world).row_id, updates={"netdie": 8}, source_name="user", updated_by="hold_test")]))
+        world["db"].commit()
+    hw.settle(world)
+    assert (hw.official(world).netdie, hw.hold(world)) == (8, "agreed")
+
+
+def _hold_layers(world):
+    """The layer names on the official row's hold cell."""
+    from database import models
+    world["db"].expire_all()
+    return sorted(s.source_name for s in world["db"].query(models.CellSource)
+                  .filter_by(table_name=hw.OFFICIAL, column_name="hold").all())
+
+
+# ------------------------------------------- a deleted row: the copy counts its key again (lead 11-08 ㄱ)
 
 def test_deleting_the_clashing_row_recounts_the_hold_to_agreed(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
@@ -87,8 +132,8 @@ def test_deleting_the_clashing_row_recounts_the_hold_to_agreed(world):
 
 
 def test_deleting_the_row_whose_value_is_hidden_recounts_the_hold_too(world):
-    """총괄 e11bb4de0 (나): withdrawing a layer that was not the shown one changes no cell, so only
-    the delete path's own EDIT wakes the recount."""
+    """Withdrawing a layer that was not the shown one changes no cell; the copy rule, handed the deleted row,
+    counts its key's hold again in its own answer (lead 11-08 ㄱ - before, the delete path's EDIT woke the recount)."""
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     hw.push(world, [{"log_id": "B", **hw.KEY, "netdie": 9}])
@@ -98,7 +143,7 @@ def test_deleting_the_row_whose_value_is_hidden_recounts_the_hold_too(world):
     hw.settle(world)
     assert (hw.official(world).netdie, hw.hold(world)) == (9, "agreed")
     assert [(job, float(value)) for job, value in hw.said(world)] == [("J1", 9.0)]
-    assert len(hw.recount_writes(world)) == 1
+    assert _hold_layers(world) == [crud.owned_layer_name("hc_copy", hw.official(world).business_key_val)]
 
 
 def test_a_deleted_row_that_fed_nothing_stages_no_event(world):
@@ -107,12 +152,12 @@ def test_a_deleted_row_that_fed_nothing_stages_no_event(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     before = world["db"].query(models.DatabaseOutbox).count()
-    worker._retract_what_those_rows_fed(world["db"], hw.LOG, ["01890000-0000-7000-8000-000000000000"])
+    worker._withdraw_what_those_rows_fed(world["db"], hw.LOG, ["01890000-0000-7000-8000-000000000000"], "deleted")
     world["db"].commit()
     assert world["db"].query(models.DatabaseOutbox).count() == before
 
 
-def test_the_two_left_agreeing_are_agreed_and_the_recount_writes_once(world):
+def test_the_two_left_agreeing_are_agreed_by_the_copys_one_hold(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     hw.push(world, [{"log_id": "C", **hw.KEY, "netdie": 7}])
@@ -123,14 +168,7 @@ def test_the_two_left_agreeing_are_agreed_and_the_recount_writes_once(world):
     hw.delete(world, "B")
     hw.settle(world)
     assert hw.hold(world) == "agreed"
-    assert len(hw.recount_writes(world)) == 1          # '' -> agreed, once; equal holds write nothing
-    # 총괄 e11bb4de0 (나): the shown value moved, so the recount was woken TWICE - its own edit
-    # and the delete path's - and the second wrote nothing, so it left no event either
-    from chain import cell_layer
-    from database import models
-    woke = [e for e in world["db"].query(models.DatabaseOutbox).filter_by(table_name=hw.OFFICIAL)
-            if get_payload_dict(e).get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
-    assert len(woke) == 2
+    assert _hold_layers(world) == [crud.owned_layer_name("hc_copy", hw.official(world).business_key_val)]
 
 
 # ------------------------------------------------------------------ one batch (32bab7896 · cb3d3c1bf)
@@ -152,15 +190,14 @@ def test_two_rows_of_one_key_in_one_batch_keep_a_layer_each(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}, {"log_id": "B", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     a, b = _row_id(world, "A"), _row_id(world, "B")
-    assert _netdie_layers(world) == sorted([("chain_ingestion (%s)" % a, a),
-                                            ("chain_ingestion (%s)" % b, b)])
+    assert _netdie_layers(world) == sorted([(crud.owned_layer_name("hc_copy", a), a), (crud.owned_layer_name("hc_copy", b), b)])
     hw.delete(world, "B")
     hw.settle(world)
-    assert _netdie_layers(world) == [("chain_ingestion (%s)" % a, a)]
+    assert _netdie_layers(world) == [(crud.owned_layer_name("hc_copy", a), a)]
 
 
 def test_a_key_whose_source_rows_are_all_deleted_goes_and_is_unsaid(world):
-    """The recount empties the hold and the row is left with only the chain's keys - it goes (총괄
+    """The copy counts the hold empty and the row is left with only the chain's keys - it goes (총괄
     5eee501eb · 판정 ㄱ: it was held blank and stayed, a shell)."""
     from database import models
 
@@ -193,7 +230,7 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
                              source_name="user", value="x", origin_row_id=a, updated_by="t"))
     db.commit()
     last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
-    worker._retract_what_those_rows_fed(db, hw.LOG, [a])
+    worker._withdraw_what_those_rows_fed(db, hw.LOG, [a], "deleted")
     new = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last).all()
     assert "note" not in named and named
     assert [(e.event_type, e.table_name) for e in new] == [("EDIT", hw.OFFICIAL)]
@@ -201,8 +238,10 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
     assert (payload["row_ids"], payload["columns"]) == ([official_id], named)
     # the channel, not only the source name: the guard reading `chain_ingestion` as the chain retires
     assert event_constants.channel_of(payload) == event_constants.CHANNEL_CHAIN
-    assert worker.fire_refusal(hw.RECOUNT, new[0]) is None
-    asleep = {**hw.RECOUNT, "allow_chain_trigger": False}
+    reader = {**hw.RULE, "name": "hc_reader", "trigger_table": hw.OFFICIAL, "target_table": hw.LOG,
+              "allow_chain_trigger": True}                      # a rule on the official table that opts in
+    assert worker.fire_refusal(reader, new[0]) is None
+    asleep = {**reader, "allow_chain_trigger": False}
     assert worker.fire_refusal(asleep, new[0]) == worker.FIRE_REFUSED_CHAIN
 
 
@@ -219,8 +258,7 @@ REQUIRED = [{"log_id": "A", "dt_job": "J1", "dt_x": 1, "dt_y": 2, "netdie": 7, "
 
 
 def _require_kind(world):
-    """The copy rule now also requires `kind`, read the way the worker reads a saved rule - the pairing
-    at load stamps the recount."""
+    """The copy rule now also requires `kind`, read the way the worker reads a saved rule."""
     import json
 
     from chain import ingestion_worker as worker
@@ -232,7 +270,7 @@ def _require_kind(world):
             rule["require"] = hw.KEYS + ["kind"]
     with open(worker.RULES_PATH, "w", encoding="utf-8") as fh:
         json.dump(document, fh)
-    world["rules"][:] = [r for r in worker.load_chain_rules() if r.get("name") in (hw.RULE["name"], hw.RECOUNT["name"])]
+    world["rules"][:] = [r for r in worker.load_chain_rules() if r.get("name") == hw.RULE["name"]]
     return {rule["name"]: rule for rule in world["rules"]}
 
 
@@ -244,10 +282,10 @@ def _by_job(world):
             for row in world["db"].query(models.DYNAMIC_TABLES[hw.OFFICIAL]).all()}
 
 
-def test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_lets_the_chain_take_its_rows(world):
-    """The owner's lines (총괄 ㄱ): replay the copy rule, then the recount rule. The copy replay's
-    withdrawal wakes no rule, so J2 · J3 keep their hold until the recount runs - then they hold only
-    the chain's keys and the chain takes them; remove-shells finds nothing left."""
+def test_a_row_the_copys_require_holds_back_is_no_claim_and_the_copy_replay_takes_its_rows(world):
+    """The owner's lines (총괄 ㄱ): replay the copy rule. Its answer holds J1 only, counted by its require, and
+    what it no longer answers - J2 · J3, the key layers and the holds with them - is taken back, so those rows are
+    gone; remove-shells finds nothing left (lead 11-08 ㄱ: no recount replay after it)."""
     from chain import replay
 
     hw.push(world, REQUIRED)
@@ -255,34 +293,33 @@ def test_a_row_the_copys_require_holds_back_is_no_claim_and_the_recount_replay_l
     assert {job: hold for job, (_value, hold) in _by_job(world).items()} == {
         "J1": "", "J2": "agreed", "J3": "agreed"}, "CANARY: before require, every row is a claim"
     rules = _require_kind(world)
-    assert rules[hw.RECOUNT["name"]]["source_require"] == hw.KEYS + ["kind"], "the pair carries require"
 
     replay.replay_rule(world["db"], rules[hw.RULE["name"]], apply=True)
-    hw.run_chain(world)      # the ledger follow-up waits - it would read J2 · J3 agreed with no value
-    assert _by_job(world) == {"J1": (7.0, "agreed"), "J2": (None, "agreed"), "J3": (None, "agreed")}
-    replay.replay_rule(world["db"], rules[hw.RECOUNT["name"]], apply=True)
     hw.settle(world)
 
     assert _by_job(world) == {"J1": (7.0, "agreed")}, "J2 · J3 held only the chain's keys, and the chain took them"
     assert replay.remove_shell_rows(world["db"], hw.OFFICIAL)["rows_to_delete"] == 0
 
 
-def test_copies_that_gate_by_different_columns_leave_their_recount_refused_by_name(world, caplog):
+def test_a_recount_rule_still_declared_is_refused_by_name_at_load(world, caplog):
+    """Lead 11-08 ㄱ: the recount rule retired - one still declared (the copy's mapper on its own target) would copy
+    the official table onto itself, so the load refuses it by name and the copy stands."""
     import json
 
     from chain import ingestion_worker as worker
 
     with open(worker.RULES_PATH, encoding="utf-8") as fh:
         document = json.load(fh)
-    second = {**dict(next(r for r in document["rules"] if r["name"] == hw.RULE["name"])), "name": "hc_copy_two"}
-    second["require"] = hw.KEYS + ["kind"]
-    document["rules"].append(second)
+    document["rules"].append({"name": "hc_recount", "trigger_table": hw.OFFICIAL, "target_table": hw.OFFICIAL,
+                              "mapper": "copy_rows_with_hold", "allow_chain_trigger": True,
+                              "params": {**hw.RULE["params"], "source_table": hw.LOG}})   # as one was written
     with open(worker.RULES_PATH, "w", encoding="utf-8") as fh:
         json.dump(document, fh)
     caplog.set_level("ERROR", logger=worker.logger.name)
 
     names = [r.get("name") for r in worker.load_chain_rules()]
 
-    assert hw.RECOUNT["name"] not in names and hw.RULE["name"] in names
-    said = [r.getMessage() for r in caplog.records if "require or exclude by different columns" in r.getMessage()]
-    assert len(said) == 1 and "%s refused: pair_mismatch" % hw.RECOUNT["name"] in said[0], said
+    assert "hc_recount" not in names and hw.RULE["name"] in names
+    said = [r.getMessage() for r in caplog.records if "refused: recount_retired" in r.getMessage()]
+    assert said == ["[ChainRules] hc_recount refused: recount_retired - the recount is retired - delete this rule; "
+                    "its copy rule into %s counts the holds again (lead 11-08)" % hw.OFFICIAL], said

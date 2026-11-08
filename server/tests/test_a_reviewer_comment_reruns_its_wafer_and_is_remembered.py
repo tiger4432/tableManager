@@ -92,11 +92,20 @@ def _row_id(db, wafer):
 
 
 def _remember(db, half, wafers):
-    """The memory half's answer written as the worker writes it - its rows, then its gone keys (`_delete_gone`)."""
+    """The memory half's answer written as the worker writes it - its rows on the layers its rule owns, then what it
+    covers settled (`_settle`, owner 11-06 step 2)."""
+    from chain import rule_run, rule_shape
+    from chain.cell_layer import key_columns
+
     out = ask_rule.answer(db, half, [_row_id(db, w) for w in wafers])
-    crud.apply_batch_updates(db, MEMORY_TABLE, schemas.GeneralUpdateBatch(
-        updates=[schemas.GeneralUpdateItem(**u) for u in out["updates"] if not u.get("gone")]))
-    worker._delete_gone(db, MEMORY_TABLE, [(u["business_key_val"], u["own"]) for u in out["updates"] if u.get("gone")])
+    for u in out["updates"]:                     # signed by its rule, as `rule_run.signed` does
+        u.setdefault("updated_by", rule_shape.declaration_of(half))
+    items = [schemas.GeneralUpdateItem(**u) for u in out["updates"] if not u.get("covers")]
+    for item in items:
+        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id, rule_run.owner_of(
+            item, key_columns(MEMORY_TABLE)))
+    crud.apply_batch_updates(db, MEMORY_TABLE, schemas.GeneralUpdateBatch(updates=items))
+    worker._settle(db, MEMORY_TABLE, [], items, [u for u in out["updates"] if u.get("covers")])
     db.commit()
     model = models.DYNAMIC_TABLES[MEMORY_TABLE]
     return [(r.cell, r.ai, r.right) for r in db.query(model).all()]

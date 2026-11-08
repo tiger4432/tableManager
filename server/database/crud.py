@@ -216,6 +216,9 @@ DROP_UNMAPPED_COLUMN = "unmapped_column"
 #: column stopped a file, a grid paste and a chain group (owner 10-29 «데이터 값은 멈추지 않는다» ㄱ): now that cell
 #: is not entered, the rest of its row is written, and the cell is counted here with its value.
 DROP_VALUE_REFUSED = "value_refused"
+#: One answer gave one cell two values - the items one owner (`layer_owner`: a rule and its key) proposed (owner 11-08:
+#: «한 답 안의 한 칸 두 값 = 오류»). Neither is written. Different owners on one cell are not this: the later shows.
+DROP_TWO_VALUES = "two_values_in_one_answer"
 
 # Both caps exist for the same reason the undeclared-column registry has a budget: every
 # name and every row id in this report comes from the PAYLOAD, so a malformed file must
@@ -253,6 +256,26 @@ def _new_drop_stats() -> dict:
         # counts them (a blank lost nothing; a column of blanks only is still named, at 0) - not_written_sentence's
         "by_reason_column": {},
     }
+
+
+def _refuse_two_values_in_one_answer(table_name, items, drop_stats):
+    """The cells one owner's items give two different values in this batch, taken off every such item and counted
+    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked."""
+    types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    seen = {}
+    for item in items:
+        if layer_owner(item.source_name) is None:
+            continue
+        row = item.row_id or item.business_key_val
+        for column, value in (item.updates or {}).items():
+            seen.setdefault((row, item.source_name, column), []).append((item, value))
+    for (row, _name, column), said in seen.items():
+        first = said[0][1]
+        if not any(values_differ(first, value, types.get(column, "string")) for _item, value in said[1:]):
+            continue
+        for item, value in said:
+            item.updates.pop(column, None)
+            _record_dropped_cell(drop_stats, item.row_id, item.business_key_val, column, DROP_TWO_VALUES, value)
 
 
 def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
@@ -795,6 +818,46 @@ def merged_layer_name(name: str, tag: str) -> str:
     return "%s (%s)" % (name, tag)
 
 
+#: What an owner's part may not hold as itself in a layer name: the escape, the parts' separator, the brackets, and
+#: control characters - each written %XX, so a part never holds a space or a bracket and `layer_writer` still reads
+#: the writer before the first « (».
+_OWNER_UNSAFE = frozenset("% ()") | frozenset(chr(code) for code in range(32)) | {chr(127)}
+
+
+def _owner_part(text) -> str:
+    return "".join("%%%02X" % ord(ch) if ch in _OWNER_UNSAFE else ch for ch in str(text))
+
+
+def _ownable_bases() -> tuple:
+    """The layer names a rule's owned layer is built on: the chain's, and auto-confirm's two (their rank is theirs)."""
+    from chain.enrichment import candidates
+
+    return CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY
+
+
+def owned_layer_name(rule, key, base=CHAIN_SOURCE) -> str:
+    """THE name of the layer (rule, key) owns (owner 11-06 step 2 ㄱ): `<base> (<rule> <key>)` - `base` the chain's
+    layer or auto-confirm's - each part escaped (`_OWNER_UNSAFE`). Built here only; read back by `layer_owner` only.
+    The cells `owner_rule` / `owner_key` say the same and are what aiming, picking and tests read - the name keeps
+    the one unique index."""
+    return merged_layer_name(base, "%s %s" % (_owner_part(rule), _owner_part(key)))
+
+
+def layer_owner(source_name):
+    """(rule, key) of a layer `owned_layer_name` built - None for any other name (a source row's bracket, a
+    collision-merge copy, a person's or a file's). Its base is `layer_writer`'s."""
+    from urllib.parse import unquote
+
+    name = str(source_name or "")
+    base = layer_writer(name)
+    if base not in _ownable_bases() or not name.startswith(base + " (") or not name.endswith(")"):
+        return None
+    parts = name[len(base) + 2:-1].split(" ")
+    if len(parts) != 2:
+        return None
+    return unquote(parts[0]), unquote(parts[1])
+
+
 def layer_writer(source_name) -> str:
     """Whose layer this is. A collision-merge copy (`merged_layer_name`) is its writer's."""
     return str(source_name or "").split(" (", 1)[0]
@@ -803,8 +866,10 @@ def layer_writer(source_name) -> str:
 def layer_ranks_as(source_name):
     """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
     chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
-    collision-merge copy of another writer keeps today's rank). The one seat that asks it."""
-    return CHAIN_SOURCE if layer_writer(source_name) == CHAIN_SOURCE else source_name
+    collision-merge copy of another writer keeps today's rank) - and an owned layer as its base. The one seat that
+    asks it."""
+    writer = layer_writer(source_name)
+    return writer if writer == CHAIN_SOURCE or layer_owner(source_name) else source_name
 
 
 _MACHINE_LAYER_NAMES = []
@@ -1244,6 +1309,7 @@ NOT_WRITTEN_NEXT = {
     DROP_UNMAPPED_COLUMN: "reload or restart so this process holds the unmapped columns, "
                           "then Retry the file",
     DROP_VALUE_REFUSED: "fix the values their columns' types do not take - the rest of each row was written",
+    DROP_TWO_VALUES: "fix the rule - one answer gave these cells two values, neither was written",
 }
 
 
@@ -2024,6 +2090,20 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
 _FORMULAS = []
 
 
+def _rule_priorities() -> dict:
+    """{rule: declared priority} (`rule_shape.priorities`) - read where the chain's rules are loaded."""
+    from chain import rule_shape
+
+    return rule_shape.priorities()
+
+
+def _rule_order() -> dict:
+    """{rule: its place in the rules file} (`rule_shape.declared_order`)."""
+    from chain import rule_shape
+
+    return rule_shape.declared_order()
+
+
 def _formulas():
     if not _FORMULAS:
         from chain import formula
@@ -2100,12 +2180,24 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
     ranks = {} if ranks is None else ranks
 
+    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
+    # one sits on the cell, the chain's layers there order by time as before
+    unowned = any(layer_ranks_as(name) == CHAIN_SOURCE and not layer_owner(name) for name in sources)
+    order = _rule_order() if any(layer_owner(name) for name in sources) else {}
+
     def _rank(name):
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
         if name not in ranks:
             ranks[name] = get_source_priority(name, table_name)
+        owner = layer_owner(name)
+        said = _rule_priorities().get(owner[0]) if owner else None
         return (
             ranks[name],                             # 1. declared ranking
+            # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
+            # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
+            0 if said is not None else 1,      # 1b. a rule that says its priority before one that does not
+            said if said is not None else 0,   # 1c. the smaller priority
+            -order.get(owner[0], -1) if owner and not unowned else 0,   # 1d. the rule declared later
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
@@ -2893,7 +2985,26 @@ def _copy_field(value) -> str:
 
 
 CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
-CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id')
+CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id', 'owner_rule', 'owner_key')
+
+
+def owner_cells(source_name) -> dict:
+    """`owner_rule` / `owner_key` of a layer named `source_name` - read off its name by the one parser
+    (`layer_owner`), so a write and every copy of a layer (a merge, a fold, a pin) say the same owner (owner 11-06
+    step 2). None for a layer no rule owns."""
+    owner = layer_owner(source_name)
+    return {"owner_rule": owner[0] if owner else None, "owner_key": owner[1] if owner else None}
+
+
+from sqlalchemy import event as sa_event                             # noqa: E402
+
+
+@sa_event.listens_for(models.CellSource, "before_insert")
+@sa_event.listens_for(models.CellSource, "before_update")
+def _owner_of_a_layer_row(_mapper, _connection, target):
+    """A layer row written through the ORM (`db.add`) says its owner as the bulk upsert does (`owner_cells`)."""
+    for column, value in owner_cells(target.source_name).items():
+        setattr(target, column, value)
 
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE,
@@ -2903,13 +3014,14 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     layer is upserted as before."""
     if not mappings:
         return
+    models.require_owner_columns(db.get_bind())     # added at boot; the insert names them
 
     # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
     # Keep the last (most recent) dictionary for each unique constraint key.
     deduped = {}
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'], item['source_name'])
-        deduped[key] = item
+        deduped[key] = {**item, **owner_cells(item['source_name'])}
 
     # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
     sorted_keys = sorted(deduped.keys())
@@ -4409,7 +4521,8 @@ def apply_row_update_internal(
     # this skip list rather than being kept "just in case": the list is what a write path
     # refuses to touch, and a name here that nothing writes is a rule protecting nothing.
     system_cols = SYSTEM_COLUMNS
-    
+    models.require_owner_columns(db.get_bind())     # added at boot; an ORM insert names every column
+
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
@@ -5062,8 +5175,8 @@ def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
     reason, and widening this signature would have moved the two call sites and the
     assertions that pin them for a fact both callers already carry.
 
-    🔵 A `DELETE` event wakes only a rule that declares `allow_delete_trigger` (`ingestion_worker.wakes`, 총괄
-    옛 키) - it carries each row's values as its old values for that rule.
+    🔵 A `DELETE` event wakes every rule but an AI's (`chain_bindings.takes_deletions`, owner 11-06 step 2) - it
+    carries each row's values as its old values for those rules.
     """
     from database.database import row_values, stage_collapsed_event
 
@@ -6247,6 +6360,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # Whole rows refused before the loop, by name. They are not cell drops - no cell
         # was read - so they ride beside the cell accounting rather than inside it.
         drop_stats["row_refusals"] = vjoin_refusals
+        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats)
 
         # [phantom row] Row ids that ended the loop having received CONTENT. A row is in
         # here iff some item resolved onto it and produced at least one changed column,

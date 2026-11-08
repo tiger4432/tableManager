@@ -204,32 +204,6 @@
         }
       },
       {
-        "key": "source_require",
-        "required": false,
-        "node": {
-          "kind": "map",
-          "keyed_by": "index",
-          "member": "column",
-          "of": {
-            "kind": "leaf",
-            "hint": "free"
-          }
-        }
-      },
-      {
-        "key": "source_exclude",
-        "required": false,
-        "node": {
-          "kind": "map",
-          "keyed_by": "index",
-          "member": "column",
-          "of": {
-            "kind": "leaf",
-            "hint": "free"
-          }
-        }
-      },
-      {
         "key": "enabled",
         "required": false,
         "node": {
@@ -255,14 +229,6 @@
       },
       {
         "key": "allow_map_metadata_upsert",
-        "required": false,
-        "node": {
-          "kind": "leaf",
-          "hint": "flag"
-        }
-      },
-      {
-        "key": "allow_delete_trigger",
         "required": false,
         "node": {
           "kind": "leaf",
@@ -389,6 +355,14 @@
         "node": {
           "kind": "leaf",
           "hint": "free"
+        }
+      },
+      {
+        "key": "priority",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "number"
         }
       },
       {
@@ -3809,7 +3783,7 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "flag"
+          "hint": "free"
         }
       },
       {

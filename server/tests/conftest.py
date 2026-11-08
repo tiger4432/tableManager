@@ -351,23 +351,23 @@ def run_join_and_write(db, rule, row_ids):
     measure what the join puts IN THE TABLE are callers, so they do the caller's half. This is
     that half, once: three files need it, and three copies is how they come to disagree.
 
-    ⚠️ IT IS NOT A SECOND SEAT. Production callers (the worker's batch step, replay's page
-    loop) write these items themselves; nothing imports this but tests. Each item's layer is named by the
-    worker's own call (총괄 10-11 ④ - a row's join landed under the plain name here, under its row's there).
+    ⚠️ IT IS NOT A SECOND SEAT: it writes through the worker's own (`apply_chain_writes` - its naming and its settle,
+    owner 11-06 step 2), signed as the worker signs (`rule_run.signed`). Nothing imports this but tests.
     """
-    from chain import join_into, rule_run
-    from database import crud, schemas
+    from chain import ingestion_worker, join_into, rule_run, rule_shape
 
-    outcome = join_into.propose(db, rule, row_ids)
-    updates = outcome.get("updates") or []
-    for item in updates:
-        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
-    if updates:
-        crud.apply_batch_updates(
-            db, str((rule or {}).get("target_table") or ""),
-            schemas.GeneralUpdateBatch(updates=updates, silent=True))
+    declaration = rule_shape.declaration_of(rule)
+    outcome = rule_run.signed(join_into.propose(db, rule, row_ids), declaration, rule)
+    updates = list(outcome.get("updates") or [])
+    target = str((rule or {}).get("target_table") or "")
+    ok, error = ingestion_worker.apply_chain_writes(
+        db, "test_join", rule, 0, {target: {rule.get("name")}}, {target: updates} if updates else {}, [], [],
+        {target: [rule.get("name")]}, [],
+        settles={target: [{"declaration": declaration, "origins": [str(r) for r in row_ids or ()]}]})
+    assert ok, error
+    db.commit()
     answer = {key: value for key, value in outcome.items() if key != "updates"}
-    answer["written"] = len(updates)
+    answer["written"] = sum(1 for item in updates if not rule_run.item_cell(item, "covers"))
     return answer
 
 

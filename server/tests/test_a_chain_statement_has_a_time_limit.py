@@ -260,24 +260,23 @@ def test_a_group_a_replay_woke_is_stopped_the_same(pg_db, monkeypatch):
 
 
 @pytest.mark.pg
-def test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit(
-        pg_db, monkeypatch, caplog):
-    from chain import rule_run
+def test_a_settle_the_limit_stopped_fails_its_group_and_says_the_limit(pg_db, monkeypatch, caplog):
+    """Lead 11-08 ㄴ (daf4985d5 said «an edit retraction stopped by it stays contained»): the settle stands in the
+    write's commit (owner 11-06 step 2), so a settle the limit stopped fails its group like any statement it stops -
+    «statement timeout · N s · stage settle» - and leaves no stale value beside a success."""
     monkeypatch.setattr(dw, "load_ingestion_settings", lambda: {CELL: 1})
     _write(pg_db, TA, {"k": "A1", "n": ""})
     _run_the_queue(pg_db)
     _write(pg_db, TA, {"k": "A1", "n": "0"})                     # an edit of a row it fed
-    monkeypatch.setattr(rule_run, "stamps_its_origin", lambda rule: True)
-    monkeypatch.setattr(worker, "_withdraw_and_tell",
-                        lambda db, *a, **k: db.execute(text("SELECT pg_sleep(5)")))
+    monkeypatch.setattr(worker, "_settle", lambda db, *a, **k: db.execute(text("SELECT pg_sleep(5)")))
     edited = [e for e in _pending(pg_db) if e.table_name == TA]
     assert [e.event_type for e in edited] == ["EDIT"]
 
     ran, _groups = _run_the_queue(pg_db)
 
     pg_db.refresh(edited[0])
-    assert edited[0].status == "SUCCESS", "the retraction's failure left its group"
+    assert edited[0].status == "FAILED", "a settle the limit stopped left its group a success"
+    assert "statement timeout · 1 s · stage settle" in (_said(edited[0]) or ""), _said(edited[0])
     said = [r.getMessage() for r in caplog.records if "[ChainRetract]" in r.getMessage()]
-    assert len(said) == 1 and "old layers may remain: statement timeout · 1 s - [OperationalError]" \
-        in said[0], said
+    assert len(said) == 1 and "statement timeout · 1 s - [OperationalError]" in said[0], said
     assert ran < 4

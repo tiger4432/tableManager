@@ -346,19 +346,15 @@ def _key_of(table, row):
 
 
 def _gone(db, rule, carried, answered, lines=None):
-    """The group's rows in the output table whose key this answer no longer gives -> `gone` items owned by this rule:
-    the write's gone seat takes this rule's cells and leaves a person's row (owner 10-28 «남김», the seat is B's).
+    """The group's rows in the output table whose key this answer no longer gives -> `covers` where items: the write's
+    settle takes this rule's cells and leaves a person's row (owner 10-28 «남김», 11-06 step 2).
     `lines`: only the rows of these line values - a window asked speaks for its own lines alone."""
-    from chain import rule_shape
-    from database import crud
-
     model = _model(rule.get("target_table"))
     query = _where(db.query(model.business_key_val), model, carried)
     line = (_spec(rule).get("output") or {}).get("line")
     if lines is not None and line:
         query = query.filter(getattr(model, line).in_(sorted(lines)))
-    return [{"business_key_val": key, "updates": {}, "source_name": crud.CHAIN_SOURCE, "gone": True,
-             "own": [rule_shape.declaration_of(rule)]} for (key,) in query.all() if key not in answered]
+    return [{"covers": {"where": [{"business_key_val": key}]}} for (key,) in query.all() if key not in answered]
 
 
 def _situation(row):
@@ -370,7 +366,7 @@ def _shown(value):
 
 
 def remember(db, rule, row_ids):
-    """The memory half: the output rows handed -> a memory row for each AI cell a person corrected, and `gone` for
+    """The memory half: the output rows handed -> a memory row for each AI cell a person corrected, and `covers` for
     the memory rows of those output rows no correction holds any more (a person put the AI's value back, or their
     layer went). A person's value equal to the AI's corrects nothing. The judgement is `cell_layer.person_cells`.
     The AI's cells: an ask's `output.cells`, a report's text slots its `results` names. A report's comment column
@@ -416,8 +412,7 @@ def remember(db, rule, row_ids):
     held = db.query(memory.business_key_val).filter(
         getattr(memory, named["purpose"]) == asker,
         getattr(memory, named["key"]).in_(sorted({_situation(r) for r in rows.values()}))).all()
-    updates += [{"business_key_val": key, "updates": {}, "source_name": crud.CHAIN_SOURCE, "gone": True,
-                 "own": [rule_shape.declaration_of(rule)]} for (key,) in held if key not in said]
+    updates += [{"covers": {"where": [{"business_key_val": key}]}} for (key,) in held if key not in said]
     return {"updates": updates, "refusal": None, "calls": 0}
 
 

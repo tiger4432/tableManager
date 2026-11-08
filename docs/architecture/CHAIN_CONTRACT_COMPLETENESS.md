@@ -173,7 +173,7 @@
 
 ③ 후속 랩     같은 프로세스의 별도 task. 속도는 pacing.json 의 `chain_followup`(10-13 부터 fast)
               `_drain_ledger_followup_sync`: 켜진 세상마다 `_compiled_setup`(선언 파일 지문이 같으면 캐시) +
-              `followup.drain_outbox_once`(사건 하나) — 그 사건이 DELETE 면 `_retract_what_those_rows_fed`(지운 행이 먹인 칸 거두기)
+              `followup.drain_outbox_once`(사건 하나) — 그 사건이 DELETE 면 `_withdraw_what_those_rows_fed`(11-08, 전 `_retract_what_those_rows_fed`)(지운 행이 먹인 칸 거두기)
               ⚰️ `_run_builtin_followups` · 배치마다 load_setup(09-16 48.8 ms) 은 은퇴
 ```
 

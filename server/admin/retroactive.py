@@ -1395,17 +1395,14 @@ def _count_fold_duplicate_rows(db, params, scan_limit):
                   f"they fold too, {s['rows_differing']} row(s) and their values go - only_identical leaves them.")
                + f" For example {differing}." if s["keys_differing"] else " No key's rows differ in their values.")
             + (f" Each is marked «{replay.FOLD_MARK % '<the row kept>'}» in {mark} - nothing is deleted - and "
-               f"the rules that exclude by {mark} ({', '.join(s['rules_woken']) or 'none'}) run on them and take "
-               f"back what they fed; "
-               + (f"then the recount rules ({', '.join(s['rules_recounting'])}) run on the rows they fed. "
-                  if s["rules_recounting"]
-                  else "no recount rule paired - holds stay as they are. ")
-               + "Empty the mark to bring a row back." if mark else
+               f"the rules that exclude by {mark} ({', '.join(s['rules_woken']) or 'none'}) run on them, take "
+               f"back what they fed and count their keys' holds again. "
+               "Empty the mark to bring a row back." if mark else
                " Each row goes as a grid delete does - its layers and a history line with it, and "
                "the chain takes back what it fed. Cannot be undone.")),
         "extra": {key: s[key] for key in ("keys_folded", "keys_preferred", "rows_kept", "rows_blank_key",
                                           "rows_out_of_scope", "rows_already_marked", "rules_woken",
-                                          "rules_recounting", "sample", "keys_differing", "rows_differing",
+                                          "sample", "keys_differing", "rows_differing",
                                           "differing_columns", "differing_sample")
                   } | {"rows_to_mark" if mark else "rows_to_delete": losers},
     }

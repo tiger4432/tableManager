@@ -157,7 +157,7 @@ def test_one_of_two_rules_filling_their_own_row_reruns_and_the_other_column_stay
     _drain(db, rules)
 
     assert (_row(db, "R").x, _row(db, "R").y) == ("2!", "1!")
-    assert ("y", crud.merged_layer_name(crud.CHAIN_SOURCE, row), row) in _layers(db, "R"), (
+    assert ("y", crud.owned_layer_name("er_y", row), row) in _layers(db, "R"), (
         "the rule that did not run lost its cell")
     assert RAN == ["er_x"], RAN
     # the edit, then er_x's own write - nothing withdrawn, so no EDIT of the withdrawal's
@@ -241,7 +241,7 @@ def test_a_second_rule_filling_the_same_other_row_keeps_its_cell_when_only_the_f
 
     assert (_row(db, "P1").z, _row(db, "P1").y) == (None, "1!"), "er_v's cell went with er_z's"
     origin = _row(db, "C").row_id
-    assert ("y", crud.merged_layer_name(crud.CHAIN_SOURCE, origin), origin) in _layers(db, "P1")
+    assert ("y", crud.owned_layer_name("er_v", origin), origin) in _layers(db, "P1")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -384,35 +384,32 @@ def test_a_job_split_into_two_batches_keeps_its_siblings(world):
 
 
 @pytest.mark.pg
-def test_rows_left_behind_before_this_landing_are_cleaned_by_replaying_the_recount_then_the_copy(
-        world, monkeypatch):
-    """RUN.md's sentence, measured: an old key left by the code before - its A layer and its hold
-    standing - goes when the recount is replayed (its hold) and then the copy rule (its layer). A
-    script replay wakes no other rule, so both are run. 🔴 IN THAT ORDER: the copy first empties
-    the old row's value while its hold still says agreed, and the ledger refuses that row."""
+def test_rows_left_behind_before_this_landing_are_cleaned_by_replaying_the_copy(world, monkeypatch):
+    """RUN.md's sentence, measured: an old key left by the code before - its A layer and its hold standing - goes when
+    the copy rule is replayed: its answer no longer holds the old key, so its value and its hold are taken back in one
+    commit and the row, left with only the chain's keys, goes (lead 11-08 ㄱ - before, the recount was replayed first,
+    or the ledger read the old row emptied with its hold still agreed)."""
     from chain import replay
 
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
-    real = worker.apply_chain_writes
+    import event_constants
+    real, left = worker.apply_chain_writes, event_constants.key_left
+    # the code before: no settle after the write, and the copy did not count the key a row left (the recount did)
     monkeypatch.setattr(worker, "apply_chain_writes",
-                        lambda *a, **k: real(*a, **dict(k, edit_retractions=None)))
+                        lambda *a, **k: real(*a, **dict(k, settles=None)))
+    monkeypatch.setattr(event_constants, "key_left", lambda *_a, **_k: None)
     hw.push(world, [MOVED])
     hw.settle(world)
     monkeypatch.setattr(worker, "apply_chain_writes", real)
+    monkeypatch.setattr(event_constants, "key_left", left)
     a, old = _log_row(world, "A"), _official(world)[OLD][0]
     assert _layers_of(world, old, a) and _official(world)[OLD][1] == "agreed", "nothing was left behind"
-    copy, recount = (next(r for r in world["rules"] if r["name"] == name) for name in (hw.RULE["name"],
-                                                                                        hw.RECOUNT["name"]))
-
-    replay.replay_rule(world["db"], recount, apply=True)
-    hw.settle(world)
-    assert not _official(world)[OLD][1] and _layers_of(world, old, a)
-    assert hw.said(world) == [("J1", "7.0")]
+    copy = next(r for r in world["rules"] if r["name"] == hw.RULE["name"])
 
     replay.replay_rule(world["db"], copy, apply=True)
     hw.settle(world)
-    assert _layers_of(world, old, a) == []
+    assert OLD not in _official(world) and _layers_of(world, old, a) == []
     assert _official(world)[NEW][1] == "agreed"
     assert hw.said(world) == [("J1", "7.0")]
 

@@ -2,7 +2,7 @@
 """총괄 eddf9e38e — a withdrawal's value changes go out as collapsed events, and the per-row ones it
 queued before fold into collapsed ones per table (`cell_layer.fold_withdrawal_events`), on PostgreSQL.
 
-  ① 1,000 source rows deleted     the withdrawal stages no per-row event; the follow-up drains none row by row
+  ① 1,000 source rows deleted     the chain's answer stages no per-row event; the follow-up drains none row by row
   ② 2,500 per-row events, 2 tx     13 collapsed events on doubling pages (3 on one fixed page), the same rows;
                                    every other event as it was; again 0
      the envelope                  depth, channel, cascade, written_by and run carried; a run's own id not stamped
@@ -100,22 +100,23 @@ def test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row(world, monke
     ids = [r[0] for r in db.execute(text('SELECT row_id FROM "%s"' % hw.LOG))]
     crud.delete_rows_batch(db, hw.LOG, ids, "hc")
     db.commit()
-    hw.run_chain(world)
+    from mappers import hold_copy
+    reads, real_claims = [], hold_copy._claims
+    monkeypatch.setattr(hold_copy, "_claims", lambda *a, **k: reads.append(len(a[4])) or real_claims(*a, **k))
+    hw.run_chain(world)       # the deletion wakes the copy (owner 11-06 step 2): its answer settles what the rows fed
+    # the copy reads the 1,000 left keys' target rows once and their claims once - a read per key took 93 s (A 11-08)
+    assert reads == [1000, 1000], reads
+    staged = [(kind, p.get("updated_by"), len(p.get("row_ids") or ()))
+              for _i, (table, kind, _s, _d, p) in sorted(_events(world).items()) if _i > last and table == hw.OFFICIAL]
+    # the copy's hold write · the rows that lost a layer · the rows left with only the chain's keys - one event each
+    assert staged == [("EDIT", hw.RULE["name"], 1000), ("EDIT", cell_layer.R2_AUDIT_SOURCE, 1000),
+                      ("DELETE", cell_layer.SHELL_DELETER, 1000)], staged
     calls.clear()
-    while not any(kind == "DELETE" for _t, kind, _r in calls):
-        assert followup.drain_outbox_once(world["engine"], world["setup"]) is not None
-    deleted = next(n for _t, kind, n in calls if kind == "DELETE")
-    worker._retract_what_those_rows_fed(db, hw.LOG, [r for r in ids])
-    db.commit()
-    staged = [p for _i, (table, _k, _s, _d, p) in sorted(_events(world).items())
-              if _i > last and table == hw.OFFICIAL and p.get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
-    # the values revealed (one event per 1,000 rows) and the rows that lost a layer (`_withdraw_and_tell`)
-    assert (deleted, [len(p.get("row_ids") or ()) for p in staged]) == (1000, [1000, 1000])
-    calls.clear()
-    hw.settle(world)
-    # the two above and the recount's write; with the DELETE, 4 - ca0d23b08 measured 1,003, 1,000 one row each.
-    # And the rows the recount left with only the chain's keys go, one collapsed DELETE (총괄 5eee501eb)
-    assert calls == [(hw.OFFICIAL, "EDIT", 1000)] * 3 + [(hw.OFFICIAL, "DELETE", 1000)], calls
+    while followup.drain_outbox_once(world["engine"], world["setup"]) is not None:
+        pass
+    # the follow-up drains them as they are - none row by row (ca0d23b08 measured 1,003, 1,000 one row each)
+    assert sorted(calls) == sorted([(hw.LOG, "DELETE", 1000), (hw.OFFICIAL, "EDIT", 1000), (hw.OFFICIAL, "EDIT", 1000),
+                                    (hw.OFFICIAL, "DELETE", 1000)]), calls
 
 
 # ------------------------------------------------------------------ ② the queued ones fold
@@ -173,7 +174,7 @@ def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, doublin
     db = world["db"]
     rows = _official_rows(world, 9)
     _per_row(world, rows[:4], depth=2, doors=(channel(event_constants.CHANNEL_CHAIN), cascade(True),
-                                              written_by([hw.RECOUNT["name"]])))
+                                              written_by(["hc_reader"])))
     _per_row(world, rows[4:9], doors=(retroactive_run("RUN-OLD"),))
     before = set(_events(world))
     with retroactive_run("RUN-FOLD"):                                         # where `_run_to_the_end` runs it
@@ -181,7 +182,7 @@ def test_a_fold_carries_each_group_s_envelope_and_not_its_own_run(world, doublin
     made = [(len(p["row_ids"]), {k: p.get(k) for k in ("chain_depth", "channel", "cascade", "written_by", "run_id")})
             for i, (_t, _k, _s, _d, p) in sorted(_events(world).items()) if i not in before]
     first = {"chain_depth": 2, "channel": event_constants.CHANNEL_CHAIN, "cascade": True,
-             "written_by": [hw.RECOUNT["name"]], "run_id": None}
+             "written_by": ["hc_reader"], "run_id": None}
     second = {"chain_depth": None, "channel": None, "cascade": None, "written_by": None, "run_id": "RUN-OLD"}
     # pages 1, 2, 4, 8 of the queue's waiting events (총괄 2ea5ee2a7 ③ · 5ad030347): the first is the rows' creation
     # event, the third holds the first group's last two rows and the second's first two
@@ -207,13 +208,15 @@ def _ends_where(pg_engine, monkeypatch, tmp_path, fold):
         crud.delete_rows_batch(db, hw.LOG, ids, "hc")
         db.commit()
         with monkeypatch.context() as by_hand:       # the withdrawal below, row by row - not the round's own
-            by_hand.setattr(worker, "_retract_deleted_rows", lambda db, events: None)
+            by_hand.setattr(worker, "_withdraw_unanswered_deletions", lambda db, events, why: None)
+            # the rules answer a deletion now (owner 11-06 step 2) - their settle off too, so it waits for the hand
+            by_hand.setattr(worker, "_settle_or_fail", lambda *a, **k: (0, set(), []))
             hw.run_chain(world)
         while followup.drain_outbox_once(world["engine"], world["setup"]) is not None:
             pass
         with monkeypatch.context() as before_the_fix:
             before_the_fix.setattr("database.context.outbox_mode", lambda mode: contextlib.nullcontext())
-            worker._retract_what_those_rows_fed(db, hw.LOG, ids)
+            worker._withdraw_what_those_rows_fed(db, hw.LOG, ids, "deleted")
             db.commit()
         queued = [p for _t, _k, _s, d, p in _events(world).values()
                   if not d and p.get("row_id") and p.get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
