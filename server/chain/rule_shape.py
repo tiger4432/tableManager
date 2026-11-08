@@ -23,10 +23,51 @@ CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
                   *chain_bindings.ROW_GATE_KEYS,
                   "target_table", "mapper", "mapper_module", "mapper_function",
                   "params", "group_by", "max_group_rows", "max_group_attempts",
-                  "idempotent", "run_in", "rows_per_run")
+                  "idempotent", "run_in", "rows_per_run", "priority")
 
 _LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent",
                "run_in", "rows_per_run")
+
+#: The rule cell that orders two rules' layers on one cell (owner 11-06 step 2 1ㄱ) - smaller shows first, a rule
+#: that says one before one that does not; then the one declared later (lead 11-08 ㄴ, `crud.compute_priority_value`).
+PRIORITY = "priority"
+_PRIORITIES = [None, {}, {}]
+
+
+def priorities() -> dict:
+    """{rule name: its declared priority} over the loaded rules - read again when the rules are, as `formula.columns`."""
+    from chain import ingestion_worker as worker
+
+    loaded = worker._LOADED_RULES
+    if loaded is None:
+        worker.loaded_chain_rules()
+        loaded = worker._LOADED_RULES
+    _read_rule_order(worker, loaded)
+    return _PRIORITIES[1]
+
+
+def declared_order() -> dict:
+    """{rule name: its place in the rules file} - the order a person wrote them in; the later one shows on a cell two
+    rules write (lead 11-08 ㄴ, e10c58e5e ③). Read again when the rules are."""
+    from chain import ingestion_worker as worker
+
+    loaded = worker._LOADED_RULES
+    if loaded is None:
+        worker.loaded_chain_rules()
+        loaded = worker._LOADED_RULES
+    _read_rule_order(worker, loaded)
+    return _PRIORITIES[2]
+
+
+def _read_rule_order(worker, loaded):
+    if _PRIORITIES[0] is not loaded:
+        said, order = {}, {}
+        for place, declaration in enumerate((worker._RULES_DOCUMENT or {}).get("rules") or ()):
+            value = (declaration or {}).get(PRIORITY)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                said[str(declaration.get("name"))] = value
+            order[str((declaration or {}).get("name"))] = place
+        _PRIORITIES[:] = [loaded, said, order]
 
 #: The unified declaration's `key` cell (S-240). A translated join carries it beside `params`
 #: under this same name and `chain.synthesis` reads it off the rule, so the chain grammar's
