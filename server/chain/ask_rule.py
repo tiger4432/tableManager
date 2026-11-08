@@ -103,8 +103,7 @@ def skeleton_node():
         {"key": "common", "required": False, "node": record("cell", "table", "column", "none", "about")},
         {"key": "prompts", "required": False, "node": {"kind": "record", "fields": [
             {"key": "common", "required": False, "node": leaf()},
-            {"key": "memo", "required": False, "node": record("table", "key", "text")},
-            memory_nodes()[1]]}},
+            memo_node(), memory_nodes()[1]]}},
         memory_nodes()[0]]}
 
 
@@ -124,6 +123,32 @@ def memory_nodes(comment=False):
                 {"key": "limit", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}})
 
 
+def memo_node():
+    """The form of `prompts.memo` - an ask rule's and a report's (owner 11-08 «3 ㄱ»): `on` the situation's column its
+    `key` is matched with (`_memo`)."""
+    return {"key": "memo", "required": False, "node": {"kind": "record", "fields": [
+        {"key": k, "required": False, "node": {"kind": "leaf", "hint": "free"}} for k in ("table", "key", "text", "on")]}}
+
+
+def situation_columns(spec, table) -> list:
+    """The columns a row's situation is read from: `table`'s key columns and its `_scope_cells` (lead 11-08: a
+    product that is not the report table's key is in its situation too). The one spelling - `remember` and a
+    report's prompt (`report_loop.answer`) read a row's situation through it."""
+    from chain import cell_layer
+
+    return sorted(cell_layer.key_columns(table) | set(_scope_cells(spec, table)))
+
+
+def _scope_cells(spec, table) -> list:
+    """The `prompts.memory.scope` columns `table` declares - a situation's, and a memory row holds them as columns too,
+    beside its situation's json (lead 11-08: a rule folding the memory table groups by them)."""
+    import chain_bindings
+
+    scope = (((spec or {}).get("prompts") or {}).get("memory") or {}).get("scope") or ()
+    declared = set(chain_bindings.declared_columns(str(table or "")) or ())
+    return [c for c in scope if c in declared]
+
+
 def written_columns(rule) -> list:
     """The output columns an ask rule writes - its carried keys, its line and item, then its cells; its memory half
     the memory table's columns but the person's memo."""
@@ -131,7 +156,8 @@ def written_columns(rule) -> list:
 
     if (rule or {}).get(rule_shape.COMPANION_CELL):
         named = (_spec(rule).get("memory") or {}).get("columns") or {}
-        return [named[role] for role in MEMORY_ROLES if role != "memo" and named.get(role)]
+        return ([named[role] for role in MEMORY_ROLES if role != "memo" and named.get(role)]
+                + _scope_cells(_spec(rule), rule.get("target_table")))
     out = _spec(rule).get("output") or {}
     return list(dict.fromkeys([*(out.get("carry") or {}), *[out[k] for k in ("line", "item") if out.get(k)],
                                *(out.get("cells") or ())]))
@@ -282,12 +308,15 @@ def _within(db, spec, group):
     return {str(v) for (v,) in query.all() if v is not None}
 
 
-def _memo(db, spec, group):
+def _memo(db, spec, situation):
+    """The memo lines of a situation ({column: value}) - the `prompts.memo` rows whose `key` holds its `on` column's
+    value (unsaid: its first, an ask's first group_by value). The one reader - an ask prompt and a report prompt."""
     memo = (spec.get("prompts") or {}).get("memo") or {}
-    if not memo.get("table"):
+    if not memo.get("table") or not situation:
         return ""
     model = _model(memo["table"])
-    found = db.query(getattr(model, memo["text"])).filter(getattr(model, memo["key"]) == group[0]).all()
+    value = situation.get(memo["on"]) if memo.get("on") else next(iter(situation.values()))
+    found = db.query(getattr(model, memo["text"])).filter(getattr(model, memo["key"]) == value).all()
     return "\n".join(str(v) for (v,) in found if v is not None)
 
 
@@ -354,14 +383,14 @@ def remember(db, rule, row_ids):
     out_spec = spec.get("output") or {}
     table, asker = rule.get("trigger_table"), str(rule.get(rule_shape.COMPANION_CELL) or "")
     model = _model(table)
-    where = sorted(cell_layer.key_columns(table))                # the situation: the output row's key
+    where = situation_columns(spec, table)                       # the situation: the output row's key and scope
     rows = {str(r[0]): dict(zip(where, r[1:])) for r in db.query(model.row_id, *(getattr(model, c) for c in where))
             .filter(model.row_id.in_([str(i) for i in row_ids or ()])).all()}
     texts = set(report_shape.text_slots(spec))
     comment = comment_column(spec)
     cells = set(out_spec.get("cells") or ()) | {column for cell, column in report_shape.result_cells(spec)
                                                 if cell in texts} | ({comment} if comment else set())
-    updates, said = [], set()
+    updates, said, scoped = [], set(), _scope_cells(spec, rule.get("target_table"))
     for (row_id, column), layers in sorted(cell_layer.person_cells(db, table, list(rows)).items()):
         person = [l for n, l in layers.items() if crud.layer_writer(n) == crud.USER_SOURCE]
         ai = [l for n, l in layers.items() if crud.layer_writer(n) == crud.CHAIN_SOURCE and l.get("updated_by") == asker]
@@ -379,6 +408,7 @@ def remember(db, rule, row_ids):
         written = {named.get("purpose"): asker, named.get("key"): _situation(rows[row_id]), named.get("cell"): column,
                    named.get("ai"): said_by_ai, named.get("right"): _shown(mine["value"]),
                    named.get("who"): mine.get("updated_by"), named.get("when"): str(mine.get("ingested_at"))}
+        written.update({c: rows[row_id].get(c) for c in scoped})
         written = {k: v for k, v in written.items() if k}
         said.add(_key_of(rule.get("target_table"), written))
         updates.append({"source_name": crud.CHAIN_SOURCE, "updated_by": asker, "updates": written})
@@ -421,8 +451,8 @@ def prompt(db, spec, request, choices_line, purpose=None):
     """The prompt of one request [(id, text)] - also what a Test run shows. `purpose`: whose corrections it carries."""
     from database import crud
 
-    memos = [m for m in (_memo(db, spec, json.loads(ident)) for ident, _t in request) if m]
     by = list((spec.get("input") or {}).get("group_by") or ())
+    memos = [m for m in (_memo(db, spec, dict(zip(by, json.loads(ident)))) for ident, _t in request) if m]
     carry = (spec.get("output") or {}).get("carry") or {}
     remembered = [memory_lines(db, spec, purpose, {out: group.get(src) for out, src in carry.items()})
                   for group in (dict(zip(by, json.loads(ident))) for ident, _t in request)] if purpose else []

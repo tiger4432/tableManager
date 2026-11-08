@@ -283,10 +283,11 @@ def skeleton_node():
         {"key": "prompts", "required": False, "node": {"kind": "record", "fields": _record(PROMPT_CELLS, "free")[
             "fields"] + [{"key": FUNCTIONS_CELL, "required": False, "node": {"kind": "record", "fields": [
                 {"key": read, "required": False, "node": _record((ABOUT_CELL,), "free")} for read in READS]}},
-            ask_rule.memory_nodes()[1]]}},
+            ask_rule.memo_node(), ask_rule.memory_nodes()[1]]}},
         ask_rule.memory_nodes(comment=True)[0],
-        {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", _record(
-            ("kind", "fill", "slot"), "free"))},
+        {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", {"kind": "record", "fields": _record(
+            ("kind", "fill", "slot"), "free")["fields"] + [
+            {"key": FILE_SHOWN, "required": False, "node": {"kind": "leaf", "hint": "flag"}}]})},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},
         # the HTML Excel puts on the clipboard - the form pastes it (`report_template`)
         {"key": "template", "required": False, "node": {"kind": "leaf", "hint": "html"}},
@@ -551,9 +552,21 @@ def _report_table_key(spec, table) -> list:
     return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if c in known]
 
 
-def text_slots(spec) -> list:
-    """The layout's text slots, in its order - what the write call fills (`report_loop`), what `results` may name."""
-    return [str(slot["slot"]) for slot in layout(spec) if slot.get("kind") == "text" and slot.get("slot")]
+#: A layout slot's `file: false` - the file does not show it; the model still writes it and `results` may name its
+#: column (owner 11-08 «2 ㄴ»: the model's question goes to the report table, never into the file sent out).
+FILE_SHOWN = "file"
+
+
+def in_file(slot) -> bool:
+    """Whether the file shows this layout slot - every slot but one written `file: false`."""
+    return slot.get(FILE_SHOWN) is not False
+
+
+def text_slots(spec, shown=False) -> list:
+    """The layout's text slots, in its order - what the write call fills (`report_loop`), what `results` may name;
+    `shown`: only those the file shows (`in_file` - the page, the template's marks). The one list of both."""
+    return [str(slot["slot"]) for slot in layout(spec) if slot.get("kind") == "text" and slot.get("slot")
+            and (not shown or in_file(slot))]
 
 
 def result_cells(spec) -> list:
@@ -744,6 +757,9 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                                                                                  " · ".join(TABLE_FILLS))
         if kind == "text" and not str(slot.get("slot") or "").strip():
             return "derive.report.layout[%d].slot names no text - the name the model writes it under" % at
+        if not isinstance(slot.get(FILE_SHOWN, True), bool):
+            return "derive.report.layout[%d].file is false (the file does not show it) or unsaid, got %r" % (
+                at, slot[FILE_SHOWN])
     control = spec.get("control")
     if control is not None:
         recent = control.get("recent") if isinstance(control, dict) else None

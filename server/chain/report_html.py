@@ -398,15 +398,14 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
         contents.update({report_template.TABLE_PREFIX + fill: _table(
             fill, tables, spec, lent if report_template.TABLE_PREFIX + fill == report_template.SAMPLE_TABLE else None)
             for fill in report_shape.TABLE_FILLS})
-        contents.update({str(slot.get("slot")): _text(slot.get("slot"), texts, spec) for slot in layout
-                         if slot.get("kind") == "text"})
+        contents.update({slot: _text(slot, texts, spec) for slot in report_shape.text_slots(spec, shown=True)})
         filled = report_template.fill(template, contents)
         at = filled.lower().rfind("</body>")
         return filled[:at] + folded + filled[at:] if at >= 0 else filled + folded
     # one under another, in layout's order (owner 10-23 «배치 그냥 원래대로 세로 나열해»); a table the page's width,
     # wider ones scrolled inside it
     sections = []
-    for slot in layout:
+    for slot in filter(report_shape.in_file, layout):
         kind = slot.get("kind")
         body = (_table(slot.get("fill"), tables, spec) if kind == "table" else _images(embedded, spec)
                 if kind == "image" else _text(slot.get("slot"), texts, spec))

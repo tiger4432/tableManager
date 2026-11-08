@@ -212,7 +212,7 @@ def _request(request):
             "Compare sets: %s" % (", ".join(request.get("sets") or ()) or "the declaration's default"),
             "Note: %s" % (request.get("note") or "none")] + (
         ["Reviewer comment: %s" % request["comment"]] if request.get("comment") else []) + (
-        [request["memory"]] if request.get("memory") else [])
+        [request["memo"]] if request.get("memo") else []) + ([request["memory"]] if request.get("memory") else [])
 
 
 def _said(call, args):
@@ -715,12 +715,14 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     keys = report_shape.report_key(spec, rule.get("trigger_table"))
     written = report_shape.result_cells(spec)                 # the file's column, then each named text's
     comment = ask_rule.comment_column(spec)                   # a person's comment on the wafer's row (owner 10-29)
-    by_wafer, comments, key_of = {}, {}, {}
+    by_wafer, comments, key_of, situations = {}, {}, {}, {}
+    situated = ask_rule.situation_columns(spec, rule.get("trigger_table"))
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         wafer = report_reads._parts(getattr(row, c) for c in keys)
         if not all(crud.is_blank_value(part) for part in wafer):
             by_wafer.setdefault(wafer, []).append(row.row_id)
             key_of.setdefault(wafer, _key_of(row, keys))
+            situations.setdefault(wafer, {c: getattr(row, c, None) for c in situated})
             said = getattr(row, comment, None) if comment else None
             if not crud.is_blank_value(said):
                 comments.setdefault(wafer, {})[str(said).strip()] = None
@@ -729,7 +731,8 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     try:
         for n, (wafer, rows) in enumerate(wafers):
             waiting = wafers[n + 1:]
-            updates += _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, clock, live={
+            updates += _one_wafer(db, rule, spec, name, keys, written, comments, situations[wafer], wafer, rows,
+                                  ask, clock, live={
                 "rule": name, "table": rule.get("trigger_table"), "wafer": report_reads.label(wafer), "keys": keys,
                 "wafer_key": key_of[wafer],
                 "queued": [key_of[w] for w, _r in waiting[:QUEUED_SHOWN]],
@@ -740,8 +743,9 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     return {"updates": updates}
 
 
-def _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, clock, live):
-    """One wafer's report (`answer`): run, its page kept, the updates of its rows."""
+def _one_wafer(db, rule, spec, name, keys, written, comments, situation, wafer, rows, ask, clock, live):
+    """One wafer's report (`answer`): run, its page kept, the updates of its rows. `situation`: its row's
+    (`ask_rule.situation_columns`) - what its memory and its memo are read by."""
     import datetime
 
     from chain import ask_rule, report_html, rule_shape
@@ -751,9 +755,10 @@ def _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, 
     read = report_reads.fresh_reading()                    # the tables this wafer's report reads, named by keep
     try:
         report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
-        memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
+        memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), situation)
         _tell(live)
         out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory,
+                                 "memo": ask_rule._memo(db, spec, situation),
                                  "comment": " / ".join(comments.get(wafer) or ())}, ask=ask, clock=clock,
                   live=live)
     except report_reads.ReadRefused as refused:

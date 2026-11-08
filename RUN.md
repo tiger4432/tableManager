@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **리포트의 질문은 표 칸에만 · 리포트도 메모(교훈)를 읽음 · 상황에 scope 칸** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 켜는 선언  derive.report.layout 에 {"kind": "text", "slot": "question", "file": false} · results 에 "question": "<리포트 표 칸>" · prompts.rules 에 «확실하지 않으면 question 에 질문 하나»
+>          교훈: prompts.memo {"table": "<교훈 표>", "key": "<제품 칸>", "text": "<교훈 칸>", "on": "<제품 칸>"} · prompts.memory.scope 에 제품 칸 · 메모리 표에 같은 이름의 제품 칸
+> 보이는 것  리포트 표의 그 칸에 질문, 파일(HTML · 양식)에는 없음 — 코멘트 칸에 답하면 그 웨이퍼가 다시 돎(전과 같음)
+>          프롬프트(Test run)의 Reviewer comment 다음 줄에 교훈 글 · 같은 제품 다른 웨이퍼의 교정이 Past corrections 에
+> 바뀜      리포트 상황 = 리포트 표 키 칸 + 그 표가 가진 scope 칸 (전엔 웨이퍼 키 칸). scope 칸이 이미 키면 그대로
+>          scope 칸이 키가 아니던 옛 기억 행: 전에도 안 맞던 행이라 프롬프트에서 잃는 것 없음. 새 교정은 새 행으로 옆에 쌓이고 옛 행은 안 거둬짐(필요하면 손으로 지움)
+> 되돌리기  git log --oneline -1 --grep="question off the file" 의 해시를 git revert -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [11-08] **소급 쪽 크기가 «쪽마다 드는 고정 시간»을 따로 읽는다 — 쪽 «전체»가 page_seconds 안, 고정 시간만으로 넘으면 한 줄로 말함** — git pull · 런처 재기동(스케줄러 · 체인 워커; 소급 실행은 다음 실행부터)
 >
 > ```

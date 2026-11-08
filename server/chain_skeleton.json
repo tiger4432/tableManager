@@ -2130,6 +2130,47 @@
                         }
                       },
                       {
+                        "key": "memo",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "table",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "key",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "text",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "on",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
                         "key": "memory",
                         "required": false,
                         "node": {
@@ -2292,6 +2333,14 @@
                           "node": {
                             "kind": "leaf",
                             "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "file",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "flag"
                           }
                         }
                       ]
@@ -3381,6 +3430,14 @@
                             },
                             {
                               "key": "text",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "on",
                               "required": false,
                               "node": {
                                 "kind": "leaf",

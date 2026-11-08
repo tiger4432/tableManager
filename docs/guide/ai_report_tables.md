@@ -55,9 +55,10 @@
 - `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이. 리포트 표는 그중 «자기가 가진 칸»으로 웨이퍼를 고른다.
 - `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
 - `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
-- 메모리 · 코멘트 칸(`memory` · `prompts.memory` · `memory.comment`) — `docs/guide/ai_ask_tables.md` 의 «사람 교정을 기억하는 칸» 절.
+- 메모리 · 코멘트 · 메모 칸(`memory` · `prompts.memory` · `memory.comment` · `prompts.memo`) — `docs/guide/ai_ask_tables.md` 의 «사람 교정을 기억하는 칸» 절.
 - 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님.. 🆕 10-24 거절 «아님»: `layout` 도 `template` 도 없으면 기본 배치(text summary → table yield_by → image(images 를 적었을 때만) → text conclusion), `sets` 에 `name` · `member` · `kind` 중 빈 칸이 있으면 비교 묶음 없이 감 — 저장 · 로드에 한 줄 «derive.report.sets names no … - read as no compare set». keys latest 칸은 제품 시각으로 못 읽는 값이 한 웨이퍼에 하나라도 있으면 그 웨이퍼는 글자 순서로 최신(20261001123000 · 2026/10/01 · 2026.10.01). 표마다 키 칸이 숫자 · 글자로 달라도(1.0 · «1») 한 키.
 - 🆕 10-26 `results` 에 layout 의 text slot 이름으로 컬럼을 더 적으면(`"summary": "report_summary"`) 그 글이 웨이퍼 행의 그 칸에 그대로 써진다. 리포트가 멈춰 글이 없으면 그 칸은 비워진다. layout 에 없는 이름 · 표에 없는 컬럼은 저장 때 거절.
+- 🆕 11-08 파일에 안 찍히는 글 — layout 글 자리에 `"file": false` 를 적으면(`{"kind": "text", "slot": "question", "file": false}`) 모델은 그 글을 쓰고 `results` 가 이름 댄 칸에는 써지지만, 파일과 양식에는 안 나온다(질문은 리포트 표 칸에만, 소유자 11-08). `file` 은 false 이거나 안 적는다 — 다른 값은 저장 때 거절.
 - `results` 의 `state` · `reason` 은 안 쓴다 — 적혀 있으면 저장 줄 «derive.report.results.state · reason is not written - …», 규칙은 선다.
 
 ## 2. 도는 것
@@ -136,7 +137,7 @@
 2. 그 범위를 복사(Ctrl+C) → 어드민 Chain 탭 리포트 규칙의 **Paste template** 에 붙여 넣고 저장. (그 칸은 클라 착지 뒤 — 그 전엔 선언 글의 `template` 칸에 HTML 그대로)
 3. 리포트는 그 양식 그대로 나오고, 표시가 든 칸 안에 내용이 들어간다. 넓은 표는 그 칸 안에서 가로로 스크롤된다.
 
-- `layout` 의 글 자리(`kind: text`)는 양식에 표시가 «있어야» 저장된다. 양식에만 있는 모르는 표시도 거절(이름을 댐).
+- `layout` 의 글 자리(`kind: text`)는 양식에 표시가 «있어야» 저장된다 — `"file": false` 인 자리는 표시가 없어야 한다(있으면 모르는 표시로 거절). 양식에만 있는 모르는 표시도 거절(이름을 댐).
 - 엑셀이 같이 붙이는 살림 링크(File-List · Main-File · 테마)와 그림은 저장 때 빠진다 — 그림은 클립보드에 «내 PC 파일 경로»로만 오기 때문. 저장 줄에 «image(s) dropped: N».
 - 거절: `<script>` · `on…` 속성 · 바깥 주소(`http` · `https` · `//`)를 부르는 `src` · `href` · CSS `url(…)` — 리포트 파일은 바깥에서 아무것도 안 불러온다.
 - 우리 표의 칸에는 class 가 붙는다 — `rpt-group`(묶음 머리) · `rpt-head`(웨이퍼 머리) · `rpt-item`(항목) · `rpt-cell`(값). 양식의 `<style>` 에 이 이름으로 꾸밈을 적을 수 있다.
