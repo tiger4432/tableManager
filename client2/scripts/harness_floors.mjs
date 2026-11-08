@@ -1856,7 +1856,7 @@ export const FLOORS = new Map([
   // the page's own freeze said as one line, named by the slice it ran in; the census's seats each mark theirs (lead 11-06)
   ['ui_stall_harness.mjs', 16],
   // a change that picks the screen checker runs a screen: the runner's pick and the checker's --touched one answer (lead 11-08)
-  ['module_reach_harness.mjs', 10],
+  ['module_reach_harness.mjs', 13],   // 10 -> 13: R5 a landed commit narrows by its own files, R6 no commit as before, and R5's mutant (D 11-08)
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

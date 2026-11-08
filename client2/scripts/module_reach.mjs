@@ -30,11 +30,16 @@ export function reachPlugin(graph) {
   } };
 }
 
+/** The repository's top folder for a path inside it. */
+export function repoTop(cwd) {
+  return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim();
+}
+
 /** Changed files as `norm`ed absolute paths: one commit's (`commit`), or since the merge base with origin/main -
  *  committed, staged, unstaged and new. */
 export function changedFiles(cwd, commit = null) {
   const git = (...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).split('\n').filter(Boolean);
-  const top = git('rev-parse', '--show-toplevel')[0];
+  const top = repoTop(cwd);
   const rel = commit ? git('-C', top, 'diff', '--name-only', `${commit}^`, commit)
     : [...git('-C', top, 'diff', '--name-only', git('merge-base', 'HEAD', 'origin/main')[0]),
       ...git('-C', top, 'ls-files', '--others', '--exclude-standard')];
@@ -79,8 +84,9 @@ const NAMES = /[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]+\b/g;
 // A comment names nothing: a script's or a style's, and a page's <!-- -->.
 const uncomment = (t) => t.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 
-/** The repository's tracked files (`norm`ed) and the same by basename. */
-export function trackedFiles(top) {
+/** The repository's tracked files (`norm`ed) and the same by basename, for any path inside it - with its top. */
+export function trackedFiles(cwd) {
+  const top = repoTop(cwd);
   const tracked = execFileSync('git', ['-C', top, 'ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean).map((f) => norm(`${top}/${f}`));
   const byBase = new Map();
   for (const f of tracked) {
@@ -88,7 +94,7 @@ export function trackedFiles(top) {
     if (!byBase.has(b)) byBase.set(b, []);
     byBase.get(b).push(f);
   }
-  return { tracked, byBase };
+  return { top, tracked, byBase };
 }
 
 /** The tracked files a text names: a basename one tracked file has, or one several share with its folder named beside it. */
@@ -149,6 +155,18 @@ export function screensTouched({ pages, changed, own }) {
   return picked;
 }
 
+/** The screen checker's --touched: screensTouched over the files changed since this tree left origin/main, or in
+ *  `commit` when the runner names one - the files it picked the checker by (a landed commit measured again ran 0,
+ *  D 11-08). `graph`: each page's modules (reachPlugin's html entries); `checker`: the checker's file. */
+export function touchedScreens({ client, commit = null, graph, checker }) {
+  const changed = changedFiles(client, commit);
+  const { top, tracked, byBase } = trackedFiles(client);
+  const pages = new Map([...graph].map(([entry, ids]) => [entry, pageReach(ids, byBase)]));
+  const { reach: own } = textReach({ file: checker, tests: path.dirname(checker), top, tracked, byBase,
+    scopes: scansOf(path.basename(checker)) });
+  return screensTouched({ pages, changed, own });
+}
+
 /** Which harnesses a change reaches. A harness reaches its own file, the tests/lib helpers it imports, every tracked file
  *  its text names (a basename two tracked files share counts only with its folder named beside it), and every module a
  *  named client file reaches in one vite build, and every file its SCANS cell covers. Returns { run, notRun, why, reach }
@@ -162,8 +180,7 @@ export async function harnessesToRun({ client, tests, harnesses, changed, commit
   // The runner's tables are data: a floor moved runs the harness it names, so the new floor is measured.
   const tables = norm(path.join(client, 'scripts', 'harness_floors.mjs'));
   const tabled = changed.includes(tables) ? changedLines(client, tables, commit) : '';
-  const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: client, encoding: 'utf8' }).trim();
-  const { tracked, byBase } = trackedFiles(top);
+  const { top, tracked, byBase } = trackedFiles(client);
   let graph;
   try {
     const { build } = await import(pathToFileURL(path.join(client, 'node_modules', 'vite', 'dist', 'node', 'index.js')).href);

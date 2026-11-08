@@ -276,7 +276,9 @@ const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when 
 const FLAGS = ['--mutate', '--control', '--touched'];
 const flagsOf = (name) => {
   const text = readFileSync(path.join(TESTS_DIR, name), 'utf8');
-  return FLAGS.filter((f) => text.includes(`process.argv.includes('${f}')`));
+  const flags = FLAGS.filter((f) => text.includes(`process.argv.includes('${f}')`));
+  // --touched narrows by the files this run picked by: one commit's when --commit names one (D 11-08)
+  return COMMIT && flags.includes('--touched') ? [...flags, '--commit', COMMIT] : flags;
 };
 
 // Only the harnesses this change reaches (lead 10-27 «ㄴ»): the files changed since this tree left origin/main against

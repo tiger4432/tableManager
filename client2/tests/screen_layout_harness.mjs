@@ -30,9 +30,10 @@
 // --mutate: the five that leaked on 10-08/09, and the ledger table's hand widths (owner 10-09), are built back one at a
 // time (vite, a temp folder) and each must be red.
 // --touched (owner 10-24 «ㄱ», lead): only the entries whose module graph in this run's build holds a file changed since
-// this tree left origin/main - base and mutants both; a shared file is in every graph. Nothing touched, nothing runs;
-// only the checker or its recorded answers changed, every screen. The whole round runs at night, without it.
-//   node client2/tests/screen_layout_harness.mjs [--mutate] [--mutant <name> ...] [--touched] [--only <entry.html>] [--shots <dir>]
+// this tree left origin/main (or in --commit <rev>, the runner's) - base and mutants both; a shared file is in every graph.
+// Nothing touched, nothing runs; only the checker or its recorded answers changed, every screen. The whole round runs at
+// night, without it.
+//   node client2/tests/screen_layout_harness.mjs [--mutate] [--mutant <name> ...] [--touched [--commit <rev>]] [--only <entry.html>] [--shots <dir>]
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -41,7 +42,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
 import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
-import { reachPlugin, changedFiles, pageReach, scansOf, screensTouched, textReach, trackedFiles } from '../scripts/module_reach.mjs';
+import { reachPlugin, touchedScreens } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -3939,13 +3940,8 @@ const source = await buildBundle('screens-source-', TOUCHED ? [reachPlugin(reach
 const graph = new Map([...reached].filter(([id]) => id.endsWith('.html')).map(([id, ids]) => [path.posix.basename(id), ids]));
 let picked = null;
 if (TOUCHED) {
-  const changed = changedFiles(CLIENT);
-  const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: CLIENT, encoding: 'utf8' }).trim();
-  const { tracked, byBase } = trackedFiles(top);
-  const pages = new Map([...graph].map(([entry, ids]) => [entry, pageReach(ids, byBase)]));
-  const { reach: own } = textReach({ file: fileURLToPath(import.meta.url), tests: HERE, top, tracked, byBase,
-    scopes: scansOf(path.basename(fileURLToPath(import.meta.url))) });
-  picked = screensTouched({ pages, changed, own });
+  // --commit <rev>: the runner's (check_harnesses --commit) - narrowed by that commit's files, as it picked the checker
+  picked = touchedScreens({ client: CLIENT, commit: argOf('--commit'), graph, checker: fileURLToPath(import.meta.url) });
   console.log(picked === null ? 'narrowed: every screen - a change the checker reaches and no page does'
     : picked.length ? `narrowed: ${picked.join(', ')}` : 'narrowed: no screen touched - nothing runs');
 }

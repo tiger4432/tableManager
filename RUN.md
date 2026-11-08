@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **이미 들어간 커밋을 --commit 으로 다시 재면 화면 검사기가 그 커밋의 화면을 돈다 — 더는 «ran 0» 빨강이 아님** — git pull (시험 도구만, 화면 · 서버 변화 없음)
+>
+> ```
+> 무엇     check_harnesses --commit <sha> 가 검사기에 그 sha 를 넘김 -> 검사기 --touched 가 «그 커밋이 바꾼 파일»로 화면을 고름
+>          전에는 트리가 origin/main 에서 벗어난 파일로 골라서, main 에 이미 있는 커밋은 고를 것이 0 -> ran 0 빨강
+> 돌릴 것  node client2/scripts/check_harnesses.mjs --commit <sha>
+> 볼 줄    검사기 첫 줄 «narrowed: <화면들>» — 그 커밋이 닿는 화면 (예: 가이드 md 하나 -> admin.html)
+> 답의 뜻  «narrowed: no screen touched - nothing runs» 는 이제 러너가 검사기를 안 꼽은 커밋에서만 나옴
+>          --commit 없이 돌리면 예전과 같음 (이 트리가 origin/main 에서 벗어난 파일)
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-08] **«빈 값»은 판정 하나 — NaN 은 어디서나 빈 값, 무한대(inf)는 모든 열에서 이름 대고 거절** — git pull · 런처 재기동(API · 체인 워커 · 파일 감시)
 >
 > ```
