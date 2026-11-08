@@ -81,10 +81,9 @@ def test_only_the_newest_layer_decides_a_repeat(env):
 
 
 def test_person_chain_and_auto_confirm_layers_are_never_folded(env):
+    # the chain's and auto-confirm's layers stacked: a chain write of the shown value makes none now (소유자 11-08)
     _write(env, "user", [{"k": "K1", "v": "A"}])
-    _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": "A"}])
-    _write(env, "f01.csv", [{"k": "K1", "v": "A"}])
-    _write(env, AUTO, [{"k": "K1", "v": "A"}])
+    _stack(env, "K1", "v", [(crud.CHAIN_SOURCE, "A"), ("f01.csv", "A"), (AUTO, "A")])
     _write(env, "f02.csv", [{"k": "K1", "v": "A"}])
     assert _layers(env, "K1") == {"user": "A", crud.CHAIN_SOURCE: "A", AUTO: "A",
                                   "f02.csv": "A"}, \

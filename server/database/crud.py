@@ -4556,13 +4556,24 @@ def apply_row_update_internal(
         # the newest layer of its class writes nothing either - an hourly refetch of an
         # unchanged row stacked one layer per file per cell (owner's production: nine deep,
         # prefetch 32 s of a 60 s chunk). One that differs is written, and the older file
-        # layers of the class that say the same value go.
+        # layers of the class that say the same value go. 🔴 [소유자 11-08] And a NEW chain layer that says what the
+        # cell shows writes nothing (production: a mapper handing back a file's cells made each a chain layer of the
+        # same value); one the chain holds already is written as before, so it never stays behind with an old value.
         repeat, folded = False, ()
         if (not source_unchanged and is_file_layer(update_item.source_name)
                 and (cell_sources_to_upsert is None or cell_sources_to_delete is not None)):
             repeat, folded = file_layer_fold(
                 col_srcs, update_item.source_name, clean_val, col_type, table_name,
                 ow.manual_priority_source if ow else None)
+        elif (not source_unchanged and not is_new
+              and writer_kind(update_item.source_name) == "chain"
+              and not any(layer_ranks_as(s.source_name) == layer_ranks_as(update_item.source_name)
+                          for s in col_srcs)):                         # nor its row layers (chain_ingestion (<row>))
+            # against what its layers compute, not the stored cell - skipping it then changes nothing: a key just
+            # assembled on its row shows with no layer under it, a stored blank can sit over a file layer
+            shown = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+                                            for s in col_srcs}, ow.manual_priority_source if ow else None, table_name)[0]
+            repeat = not values_differ(shown, clean_val, col_type)
         source_unchanged = source_unchanged or repeat or bool(formula)    # a formula column holds no layer
 
         if not src_obj and not repeat and not formula:
