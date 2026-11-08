@@ -4218,8 +4218,7 @@ const MUTANTS = [
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
-    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n    #file-list-body .admin-btn,\n',
-      '    .ov-show-all,\n    #file-list-body .admin-btn,\n']] },
+    file: 'admin.html', edits: [['    .ov-show-all,\n    .chain-queue-panel .chain-queue-refresh,\n', '    .ov-show-all,\n']] },
   // A file row's Retry boxed at the base button height again, 36 px in its 14 px line (lead a4d135a06's round).
   { name: 'a file row Retry boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'file-list-body',
     file: 'admin.html', edits: [['    #file-list-body .admin-btn,\n    #mapper-list-body .admin-btn,\n',
@@ -4381,7 +4380,10 @@ if (MUTATE) {
   for (const m of run) {
     ran += 1;
     if (m === STALL_MUTANT) { await stallMutant(); continue; }
-    const out = await buildMutant(m);
+    // an anchor gone (its file moved on) is this mutant's red line, by its name - the run goes on (lead 11-09: one gone
+    // anchor threw, and every mutant after it went unrun with no ASSERTIONS line)
+    let out;
+    try { out = await buildMutant(m); } catch (err) { failed += 1; console.log(`✗ mutant «${m.name}» - not built: ${err.message}`); continue; }
     try {
       const got = (await runScreens(out, 'mutant', [m.entry])).found
         .filter((f) => f.rule === m.rule && f.path.includes(m.at) && (!m.says || m.says.test(f.what)));

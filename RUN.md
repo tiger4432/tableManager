@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **화면 검사기 변이의 닻이 끊기면 그 변이만 빨강, 실행은 계속** — git pull (시험만, 화면 · 서버 변화 없음)
+>
+> ```
+> 무엇     admin 의 «the Overview queue Refresh boxed…» 닻 정정 (584688d16 이 끼운 줄 때문에 끊겨 있었음)
+>          닻이 없는 변이: 예전엔 실행 전체가 죽고 ASSERTIONS 줄 없음 -> 이제 «✗ mutant «이름» - not built: …» 한 줄, 다음 변이로
+> 돌릴 것  node client2/tests/screen_layout_harness.mjs --only admin.html --mutate
+> 답의 뜻  «not built» 줄 = 그 변이가 겨눈 글이 파일에서 바뀜 -> 닻을 지금 글로 고칠 것 (제품 결함이 아님)
+>          ASSERTIONS 줄이 아예 없음 = 다른 이유로 죽은 것 -> 출력 끝의 오류를 볼 것
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-09] **그리드 열 폭 맞춤을 그리드 자기 행 이벤트 하나가 부른다** — git pull, 화면 dist 포함, 동작 변화 없음
 >
 > ```
