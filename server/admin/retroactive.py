@@ -3291,13 +3291,15 @@ def _shown(row):
 
 def _waiting_of(row, stages):
     """What run `row` waits on, the same in every window that shows it (`runs`, `in_flight`, lead 11-09):
-    `HELD_UNSEEN` for a runner orphaned but not provably gone - only the × releases it - else its stage's wait
+    `HELD_UNSEEN` for a runner orphaned that this host cannot tell alive or dead - only the × releases it - else
+    its stage's wait (a child just started, alive here with no beat yet, is not held - lead 11-09)
     (`tell`, `stages` from `_stages_of`); None for a run not in flight."""
     from utils import heartbeat
 
     if row.state not in IN_FLIGHT_STATES:
         return None
-    if heartbeat.runner_state(row.runner) == "orphaned" and not heartbeat.runner_gone(row.runner, row.run_id):
+    if (heartbeat.runner_state(row.runner) == "orphaned" and not heartbeat.beat_holds(row.run_id)
+            and heartbeat.pid_here(row.runner, row.run_id, _since(row.started_at)) is None):
         return HELD_UNSEEN
     return stages.get(row.run_id, (None, None, None))[2]
 
@@ -3638,6 +3640,11 @@ class RunControl:
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
 
 
+def _since(started_at):
+    """A run's claim as epoch seconds - what `heartbeat.pid_here` holds a runner's start against; None stays None."""
+    return None if started_at is None else _utc(started_at).timestamp()
+
+
 def _utc(dt):
     """A time the database gave - an aware one as it is, a naive one (SQLite) as UTC; None stays None."""
     from datetime import timezone
@@ -3737,7 +3744,12 @@ def request_cancel(db, run_id: str) -> dict:
                  .filter(models.RetroactiveRun.run_id == run_id).first())
         return {"run_id": run_id, "op": op,
                 "state": moved.state if moved else None, "released": True}
-    if _runner_state(runner) == "orphaned":
+    from utils import heartbeat
+
+    # A runner alive here (a child just started, no beat yet) or a run a fresh beat holds is asked like any other:
+    # judgement ① releases «the process that started it is GONE» (lead 11-09: × released a healthy child).
+    if (_runner_state(runner) == "orphaned" and not heartbeat.beat_holds(run_id)
+            and heartbeat.pid_here(runner, run_id, _since(row.started_at)) is not True):
         # 🔴 `failed`, NOT `cancelled` (총괄 판정 ①). Nobody stopped it - the process
         #    died - and its work did not finish and never will. `cancelled` would tell the
         #    operator they stopped it themselves, which is not true, and it is the word a
@@ -4425,13 +4437,13 @@ def release_dead_runs(log=logger.warning, ops=None):
 
     session = SessionLocal()
     try:
-        rows = [(r.run_id, r.op, r.runner, r.state) for r in in_flight_rows(session).all()
+        rows = [(r.run_id, r.op, r.runner, r.state, _since(r.started_at)) for r in in_flight_rows(session).all()
                 if ops is None or r.op in ops]
     finally:
         session.close()
     released = []
-    for run_id, op, runner, state in rows:
-        if not heartbeat.runner_gone(runner, run_id):
+    for run_id, op, runner, state, since in rows:
+        if not heartbeat.runner_gone(runner, run_id, since):
             continue
         why = released_sentence(run_id, runner)
         if _mark_run(run_id, state=RUN_FAILED, finished=True, error=why, expect_state=state):

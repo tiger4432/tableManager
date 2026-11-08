@@ -649,24 +649,44 @@ def holding_note(run_id):
     return "holds run %s" % run_id
 
 
-def runner_gone(runner, run_id=None) -> bool:
+def runner_gone(runner, run_id=None, since=None) -> bool:
     """`runner_state` says «orphaned» AND that pid is provably not alive on THIS host AND no fresh beat holds `run_id`
     (`holding_note`) - what a release may act on without an operator (총괄 11-07). A child that has not beaten yet is
     orphaned but alive: not gone. A child that beats holding the run before its row names it - its scheduler died
     between the start and the stamp (lead 11-08 ③): not gone. A pid on another host, or no psutil: not gone -
     「모르면 안 한다」."""
-    if runner_state(runner) != "orphaned":
-        return False
-    if run_id is not None and any(not entry.get("stale") and entry.get("note") == holding_note(run_id)
-                                  for entry in read_all().values()):
-        return False
+    return (runner_state(runner) == "orphaned" and not beat_holds(run_id)
+            and pid_here(runner, run_id, since) is False)
+
+
+def beat_holds(run_id) -> bool:
+    """A fresh beat notes it holds run `run_id` (`holding_note`) - a child alive whatever its row names."""
+    return run_id is not None and any(not entry.get("stale") and entry.get("note") == holding_note(run_id)
+                                      for entry in read_all().values())
+
+
+def pid_here(runner, run_id=None, since=None):
+    """Whether `runner` is alive on THIS host - THE psutil judgement (lead 11-09): True when its pid lives AND is
+    that runner - its command line names `run_id` (the child, started after the claim) or it began no later than
+    `since` (epoch seconds of the claim: an in-process runner); a pid alive as another process (reused) is False,
+    as is a dead one. None when it cannot be told - another host, no psutil, no access."""
     import socket as _socket
-    _name, host, pid = str(runner).split("/")
     try:
+        _name, host, pid = str(runner).split("/")
+        if host != _socket.gethostname():
+            return None
         import psutil
-        return host == _socket.gethostname() and not psutil.pid_exists(int(pid))
     except Exception:                                            # noqa: BLE001
+        return None
+    try:
+        process = psutil.Process(int(pid))
+        if run_id is not None and str(run_id) in process.cmdline():
+            return True
+        return since is not None and process.create_time() <= since
+    except psutil.NoSuchProcess:
         return False
+    except Exception:                                            # noqa: BLE001
+        return None
 
 
 def runner_identity() -> str:

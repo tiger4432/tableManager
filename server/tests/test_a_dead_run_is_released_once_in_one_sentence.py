@@ -118,3 +118,42 @@ def test_the_chain_s_release_is_the_one_release_and_the_x_says_the_same(db):
     retroactive.request_cancel(db, "c2")
     state, error = _state(db, "c2")
     assert state == retroactive.RUN_FAILED and error.startswith("runner gone: chain/elsewhere/"), error
+
+
+def test_a_live_runner_in_its_first_seconds_is_asked_and_a_reused_pid_is_released(db):
+    """Lead 11-09: a runner alive here with no beat yet - the child just started (its command line names the run) or a
+    process older than the claim - is not «held» and the × asks it (cancel_requested), never releases it; a pid alive
+    as ANOTHER process (started after the claim, not naming the run - reused) is dead: released, by the tick too."""
+    import time
+    from runtime import running
+
+    _row(db, "live1", "placeholder")
+    time.sleep(0.2)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "live1"])  # after its claim
+    other = None
+    try:
+        db.query(models.RetroactiveRun).filter_by(run_id="live1").update(
+            {"runner": "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, HOST, child.pid)})
+        db.commit()
+        assert {run["run_id"]: run["waiting"] for run in retroactive.runs(db)}["live1"] is None, "not held"
+        assert [item["waiting"] for item in running._retroactive(db, datetime.now(timezone.utc))] == [None]
+        assert retroactive.release_dead_runs(log=lambda line: None) == []
+        answer = retroactive.request_cancel(db, "live1")
+        assert (answer["released"], _state(db, "live1")[0]) == (False, retroactive.RUN_CANCEL_REQUESTED), answer
+
+        _row(db, "live2", "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, HOST, os.getpid()))   # older than its claim
+        assert retroactive.request_cancel(db, "live2")["released"] is False
+
+        _row(db, "reused", "placeholder")
+        time.sleep(0.2)
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])       # after the claim
+        db.query(models.RetroactiveRun).filter_by(run_id="reused").update(
+            {"runner": "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, HOST, other.pid)})
+        db.commit()
+        assert heartbeat.pid_here("x/%s/%d" % (HOST, other.pid), "reused", time.time() - 0.1) is False
+        assert retroactive.release_dead_runs(log=lambda line: None) == ["reused"], "a reused pid is a dead runner"
+        assert "runner gone" in _state(db, "reused")[1]
+    finally:
+        child.kill()
+        if other is not None:
+            other.kill()
