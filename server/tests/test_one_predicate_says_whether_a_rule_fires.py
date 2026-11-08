@@ -211,6 +211,7 @@ def test_enabled_is_read_in_exactly_one_place():
         "from_chain_rule", "from_declaration", "with_declared_cells", "to_declaration",
         "is_switched_off")}
     allowed.add(("chain/ingestion_worker.py", "load_chain_rules"))   # rule_census 의 행
+    answer_read = ("chain/formula.py", "view", "opened")   # 판정된 값을 읽기만 한다(opened["enabled"] 는 chain_rule_raw_view 가 is_switched_off 로 낸 답)
     root = pathlib.Path(SERVER_DIR)
     files = sorted(root.glob("chain/**/*.py")) + [root / "admin" / "retroactive.py",
                                                   root / "main.py"]
@@ -232,8 +233,9 @@ def test_enabled_is_read_in_exactly_one_place():
             while up in parents and not isinstance(up, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 up = parents[up]
             where = (rel, getattr(up, "name", "<module>"))
+            of = node.func.value if isinstance(node, ast.Call) else node.value
             judged += where == ("chain/rule_shape.py", "is_switched_off")
-            if where not in allowed:
+            if where not in allowed and where + (getattr(of, "id", None),) != answer_read:
                 stray.append("%s:%d %s" % (rel, node.lineno, where[1]))
     assert judged == 1, "판정 함수 안의 읽기를 못 찾았다 — 계기가 고장이다 (%d)" % judged
     assert stray == [], "`enabled` 를 판정 함수 밖에서 읽는 자리: %r" % stray
