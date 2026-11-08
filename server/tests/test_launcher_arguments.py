@@ -219,10 +219,17 @@ def test_the_refusal_and_the_help_survive_the_production_console():
 # which children the supervisor had planned - the supervisor is the `self` of
 # the frame that calls Popen) and then kills the process before CreateProcess.
 # So a spawn attempt is observable, and a spawn never occurs.
+# `platform.uname()` is answered BEFORE the tripwire is armed: on Windows it asks WMI, and when WMI times out
+# (OSError 258 - measured 11-08: 20 of 20 asks, 7 of 12 fresh `import sqlalchemy`) it spawns `cmd /c ver`; sqlalchemy
+# asks `platform.machine()` on import, so that `ver` was the first spawn the tripwire saw - the launcher's never.
+# uname caches its answer, so the launcher's own imports ask no more.
 _TRIPWIRE = '''\
 import os
+import platform
 import subprocess
 import sys
+
+platform.uname()
 
 _MARKER = os.environ["ASSY_SPAWN_MARKER"]
 
