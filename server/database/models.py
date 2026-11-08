@@ -1909,8 +1909,8 @@ INDEX_FAILED = "failed"
 INDEX_BUSY = "building elsewhere"
 #: Not built: another session held the table past the wait before the build - the next start or Reload builds it.
 INDEX_DEFERRED = "deferred"
-#: How long the wait before a build may be (총괄 11-05 ㄱ-2: before the build only - once it builds, its own waits for
-#: older transactions have no limit, or a finished build is thrown away; 9752e91f7 ②) and how often it looks again.
+#: How long the wait before a build may be (총괄 11-05 ㄱ-2) and how often it looks again. The build's own waits have
+#: their limit too since owner 11-08 ㄴ (`index_build_wait_seconds`, `_ensure_one_index_once`).
 INDEX_WAIT_BEFORE_SECONDS = 20.0
 INDEX_WAIT_POLL_SECONDS = 1.0
 #: The head of the comment a failed build leaves on its INVALID leftover, so GET /admin/indexes - in
@@ -1986,8 +1986,11 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
     first. `say_every`: how often a build that waits says whom for (`INDEX_WAIT_SAY_SECONDS`).
 
     🔴 A LEFTOVER ANOTHER SESSION IS BUILDING IS NOT A LEFTOVER - left to it (`INDEX_BUSY`).
-    🔴 ONLY THE WAIT BEFORE THE BUILD HAS A LIMIT (`INDEX_WAIT_BEFORE_SECONDS`): past it nothing is started, so
-    nothing is left behind. Once building, the waits are said and never cut.
+    🔴 THE WAIT BEFORE THE BUILD (`INDEX_WAIT_BEFORE_SECONDS`) puts it off with nothing started. ONCE BUILDING, each
+    wait for a lock has its limit too (owner 11-08 ㄴ, `index_build_wait_seconds` as the build's lock_timeout - PG
+    applies it to the waits for older transactions as well, C measured): past it the build is cut, put off
+    (`INDEX_DEFERRED`) naming whom it waited for, and its INVALID leftover is taken away by the next try's repair.
+    1bcc2fa03 said «Once building, the waits are said and never cut» (총괄 11-05) - reversed.
 
     🔴 ONE SPELLING, BECAUSE THE REPAIR IS THE HARD PART. A failed `CONCURRENTLY` leaves the
     index behind marked INVALID, the planner will not use it, and `IF NOT EXISTS` then sees
@@ -1999,13 +2002,19 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
 
     from sqlalchemy import text as _text
 
+    import db_safety
+    import db_waits
+    from parsers.directory_watcher import index_build_wait
+
+    limit = index_build_wait()
     try:
         with engine.connect().execution_options(
                 isolation_level="AUTOCOMMIT") as connection:
             # no statement limit on a build - CONCURRENTLY waits for older transactions by design
-            # (총괄 e0e8020fb) - and the limits as they were before the connection goes back to the pool
+            # (총괄 e0e8020fb); each of those waits at most `limit` (owner 11-08 ㄴ) - and the limits as they were
+            # before the connection goes back to the pool
             connection.execute(_text("SET statement_timeout = 0"))
-            connection.execute(_text("SET lock_timeout = 0"))
+            connection.execute(_text("SET lock_timeout = %d" % round((limit or 0) * 1000)))
             try:
                 # 🔴 "THE STATEMENT RAN" IS NOT "AN INDEX WAS MADE" (S-124, caught by its own
                 # gate). Every caller appends this function's `True` to a list it then reports
@@ -2029,13 +2038,8 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     return INDEX_BUSY
                 held = _wait_before_the_build(connection, table, name, say, schema) if table else []
                 if held:
-                    # what comes next is true by where it was asked: the scheduler line's round keeps it for its next
-                    # poll (`maintenance_line._LEFT`); outside one (the ledger worker's start, a retroactive merge) it
-                    # waits for its asker's next start or run (총괄 11-06 ㄱ)
-                    again = ("tried again at the line's next poll" if getattr(_ROUND, "left", None) is not None
-                             else "built again at the next start or the next run that asks for it")
                     say(f"[Indexes] {what} index '{name}' not built - waited {_wait_seconds():.0f}s for pid "
-                        f"{', pid '.join(held)}; {again}")
+                        f"{', pid '.join(held)}; {_comes_back()}")
                     return INDEX_DEFERRED
                 for leftover in stale:
                     say(f"[Schema Sync] {what} index '{leftover}' is INVALID from an "
@@ -2059,6 +2063,14 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     {"name": name, "schema": schema}).first()
                 if not (valid and valid[0]):
                     raise RuntimeError("index %s was built INVALID - it serves and enforces nothing" % name)
+            except Exception as err:
+                if not (limit and db_safety.waited_past_the_lock_timeout(err)):
+                    raise
+                held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema,
+                                              older_than=limit) if table else []
+                say(f"[Indexes] {what} index '{name}' cut - waited past index_build_wait_seconds ({limit:.0f}s)"
+                    + (f" for pid {', pid '.join(held)}" if held else "") + f"; {_comes_back()}")
+                return INDEX_DEFERRED
             finally:
                 with contextlib.suppress(Exception):       # a broken connection is dropped with it
                     connection.execute(_text("RESET statement_timeout"))
@@ -2072,6 +2084,14 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
         say(f"[Schema Sync] Failed to ensure {what} index '{name}': {told(err)}")
         _note_failure(engine, name, err)
         return INDEX_FAILED
+
+
+def _comes_back():
+    """What comes of a build put off - true by where it was asked: the scheduler line's round keeps it for its next poll
+    (`maintenance_line._LEFT`); outside one (the ledger worker's start, a retroactive merge) it waits for its asker's
+    next start or run (총괄 11-06 ㄱ)."""
+    return ("tried again at the line's next poll" if getattr(_ROUND, "left", None) is not None
+            else "built again at the next start or the next run that asks for it")
 
 
 def _qualified(schema, name):

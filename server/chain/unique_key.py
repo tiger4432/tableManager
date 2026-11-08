@@ -67,7 +67,8 @@ def _close_ddl_connection(connection):
 def _build(db, table, name, ddl, what, leftovers=()) -> tuple:
     """The join's index built by the one builder (`models._ensure_one_index`, 총괄 11-05 ㄴ) -> (this report's state
     word, the builder's last line): its five states said in this file's words, here only - built or present «ok», left
-    to another session or not started past the wait before the build «deferred», failed «failed»."""
+    to another session, not started past the wait before the build or cut past index_build_wait_seconds «deferred»,
+    failed «failed»."""
     from database import models
 
     said = []
@@ -109,7 +110,7 @@ def invalid_leftovers(db, table: str, columns: list, folds=None) -> list:
           JOIN pg_class c ON c.oid = x.indrelid
           JOIN pg_class i ON i.oid = x.indexrelid
           JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE c.relname = :t AND n.nspname = 'public'
+         WHERE c.relname = :t AND n.nspname = current_schema()     -- the builder's schema (models._IN_THIS_SCHEMA)
            AND x.indisunique AND NOT x.indisvalid
     """), {"t": table}).fetchall()
     return [row[0] for row in rows]

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **짓고 있는 인덱스의 기다림에 상한 — 넘으면 끊고 다음 폴에 다시** — git pull · 런처 재기동(스케줄러 · 체인 워커 · 원장 워커 · API)
+>
+> ```
+> 무엇     인덱스를 «짓는 중»에 오래 열린 쓰기 · 트랜잭션을 기다리는 것이 기다림 하나당 index_build_wait_seconds(기본 300 s)까지
+>          넘으면 그 빌드를 끊고 «미룸» — 줄의 다음 폴(그 밖에서 물은 것은 다음 기동 · 다음 실행)에 다시. 요청 행은 열린 채
+>          모든 빌드가 지남: 선언 · 자동(그리드 · walk key) · 조인 유일 · 사업 키 유일 · human-claims · 원장 파티션
+> 볼 줄    [Indexes] <무엇> index '<이름>' cut - waited past index_build_wait_seconds (300s) for pid <pid> holding <표> (<상태>, open <n> s since <hh:mm:ss>: <쿼리 머리>); tried again at the line's next poll
+>          다음 폴: [Schema Sync] <무엇> index '<이름>' is INVALID from an earlier failure; dropping and rebuilding.
+> 답의 뜻  같은 pid 가 폴마다 나옴 = 그 세션이 계속 열려 있음 — 그 pid 를 닫아야 지어짐(어드민 인덱스 화면의 그 이름 줄도 invalid 로 남음)
+> 끄기     ingestion_settings.json 에 "index_build_wait_seconds": 0 — 옛 동작(짓는 중엔 끝없이 기다림)
+> ```
+>
+> ---
+>
 > ## [11-08] **가이드 md 만 고친 착지가 더는 «ran 0» 빨강으로 막히지 않는다 — 하니스 러너와 화면 검사기가 «무엇이 닿나»를 한 함수로** — git pull (시험 도구만, 화면 · 서버 변화 없음)
 >
 > ```

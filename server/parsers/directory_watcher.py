@@ -493,6 +493,10 @@ GRID_AUTO_INDEX_DEFAULT = 1.0
 #: How many automatic indexes one table may hold - past it none is built, one line says so. 0: none.
 AUTO_INDEX_PER_TABLE_SETTING = "auto_index_per_table"
 AUTO_INDEX_PER_TABLE_DEFAULT = 10
+#: How long a building index may wait for one lock - its table's writers, the transactions older than it - before it
+#: is cut and put off to the next poll (owner 11-08 ㄴ, `models._ensure_one_index_once`). null or 0: no limit.
+INDEX_BUILD_WAIT_SETTING = "index_build_wait_seconds"
+INDEX_BUILD_WAIT_DEFAULT = 300.0
 #: A re-read of a (table, source) stops after this many failed files with none read since it began (owner 10-24
 #: «연속 파일 3 번 에러 나면 멈추면 안 됨?» · «근본 불량 파일들도 있네»: a wrong parser fails every file, bad files only
 #: some). A whole number; 0 - never stops.
@@ -570,6 +574,12 @@ def count_max_age_seconds(settings=None):
     """Seconds a kept whole count is read before it is due again, None = no age."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, COUNT_MAX_AGE_SETTING, COUNT_MAX_AGE_DEFAULT)
+
+
+def index_build_wait(settings=None):
+    """Seconds a building index may wait for one lock, None = no limit."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, INDEX_BUILD_WAIT_SETTING, INDEX_BUILD_WAIT_DEFAULT)
 
 
 def grid_auto_index_after(settings=None):

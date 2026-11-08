@@ -11,6 +11,8 @@
              put off - the build would wait for it for ever (총괄 11-07); the line names its pid, age and query
   busy       the name is being built by another session - left to it; that build is not thrown away, says whom it
              waits for while it waits, and is valid once the old transaction ends
+  cut        once building, a wait past index_build_wait_seconds cuts the build (owner 11-08 ㄴ): put off naming whom it
+             waited for, its INVALID leftover repaired by the next try; a wait that ends within it builds as before
 """
 import threading
 import time
@@ -220,3 +222,54 @@ def test_a_transaction_open_past_the_wait_defers_the_build_and_leaves_nothing(ta
             runner.join(15)
         holder.rollback()
         holder.close()
+
+
+def _limit(monkeypatch, seconds):
+    from parsers import directory_watcher
+
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 30.0)    # the writer is young - no wait before the build
+    monkeypatch.setattr(directory_watcher, "index_build_wait", lambda settings=None: seconds)
+
+
+def test_a_build_waiting_past_its_limit_is_cut_put_off_and_built_by_the_next_try(table, monkeypatch):
+    """Owner 11-08 ㄴ (1bcc2fa03 waited for ever): a writer left open while the build waits for it - cut at the limit,
+    put off naming the writer; once it ends, the next try drops the INVALID leftover and builds."""
+    _limit(monkeypatch, 2.0)
+    holder = table.connect()
+    try:
+        pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
+        holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))   # RowExclusive, transaction left open
+        time.sleep(1.0)
+        said = []
+        cap = _cancel_the_build_after(table, 20)                        # the test's cap: without the limit, red here
+        started = time.monotonic()
+        try:
+            word = _build(table, said)
+        finally:
+            cap.cancel()
+        took = time.monotonic() - started
+        assert word == (models.INDEX_DEFERRED, set()) and took < 15, (took, said)
+        assert "cut - waited past index_build_wait_seconds (2s) for pid %s" % pid in said[-1], said
+        assert _state(table) == "invalid", "the cut build's leftover - the next try's to repair"
+    finally:
+        holder.rollback()
+        holder.close()
+    said = []
+    assert _build(table, said) == (models.INDEX_BUILT, {TABLE}) and _state(table) == "valid", said
+    assert any("is INVALID from an earlier failure; dropping and rebuilding" in line for line in said), said
+
+
+def test_a_build_whose_wait_ends_within_its_limit_is_built_as_before(table, monkeypatch):
+    _limit(monkeypatch, 10.0)
+    holder = table.connect()
+    holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))
+    ender = threading.Timer(1.5, holder.rollback)
+    ender.start()
+    said = []
+    try:
+        word = _build(table, said)
+    finally:
+        ender.join()
+        holder.close()
+    assert word == (models.INDEX_BUILT, {TABLE}) and _state(table) == "valid", said
+    assert not any(" cut " in line for line in said), said
