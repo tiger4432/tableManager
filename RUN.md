@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **module_reach_harness R5 가 트리 상태에 상관없이 잰다** — git pull (시험만, 화면 · 서버 변화 없음)
+>
+> ```
+> 돌릴 것  node client2/tests/module_reach_harness.mjs
+> 볼 줄    «R5 commits: 287b194d4 -> admin.html | 49d6bf185 -> file_ingestion.html» 그리고 «caught  R5 ...»
+> 답의 뜻  두 커밋이 다른 화면을 내므로, 트리가 무엇을 들고 있든 R5 변이는 적어도 하나에서 갈라짐
+>          «HARNESS FAILURE: R5's commits ... answer the same screens» 는 페이지 구성이 바뀌어 두 커밋의 화면이 같아진 것 -> OTHER 를 다른 착지 커밋으로
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-08] **그리드 화면의 «Flow» 버튼 — 열린 표가 어디서 오고 어디로 가는지 한 띠로** (소유자 11-06 목업) — git pull, 화면 dist 포함, 서버 재기동 필요 없음
 >
 > ```

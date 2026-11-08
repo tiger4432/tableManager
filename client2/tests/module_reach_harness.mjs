@@ -9,7 +9,9 @@
 //   R3 a file in the checker's SCANS cell that no page reaches (client2/.gitignore) - every screen
 //   R4 every tracked file the runner picks the checker for runs a screen - none is narrowed to nothing
 //   R5 a landed commit measured again (check_harnesses --commit, D 11-08): narrowed by that commit's files - 287b194d4
-//      (table_config.md among them) runs admin.html, whatever this tree holds
+//      (table_config.md among them) runs admin.html, whatever this tree holds; and 49d6bf185 (one file ingestion css)
+//      its own screens. The two answer different screens (said first), so a checker that narrows by this tree instead
+//      differs from at least one of them whatever this tree holds (lead 11-09: one commit let it through on an admin tree)
 //   R6 no commit: the files changed since this tree left origin/main, as before
 // Running a screen for a guide md keeps the two answers one; it does not measure the md (the checker draws the guide
 // from its own text and help_guides.json).
@@ -26,6 +28,7 @@ const CLIENT = path.resolve(HERE, '..');
 const SRC_PATH = path.join(CLIENT, 'scripts', 'module_reach.mjs');
 const CHECKER = 'screen_layout_harness.mjs';
 const LANDED = '287b194d4';   // access: a row of an edit_by table deleted - it changed docs/guide/config/table_config.md
+const OTHER = '49d6bf185';    // file ingestion: one css file - client2/src/file_ingestion/file_ingestion.css
 let passed = 0;
 let failed = 0;
 function ok(name, cond, saw) {
@@ -77,14 +80,27 @@ function verdict(M) {
   const none = picked.filter((f) => { const s = M.screensTouched({ pages, changed: [f], own }); return s !== null && !s.length; });
   check('R4', picked.length > 100 && !none.length, { picked: picked.length, narrowedToNothing: none.slice(0, 5) });
   const touched = (commit) => M.touchedScreens({ client: CLIENT, commit, graph, checker: path.join(HERE, CHECKER) });
-  const landed = touched(LANDED);
-  const landedFiles = BASELINE.changedFiles(CLIENT, LANDED);
-  check('R5', landedFiles.length > 0 && Array.isArray(landed) && landed.includes('admin.html')
-    && JSON.stringify(landed) === JSON.stringify(M.screensTouched({ pages, changed: landedFiles, own })), landed);
+  const byCommit = (commit) => {
+    const files = BASELINE.changedFiles(CLIENT, commit);
+    const got = touched(commit);
+    return { files: files.length, got, ok: files.length > 0 && Array.isArray(got)
+      && JSON.stringify(got) === JSON.stringify(M.screensTouched({ pages, changed: files, own })) };
+  };
+  const landed = byCommit(LANDED);
+  const other = byCommit(OTHER);
+  check('R5', landed.ok && landed.got.includes('admin.html') && other.ok, { [LANDED]: landed, [OTHER]: other });
   const tree = touched(null);
   check('R6', JSON.stringify(tree) === JSON.stringify(M.screensTouched({ pages, changed: BASELINE.changedFiles(CLIENT), own })), tree);
   return { bad, saw };
 }
+
+// R5's two commits must answer different screens - the same two would let a checker narrowing by an admin tree through
+const screensOf = (commit) => BASELINE.touchedScreens({ client: CLIENT, commit, graph, checker: path.join(HERE, CHECKER) });
+const [screensA, screensB] = [screensOf(LANDED), screensOf(OTHER)];
+if (!Array.isArray(screensA) || !Array.isArray(screensB) || JSON.stringify(screensA) === JSON.stringify(screensB)) {
+  die(`R5's commits ${LANDED} and ${OTHER} answer the same screens (${JSON.stringify(screensA)} / ${JSON.stringify(screensB)}) - pick another OTHER`);
+}
+console.log(`  R5 commits: ${LANDED} -> ${screensA.join(', ')} | ${OTHER} -> ${screensB.join(', ')}`);
 
 console.log('-- the real module --');
 const real = verdict(BASELINE);
