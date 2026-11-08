@@ -2562,6 +2562,50 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
 #: How often the worker asks whether a whole replay ended (`replay.sweep_finished_replays`).
 REPLAY_SWEEP_SECONDS = 5.0
 
+#: The census of the chain's layers no rule owns (owner 11-08 ㄱ): its pace's name in `server/pacing.json`, the lap it
+#: records on this process's beat (`heartbeat.record_lap`) - what GET /admin/chain/rules reads as «not_adopted» - and
+#: at most one lap started every so many seconds, one at a time.
+UNOWNED_CENSUS_JOB = "chain_unowned_census"
+UNOWNED_CENSUS_LOOP = "unowned_census"
+UNOWNED_CENSUS_EVERY_SECONDS = 600.0
+
+
+def count_unowned_layers_sync(db_session_factory, log=logger.info):
+    """One lap over `cell_sources` by id, a page at a time at its declared pace: the chain's layers no rule owns, by
+    who wrote them - their count and the three tables they hold most of - recorded as this process's
+    `UNOWNED_CENSUS_LOOP` lap, one line said. A pause stops the lap and records nothing. -> the lap, or None."""
+    import pacing
+    from collections import Counter
+    from chain import cell_layer
+
+    units, rest = pacing.job_pace(UNOWNED_CENSUS_JOB)
+    started, after, read, pages = time.monotonic(), 0, 0, 0
+    layers, tables = Counter(), defaultdict(Counter)
+    while True:
+        if chain_control.paused() is not None:
+            return None
+        db = db_session_factory()
+        try:
+            found, after, n = cell_layer.unowned_layers(db, after)
+        finally:
+            db.close()
+        if not n:
+            break
+        read, pages = read + n, pages + 1
+        for table, by in found:
+            layers[str(by or "")] += 1
+            tables[str(by or "")][table] += 1
+        if units is not None and pages % max(units, 1) == 0:
+            time.sleep(rest)
+    names = [{"name": name, "layers": count, "tables": [[table, n] for table, n in tables[name].most_common(3)]}
+             for name, count in layers.most_common()]
+    seconds = time.monotonic() - started
+    heartbeat.record_lap("chain", UNOWNED_CENSUS_LOOP, seconds=seconds, depth=read, pace=rest, not_adopted=names,
+                         layers=sum(layers.values()))
+    log("[ChainUnowned] pass: %d layer(s) under %d name(s) no rule owns, %d row(s) read in %.1f s"
+        % (sum(layers.values()), len(names), read, seconds))
+    return names
+
 #: The chain group norm (운영 규격): 1,000 rows in at most this many seconds. A group slower in
 #: proportion to its rows says where its time went - the one threshold (총괄 248ae20cd).
 GROUP_SECONDS_PER_1000_ROWS = 5.0
@@ -4737,6 +4781,8 @@ async def start_chain_ingestion_worker(db_session_factory):
     #   (통지처럼 기아가 문제되는 경로가 아님 — 늦게 완료돼도 무해·멱등). done 가드로 중복 실행을 방지한다.
     last_purge_ts = None
     purge_task = None
+    last_census_ts = None
+    census_task = None
     # the AI report's files waiting for their rule's send_to (`report_loop.send_waiting` - each a marker file)
     last_send_ts, send_task = 0.0, None
 
@@ -4976,6 +5022,15 @@ async def start_chain_ingestion_worker(db_session_factory):
                         # deleted rows stays in its log line.
                         heartbeat.record_lap("chain", "outbox_purge",
                                              pace=OUTBOX_PURGE_INTERVAL)
+
+                    # the census of the layers no rule owns (owner 11-08 ㄱ) - the purge's shape, a lap at a time
+                    if (census_task is None or census_task.done()) and (
+                            last_census_ts is None or maint_ts - last_census_ts >= UNOWNED_CENSUS_EVERY_SECONDS):
+                        if census_task is not None and not census_task.cancelled() and census_task.exception():
+                            logger.error("[ChainUnowned] the census failed: %s", told(census_task.exception()))
+                        last_census_ts = maint_ts
+                        census_task = asyncio.create_task(
+                            asyncio.to_thread(count_unowned_layers_sync, db_session_factory))
 
                     # the AI report's waiting sends (lead 10-23 ㄱ) - the purge's shape: a thread this loop does
                     # not await, one at a time, at the sweep's interval, so a big file never holds a slot or a tick

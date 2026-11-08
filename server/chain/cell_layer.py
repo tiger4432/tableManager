@@ -259,6 +259,21 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
         "changed": crud.values_differ(old_val, new_val, col_types.get(col, "string")),
     }
 
+def unowned_layers(db, after_id, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
+    """One page of `cell_sources` by id after `after_id`: `([(table, written by)] of the chain's layers no rule owns -
+    written before ownership (owner 11-06 step 2), the last id read, the rows read)`. The census of «Not adopted».
+    READ ONLY."""
+    from database import crud, models
+
+    S = models.CellSource
+    rows = (db.query(S.id, S.table_name, S.source_name, S.updated_by).filter(S.id > after_id)
+            .order_by(S.id).limit(size).all())
+    bases = crud._ownable_bases()
+    found = [(table, by) for _id, table, name, by in rows
+             if crud.layer_writer(name) in bases and crud.layer_owner(name) is None]
+    return found, (rows[-1][0] if rows else after_id), len(rows)
+
+
 def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
     """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - the layers these rows fed.
 

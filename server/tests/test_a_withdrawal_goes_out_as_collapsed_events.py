@@ -208,6 +208,8 @@ def _ends_where(pg_engine, monkeypatch, tmp_path, fold):
         db.commit()
         with monkeypatch.context() as by_hand:       # the withdrawal below, row by row - not the round's own
             by_hand.setattr(worker, "_withdraw_unanswered_deletions", lambda db, events, why: None)
+            # the rules answer a deletion now (owner 11-06 step 2) - their settle off too, so it waits for the hand
+            by_hand.setattr(worker, "_settle_or_fail", lambda *a, **k: (0, set(), []))
             hw.run_chain(world)
         while followup.drain_outbox_once(world["engine"], world["setup"]) is not None:
             pass

@@ -6813,7 +6813,11 @@ def get_chain_rules(db: Session = Depends(get_db)):
     for row in listed:
         row["kind"] = rule_shape.declared_kind(row)
     listed.sort(key=lambda row: (rank.get(row["kind"], len(rank)), str(row.get("name") or "")))
-    return {"status": "success", "data": listed}
+    # the chain's layers no rule owns, as the chain worker's last census lap counted them - None until one ended
+    lap = ((_heartbeat_mod.read_all().get("chain") or {}).get("laps") or {}).get(worker.UNOWNED_CENSUS_LOOP)
+    return {"status": "success", "data": listed,
+            "not_adopted": {"at": lap.get("at"), "layers": lap.get("layers", 0), "names": lap.get("not_adopted") or []}
+            if lap else None}
 
 
 @app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])

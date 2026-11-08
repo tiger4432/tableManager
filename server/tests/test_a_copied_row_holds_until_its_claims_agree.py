@@ -152,8 +152,7 @@ def test_two_rows_of_one_key_in_one_batch_keep_a_layer_each(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}, {"log_id": "B", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     a, b = _row_id(world, "A"), _row_id(world, "B")
-    assert _netdie_layers(world) == sorted([("chain_ingestion (%s)" % a, a),
-                                            ("chain_ingestion (%s)" % b, b)])
+    assert _netdie_layers(world) == sorted([(crud.owned_layer_name("hc_copy", a), a), (crud.owned_layer_name("hc_copy", b), b)])
     hw.delete(world, "B")
     hw.settle(world)
     assert _netdie_layers(world) == [("chain_ingestion (%s)" % a, a)]
