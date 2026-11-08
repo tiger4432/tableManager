@@ -1200,7 +1200,11 @@ const VALUES_WHOLE = `(() => {
   const cut = [...document.querySelectorAll('.ag-header-cell[col-id] .ag-header-cell-text')].find((t) => t.getClientRects().length && t.scrollWidth > t.clientWidth + 1);
   return cut ? 'header «' + cut.textContent + '» ' + cut.scrollWidth + ' px in ' + cut.clientWidth : null;
 })()`;
-for (const after of ['loaded', 'table switched from the Queue tab']) CELLS.push({ entry: 'index.html', after, rule: 'values whole', at: 'ag-cell', expr: VALUES_WHOLE });
+// «the first table again»: back on a table with no mockup widths, in the grid already made - only the row event fits it
+// there (dt_log opens with the mockup's widths, so its switch looked fitted with the fit gone; lead 11-09)
+for (const after of ['loaded', 'table switched from the Queue tab', 'the first table again']) {
+  CELLS.push({ entry: 'index.html', after, rule: 'values whole', at: 'ag-cell', expr: VALUES_WHOLE });
+}
 // The side panel dragged: the grid's box changes, its columns keep their widths (owner 11-05).
 CELLS.push({ entry: 'index.html', after: 'side panel dragged to 500 px', rule: 'column widths kept', at: 'ag-cell', expr: `(() => {
   const was = window.__colWidthsBefore || {};
@@ -4151,14 +4155,15 @@ const MUTANTS = [
   // The side panel drag fitting the columns to the grid's box again, as before 11-05.
   { name: 'the drag fits the columns to the box', entry: 'index.html', rule: 'column widths kept', at: 'ag-cell',
     file: 'src/main.js', edits: [['        putSidebarWidth(sidePanel(), sidebarWidth);\n', '        putSidebarWidth(sidePanel(), sidebarWidth);\n        if (state.gridApi) state.gridApi.sizeColumnsToFit();\n']] },
-  // The first rows not fitting the columns (every column at the default 150 px).
   // L1 as it landed (787c9871e): the row number's drag handle on every table and its room not in the fit - hidden, it
   // still takes the room, and «1» was drawn as a dot (box 11-07).
   { name: 'the drag handle in every table row number', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/grid.js', edits: [['...(state.currentOrder === ENTERED ? { rowDrag:', '...(true ? { rowDrag:'],
       ['pad + (col.getColDef().rowDrag ? drag : 0)', 'pad']] },
+  // The rows after the grid's first not fitting the columns - a table opened keeps the default 150 px (lead 11-08 ㄱ: the
+  // grid's rowDataUpdated is the seat; its first rows are fitted by onFirstDataRendered either way).
   { name: 'the columns not fitted', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
-    file: 'src/api.js', edits: [['    fitColumnWidths();\n', '']] },
+    file: 'src/grid.js', edits: [['    onRowDataUpdated: () => fitColumnWidths(),\n', '']] },
   // The defs' width laid again on every defs refresh, undoing the fit (measured on the box, 11-05).
   { name: 'the defs say a width again', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/grid.js', edits: [['      initialWidth: 150,\n', '      width: 150,\n']] },

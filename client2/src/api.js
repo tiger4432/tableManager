@@ -11,7 +11,7 @@ import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, buildColumnDefs, fitColumnWidths, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
+import { renderGrid, buildColumnDefs, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
 import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
 import { pageLooks, saidLooksChanged } from './grid_look.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
@@ -742,7 +742,6 @@ export async function fetchData(resetSkip = true, key = null) {
     } else {
       state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
     }
-    fitColumnWidths();
     updateGridSortState();
 
     // Update Counts (Zero-lag counter concept)

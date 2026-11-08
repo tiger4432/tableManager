@@ -1460,7 +1460,7 @@ const cellLookOf = (rowData, col) => {
   return at && lookOf(state.looks, at.rowId, at.column, at.cell);
 };
 
-/** The columns' widths from the rows drawn, when renderGrid owes them - the one place that asks. */
+/** The columns' widths from the rows drawn, when renderGrid owes them - asked by the grid's own row events only. */
 export function fitColumnWidths() {
   const api = state.gridApi;
   if (!widthsOwed || !api || !api.getDisplayedRowCount()) return;
@@ -1649,6 +1649,8 @@ export function renderGrid(initialRows) {
       fitColumnWidths();
       renderFilterBar();
     },
+    // every later row set (a read, a page, a table opened): the fit renderGrid owes is paid here, once (lead 11-08 ㄱ)
+    onRowDataUpdated: () => fitColumnWidths(),
     onGridSizeChanged: () => {
       // The strip's right edge moved, so how many chips fit moved with it.
       foldFilterChips();

@@ -6,7 +6,6 @@
 //   W2 renderGrid owes a fit: the first rows drawn after it set every data column's width once ('#', the checkboxes and
 //      the pivot's held item column left out), none under its column's least (AG Grid then resizes none); the next rows
 //      set none; a read with no rows keeps it owed
-//   W3 fetchData pays it: a table's first read sets the widths
 //   H1 setColumnsHidden hides or shows data columns only
 //   H2 «N hidden ▾»: none hides it; it lists them, Show shows one, Show all every one; two on a page do not interfere
 //   H3 the filter bar draws it with the grid's hidden data columns - not the pivot's held item column
@@ -57,7 +56,6 @@ globalThis.getComputedStyle = (el) => (el === gridCell
 
 const { state } = await import('../src/state.js');
 const PIVOT = { column: 'itemid', value: 'value' };
-const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 // the name, the cell's padding (32) and the sort arrow and filter mark (48)
 const header = (word) => Math.ceil(word.length * 6.4) + 32 + 48;
 const col = (id, { visible = true, headerName = id.toUpperCase(), def = {}, min = 120 } = {}) => ({
@@ -141,18 +139,6 @@ async function suite(M) {
         && widthOf(set, 'lot') === 19 * 7 + PAD && header('VALUE') < 120 && widthOf(set, 'value') === 120
         && widthOf(set, '#') === Math.max(Math.ceil(6.4) + 32, 2 * 7 + PAD),
       JSON.stringify({ noRows, noCell, widths: calls.widths }));
-  }
-  {
-    const calls = stage();
-    M.grid.renderGrid([]);
-    await M.api.fetchData(true);
-    await settle();
-    const first = calls.widths.length;
-    await M.api.fetchData(true);
-    await settle();
-    say('W3 a table\'s first read sets the widths; the next read keeps them',
-      first === 1 && calls.widths.length === 1 && widthOf(calls.widths[0], 'lot') === 19 * 7 + PAD,
-      JSON.stringify({ first, widths: calls.widths }));
   }
 
   {
@@ -293,7 +279,6 @@ const MUTANTS = [
   { id: 'X7', what: 'paid before the cell is drawn', catches: 'W2', file: 'grid.js', from: '  if (!cell) return;\n', to: '' },
   { id: 'X15', what: 'a width under its column\'s least is sent (AG Grid then resizes nothing)', catches: 'W2', file: 'grid.js',
     from: 'newWidth: Math.min(col.getMaxWidth() || Infinity, Math.max(col.getMinWidth() || 0, columnFitWidth(', to: 'newWidth: ((columnFitWidth(' },
-  { id: 'X8', what: 'the read does not pay it', catches: 'W3', file: 'api.js', from: '    fitColumnWidths();\n', to: '' },
   { id: 'X9', what: 'hides the gutter too', catches: 'H1', file: 'grid.js', from: 'colIds.filter(isDataColumn)', to: 'colIds' },
   { id: 'X10', what: 'Show all shows the first only', catches: 'H2', file: 'hidden_columns.js',
     from: 'this.show(this.hidden.map((col) => col.id))', to: 'this.show([this.hidden[0].id])' },

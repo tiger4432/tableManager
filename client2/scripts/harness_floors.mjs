@@ -1472,7 +1472,9 @@ export const FLOORS = new Map([
   ['pivot_filter_carry_harness.mjs', 25],
   // New (owner 11-05): a table's columns fitted once to their first rows, a column hidden from its header and «N hidden».
   // 27 -> 30 (owner 11-06): «#» fitted with them, one digit past its widest number.
-  ['grid_columns_harness.mjs', 30],
+  // 30 -> 28 (lead 11-08 ㄱ): W3 and its mutant X8 retired - the read no longer pays the fit, the grid's rowDataUpdated
+  // does; a stub grid fires no events, so the screen checker's «the columns not fitted» mutant holds that seat.
+  ['grid_columns_harness.mjs', 28],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
