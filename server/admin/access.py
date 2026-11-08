@@ -85,16 +85,19 @@ def refuse(user, table, what, row=None):
 
 def may_delete(request, db, table, row_ids):
     """A delete door's judgment of an edit_by table's rows: each row an edit of the table its edit_by column names - a
-    row not there, or its column blank, the table's own cell. Refused by name at the first row refused."""
+    row not there, or its column blank, the table's own cell. Refused by name at the first row refused. Answers
+    {row_id: the table it is an edit of} for the rows there - read before they go, for the delete's message (lead
+    11-08) - None when `table` declares no edit_by."""
     by = _cell(table).get(EDIT_BY_KEY)
     if not by:
-        return                                                         # `table_door` judged the table
+        return None                                                    # `table_door` judged the table
     named = _edit_by_cells(db, table, by, row_ids)
     user = person(request)
     for row_id in row_ids:
         row = {by: named[row_id]} if row_id in named else None
         if not may(user, table, EDIT, row=row):
             refuse(user, table, EDIT, row=row)
+    return {row_id: _judged(table, EDIT, {by: value}) for row_id, value in named.items()}
 
 
 def edits_of(db, table, rows):

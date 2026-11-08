@@ -3138,6 +3138,11 @@ def get_table_data_values(
 import json
 from fastapi import HTTPException
 
+def _edits_of(edits, row_ids):
+    """The tables these deleted rows were edits of, from `access.may_delete`'s answer - None for a table without edit_by."""
+    return None if edits is None else sorted({edits[row_id] for row_id in row_ids if row_id in edits})
+
+
 @app.delete("/tables/{table_name}/rows/{row_id}")
 async def delete_row(table_name: str, row_id: str, request: Request, user_name: str = None,
                      db: Session = Depends(get_db)):
@@ -3155,7 +3160,7 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
     """
     # [C-1 Fix] async 핸들러 내 동기 DB 호출 → threadpool 격리(이벤트 루프 동결 방지)
     from fastapi.concurrency import run_in_threadpool
-    access.may_delete(request, db, table_name, [row_id])
+    edits = access.may_delete(request, db, table_name, [row_id])
     author = sso.who(request, user_name or event_constants.AUTHOR_NOT_STATED)
     success = await run_in_threadpool(crud.delete_row, db, table_name, row_id, author)
     if not success:
@@ -3165,7 +3170,7 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
 
     # Broadcast (Unified to batch_row_delete)
     msg = event_constants.row_delete_message(table_name, [row_id],
-                                             updated_by=author)
+                                             updated_by=author, edits_of=_edits_of(edits, [row_id]))
     await manager.broadcast(json.dumps(msg))
     
     return {"status": "success", "row_id": row_id}
@@ -3174,7 +3179,7 @@ async def delete_row(table_name: str, row_id: str, request: Request, user_name: 
 async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, request: Request,
                                      db: Session = Depends(get_db)):
     """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
-    access.may_delete(request, db, table_name, batch.row_ids)
+    edits = access.may_delete(request, db, table_name, batch.row_ids)
     author = sso.who(request, batch.user_name)
     from fastapi.concurrency import run_in_threadpool
 
@@ -3226,7 +3231,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
                 chunk_logs[index].append(log)
         for chunk, logs in zip(chunks, chunk_logs):
             msg = event_constants.row_delete_message(
-                table_name, chunk, updated_by=author, created_logs=logs)
+                table_name, chunk, updated_by=author, created_logs=logs, edits_of=_edits_of(edits, chunk))
             await manager.broadcast(json.dumps(msg))
         
     # 🔴 [총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」] THE ANSWER IS THE COUNT, NOT EVERY ROW'S HISTORY. It

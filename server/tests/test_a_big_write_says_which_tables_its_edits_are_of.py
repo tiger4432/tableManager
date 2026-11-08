@@ -157,3 +157,31 @@ async def test_the_chain_door_says_it_too(db_session, sent, table, mapper, expec
         model = models.DYNAMIC_TABLES[PLAIN]
         db_session.query(model).delete()
         db_session.commit()
+
+
+@pytest.mark.parametrize("table, blocks, expected", [(LOOKS, lambda: [_looks(["t_a"], 600), _looks(["t_b"], 400)],
+                                                      ["t_a", "t_b"]),
+                                                     (PLAIN, lambda: [_plain(ROWS)], None)])
+def test_a_delete_says_the_tables_its_rows_were_edits_of_read_before_they_went(client, db_session, sent, table,
+                                                                                blocks, expected):
+    """Both delete doors: the batch - each 500-id message its own rows' tables - and the one row."""
+    for rows in blocks():
+        _write(client, table, rows)
+    ids = sorted(_ids(db_session, table))
+    model = models.DYNAMIC_TABLES[table]
+    by_id = dict(db_session.query(model.row_id, getattr(model, "look_table" if table == LOOKS else "map_key")).all())
+    sent.clear()
+    answer = client.post("/tables/%s/rows/batch_delete" % table, json={"row_ids": ids[1:], "user_name": "probe"})
+    assert answer.status_code == 200, answer.text
+    deletes = [m for m in sent if m["event"] == "batch_row_delete"]
+    assert len(deletes) == 2, "canary: 999 ids in two messages"
+    if expected:
+        assert [m["edits_of"] for m in deletes] == [["t_a"], ["t_a", "t_b"]], "canary: the chunks differ"
+    for message in deletes:
+        assert message.get("edits_of") == (None if expected is None else
+                                           sorted({by_id[row_id] for row_id in message["row_ids"]}))
+    assert sorted(set().union(*(m.get("edits_of") or () for m in deletes))) == (expected or [])
+    sent.clear()
+    assert client.delete("/tables/%s/rows/%s" % (table, ids[0])).status_code == 200
+    one = [m for m in sent if m["event"] == "batch_row_delete"]
+    assert len(one) == 1 and one[0].get("edits_of") == (None if expected is None else [by_id[ids[0]]])

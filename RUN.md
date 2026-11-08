@@ -3,7 +3,7 @@
 > ## [11-08] **수만 싣는 쓰기 알림이 «어느 표를 고쳤나»를 싣는다(edit_by 표)** — git pull · 런처 재기동(API · 체인 워커)
 >
 > ```
-> 무엇     100 행 넘는 쓰기(batch_refresh_required)에 edits_of: 그 행들이 고친 표 이름들 — sys_looks 칠하기 · 수집 표 넷처럼 access.edit_by 를 선언한 표만
+> 무엇     100 행 넘는 쓰기(batch_refresh_required)와 행 지우기(batch_row_delete, 지우기 전에 읽음)에 edits_of: 그 행들이 고친 표 이름들 — sys_looks 칠하기 · 수집 표 넷처럼 access.edit_by 를 선언한 표만
 >          이름이 100 을 넘으면 edits_of 를 빼고 truncated.edits_of(cut · omitted) — edit_by 없는 표의 알림은 그대로
 > 쓰는 곳  클라B 의 범위 칠하기 화면(edits_of 에 자기 표가 있을 때만 다시 읽음) — 화면 쪽 착지가 따로
 > 끄기     없음(칸 하나 더 실릴 뿐) — 되돌리기는 이 커밋 revert

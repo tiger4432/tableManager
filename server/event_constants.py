@@ -756,7 +756,7 @@ EVENT_BATCH_ROW_DELETE = "batch_row_delete"
 
 
 def row_delete_message(table_name, row_ids, *, transaction_id=None,
-                       updated_by=None, created_logs=None):
+                       updated_by=None, created_logs=None, edits_of=None):
     """The `batch_row_delete` payload, built in one place.
 
     🔴 SIX SENDERS WERE EACH WRITING THIS DICT BY HAND, and three of its six keys were carried
@@ -774,7 +774,8 @@ def row_delete_message(table_name, row_ids, *, transaction_id=None,
     ⛔ THE PAYLOAD IS UNCHANGED - NOT ONE KEY ADDED OR REMOVED, per sender. The optional three
     are omitted when not given, so each of the six still produces exactly the object it
     produced before. Making the six agree on WHICH keys they send is a boundary-contract
-    decision and a different change; this one gives them one place to disagree in.
+    decision and a different change; this one gives them one place to disagree in. `edits_of`
+    came after (lead 11-08), omitted when not given like the others.
     """
     message = {
         "event": EVENT_BATCH_ROW_DELETE,
@@ -789,7 +790,7 @@ def row_delete_message(table_name, row_ids, *, transaction_id=None,
         message["updated_by"] = updated_by
     if created_logs is not None:
         message["created_logs"] = created_logs
-    return message
+    return _with_edits_of(message, edits_of)
 
 
 #: The `batch_refresh_required` event name, and the ONE place its payload is built.
@@ -865,8 +866,12 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
         message["truncated"] = {"deleted_row_ids": truncated_note(
             int(deleted_row_ids_omitted) > 0, deleted_row_ids_omitted,
             "deleted ids beyond BROADCAST_ITEM_LIMIT")}
-    # the tables an edit_by table's written rows are edits of (`access.edits_of`, lead 11-08) - a screen knows whether
-    # its table was touched without a row; past BROADCAST_ITEM_LIMIT names, said cut instead
+    return _with_edits_of(message, edits_of)
+
+
+def _with_edits_of(message, edits_of):
+    """The tables an edit_by table's rows are edits of (`admin.access`, lead 11-08) - a screen knows whether its table
+    was touched without the rows; past BROADCAST_ITEM_LIMIT names, said cut instead. None: the table declares none."""
     if edits_of is not None:
         if len(edits_of) <= BROADCAST_ITEM_LIMIT:
             message["edits_of"] = list(edits_of)
