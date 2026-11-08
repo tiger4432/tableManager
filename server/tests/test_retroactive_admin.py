@@ -21,6 +21,7 @@ table_config (server-pm memory: the `bonding_log` trap).
 """
 import collections
 import json
+import os
 import sys
 import types
 
@@ -1215,13 +1216,14 @@ class TestTheSchedulerRunsItOffTheTickThread:
             retro_env.expire_all()
             return {r.run_id: (r.state, r.error) for r in retro_env.query(models.RetroactiveRun).all()}
 
-        with open(tmp_path / retroactive.CHILD_STDOUT_LOG, "a", encoding="utf-8") as sink:
+        with open(tmp_path / "dead_out.log", "a", encoding="utf-8") as sink:
             dead = subprocess.Popen([sys.executable, "-c", "print('OSError: [WinError 10106] provider'); raise SystemExit(3)"],
                                     stdout=sink, stderr=subprocess.STDOUT)
             dead.wait()
         alive = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
         try:
             held = a_run("%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, host, alive.pid))
+            os.replace(tmp_path / "dead_out.log", retroactive.child_stdout(held))   # its own file (lead 11-08 ②)
             queued = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target", "source": "s"})
             assert ticks()[held][0] == retroactive.RUN_RUNNING and spawned == [held]
             retroactive._restamp_runner(held, "%s/other-host/%d" % (retroactive.RUN_HERE_HEARTBEAT, dead.pid))
@@ -1231,7 +1233,7 @@ class TestTheSchedulerRunsItOffTheTickThread:
         finally:
             alive.kill()
         state, error = states[held]
-        assert state == retroactive.RUN_FAILED and "runner died" in error and "WinError 10106" in error, states
+        assert state == retroactive.RUN_FAILED and "runner gone" in error and "WinError 10106" in error, states
         assert spawned == [held, queued["run_id"]] and states[queued["run_id"]][0] == retroactive.RUN_RUNNING
 
     def test_the_scheduler_consumes_the_declared_event_type(self):
@@ -1651,7 +1653,7 @@ def test_the_released_row_says_why_it_was_released(retro_env, monkeypatch):
            .filter(models.RetroactiveRun.run_id == "ghost-probe").first())
     assert row.state == retroactive.RUN_FAILED
     assert "chain/box/999" in (row.error or ""), row.error
-    assert "not alive" in (row.error or ""), row.error
+    assert "runner gone" in (row.error or ""), row.error          # the one sentence (lead 11-08 ①)
     assert row.finished_at is not None, "끝난 행인데 끝난 시각이 없다"
 
 

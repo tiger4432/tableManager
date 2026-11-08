@@ -3731,12 +3731,7 @@ def request_cancel(db, run_id: str) -> dict:
         # ⚠️ NEVER SILENTLY. The reason rides on the row - a release that leaves no trace is the option this one was
         #    chosen INSTEAD of. A runner PROVABLY dead on this host is released by the scheduler's tick as well
         #    (`release_dead_runs`, 총괄 11-07); this × is for one that cannot be judged so (another host, no pid check).
-        from datetime import datetime, timezone
-
-        why = ("released as a ghost lock: the runner that started it is not alive "
-               "(runner=%s; judged against the heartbeat at %s). Its work did not "
-               "finish - run it again." % (runner or "?",
-                                           datetime.now(timezone.utc).isoformat()))
+        why = released_sentence(run_id, runner)
         _mark_run(run_id, state=RUN_FAILED, finished=True, error=why)
         db.expire_all()
         logger.warning("[Retroactive] released a ghost lock run_id=%s op=%s runner=%s",
@@ -4333,6 +4328,10 @@ def run_claimed(run_id: str, log=print) -> dict:
     from database.database import SessionLocal
     from utils import heartbeat
 
+    # first: beat holding the run, then name itself on the row - a scheduler that died between the start and its own
+    # stamp leaves a row naming a dead pid, and the next one must not release it while this runs (lead 11-08 ③)
+    heartbeat.beat(RUN_HERE_HEARTBEAT, note=heartbeat.holding(run_id), force=True)
+    _restamp_runner(run_id, runner_identity(), only_running=True)
     session = SessionLocal()
     try:
         row = (session.query(models.RetroactiveRun)
@@ -4358,14 +4357,15 @@ def run_claimed(run_id: str, log=print) -> dict:
                   error=str(e) if isinstance(e, RetroactiveRefused)
                   else "the run could not be judged - %s: %s" % (type(e).__name__, e))
         raise
-    heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
-    _restamp_runner(run_id, runner_identity())
     return _run_in_this_process(run_id, op, spec, params, log)
 
 
-#: Anything the child prints - a crash's traceback - lands here, beside its own lines in
-#: `retroactive.log`: the `<name>_stdout.log` every process of this stack has.
-CHILD_STDOUT_LOG = "retroactive_stdout.log"
+def child_stdout(run_id):
+    """The file a run's process prints to - its own (lead 11-08 ②: one shared file let a row quote another process's
+    last line), beside `retroactive.log`; deleted once the run has ended (`release_dead_runs`)."""
+    import paths
+
+    return paths.log_path("retroactive_stdout_%s.log" % run_id)
 
 
 def spawn_claimed(run_id, log=logger.info):
@@ -4380,7 +4380,7 @@ def spawn_claimed(run_id, log=logger.info):
     import paths
 
     try:
-        with open(paths.log_path(CHILD_STDOUT_LOG), "a", encoding="utf-8") as sink:
+        with open(child_stdout(run_id), "a", encoding="utf-8") as sink:
             child = subprocess.Popen(
                 [sys.executable, "-m", "admin.retroactive_run", run_id], cwd=paths.SERVER_DIR,
                 stdout=sink, stderr=subprocess.STDOUT,
@@ -4397,37 +4397,57 @@ def spawn_claimed(run_id, log=logger.info):
 
 
 
-def release_dead_runs(log=logger.warning):
-    """A running row whose runner is gone (`heartbeat.runner_gone`) ends failed, with why, on the scheduler's tick -
-    the queue moves on (총괄 11-07, the owner's 10-11 queue held since a 10-09 re-read). Reverses 총괄 2026-09-23's
-    «release only on a ×» (`request_cancel`) for a runner PROVABLY dead; one that cannot be judged still waits for
-    the ×. -> the run ids released."""
+def release_dead_runs(log=logger.warning, ops=None):
+    """THE automatic release (lead 11-08 ①): a running row whose runner is gone (`heartbeat.runner_gone`) ends failed
+    with `released_sentence` - the queue moves on (총괄 11-07, the owner's 10-11 queue held since a 10-09 re-read).
+    The scheduler's tick asks it for every op, the chain worker for its own (`ops`). A runner that cannot be judged so
+    (another host, a reused pid) is left to the × (`request_cancel`) and the queue line says so (`HELD_UNSEEN`).
+    -> the run ids released."""
     from database.database import SessionLocal
     from utils import heartbeat
 
     session = SessionLocal()
     try:
-        rows = [(r.run_id, r.op, r.runner, r.state) for r in in_flight_rows(session).all()]
+        rows = [(r.run_id, r.op, r.runner, r.state) for r in in_flight_rows(session).all()
+                if ops is None or r.op in ops]
     finally:
         session.close()
     released = []
     for run_id, op, runner, state in rows:
-        if not heartbeat.runner_gone(runner):
+        if not heartbeat.runner_gone(runner, run_id):
             continue
-        why = ("runner died: %s is not alive - %s. Its work did not finish - run it again."
-               % (runner, _last_child_line()))
+        why = released_sentence(run_id, runner)
         if _mark_run(run_id, state=RUN_FAILED, finished=True, error=why, expect_state=state):
             released.append(run_id)
             log("[Retroactive] run_id=%s op=%s released: %s" % (run_id, op, why))
+            _forget_child_stdout(run_id)
     return released
 
 
-def _last_child_line():
-    """The last line a run's process printed (`CHILD_STDOUT_LOG`) - a crash's last traceback line."""
-    import paths
+#: The queue line of a run whose runner this host cannot judge (lead 11-08 ①) - the × is the way.
+HELD_UNSEEN = "held by a runner this host cannot see - press × to release"
+
+
+def released_sentence(run_id, runner):
+    """The one sentence a released run carries - the scheduler's release and the × alike (lead 11-08 ①)."""
+    return ("runner gone: %s - %s. Its work did not finish - run it again."
+            % (runner or "?", _last_child_line(run_id)))
+
+
+def _forget_child_stdout(run_id):
+    """A released run's own output file - its last line is on the row now."""
+    import os
 
     try:
-        with open(paths.log_path(CHILD_STDOUT_LOG), "rb") as sink:
+        os.remove(child_stdout(run_id))
+    except OSError:
+        pass
+
+
+def _last_child_line(run_id):
+    """The last line run `run_id`'s process printed (`child_stdout`) - a crash's last traceback line."""
+    try:
+        with open(child_stdout(run_id), "rb") as sink:
             sink.seek(0, 2)
             sink.seek(max(0, sink.tell() - 4096))
             lines = [line.strip() for line in sink.read().decode("utf-8", "replace").splitlines() if line.strip()]
@@ -4436,16 +4456,18 @@ def _last_child_line():
     return ("its process's last line: %s" % lines[-1][:200]) if lines else "its process printed nothing"
 
 
-def _restamp_runner(run_id, runner):
-    """Name the process that holds a running row - the child, once it beats. Own session."""
+def _restamp_runner(run_id, runner, only_running=False):
+    """Name the process that holds a running row - the child, once it beats. Own session. `only_running`: a row
+    released meanwhile keeps its end."""
     from database import models
     from database.database import SessionLocal
 
     session = SessionLocal()
     try:
-        (session.query(models.RetroactiveRun)
-         .filter(models.RetroactiveRun.run_id == run_id)
-         .update({"runner": runner}, synchronize_session=False))
+        query = session.query(models.RetroactiveRun).filter(models.RetroactiveRun.run_id == run_id)
+        if only_running:
+            query = query.filter(models.RetroactiveRun.state == RUN_RUNNING)
+        query.update({"runner": runner}, synchronize_session=False)
         session.commit()
     finally:
         session.close()

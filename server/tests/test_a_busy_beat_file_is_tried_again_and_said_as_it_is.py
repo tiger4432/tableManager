@@ -307,7 +307,8 @@ def _queue_view(db):
 
 #         reader                     read                          unread fresh                  unread old              absent
 OWNERS = {
-    "release_dead_replays": (_released,     [],                           [],                           ["r1"],                 ["r1"]),
+    # chain/h/7 runs on another host: orphaned, never provably gone here - the × releases it (lead 11-08 ①)
+    "release_dead_replays": (_released,     [],                           [],                           [],                     []),
     "request_cancel":       (_cancelled,    ("cancel_requested", False),  ("cancel_requested", False),  ("failed", True),       ("failed", True)),
     "gate_refusal":         (_gate_refusal, "is alive",                   "did not read just now",      "NOT alive",            "NOT alive"),
     "queue_view orphaned":  (_queue_view,   [],                           ["unknown"],                  ["orphaned"],           ["orphaned"]),

@@ -227,12 +227,14 @@ async def test_a_replay_its_worker_died_staging_is_released_by_the_next_and_show
                                  state="running", runner="chain/h/2"))
     db.add(models.RetroactiveRun(run_id="d3", op="withdraw", params="{}", state="running", runner="sched/h/1"))
     db.commit()
-    monkeypatch.setattr(retroactive, "_runner_state", lambda r: "owned" if r == "chain/h/2" else "orphaned")
+    from utils import heartbeat
+    # the one automatic judgement (lead 11-08 ①): d1's runner provably dead here, d2's alive
+    monkeypatch.setattr(heartbeat, "runner_gone", lambda r, run_id=None: r == "chain/h/1")
     monkeypatch.setattr("database.database.SessionLocal", lambda: _Kept(db))   # the run row's own session
     assert replay.interrupted_runs(db) == []
     assert ciw.release_dead_replays(db) == ["d1"]
     states = {r.run_id: (r.state, r.error) for r in db.query(models.RetroactiveRun)}
-    assert states["d1"][0] == "failed" and "not alive" in states["d1"][1]
+    assert states["d1"][0] == "failed" and "runner gone" in states["d1"][1]
     assert states["d2"][0] == "running" and states["d3"][0] == "running", "a live one, and another op's"
     assert [f["run_id"] for f in replay.interrupted_runs(db)] == ["d1"]
 

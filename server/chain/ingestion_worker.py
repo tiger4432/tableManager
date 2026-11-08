@@ -4399,21 +4399,14 @@ def start_replay_if_queued(db):
 
 
 def release_dead_replays(db):
-    """A chain-owned run left in flight by a chain worker that died (총괄 fc1e1e385 「넣다 죽은 리플레이」): its runner
-    judged gone (`heartbeat.runner_state`, the judgement × asks) is released by the × door's own answer
-    (`retroactive.request_cancel` - `failed`, the reason on the row), so it shows cut (`replay.interrupted_runs`) with
-    Resume and nobody has to press × first. Asked while this worker runs no replay itself. -> the runs released."""
+    """A chain-owned run left in flight by a chain worker that died (총괄 fc1e1e385 「넣다 죽은 리플레이」): the one
+    automatic release (`retroactive.release_dead_runs`, lead 11-08 ①) over the chain's own ops, so it shows cut
+    (`replay.interrupted_runs`) with Resume and nobody has to press × first. Asked while this worker runs no replay
+    itself. -> the runs released."""
     from admin import retroactive
-    from database import models
 
-    R = models.RetroactiveRun
-    released = []
-    for run_id, runner in (db.query(R.run_id, R.runner)
-                           .filter(R.op.in_(event_constants.CHAIN_OWNED_RETROACTIVE_OPS),
-                                   R.state.in_(retroactive.IN_FLIGHT_STATES)).all()):
-        if retroactive._runner_state(runner) == "orphaned":
-            retroactive.request_cancel(db, run_id)
-            released.append(run_id)
+    released = retroactive.release_dead_runs(ops=event_constants.CHAIN_OWNED_RETROACTIVE_OPS)
+    db.expire_all()
     return released
 
 

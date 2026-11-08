@@ -149,7 +149,15 @@ def _sleeper(tag):
 
 
 def test_nothing_running_is_nothing_to_stop():
+    import os
+
+    from admin import retroactive
     from runtime import process_supervisor
+    from utils import heartbeat
+
+    # a child beats before it judges its row (lead 11-08 ③) - an earlier test's child left its beat
+    if os.path.exists(heartbeat.heartbeat_path(retroactive.RUN_HERE_HEARTBEAT)):
+        os.remove(heartbeat.heartbeat_path(retroactive.RUN_HERE_HEARTBEAT))
 
     assert process_supervisor.stop_retroactive_child(grace=0.1) == "none"
 
