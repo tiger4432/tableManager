@@ -10,6 +10,8 @@ import { chooseClipboardType } from './smart_paste_choice.js';
 import { PasteBox } from './paste_box.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
+import { FlowStrip, FLOW_FOLLOW, FLOW_HOPS } from './flow_strip.js';
+import { fetchSubgraph, entitySeedId, refusalSentence } from './rnd_board/api.js';
 import { localStamp } from './server_time.js';
 import { openInTables } from './tables/handoff.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
@@ -56,7 +58,7 @@ import { WorldTabs } from './world_tabs.js';
 /** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
 const CHAIN_BADGE_POLL_MS = 20000;
 import { startup } from './startup.js';
-import { GridSourceLabel, everyWorldSources } from './grid_source_label.js';
+import { GridSourceLabel, everyWorldSources, sourceStateWord } from './grid_source_label.js';
 import { RedoBanner } from './redo_banner.js';
 import { withWorld } from './world.js';
 import { putRescopeHandoff } from './rescope_handoff.js';
@@ -94,6 +96,7 @@ import {
   registerSelectionListener,
   registerFormulaOpener,
   applyFillTargetHeaders,
+  filterGridTo,
   isSystemColumn,
   sortParams,
   setColumnsHidden,
@@ -226,8 +229,10 @@ async function init() {
       formulaPop = initFormulaPopover();
       // 🔴 부팅 자동 선택도 · 드롭다운도 · 이력 점프도 «표를 고른 것»입니다 — 셋 다 switchTable 을 지나므로 거기서 한 번
       //    알립니다. 손으로 알리던 두 자리(부팅 · 드롭다운)는 이력 점프를 빠뜨렸습니다(총괄 10-12).
+      flowStrip = initFlowStrip();
       seatTableFollower((table) => {
         if (sourceLabel) sourceLabel.setRelation(table);
+        if (flowStrip) flowStrip.setTable(table);
         redoBannerFollows(table);
         if (formulaPop) formulaPop.close();
       });
@@ -275,6 +280,51 @@ async function loadLedgerDeclaration(world) {
 let sourcesAsked = null;
 const sourcesEveryWorld = () => (sourcesAsked = sourcesAsked || everyWorldSources(loadLedgerDeclaration));
 
+// The Flow strip (owner 11-06, lead 11-08): the system world walked from the open table, while «Flow» is pressed.
+let flowStrip = null;
+const SYSTEM_WORLD = 'system';
+async function walkTableFlow(table) {
+  const got = await fetchSubgraph({ apiBase: API_BASE, nodeId: entitySeedId('table', { table }), hops: FLOW_HOPS,
+    follow: FLOW_FOLLOW, fetchImpl: withWorld((url, init) => fetch(url, init), () => SYSTEM_WORLD) });
+  return got.ok ? { ok: true, body: got.body } : { ok: false, message: refusalSentence(got.detail, got.status) };
+}
+/** «Edit» on the strip: the table's sys_tables row in the grid, its description cell focused (owner 11-08). */
+async function editTableDescription(table) {
+  await switchTable('sys_tables');
+  const api = state.gridApi;
+  if (!api) return;
+  const focus = () => {
+    api.removeEventListener('rowDataUpdated', focus);
+    api.ensureColumnVisible('description');
+    api.setFocusedCell(0, 'description');
+  };
+  api.addEventListener('rowDataUpdated', focus);
+  filterGridTo([{ column: 'table_name', value: table }]);
+}
+function initFlowStrip() {
+  const host = document.getElementById('flow-strip-host');
+  const button = elements.flowToggleBtn;
+  if (!host || !button) return null;
+  const part = new FlowStrip(host, {
+    doc: document,
+    walk: walkTableFlow,
+    onAnswer: (model) => {
+      state.flowColumns = model ? { table: model.table.name, columns: model.columns } : null;
+      applyFillTargetHeaders();
+    },
+    onPickTable: (table) => void switchTable(table),
+    onEdit: (table) => void editTableDescription(table),
+    sourceWord: sourceStateWord,
+  });
+  button.addEventListener('click', () => {
+    const open = button.getAttribute('aria-pressed') !== 'true';
+    button.setAttribute('aria-pressed', String(open));
+    part.setOpen(open);
+  });
+  part.setSources(state.ledgerAnswer);
+  return part;
+}
+
 // 그리드 머리의 원장 소스 라벨. 자기 div 하나를 받고, 표 이름은 «화면이» 알려 줍니다.
 let sourceLabel = null;
 let redoBanner = null;
@@ -288,6 +338,7 @@ function initGridSourceLabel() {
     onAnswer: (answer) => {
       state.ledgerAnswer = answer;
       applyFillTargetHeaders();
+      if (flowStrip) flowStrip.setSources(answer);
     },
   });
   part.mount();

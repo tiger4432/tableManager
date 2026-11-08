@@ -33,6 +33,15 @@ function rowsFor(sources, relation) {
 
 /** 로더가 이 소스를 세우지 «않았다» (선언 라우트의 `planned: false`). */
 const refusedByLoader = (row) => row.planned === false;
+/** The words of an answer that holds no source line (pending · unknown · not_source) - null for the others. The label and
+ *  the Flow strip's Ledger side say the same fact with these (lead 11-08 ㄴ). */
+export function sourceStateWord(answer) {
+  const state = answer ? answer.state : 'pending';
+  if (state === 'pending') return '…';
+  if (state === 'unknown') return `declaration unreadable — ${answer.message || ''}`.trim();
+  if (state === 'not_source') return 'not a ledger source';
+  return null;
+}
 
 /**
  * Every world's sources (owner 10-12): the operating world's declaration, then each other world's, one request each -
@@ -128,7 +137,7 @@ export class GridSourceLabel {
     if (this.loadState === 'loading' || this.loadState === 'idle') {
       return { relation, state: 'pending', rows: [] };
     }
-    if (this.loadState === 'refused') return { relation, state: 'unknown', rows: [] };
+    if (this.loadState === 'refused') return { relation, state: 'unknown', rows: [], message: this.message };
     const rows = rowsFor(this.sources, relation);
     if (!rows.length) return { relation, state: 'not_source', rows };
     return { relation, state: rows.every(refusedByLoader) ? 'refused' : 'source', rows, operating: this.operating };
@@ -144,7 +153,7 @@ export class GridSourceLabel {
     }
   }
 
-  draw({ state, rows }) {
+  draw({ state, rows, message }) {
     const doc = this.doc;
     if (!doc || !this.host) return;
     this.host.textContent = '';
@@ -160,7 +169,7 @@ export class GridSourceLabel {
 
     if (state === 'pending') {
       root.className = 'grid-source-label is-pending';
-      root.textContent = '…';
+      root.textContent = sourceStateWord({ state });
       this.host.appendChild(root);
       return;
     }
@@ -168,7 +177,7 @@ export class GridSourceLabel {
     if (state === 'unknown') {
       // 🔴 셋 중 «셋째». 「아님」과 같은 문장을 쓰면 안 됩니다.
       root.className = 'grid-source-label is-unknown';
-      root.textContent = `declaration unreadable — ${this.message || ''}`.trim();
+      root.textContent = sourceStateWord({ state, message });
       root.setAttribute('data-source-state', 'unknown');
       this.host.appendChild(root);
       return;
@@ -177,7 +186,7 @@ export class GridSourceLabel {
     if (state === 'not_source') {
       // 🔴 셋 중 «둘째». 읽었고, 목록에 없습니다 — 그건 «사실»이라 말합니다.
       root.className = 'grid-source-label is-not-source';
-      root.textContent = 'not a ledger source';
+      root.textContent = sourceStateWord({ state });
       root.setAttribute('data-source-state', 'not_source');
       this.host.appendChild(root);
       return;

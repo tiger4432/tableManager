@@ -163,6 +163,10 @@
             />
           </div>
 
+          <div class="control-group">
+            <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
+          </div>
+
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
                button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
@@ -350,6 +354,9 @@
           </div>
         </div>
       </header>
+
+      <!-- the Flow strip's own div (owner 11-06 mockup: under the top bar, the page's width): drawn while «Flow» is pressed -->
+      <div id="flow-strip-host" hidden></div>
 
       <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
       <main class="main-layout">

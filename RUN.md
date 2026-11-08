@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **그리드 화면의 «Flow» 버튼 — 열린 표가 어디서 오고 어디로 가는지 한 띠로** (소유자 11-06 목업) — git pull, 화면 dist 포함, 서버 재기동 필요 없음
+>
+> ```
+> 무엇     Flow 를 누르면 그리드 머리 밑에 띠 하나 (기본은 닫힘)
+>          Comes from (파일 · 이 표를 쓰는 규칙과 그 규칙이 읽는 표) -> 표 (키 · 설명 · Edit) -> Feeds (이 표를 읽는 규칙 · Ledger)
+>          규칙이 쓰는 칼럼은 머리 이름 앞에 사슬 표시, 툴팁에 규칙 · from · joined on · 언제
+>          답 = system world 걷기 하나 (/api/ledger/subgraph ... &world=system, hops 2), 토큰 없음, 띠가 열렸을 때만 걷는다
+>          Ledger 상자 = 그리드 머리의 원장 소스 라벨의 답 그대로 (같은 사실 · 같은 말)
+> 돌릴 것  그리드 페이지에서 Flow 누르기 · 표 바꾸기 · 띠의 표 이름 누르기 (그 표로 감)
+> 답의 뜻  «Nothing writes it»              이 표를 쓰는 규칙 · 파일이 system world 에 없음
+>          «<표> is not in the system world»  이 표의 노드가 아직 없음 -> 시스템 카탈로그 동기화 전 (체인 워커가 깨움)
+>          걷기 라우트의 거절 문장             그대로 뜬다 -> system world 원장이 안 서 있음
+>          Ledger 쪽 «…»                     라벨이 선언을 아직 못 읽음 · «declaration unreadable — 사유» 는 라벨과 같은 거절
+>          Edit                              sys_tables 로 가서 그 표 줄의 description 칸에 커서
+> 끄기     Flow 를 다시 누르면 닫히고 걷기를 안 함
+> 볼 줄    서버 새 로그 줄 없음. 느리면 [Slow] GET /api/ledger/subgraph
+> ```
+>
+> ---
+>
 > ## [11-08] **리포트의 질문은 표 칸에만 · 리포트도 메모(교훈)를 읽음 · 상황에 scope 칸** — git pull · 런처 재기동(API · 체인 워커)
 >
 > ```

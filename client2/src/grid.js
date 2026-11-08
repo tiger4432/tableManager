@@ -36,6 +36,7 @@ import { HiddenColumns } from './hidden_columns.js';
 import { localStamp, NO_TIME } from './server_time.js';
 import { ABSENT, isBlank } from './absent.js';
 import { markWork } from './ui_stall.js';
+import { chainTipLines } from './flow_strip.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -986,6 +987,8 @@ export function buildColumnDefs() {
   // Read ONCE per build, not per column: it is the same Map for every column and the rule
   // must not be able to change halfway down the list.
   const fillTargets = fillTargetOrdinals();
+  // the rules that write each column, from the Flow strip's walk (lead 11-08) - only for the table it walked
+  const chainWriters = state.flowColumns && state.flowColumns.table === state.currentTable ? state.flowColumns.columns : {};
   // C-84. 표의 «종류»도 한 번만 읽는다 — 컬럼마다 물으면 목록 중간에서 답이 바뀔 수 있다.
   const viewTable = Boolean(writeRefusal());
   // 🔴 은퇴한 기능의 잔해는 «만들지 않습니다» (숨기는 것이 아니라). 그래프 동기화는 서버가
@@ -1036,6 +1039,8 @@ export function buildColumnDefs() {
     const indexWords = indexed.map((kind) => (kind === 'search' ? 'partial' : kind));
     // its formula, as /schema says it (B 72acf1fd1) - the header draws an fx mark beside the name
     const formula = isSystem ? null : (state.currentFormulas || {})[col] || null;
+    // a rule writes it (the walk's answer): a chain mark, or on a formula's column its fx mark says it - the tip says which
+    const chainTip = chainTipLines(chainWriters[col]);
 
     // [Virtual join] A STORED column can still be join-resolved — `kind: 'collide'`, where
     // the same name exists on both sides and the server fills it from the right table
@@ -1047,7 +1052,7 @@ export function buildColumnDefs() {
 
     const colDef = {
       headerName: headerLabel,
-      headerTooltip: indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel,
+      headerTooltip: [indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel, ...chainTip].join('\n'),
       field: col,
       ...(col === held || col === lastHeld ? { hide: col === held } : {}),
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
@@ -1063,7 +1068,8 @@ export function buildColumnDefs() {
         : filterable ? valueFilterDef(colType === 'number' ? 'number' : 'text', null,
           colType !== 'number' && indexed.includes('equal') && !indexed.includes('search') ? 'equals' : null) : { filter: false }),
       floatingFilter: filterable,
-      headerClass: [fillOrdinal ? 'fill-target-header' : '', ...indexed.map((kind) => `idx-${kind}`)]
+      headerClass: [fillOrdinal ? 'fill-target-header' : '', chainTip.length && !formula ? 'chain-written-header' : '',
+        ...indexed.map((kind) => `idx-${kind}`)]
         .filter(Boolean).join(' ') || undefined,
       // its formula (owner 10-28 option A): the name and an fx mark inside the header's own text, the mark opens it
       ...(formula ? { headerComponentParams: { innerHeaderComponent: FormulaHeader, innerHeaderComponentParams: {

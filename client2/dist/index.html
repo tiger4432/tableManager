@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-CIjWGtoJ.js"></script>
+    <script type="module" crossorigin src="/assets/main-BONDLOVq.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/absent-cxGCyx19.js">
     <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
     <link rel="modulepreload" crossorigin href="/assets/dropdown-ffa53XA6.js">
@@ -44,6 +44,8 @@
     <link rel="modulepreload" crossorigin href="/assets/image_thumb-CZU4_08w.js">
     <link rel="modulepreload" crossorigin href="/assets/option_list-B03zujPv.js">
     <link rel="modulepreload" crossorigin href="/assets/refusal-3wUKdN_J.js">
+    <link rel="modulepreload" crossorigin href="/assets/map_key-BcsLXUDF.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-C8sp4uD1.js">
     <link rel="modulepreload" crossorigin href="/assets/slow_reason-Dlrtc_AN.js">
     <link rel="modulepreload" crossorigin href="/assets/truncation-D5dATse0.js">
     <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
@@ -53,7 +55,7 @@
     <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-CPybX3o8.css">
     <link rel="stylesheet" crossorigin href="/assets/main-BfPgcUrR.css">
     <link rel="stylesheet" crossorigin href="/assets/base-DtrWoe31.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-Dkpa6Hpc.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-LVKPDXk7.css">
   </head>
 
   <body>
@@ -190,6 +192,10 @@
               multiple
               style="display: none"
             />
+          </div>
+
+          <div class="control-group">
+            <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
           </div>
 
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
@@ -379,6 +385,9 @@
           </div>
         </div>
       </header>
+
+      <!-- the Flow strip's own div (owner 11-06 mockup: under the top bar, the page's width): drawn while «Flow» is pressed -->
+      <div id="flow-strip-host" hidden></div>
 
       <!-- 메인 레이아웃: 그리드 + 히스토리 패널 -->
       <main class="main-layout">

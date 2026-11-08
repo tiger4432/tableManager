@@ -3527,6 +3527,31 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The Flow strip (owner 11-06, mockup 5X4wGr6QwEoa4bQ8D7BB47): pressed on dt_log - its rules, files and ledger
+    // sources from the system world's walk; then dt_map, which no rule writes; then closed, back on the first table.
+    ...[['Flow strip on dt_log', 'dt_log', "Boolean(document.querySelector('.flow-strip.is-ready[aria-label=\"Flow of dt_log\"] .flow-strip__item--rule'))"],
+      ['Flow strip on dt_map, no rule', 'dt_map', "(() => { const s = document.querySelector('.flow-strip.is-ready'); return Boolean(s) && /^Flow of dt_map$/.test(s.getAttribute('aria-label')) && !s.querySelector('.flow-strip__item--rule') && /Nothing reads it/.test(s.textContent); })()"]].map(([name, table, ready]) => [name, async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
+        window.__flowFrom = window.__flowFrom || sel.value;
+        if (sel.value !== ${JSON.stringify(table)}) { sel.value = ${JSON.stringify(table)}; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await evaluate(c, `(() => { const b = document.getElementById('flow-toggle-btn');
+        if (b && b.getAttribute('aria-pressed') !== 'true') b.click(); return Boolean(b); })()`);
+      await until(c, ready);
+    }]),
+    ['Flow strip closed', async (c, log) => {
+      await evaluate(c, `(() => { const b = document.getElementById('flow-toggle-btn');
+        if (b && b.getAttribute('aria-pressed') === 'true') b.click(); return true; })()`);
+      await until(c, "document.getElementById('flow-strip-host').hidden === true");
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__flowFrom || sel.value === window.__flowFrom) return true;
+        sel.value = window.__flowFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],

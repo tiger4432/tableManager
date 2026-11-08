@@ -1928,7 +1928,7 @@ export async function fetchTimePage(params) {
  *    «돌면서 잇기»만 합니다 — 여기에 「홉이 너무 큽니다」를 쓰면 서버가 한계를 바꾸는 날
  *    화면만 옛 문장을 말합니다.
  */
-function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
+export function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
   const detail = body && body.detail;
   if (detail && typeof detail.message === 'string') return detail.message;
   // 🔴 C-52. THE SERVER'S NAMED REFUSAL, WHICH HAD NO ARM HERE. `{reason, argument, value}`

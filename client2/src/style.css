@@ -3097,6 +3097,37 @@ body.resizing-active .gallery-seat {
   display: none;
 }
 
+/* The Flow strip (owner 11-06, mockup 5X4wGr6QwEoa4bQ8D7BB47): comes from -> the table -> feeds, under the header */
+.flow-strip { display: grid; grid-template-columns: minmax(0, 1fr) var(--space-6) minmax(0, 28rem) var(--space-6) minmax(0, 1fr);
+  align-items: start; padding: var(--space-4) var(--space-5); background: var(--bg-surface);
+  border-bottom: 1px solid var(--border); font-size: var(--fs-button); color: var(--text);
+  max-height: 40vh; overflow-y: auto; }
+#flow-strip-host { flex: none; }
+.flow-strip:not(.is-ready) { display: block; padding: var(--space-2) var(--space-5); font-size: var(--fs-label); color: var(--text-dim); }
+.flow-strip.is-refused { color: var(--warning); }
+.flow-strip__side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.flow-strip__title { font-size: var(--fs-label); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.flow-strip__item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border); min-width: 0; }
+.flow-strip__item--rule { border-color: var(--accent); background: var(--accent-weak); }
+.flow-strip__kind { font-size: var(--fs-label); padding: 0 var(--space-2); border: 1px solid currentColor; color: var(--text-muted); }
+.flow-strip__item--rule .flow-strip__kind { color: var(--accent); }
+/* its table names and Edit are words that act: as high as the words beside them, not a control */
+.flow-strip__table, .flow-strip__edit { height: auto; min-height: 0; font: inherit; font-size: var(--fs-label); line-height: inherit;
+  color: var(--accent); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.flow-strip__table { font-family: var(--font-mono); }
+.flow-strip__rule { font-family: var(--font-mono); font-size: var(--fs-label); overflow-wrap: anywhere; }
+.flow-strip__meta, .flow-strip__none { font-size: var(--fs-label); color: var(--text-dim); }
+.flow-strip__path { overflow-wrap: anywhere; min-width: 0; }
+.flow-strip__arrow { align-self: center; justify-self: center; color: var(--text-dim); }
+.flow-strip__centre { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
+  border: 2px solid var(--accent); min-width: 0; }
+.flow-strip__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-3); }
+.flow-strip__name { font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 600; }
+.flow-strip__edit { align-self: flex-start; }
+/* a column a rule writes (the strip's walk): the chain mark before its name */
+#myGrid .ag-header-cell.chain-written-header .ag-header-cell-text { color: var(--accent); }
+#myGrid .ag-header-cell.chain-written-header .ag-header-cell-text::before { content: "\26D3  "; }
 /* ── 그리드 머리의 원장 소스 라벨 (2026-08-31) ─────────────────────────────
    부재를 «셋»으로 말하므로 색도 셋입니다 -- 「아님」과 「못 읽음」이 같은 회색이면
    화면은 문장으로 구별해 놓고 눈으로는 다시 합쳐 버립니다. */
