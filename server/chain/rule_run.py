@@ -423,6 +423,56 @@ def columns_a_rule_writes(rule, items=(), more=False):
     return set(declared) if declared else None
 
 
+def columns_a_rule_reads(rule) -> dict:
+    """What this rule's declaration reads, by its kind - `columns_a_rule_writes`' pair, asked by the system catalogue
+    (`graph.rule_facts`; lead 11-08 - the kind is asked here, 판정 498 ④): {"columns": [(role, table, column,
+    from_table, from_column)] - joins_on · decides_by · writes_column from where, "functions": the code it names,
+    "formulas": its formula texts}."""
+    from chain import join_into
+    from chain.enrichment import config as enrich
+    import expression
+
+    params = rule.get("params") or {}
+    target = rule.get("target_table")
+    mapper = str(rule.get("mapper") or "")
+    columns, functions, formulas = [], [], []
+    if mapper == join_into.JOIN_INTO_MAPPER:
+        right = params.get("right_table")
+        for pair in params.get("on") or ():
+            if isinstance(pair, dict):
+                columns += [("joins_on", target, pair.get("left")), ("joins_on", right, pair.get("right"))]
+        for item in params.get("take") or ():
+            if isinstance(item, str):
+                columns.append(("writes_column", target, item, right, item))
+                continue
+            if not isinstance(item, dict):
+                continue
+            into, fn = item.get("into") or item.get("from"), item.get(join_into.TAKE_FN)
+            if join_into.formula_of(fn) is not None:
+                formulas.append("%s %s" % (into, fn))
+            elif isinstance(fn, str) and "." in fn:
+                functions.append(fn)
+            read = join_into._from(item)
+            for column in (read if isinstance(read, tuple) else (read,) if read else ()):
+                columns.append(("writes_column", target, into, right, column))
+    elif mapper == enrich.DEDUP_MAPPER:
+        source, derived = params.get("source_table"), params.get("derived_table")
+        keys = [next(iter(key)) if isinstance(key, dict) else key for key in params.get("decision_key") or ()]
+        for key, read in zip(keys, params.get("key_source") or keys):
+            columns += [("decides_by", derived, key), ("writes_column", derived, key, source, read)]
+        for name, spec in (params.get("aggregations") or {}).items():
+            text, _why = enrich.aggregation_record(spec)
+            if isinstance(text, str):
+                formulas.append("%s =%s" % (name, text))
+                read = expression.compile(text).get("names") or ()
+            else:
+                read = [spec.get("column")] if isinstance(spec, dict) and spec.get("column") else ()
+            columns += [("writes_column", derived, name, source, column) for column in read]
+    elif mapper != enrich.AUTO_CONFIRM_MAPPER:
+        functions.append(mapper or "%s.%s" % (rule.get("mapper_module"), rule.get("mapper_function")))
+    return {"columns": columns, "functions": functions, "formulas": formulas}
+
+
 def retraction_refusal(rule):
     """None if this rule's answer can be withdrawn when its input row is deleted or edited, or
     the operator sentence saying it cannot — 「이 규칙은 되돌릴 수 없다」.
