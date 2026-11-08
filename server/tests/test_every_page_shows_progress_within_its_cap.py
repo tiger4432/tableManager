@@ -82,6 +82,29 @@ def test_the_keyset_scan_starts_at_one_row_and_keeps_every_page_under_the_cap():
     _assert_within_the_cap(read, sizes, seconds, times, lines, every)
 
 
+def _sizes(monkeypatch, fixed, per_row, pages=40):
+    """The sizes `PageSize` gives (3 s a page, cap 1000) on a fake clock where a page takes `fixed` + `per_row` a row,
+    the first 2.9 s more (its one-off reload and progress on B's board 11-08) -> (sizes, the PageSize)."""
+    now = [0.0]
+    monkeypatch.setattr(keyset_scan.time, "monotonic", lambda: now[0])
+    size = keyset_scan.PageSize(keyset_scan.DEFAULT_CHUNK_SIZE, seconds=3)
+    sizes = []
+    for n in range(pages):
+        sizes.append(size.next())
+        now[0] += fixed + per_row * sizes[-1] + (2.9 if n == 0 else 0)
+    return sizes, size
+
+
+def test_a_fixed_cost_a_page_is_read_apart_and_the_pages_still_grow_to_the_cap(monkeypatch):
+    """B's board 11-08 on a fake clock (소유자 11-08): 2.5 s a page held pages at ~190 rows; read apart, they reach the
+    cap. c 60 ms a row stays at ~49 - c is not F's to take off; no fixed cost stays at the cap. The fit leaves the
+    first page's one-off out."""
+    sizes, size = _sizes(monkeypatch, 2.5, 0.002)
+    assert sizes[-1] == 1000, sizes
+    assert keyset_scan.fixed_and_per_row(size.timed) == (pytest.approx(2.5), pytest.approx(0.002))
+    assert 45 <= _sizes(monkeypatch, 0.0, 0.06)[0][-1] <= 51
+    assert _sizes(monkeypatch, 0.0, 0.002)[0][-1] == 1000
+
 
 @pytest.mark.pg
 def test_a_ledger_backfill_page_says_its_read_and_its_translation(pg_engine, monkeypatch, tmp_path, doubling_pages):

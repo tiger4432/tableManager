@@ -35,14 +35,34 @@ DEFAULT_CHUNK_SIZE = 1000
 FIRST_PAGE = 1
 
 
-def next_size(size, took, seconds, most, rates):
-    """The page after one of `size` rows that took `took` s: cut by its overshoot past `seconds`, else at most double,
-    to what the slowest of `rates` (rows a second, None unknown) fills in `seconds` - never above `most`. `PageSize`'s
-    rule, and a retroactive chain line's batch (`slots.next_row_budget`)."""
-    if took > seconds:
-        return max(1, int(size * seconds / took))
-    known = [rate for rate in rates if rate]
-    return min(most, size * 2, math.ceil(min(known) * seconds) if known else size * 2)
+def fixed_and_per_row(timed):
+    """(F, c): least squares page seconds = F + c x rows over `timed` [(rows, seconds), ...] in page order, the first
+    page left out - its one-off ~2.9 s (the first reload and progress) read c 60 ms as F 0.61 / c 48 (B's board 11-08).
+    None until two pages past it, while every size is one, or when the line has no fixed cost or no cost a row to read
+    (F < 0, c <= 0). `PageSize`'s and the run's progress line's one fit (소유자 11-08: the page size reads F apart)."""
+    points = timed[1:]
+    n = len(points)
+    if n < 2:
+        return None
+    mx, my = sum(x for x, _ in points) / n, sum(y for _, y in points) / n
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    if not sxx:
+        return None
+    c = sum((x - mx) * (y - my) for x, y in points) / sxx
+    fixed = my - c * mx
+    return (fixed, c) if fixed >= 0 and c > 0 else None
+
+
+def next_size(size, took, seconds, most, rates, fit=None):
+    """The page after one of `size` rows that took `took` s. With `fit` (F, c - `fixed_and_per_row`): F is taken off
+    the page, so a page is what c fills in `seconds` and takes F longer (소유자 11-08 - a 2.5 s fixed cost held pages at
+    190 rows, 24 rows a second). Without: what the slowest of `rates` (rows a second, None unknown) fills. A page whose
+    rows alone overshoot `seconds` cuts the next by that overshoot; else at most double; never above `most`.
+    `PageSize`'s rule, and a retroactive chain line's batch (`slots.next_row_budget`)."""
+    fixed, rate = (fit[0], 1 / fit[1]) if fit else (0.0, min((r for r in rates if r), default=None))
+    if took - fixed > seconds:
+        return max(1, int(size * seconds / (took - fixed)))
+    return min(most, size * 2, math.ceil(rate * seconds) if rate else size * 2)
 
 
 class PageSize:
@@ -51,7 +71,8 @@ class PageSize:
     (`pacing.page_seconds`) doubles the next, one under the page time grows the next to what the slower of its own and
     the page before's rate fills in that time (at most double - a fixed cost between half and the whole page time held
     a one-row page there; the slower rate - 총괄 2ea5ee2a7, 응용: a page sized by a fast page before it took 5.2 s), one
-    that took longer cuts the next by its overshoot; never above `most`
+    that took longer cuts the next by its overshoot; once a fixed cost a page is read apart (`fixed_and_per_row`) the
+    rates are c alone and the overshoot is past F (`next_size`); never above `most`
     (a hand-given chunk_size is the ceiling). A page's time runs from one `next()` to the next - the read and whatever
     its caller did with it - less the pace's rests (`rest`). A live proposal's pages (`pages`) stay fixed: there one
     write is one event (총괄 a02ad0f2b NO-GO ①)."""
@@ -63,13 +84,16 @@ class PageSize:
         self.seconds = pacing.page_seconds() if seconds is None else seconds
         self.size = min(FIRST_PAGE, self.most)
         self._since = self._rate = None
+        self.timed = []                         # (rows, seconds) of every page so far - `fixed_and_per_row`'s input
 
     def next(self) -> int:
         now = time.monotonic()
         if self._since is not None:
             took = now - self._since
             rate = self.size / took if took > 0 else None
-            self.size = next_size(self.size, took, self.seconds, self.most, (rate, self._rate))
+            self.timed.append((self.size, took))
+            self.size = next_size(self.size, took, self.seconds, self.most, (rate, self._rate),
+                                  fixed_and_per_row(self.timed))
             self._rate = rate
         self._since = now
         return self.size
