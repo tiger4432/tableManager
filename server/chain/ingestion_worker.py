@@ -2094,6 +2094,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             cell_layer.delete_shells(db, target_table, gone)
                         except Exception as shell_err:                  # noqa: BLE001 - the settle's rows: said, failed
                             _settle_failed(db, chain_tx_id, target_table, shell_err)
+                            raise
                         deleted_row_ids = list(deleted_row_ids or []) + gone
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
@@ -3861,18 +3862,18 @@ def _settle_or_fail(db, tx_id, table, settles, items, covers, **how) -> tuple:
         return _settle(db, table, settles, items, covers, **how)
     except Exception as settle_err:                                    # noqa: BLE001
         _settle_failed(db, tx_id, table, settle_err)
+        raise
 
 
 def _settle_failed(db, tx_id, table, err):
-    """The one line a settle that failed says - its withdrawal, or the rows it emptied refusing to go - and the group
-    fails with it."""
+    """The one line a settle that failed says - its withdrawal, or the rows it emptied refusing to go; the caller's
+    except raises it on, and the group fails with it."""
     session_contract.undo_step(db)
     limit = _limit_that_stopped(err, time.time() - _group_claim().get("started", time.time()))
     logger.error(
         f"🔴 [ChainRetract] Table: '{table}' | TX: '{tx_id}' | settling what its rules own failed after the write - "
         f"the group fails (retried up to its rules' max_group_attempts, then FAILED): "
         + ("statement timeout · %g s - " % limit if limit else "") + f"[{type(err).__name__}] {err}")
-    raise err
 
 
 def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True, why="settled") -> tuple:
