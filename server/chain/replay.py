@@ -1140,7 +1140,7 @@ def unwritten_scope(rule_name, table_name, columns=None):
         raise ReplayRefused(f"chain rule '{rule_name}' writes '{rule.get('target_table')}', not '{table_name}'")
     written = chain_bindings.written_columns(rule)
     if written is None:
-        raise ReplayRefused(f"chain rule '{rule_name}' lists no target_columns - write the list first")
+        raise ReplayRefused(f"chain rule '{rule_name}' declares no columns it writes - write its target_columns first")
     outside = [c for c in sorted(chain_bindings.declared_columns(table_name) or ())
                if c not in written and (not columns or c in columns)]
     if not outside:
@@ -2016,9 +2016,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             size.rest(rest_seconds)
     # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
     if not stats["stopped"] and unit_ids and rule_run.stamps_its_origin(rule):
-        written = rule_run.columns_a_rule_writes(
-            rule, answers[0]["updates"] if answers else [],
-            more=len(answers) > 1 or bool(answers and answers[0]["next_page"]))
+        written = rule_run.columns_a_rule_writes(rule, answers[0]["updates"] if answers else [])
         if written:
             retraction_started = time.monotonic()
             if apply:

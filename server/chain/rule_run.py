@@ -320,7 +320,7 @@ def signed(result, declaration, rule=None, kept_out=None, handed=None, unmatched
 
 
 def say_kept_out(rule, kept_out):
-    """The one line a run (or a further page) says about the cells its rule's `target_columns` kept out."""
+    """The one line a run (or a further page) says about the cells its rule's written columns kept out."""
     if kept_out:
         logger.info("[%s] rule %s: %d cell(s) in %s not in its written columns, not written", RULE_LOG_TAG,
                     (rule or {}).get("name"), sum(kept_out.values()), sorted(kept_out))
@@ -395,17 +395,14 @@ def stamps_its_origin(rule):
     return dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule)
 
 
-def columns_a_rule_writes(rule, items=(), more=False):
+def columns_a_rule_writes(rule, items=()):
     """The columns this rule writes, or None - not known.
 
-    This run's rows when it proposed any. 🔴 [총괄 10-08] A run that proposed none still owns what it
-    wrote before - a join whose value row moved to a key no left row carries proposes nothing, and
-    its old cells have to go - so then its mapper's declaration answers (`dynamic_mappers.
-    columns_declared_for` - a kind the product builds, or a file mapper that registered `columns`,
-    총괄 016a766af). ⚰️ What it last wrote in this process answered after that - a slot that had not run the rule
-    answered «not known» (총괄 09f58844f ⑥); the write seat hands every page's rows, and reads the layers the rule
-    left when neither answers (`ingestion_worker._columns_its_layers_hold`).
-    A rule that lists its `target_columns` answers with them first (총괄 a7b67be28 ㄱ).
+    What it declares (`chain_bindings.written_columns` - its `target_columns`, else its kind's columns: a join whose
+    value row moved to a key no left row carries proposes nothing and still owns its old cells, 총괄 10-08 · 016a766af;
+    소유자 11-08: one answer with the write's filter). A rule that declares none: this run's rows. ⚰️ What it last wrote
+    in this process answered after that (총괄 09f58844f ⑥); the write seat hands every page's rows, and reads the
+    layers the rule left when neither answers (`ingestion_worker._columns_its_layers_hold`).
     """
     import chain_bindings
 
@@ -413,21 +410,16 @@ def columns_a_rule_writes(rule, items=(), more=False):
     if listed is not None:
         return listed
     columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
-    if more:
-        # an answer with more pages (`next_page`) is its first page here - with the declaration, or a join whose first
-        # page skipped a blank take in every row leaves that column's old cells (총괄 a02ad0f2b ㄱ)
-        columns |= set(dynamic_mappers.columns_declared_for(rule) or ())
-    if columns:
-        return columns
-    declared = dynamic_mappers.columns_declared_for(rule)
-    return set(declared) if declared else None
+    return columns or None
 
 
 def columns_a_rule_reads(rule) -> dict:
     """What this rule's declaration reads, by its kind - `columns_a_rule_writes`' pair, asked by the system catalogue
     (`graph.rule_facts`; lead 11-08 - the kind is asked here, 판정 498 ④): {"columns": [(role, table, column,
-    from_table, from_column)] - joins_on · decides_by · writes_column from where, "functions": the code it names,
-    "formulas": its formula texts}."""
+    from_table, from_column)] - joins_on · decides_by · writes_column from where, a writes_column only for a column
+    `chain_bindings.written_columns` answers (QA 11-08: a take its target_columns leaves out was listed as written),
+    "functions": the code it names, "formulas": its formula texts}."""
+    import chain_bindings
     from chain import join_into
     from chain.enrichment import config as enrich
 
@@ -441,19 +433,13 @@ def columns_a_rule_reads(rule) -> dict:
             if isinstance(pair, dict):
                 columns += [("joins_on", target, pair.get("left")), ("joins_on", right, pair.get("right"))]
         for item in params.get("take") or ():
-            if isinstance(item, str):
-                columns.append(("writes_column", target, item, right, item))
-                continue
-            if not isinstance(item, dict):
-                continue
-            into, fn = item.get("into") or item.get("from"), item.get(join_into.TAKE_FN)
+            fn = item.get(join_into.TAKE_FN) if isinstance(item, dict) else None
             if join_into.formula_of(fn) is not None:
-                formulas.append("%s %s" % (into, fn))
+                formulas.append("%s %s" % (item.get("into") or item.get("from"), fn))
             elif isinstance(fn, str) and "." in fn:
                 functions.append(fn)
-            read = join_into._from(item)
-            for column in (read if isinstance(read, tuple) else (read,) if read else ()):
-                columns.append(("writes_column", target, into, right, column))
+        columns += [("writes_column", target, into, right, column)
+                    for read, into in join_into._takes(join_into.join_spec(rule)) for column in join_into._columns(read)]
     elif mapper == enrich.DEDUP_MAPPER:
         source, derived = params.get("source_table"), params.get("derived_table")
         keys = [next(iter(key)) if isinstance(key, dict) else key for key in params.get("decision_key") or ()]
@@ -466,6 +452,8 @@ def columns_a_rule_reads(rule) -> dict:
             columns += [("writes_column", derived, name, source, column) for column in read]
     elif mapper != enrich.AUTO_CONFIRM_MAPPER:
         functions.append(mapper or "%s.%s" % (rule.get("mapper_module"), rule.get("mapper_function")))
+    written = chain_bindings.written_columns(rule)
+    columns = [entry for entry in columns if entry[0] != "writes_column" or written is None or entry[2] in written]
     return {"columns": columns, "functions": functions, "formulas": formulas}
 
 

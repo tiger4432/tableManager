@@ -1493,7 +1493,7 @@ def column_loops(rules) -> list:
         # woken by its key read as a loop) - a finding column it lists in `target_columns` still counts. ⚠️ One that
         # changes a finding column it does not list is not seen here
         listed = {str(c) for c in rule.get(chain_bindings.TARGET_COLUMNS_KEY) or ()}
-        found = chain_bindings.finding_columns(rule) - listed if listed else set()
+        found = chain_bindings.finding_columns(rule) - listed
         for written in set(rule_run.columns_a_rule_writes(rule) or ()) - found:
             for column in wake:
                 edges[(table, column)].add((written, rule.get("name")))
@@ -2252,7 +2252,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         #    it, or what it declares - not what this process last saw it write
                         spec["columns"] = rule_run.columns_a_rule_writes(spec["rule"], [
                             item for item in written.get(target_table, ())
-                            if rule_run.item_cell(item, "updated_by") == spec["declaration"]], more=True) \
+                            if rule_run.item_cell(item, "updated_by") == spec["declaration"]]) \
                             or _columns_its_layers_hold(db, target_table, spec["declaration"], spec["origins"])
                         if not spec["columns"]:
                             logger.warning(

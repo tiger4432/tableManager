@@ -6,8 +6,12 @@
 as written, so opening the rule again shows the same text. The grammar is the shared calculator's
 (`server/expression.py`); the join judges it (`join_into.take_refusal`).
 """
+import logging
+
 from chain import cell_layer, join_into, rule_shape
 from chain import ingestion_worker as worker
+
+logger = logging.getLogger(__name__)
 
 #: The name a formula's rule is saved under: «formula <table>.<column>» - the product writes it (lead 10-28).
 RULE_NAME = "formula %s.%s"
@@ -99,7 +103,8 @@ WRITES_A_FORMULA = "%s writes %s.%s, which %s computes - a formula column has on
 def second_writers(declarations, rules) -> list:
     """[(rule, the formula's rule name, sentence)] - each rule in `rules` (as the loader stands them) that writes a column a formula among
     `declarations` (the file's) computes, the formula's own rule aside. What a rule writes is
-    `rule_run.columns_a_rule_writes`'; a rule whose columns are not known is not judged."""
+    `rule_run.columns_a_rule_writes`'; a rule whose columns are not known on a formula's table is not judged, and says
+    so in one line (lead 11-08 ①ㄴ)."""
     from chain import rule_run
 
     formulas = {}
@@ -112,7 +117,11 @@ def second_writers(declarations, rules) -> list:
         if not isinstance(rule, dict) or rule.get("name") in formulas.values():
             continue
         table = rule.get("target_table")
-        for column in sorted(rule_run.columns_a_rule_writes(rule) or ()):
+        written = rule_run.columns_a_rule_writes(rule)
+        if written is None and any(at == table for at, _column in formulas):
+            logger.warning("[ChainRules] %s: this rule's written columns are unknown - list target_columns to judge it",
+                           rule.get("name"))
+        for column in sorted(written or ()):
             if (table, column) in formulas:
                 named = formulas[(table, column)]
                 out.append((rule, named, WRITES_A_FORMULA % (rule.get("name"), table, column, named)))

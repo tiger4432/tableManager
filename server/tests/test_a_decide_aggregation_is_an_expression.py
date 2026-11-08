@@ -257,5 +257,5 @@ def test_the_system_catalogue_draws_each_aggregation_as_the_reader_made_it():
     dedup, confirm = [graph.rule_facts(chain_rule) for chain_rule in config.chain_rules_for(rule)]
     assert dedup["formula"] == "agg =Sum([n]) / Count([s])", dedup
     sourced = {(c["column"], c["from_column"]) for c in dedup["columns"] if c["role"] == "writes_column"}
-    assert {("agg", "n"), ("agg", "s"), ("wafer", "s")} <= sourced, dedup["columns"]
+    assert sourced == {("agg", "n"), ("agg", "s"), ("wafer", "s"), ("lot", "lot")}, sorted(sourced, key=str)
     assert (confirm["formula"], confirm["columns"]) == ("", []), "auto-confirm reads no aggregation, as before"

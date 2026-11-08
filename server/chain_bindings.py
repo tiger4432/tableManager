@@ -702,12 +702,16 @@ def removes_whole_maps(rule) -> bool:
 
 
 def written_columns(rule):
-    """The columns this rule writes: its `target_columns`, and every column a target row is found by - the business
-    key and what composes it, the map key, the job column a withdrawal aims by, `group_by`. None when it lists none:
-    it writes what it hands over, as before. 🔴 The one answer the write's filter (`rule_run.signed`),
-    `rule_run.columns_a_rule_writes` and R2 narrowed to one rule (`chain.replay.unwritten_scope`) read - one
-    spelling, so a column the filter keeps is never one the withdrawal takes (총괄 a7b67be28 ㄱ)."""
-    listed = (rule or {}).get(TARGET_COLUMNS_KEY)
+    """The columns this rule writes: its `target_columns`, else what its kind declares (a join's take, a decide's
+    fields, a mapper's registered columns - `dynamic_mappers.columns_declared_for`), and every column a target row is
+    found by - the business key and what composes it, the map key, the job column a withdrawal aims by, `group_by`.
+    None when it declares none: it writes what it hands over, as before. 🔴 The one answer the write's filter
+    (`rule_run.signed`), `rule_run.columns_a_rule_writes` and R2 narrowed to one rule (`chain.replay.unwritten_scope`)
+    read - one spelling, so a column the filter keeps is never one the withdrawal takes (총괄 a7b67be28 ㄱ; 소유자 11-08
+    «쓸칸 목록도»: the filter read target_columns alone while the withdrawal and the catalogue read the kind's)."""
+    from chain import dynamic_mappers
+
+    listed = (rule or {}).get(TARGET_COLUMNS_KEY) or dynamic_mappers.columns_declared_for(rule)
     if not listed:
         return None
     return {str(column) for column in listed if column} | finding_columns(rule)

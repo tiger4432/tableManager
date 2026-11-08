@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **체인 규칙은 «선언한 칸»만 쓴다 — target_columns 가 없으면 그 종류가 선언한 칸(조인 take · 보고서 결과 · ask 출력 · 맵퍼가 등록한 columns), 시스템 카탈로그도 같은 답** — git pull · 런처 재기동(체인 워커 · API; 소급 실행은 다음 실행부터)
+>
+> ```
+> 무엇     «이 규칙이 무엇을 쓰나»의 답이 하나 — 쓰기 필터 · R2 한 규칙 좁히기 · 체인 거두기 · 시스템 카탈로그 · 수식 칸 판정이 같은 답을 읽음
+>          조인은 take 의 into 칸 + 행을 찾는 칸(사업 키 · 그 구성 · 맵 키 · group_by)만 씀. 맵퍼가 그 밖의 칸을 돌려주면 안 씀
+>          decide · 손 맵퍼(columns 미등록)는 선언이 없어 지금처럼 돌려준 칸을 다 씀 — 좁히려면 그 규칙에 target_columns 를 적음
+> 볼 줄    [ChainRule] rule <이름>: <n> cell(s) in [<칸>…] not in its written columns, not written — 걸러진 칸이 있을 때 한 번
+>          [ChainRules] <이름>: this rule's written columns are unknown - list target_columns to judge it — 수식 칸이 있는 표에 쓰는 칸을 모르는 규칙
+> 바뀐 것  R2 «Withdraw a stale source (R2)» 를 한 규칙으로 좁힐 때 조인도 됨(전에는 target_columns 가 없다고 거절)
+>          시스템 카탈로그의 writes_column 줄이 target_columns 로 뺀 take 칸을 더는 안 보임
+> 끄기     없음 — 되돌리기는 이 커밋 revert. 한 규칙만 넓히려면 그 규칙의 target_columns 에 쓸 칸을 다 적음
+> ```
+>
+> ---
+>
 > ## [11-08] **이미 들어간 커밋을 --commit 으로 다시 재면 화면 검사기가 그 커밋의 화면을 돈다 — 더는 «ran 0» 빨강이 아님** — git pull (시험 도구만, 화면 · 서버 변화 없음)
 >
 > ```

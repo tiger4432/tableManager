@@ -440,7 +440,8 @@ def test_a_report_writes_its_texts_into_the_report_table_columns_results_names(d
     assert _texts_rows(db) == [("W1", True, "particle is low.", "keep the split."),
                                ("W2", True, "particle is low.", "keep the split.")]
     assert dynamic_mappers.columns_declared_for(rule) == ["fl", "sm", "cn"]
-    assert rule_run.columns_a_rule_writes(rule, []) == {"fl", "sm", "cn"}, "what a run that wrote nothing withdraws"
+    assert rule_run.columns_a_rule_writes(rule, []) == {"fl", "sm", "cn", "wafer"}, (
+        "what a run that wrote nothing withdraws - the columns it declares and the one its rows are found by (B 11-08)")
 
     def refused(prompt, usage=None):
         raise llm.LlmRefused("no gateway in this test")
