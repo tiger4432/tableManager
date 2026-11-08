@@ -430,7 +430,6 @@ def columns_a_rule_reads(rule) -> dict:
     "formulas": its formula texts}."""
     from chain import join_into
     from chain.enrichment import config as enrich
-    import expression
 
     params = rule.get("params") or {}
     target = rule.get("target_table")
@@ -461,12 +460,9 @@ def columns_a_rule_reads(rule) -> dict:
         for key, read in zip(keys, params.get("key_source") or keys):
             columns += [("decides_by", derived, key), ("writes_column", derived, key, source, read)]
         for name, spec in (params.get("aggregations") or {}).items():
-            text, _why = enrich.aggregation_record(spec)
-            if isinstance(text, str):
+            text, read = enrich.read_aggregation(spec)
+            if text is not None:
                 formulas.append("%s =%s" % (name, text))
-                read = expression.compile(text).get("names") or ()
-            else:
-                read = [spec.get("column")] if isinstance(spec, dict) and spec.get("column") else ()
             columns += [("writes_column", derived, name, source, column) for column in read]
     elif mapper != enrich.AUTO_CONFIRM_MAPPER:
         functions.append(mapper or "%s.%s" % (rule.get("mapper_module"), rule.get("mapper_function")))

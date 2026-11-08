@@ -327,6 +327,15 @@ EXPRESSED = {"count": "Count()", "min": "Min([%s])", "max": "Max([%s])", "unique
 EXPRESSED_MIN_MAX_TYPES = ("number", "datetime")
 
 
+def read_aggregation(spec):
+    """(its expression text or None, the source columns it reads) of an aggregation as the reader made it
+    (`_parse_aggregation`): {"expression", "reads"}, or an old record {"fn", "column", ...}. `aggregation_record` is
+    for what a file holds, not this."""
+    if not isinstance(spec, dict):
+        return None, []
+    return spec.get("expression"), list(spec.get("reads") or ([spec["column"]] if spec.get("column") else []))
+
+
 def aggregation_record(spec, column_types=None):
     """An aggregation as it runs - the one fold of what a file may hold (총괄 8b487d2e6 · lead 5667ea0fe), for the reader
     below, the chain form (`rule_shape.with_aggregation_records`) and the migration (`scripts.migrate_decide_aggregations`).
@@ -879,8 +888,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # 실패로 나타난다. 여기서 이름을 대는 편이 고칠 자리를 바로 가리킨다.
         unreadable = sorted(
             f"{name} -> {column}" for name, spec in aggregations.items()
-            for column in spec.get("reads") or ([spec["column"]] if spec.get("column") else [])
-            if column not in src_cols)
+            for column in read_aggregation(spec)[1] if column not in src_cols)
         if unreadable:
             return None, (
                 f"aggregation(s) read column(s) missing in source table "

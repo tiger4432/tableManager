@@ -242,3 +242,20 @@ def test_a_time_the_ledger_cannot_read_is_left_out_and_counted_by_its_cell(board
     assert re.search(r"Latest: x5667_src\.s holds '.+', which the ledger cannot read as its time", said[0]), said[0]
     assert all(answer["latest"] is None for answer in got.values()), got
     assert any(answer["n"] for answer in got.values()), "control: the other aggregation still reads every row"
+
+
+def test_the_system_catalogue_draws_each_aggregation_as_the_reader_made_it():
+    """Lead 11-08: a decide's catalogue row (`graph.rule_facts`) carries an expression aggregation's text and the
+    columns it reads, and an old record its column - read off the rule as loaded (`config.read_aggregation`)."""
+    from chain import graph
+    from chain.enrichment import config
+
+    raw = {"source_table": SRC, "derived_table": "x5667_drv", "decision_key": ["lot"], "target_fields": ["wafer"],
+           "aggregations": {"agg": "Sum([n]) / Count([s])", "wafer": {"fn": "min", "column": "s"}}}
+    rule, why = config._validate_rule("r", raw, TABLES)
+    assert why is None and rule["aggregations"]["wafer"].get("fn") == "min", "canary: min over text stays a record"
+    dedup, confirm = [graph.rule_facts(chain_rule) for chain_rule in config.chain_rules_for(rule)]
+    assert dedup["formula"] == "agg =Sum([n]) / Count([s])", dedup
+    sourced = {(c["column"], c["from_column"]) for c in dedup["columns"] if c["role"] == "writes_column"}
+    assert {("agg", "n"), ("agg", "s"), ("wafer", "s")} <= sourced, dedup["columns"]
+    assert (confirm["formula"], confirm["columns"]) == ("", []), "auto-confirm reads no aggregation, as before"
