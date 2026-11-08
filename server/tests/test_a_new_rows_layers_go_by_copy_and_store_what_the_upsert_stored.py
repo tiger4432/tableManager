@@ -5,6 +5,7 @@
   the orphans   a new row whose id already holds layers (box 11-07: 25 of 58 tables) is upserted over them, not refused
   the refusal   a unique conflict inside the COPY itself is an IntegrityError - the class the catching seats name
   the canary    the mixed batch sent some layers by COPY and some by upsert
+  the chunks    the COPY goes a chunk at a time, each counted in the request's database time (QA 11-08)
 """
 import datetime
 import json
@@ -152,3 +153,19 @@ def test_a_unique_conflict_inside_the_copy_is_an_integrity_error(world):
     db.rollback()
 
 
+def test_the_copy_goes_a_chunk_at_a_time_and_each_is_counted(world, monkeypatch):
+    from runtime import request_timing
+
+    db, engine = world["db"], world["engine"]
+    told = []
+    monkeypatch.setattr(request_timing, "add", lambda seconds, queries: told.append(queries))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    layers = [{"table_name": TABLE, "row_id": str(uuid6.uuid7()), "column_name": "a", "source_name": "f9.csv",
+               "value": n, "updated_by": "probe", "ingested_at": now, "origin_row_id": None} for n in range(5)]
+    assert crud._pg_multirow_upsert(db, models.CellSource.__table__, layers, list(crud.CELL_SOURCE_CONFLICT_COLS),
+                                    list(crud.CELL_SOURCE_UPDATE_COLS), 2, copy=True)
+    db.commit()
+    assert told == [1, 1, 1], told                                      # 2 + 2 + 1
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT count(*) FROM "%s".cell_sources WHERE table_name = :t' % PG_TEST_SCHEMA),
+                            {"t": TABLE}).scalar() == 5

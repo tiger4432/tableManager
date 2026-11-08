@@ -121,7 +121,7 @@ def _scenario(world):
         _item(_at("J2", 1, 1, a=4), "user"),                                  # changed, by a person
         _item(_at("J2", 1, 1, lot="L . 2"), "chain:r"),                       # folded as written
         _item(_at("J1", 1, 1, a=7), "user", row_id=ids["J1/1/2"]),            # Q re-keyed onto P: merge
-        _item(_at("J3", 1, 1, a=5), "f3.csv"),                                # f1's 5 again: f1 folds
+        _item(_at("J3", 1, 1, a=5), "f3.csv"),                                # f1's 5 again: f1 to the front
     ])
     _write(db, [_item(_at("J7", x, y, b="n%d%d" % (x, y)), "user") for x, y in ((1, 1), (2, 1))],
            replace_map=True, scope={"job": "J7"})
@@ -178,7 +178,8 @@ def test_the_funnel_answers_as_a_funnel_told_nothing_up_front(world, monkeypatch
     assert "user" in _layers(before, q, "b") and "chain:q" in _layers(before, q, "c"), "canary: Q's other columns"
     assert "chain:q (J1_1_2_<id6>)" in _layers(product, p, "c"), ("canary: the merge moved a layer of a column the batch did not "
                                                    "write", _layers(product, p, "c"))
-    assert "f1.csv" in _layers(before, f, "a") and "f1.csv" not in _layers(product, f, "a"), "canary: f1 folded"
+    assert "f1.csv" in _layers(before, f, "a") and "f3.csv" not in _layers(product, f, "a") \
+        and product["rows"][f]["a"] == 5, "canary: f1 to the front, no f3 layer (소유자 11-08)"
     assert "<J7/1/2>" in before["rows"] and "<J7/1/2>" not in product["rows"], "canary: the map's dropped cell"
     assert any('"manual_priority_source": "user"' in line for line in before["cell_overwrites"]), "canary: P pinned"
 

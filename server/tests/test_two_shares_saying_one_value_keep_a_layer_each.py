@@ -38,8 +38,8 @@ def _layer(name, minutes, value="v"):
     return SimpleNamespace(source_name=name, value=value, ingested_at=T0 + timedelta(minutes=minutes))
 
 
-@pytest.mark.parametrize("case,expected", [("same share", (True, [])), ("other share", (False, [])),
-                                           ("old name vs new", (True, [])), ("raws vs external", (True, []))])
+@pytest.mark.parametrize("case,expected", [("same share", (True, [], None)), ("other share", (False, [], None)),
+                                           ("old name vs new", (True, [], None)), ("raws vs external", (True, [], None))])
 def test_the_write_fold(case, expected):
     there, coming = CASES[case]
     assert crud.file_layer_fold([_layer(there, 0)], coming, "v", "string", "tb") == expected

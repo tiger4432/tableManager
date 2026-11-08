@@ -900,27 +900,35 @@ def values_differ(old, new, col_type: str) -> bool:
 
 def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name: str,
                     pin=None):
-    """(repeat, folded) for a file layer about to be written into a cell (총괄 225b2c658 ·
-    f224477c1). Among the layers of its priority class:
+    """(repeat, folded, moved) for a file layer about to be written into a cell (총괄 225b2c658 · f224477c1), by the
+    file layers of its share that hold the same value (`same_share`; each share keeps its own layer, owner «ㄷ») and
+    the newest layer of its whole priority class - the one the cell shows of it (QA 11-08):
 
-    repeat  the newest (as `compute_priority_value` ranks them) is a file layer holding the same
-            value - write nothing: that layer already wins the class with this value
-    folded  otherwise, the other file layers of the class holding the same value - the new layer
-            outranks them, so they can go without moving the winner. Never the pinned one.
+    repeat  its share holds the value and the class's newest is a file layer saying it too - write nothing
+    moved   its share holds the value but the class's newest does not say it - that layer goes to the front, no new
+            layer (소유자 11-08 «층을 새로하지 말고 순서를 바꿔»: share A's newer file repeating its old value takes
+            the cell back from share B's change); the share's other layers of the value are `folded`
+    neither its share does not hold the value - its own layer is written
+    The same layer resent unchanged is the seat's `source_unchanged`, not this: it is not a new statement.
+    Never the pinned one.
     """
     rank = get_source_priority(source_name, table_name)
-    same_class = [s for s in col_srcs
-                  if get_source_priority(s.source_name, table_name) == rank and same_share(s.source_name, source_name)]
-    if same_class:
-        _value, newest = compute_priority_value(
-            {s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
-             for s in same_class}, None, table_name)
-        top = next(s for s in same_class if s.source_name == newest)
-        if is_file_layer(newest) and not values_differ(top.value, value, col_type):
-            return True, []
-    return False, [s for s in same_class
-                   if s.source_name not in (source_name, pin) and is_file_layer(s.source_name)
-                   and not values_differ(s.value, value, col_type)]
+    same_class = [s for s in col_srcs if get_source_priority(s.source_name, table_name) == rank]
+    same = [s for s in same_class
+            if same_share(s.source_name, source_name) and s.source_name not in (source_name, pin)
+            and is_file_layer(s.source_name) and not values_differ(s.value, value, col_type)]
+    if not same:
+        return False, [], None
+
+    def newest(layers):
+        name = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+                                       for s in layers}, None, table_name)[1]
+        return next(s for s in layers if s.source_name == name)
+    top = newest(same_class)
+    if is_file_layer(top.source_name) and not values_differ(top.value, value, col_type):
+        return True, [], None
+    keep = newest(same)
+    return False, [s for s in same if s is not keep], keep
 
 
 def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: bool = False) -> dict:
@@ -2083,9 +2091,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         return None, None
 
     if manual_priority_source and manual_priority_source in sources:
-        val_data = sources[manual_priority_source]
-        val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
-        return none_if_blank(val), manual_priority_source
+        return layer_value(sources, manual_priority_source), manual_priority_source
     if formula is not None and formula[0] not in sources:
         sources = {**sources, formula[0]: {}}
     else:
@@ -2110,9 +2116,14 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     top_source = min(sources.keys(), key=_rank)
     if formula is not None and top_source == formula[0]:
         return none_if_blank(formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}])), top_source
-    val_data = sources[top_source]
-    val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
-    return none_if_blank(val), top_source
+    return layer_value(sources, top_source), top_source
+
+
+def layer_value(sources: dict, name):
+    """What layer `name` of `sources` says - its "value" (or the entry itself), a blank as absence. The value
+    `compute_priority_value` returns for its pin or winner, and the batch's one-layer memo's (QA 11-08: it copied it)."""
+    val_data = sources[name]
+    return none_if_blank(val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data)
 
 #: The declaration cell that scopes `?q=`. Absent means "the identity" - see
 #: `resolve_search_columns`, which is the only place that spelling lives.
@@ -2824,17 +2835,25 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
 
     conn = db.connection()
     if copy:
-        buf = io.StringIO()
-        for m in mappings:
-            buf.write("\t".join(_copy_field(p(m[k]) if p is not None else m[k]) for k, p in zip(keys, procs)))
-            buf.write("\n")
-        buf.seek(0)
+        import time
+
+        from runtime import request_timing
+
         statement = f"COPY {prep.format_table(table)} ({col_list}) FROM STDIN"
         dbapi = dialect.loaded_dbapi
-        try:
-            conn.connection.dbapi_connection.cursor().copy_expert(statement, buf)
-        except dbapi.Error as orig:
-            raise DBAPIError.instance(statement, None, orig, dbapi.Error, dialect=dialect) from orig
+        for chunk in _chunks(mappings, chunk_size):            # the chunking stays (QA 11-08: one COPY took all)
+            buf = io.StringIO()
+            for m in chunk:
+                buf.write("\t".join(_copy_field(p(m[k]) if p is not None else m[k]) for k, p in zip(keys, procs)))
+                buf.write("\n")
+            buf.seek(0)
+            started = time.perf_counter()
+            try:
+                with conn.connection.dbapi_connection.cursor() as cursor:
+                    cursor.copy_expert(statement, buf)
+            except dbapi.Error as orig:
+                raise DBAPIError.instance(statement, None, orig, dbapi.Error, dialect=dialect) from orig
+            request_timing.add(time.perf_counter() - started, 1)
         return True
     one_row = "(" + ",".join(["%s"] * len(keys)) + ")"
     row_sql_cache: dict[int, str] = {}
@@ -2879,8 +2898,9 @@ CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id'
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE,
                              new_rows=frozenset()):
-    """`new_rows` - (table, row_id) of rows THIS transaction inserted (flushed before this call): their layers go
-    by COPY, unless the id already holds layers; every other layer is upserted as before."""
+    """`new_rows` - (table, row_id) of rows THIS transaction inserted (flushed before this call) whose ids hold no
+    layers - the caller's prefetch read every id it was handed (`LayersRead`): their layers go by COPY; every other
+    layer is upserted as before."""
     if not mappings:
         return
 
@@ -2918,13 +2938,6 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # many go per call.
     if new_rows and _is_executemany_safe(deduped_mappings):
         fresh_rows = {(m['table_name'], m['row_id']) for m in deduped_mappings} & set(new_rows)
-        # 🔴 A NEW ROW'S ID CAN ALREADY HOLD LAYERS - orphans of a row removed before its layers were (box 11-07: 25 of
-        #    58 tables, bonding_map 8.8M). Those rows stay on the upsert, which overwrites them as it always did; in the
-        #    COPY they would refuse the whole batch.
-        for table in {t for t, _ in fresh_rows}:
-            for chunk in _chunks(sorted(r for t, r in fresh_rows if t == table), chunk_size):
-                fresh_rows -= {(table, r) for (r,) in db.query(models.CellSource.row_id).filter(
-                    models.CellSource.table_name == table, models.CellSource.row_id.in_(chunk)).distinct()}
         fresh = [m for m in deduped_mappings if (m['table_name'], m['row_id']) in fresh_rows]
         if fresh and _pg_multirow_upsert(
                 db, models.CellSource.__table__, fresh,
@@ -3902,7 +3915,9 @@ def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name:
     # stored `user` layer out of the priority computation and delete the overwrite
     # marker with it. Unknown cells must still be queried; that is what `is not None and
     # knows(...)` buys, and why every caller outside the batch path passes None.
-    absence_is_known = is_new or (layers_read is not None and layers_read.knows(row_id, col_name))
+    # a row made on an id the batch read (an orphan's layers, QA 11-08) is answered by that read, as any read row
+    absence_is_known = ((is_new and (layers_read is None or row_id not in layers_read.rows))
+                        or (layers_read is not None and layers_read.knows(row_id, col_name)))
 
     # CellSource 로드
     #
@@ -4574,10 +4589,10 @@ def apply_row_update_internal(
         # layers of the class that say the same value go. 🔴 [소유자 11-08] And a NEW chain layer that says what the
         # cell shows writes nothing (production: a mapper handing back a file's cells made each a chain layer of the
         # same value); one the chain holds already is written as before, so it never stays behind with an old value.
-        repeat, folded = False, ()
+        repeat, folded, moved = False, (), None
         if (not source_unchanged and is_file_layer(update_item.source_name)
                 and (cell_sources_to_upsert is None or cell_sources_to_delete is not None)):
-            repeat, folded = file_layer_fold(
+            repeat, folded, moved = file_layer_fold(
                 col_srcs, update_item.source_name, clean_val, col_type, table_name,
                 ow.manual_priority_source if ow else None)
         elif (not source_unchanged and not is_new
@@ -4590,6 +4605,7 @@ def apply_row_update_internal(
                                             for s in col_srcs}, ow.manual_priority_source if ow else None, table_name)[0]
             repeat = not values_differ(shown, clean_val, col_type)
         source_unchanged = source_unchanged or repeat or bool(formula)    # a formula column holds no layer
+        src_obj = src_obj or moved                     # its share's layer of this value is written, to the front
 
         if not src_obj and not repeat and not formula:
             if cell_sources_to_upsert is None:
@@ -4633,12 +4649,12 @@ def apply_row_update_internal(
                     cell_sources_to_delete.add(gone_key)
 
             if cell_sources_to_upsert is not None:
-                upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
+                upsert_key = (table_name, row.row_id, col_name, src_obj.source_name)
                 cell_sources_to_upsert[upsert_key] = {
                     "table_name": table_name,
                     "row_id": row.row_id,
                     "column_name": col_name,
-                    "source_name": update_item.source_name,
+                    "source_name": src_obj.source_name,
                     "value": clean_val,
                     "updated_by": update_item.updated_by,
                     # Unconditionally, never omitted when absent: `_is_executemany_safe`
@@ -4685,7 +4701,7 @@ def apply_row_update_internal(
         only = next(iter(sources_dict)) if plan is not None and manual_pin is None and len(sources_dict) == 1 else None
         asked = (col_name, only, sources_dict[only]["timestamp"] is None) if only else None
         if asked and plan.setdefault("winners", {}).get(asked) == only:
-            new_val, top_src = none_if_blank(sources_dict[only]["value"]), only
+            new_val, top_src = layer_value(sources_dict, only), only
         else:
             new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
                                                       ranks=plan["ranks"] if plan else None,
@@ -6153,11 +6169,16 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 row_ids=frozenset(target_ids) - _found_ids,
                 business_keys=frozenset(target_bks) - _found_bks,
             )
+            # 🔴 AN ID HANDED IN AND NOT FOUND AS A ROW CAN STILL HOLD LAYERS - orphans of a row removed before its
+            #    layers were (box 11-07: 25 of 58 tables). Its layers are read with the rest, so a row made on it computes
+            #    from them (QA 11-08: it showed its new value over its own stored person's layer and pin).
+            layers_read.rows |= probed_identity.row_ids
+            layer_ids = sorted(layers_read.rows)
 
             sources_cache = {}
             overwrites_cache = {}
 
-            if all_row_ids and written_columns:
+            if layer_ids and written_columns:
                 all_sources = db.query(
                     models.CellSource.table_name,
                     models.CellSource.row_id,
@@ -6169,7 +6190,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     models.CellSource.origin_row_id
                 ).filter(
                     models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(all_row_ids),
+                    models.CellSource.row_id.in_(layer_ids),
                     models.CellSource.column_name.in_(written_columns)
                 ).order_by(models.CellSource.row_id, models.CellSource.column_name,
                            models.CellSource.source_name.asc()).with_for_update().all()
@@ -6189,7 +6210,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     models.CellOverwrite.manual_priority_source
                 ).filter(
                     models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(all_row_ids),
+                    models.CellOverwrite.row_id.in_(layer_ids),
                     models.CellOverwrite.column_name.in_(written_columns)
                 ).all()
                 for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
@@ -6268,8 +6289,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     # flushed inside this loop. Its later items (a copy rule's value, then
                     # its hold) read the caches like a prefetched row's instead of one
                     # SELECT per cell: ~2,000 of them for a 1,000-row chain group, measured.
-                    # Every column of it - nothing is stored in any.
-                    if is_new:
+                    # Every column of it - nothing is stored in any - unless its id was read: an orphan's layers.
+                    if is_new and row.row_id not in layers_read.rows:
                         layers_read.whole.add(row.row_id)
 
                     if changed_cols:
@@ -6390,7 +6411,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             count(len(logs_to_cache or ()))
         with alignment_batch_counts.write_step("cell sources") as count:
             sources = list(cell_sources_to_upsert.values())
-            bulk_upsert_cell_sources(db, sources, new_rows={(table_name, row.row_id) for row in new_rows})
+            bulk_upsert_cell_sources(db, sources, new_rows={(table_name, r) for r in layers_read.whole})
             count(len(sources))
         with alignment_batch_counts.write_step("cell overwrites") as count:
             overwrites = list(cell_overwrites_to_upsert.values())

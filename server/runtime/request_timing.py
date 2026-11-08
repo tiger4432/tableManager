@@ -46,10 +46,9 @@ def _query_started(conn, cursor, statement, parameters, context, executemany):
 
 @event.listens_for(Engine, "after_cursor_execute")
 def _query_ended(conn, cursor, statement, parameters, context, executemany):
-    counter, started = _counter.get(), conn.info.pop(_STARTED, None)
-    if counter is not None and started is not None:
-        counter[0] += time.perf_counter() - started
-        counter[1] += 1
+    started = conn.info.pop(_STARTED, None)
+    if started is not None:
+        add(time.perf_counter() - started, 1)
 
 
 def slow_request_ms():
@@ -136,7 +135,8 @@ def spent():
 
 
 def add(seconds, queries):
-    """Database time a pool process spent for this request (`runtime.process_pool`)."""
+    """Database time spent for this request outside its cursor events - a pool process's (`runtime.process_pool`), a
+    COPY's (`crud._pg_multirow_upsert`, QA 11-08: the slow-request line left it out) - and the events' own."""
     counter = _counter.get()
     if counter is not None:
         counter[0] += seconds

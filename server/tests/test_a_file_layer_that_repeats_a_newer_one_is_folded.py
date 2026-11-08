@@ -1,7 +1,8 @@
 """Same-valued file layers fold (총괄 225b2c658 · f224477c1 · a7d2e90ec).
 
-Write path: a file layer equal to the newest layer of its priority class writes nothing; one that
-differs is written and the older file layers of the class holding its value go. Stacked layers:
+Write path: a file layer equal to the newest layer of its priority class writes nothing; one whose value an older
+file layer of its share holds moves that layer to the front, no new layer (소유자 11-08 «층을 새로하지 말고 순서를
+바꿔»); one that differs from all is written. Stacked layers:
 `replay.fold_file_layers` keeps, per class and value, the newest (and a pinned one). In every case
 the shown value is the one `compute_priority_value` picked before - asserted cell by cell.
 """
@@ -62,12 +63,12 @@ def test_an_hourly_refetch_of_an_unchanged_row_writes_no_layer(env):
     assert _layers(env, "K1") == {"day_0100.csv": "A"}
 
 
-def test_a_differing_file_is_written_and_older_file_layers_of_its_value_go(env):
+def test_a_file_saying_an_older_layers_value_moves_that_layer_to_the_front(env):
     _write(env, "f03.csv", [{"k": "K1", "v": "A"}])
     _write(env, "f07.csv", [{"k": "K1", "v": "B"}])
     counts = _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
-    assert counts["folded layers"] == [1, "rows"]
-    assert _layers(env, "K1") == {"f07.csv": "B", "f10.csv": "A"}
+    assert counts["folded layers"] == [0, "rows"] and counts["cell sources"] == [1, "rows"], counts
+    assert _layers(env, "K1") == {"f03.csv": "A", "f07.csv": "B"}
     assert _row(env, "K1").v == "A"
 
 
@@ -86,8 +87,8 @@ def test_person_chain_and_auto_confirm_layers_are_never_folded(env):
     _stack(env, "K1", "v", [(crud.CHAIN_SOURCE, "A"), ("f01.csv", "A"), (AUTO, "A")])
     _write(env, "f02.csv", [{"k": "K1", "v": "A"}])
     assert _layers(env, "K1") == {"user": "A", crud.CHAIN_SOURCE: "A", AUTO: "A",
-                                  "f02.csv": "A"}, \
-        "the newest of the class was auto-confirm, so f02 is written and only f01 goes"
+                                  "f01.csv": "A"}, \
+        "the newest of the class was auto-confirm, so f01 goes to the front - no f02 layer"
 
 
 def test_a_pinned_file_layer_is_kept(env):
