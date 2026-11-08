@@ -249,7 +249,7 @@ out = build_rows()
 
 * **동시 1건입니다.** 같은 룰의 재적용 둘이 같은 셀을 두 세션에서 쓰는 것, 그리고 같은 테이블에서 재적용과 회수가 경합하는 것은 **사후에 아무도 추론할 수 없는 순서**입니다. 실행 중 두 번째 요청은 **조용히 큐잉하지 않고 거절 + 로그**하며, 아웃박스 행을 **미처리로 남겨** 다음 틱이 집습니다.
 * **실패해도 데몬은 죽지 않습니다** — 실행이 다른 프로세스라 그렇습니다. 자식이 못 뜨면 그 행을 `failed` 로 끝냅니다. 자식의 종료 코드는 0 done · 2 cancelled/refused · 1 failed.
-* **결과는 `retroactive.log` 에 있습니다**(자식이 print 한 것은 `retroactive_stdout.log`). 이 데몬의 로그에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남습니다. 트리거 응답에는 `run_id`만 있고 결과가 없습니다.
+* **결과는 `retroactive.log` 에 있습니다**(자식이 print 한 것은 실행마다 `retroactive_stdout_<run_id>.log` — 실행이 끝나면 지워집니다). 이 데몬의 로그에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남습니다. 트리거 응답에는 `run_id`만 있고 결과가 없습니다.
 * ⚠️ **이 이벤트는 체인 워커가 건드리면 안 됩니다.** 제어 이벤트가 체인의 그룹핑 로직에 닿으면 **데이터 트랜잭션으로 읽힙니다.** 그래서 타입 상수는 `server/event_constants.py`의 `CONTROL_EVENT_TYPES`에 있고(`SCHEDULER_RUN_NOW`와 나란히), 체인 워커는 **이름을 하드코딩하지 않고 그 집합을** 봅니다.
 
 ---

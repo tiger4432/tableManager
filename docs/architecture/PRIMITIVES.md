@@ -1256,7 +1256,7 @@
 
 ### ⭐⭐ **오래 도는 일은 «등록부 행 하나»를 갖고, 멈춤은 «협조적»이다 — 그리고 「멈출 수 있나」는 연산마다 «선언»된다** (2026-08-31 등록 · `retroactive_runs`)
 - **무엇**: 큐에 넣고 즉시 반환하는 실행은 「도는 중인가 · 끝났나 · 얼마나 갔나」를 **로그로만** 답한다. 처방: 실행마다 **행 하나**(`run_id`·`op`·`params`·`state`·`processed_rows`/`total_rows`·시각 넷)를 쓰고, 취소는 프로세스를 죽이는 대신 그 행에 **값을 세운다.** 도는 쪽은 **배치 사이에서** 그 값을 묻고 스스로 멈춘다.
-- **어디**: `server/database/models.py::RetroactiveRun`(표 `retroactive_runs` — 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다**) · 등록부와 훅 `server/admin/retroactive.py`(`OPERATIONS` · `RunControl.stop_requested()` · `_checkpoint(control)` 이 만드는 훅이 `chain_replay`·`withdraw`·`enrichment_backfill`·`ledger.backfill` 에 `checkpoint=` 로 들어간다) · 라우트 `GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel` · 집행은 스케줄러의 전용 스레드.
+- **어디**: `server/database/models.py::RetroactiveRun`(표 `retroactive_runs` — 🔴 **마이그레이션 파일이 없다. `create_all` 이 만든다**; 🆕 11-09 `waiting` 칸은 `ensure_run_columns` 가 더함) · 등록부와 훅 `server/admin/retroactive.py`(`OPERATIONS` · `RunControl.stop_requested()` · `_checkpoint(control)` 이 만드는 훅이 `chain_replay`·`withdraw`·`enrichment_backfill`·`ledger.backfill` 에 `checkpoint=` 로 들어간다) · 라우트 `GET /admin/retroactive/runs` · `POST /admin/retroactive/runs/{run_id}/cancel` · 집행은 스케줄러의 전용 스레드.
 - **언제 재사용**: 즉시 반환하는 장기 실행을 **새로 만들 때마다**. 그리고 「진행 표시줄을 붙여 달라」·「이거 지금 도는 중인가요」가 나올 때 — 답은 화면이 아니라 **행**이다.
 - **함정**:
   - 🔴 **취소 플래그는 «자기 세션»에서 읽어야 한다.** 도는 쪽의 트랜잭션 스냅숏 안에서 읽으면 시작 시점의 값에 갇혀 **영원히 「멈추라고 안 했다」**가 된다. 버튼은 눌리고 아무 일도 안 일어난다.
