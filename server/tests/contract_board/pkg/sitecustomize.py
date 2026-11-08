@@ -60,7 +60,7 @@ def _after(fn, when, why):
 # seam -> (module, attribute, wrap, condition)
 SEAMS = {
     # the deleted source row: outbox marked SUCCESS and committed, its layers not yet taken back (census 3, «no»)
-    "deleted_after_mark": ("chain.ingestion_worker", "_retract_deleted_rows", _before,
+    "deleted_after_mark": ("chain.ingestion_worker", "_withdraw_unanswered_deletions", _before,
                            lambda db, deleted, *a, **k: any(deleted.values())),   # {table: ids} - a key with no ids is no deletion
     # layers withdrawn and committed, the EDIT for the rows that lost one not yet staged (census 3, «no»)
     "withdrawn_before_tell": ("database.database", "stage_collapsed_event", _before,
@@ -77,7 +77,7 @@ SEAMS = {
     "before_mark": ("chain.ingestion_worker", "mark_processed", _before,
                     lambda event, status, *a, **k: status == "SUCCESS"),
     # «처리됨 뒤» the SUCCESS mark committed, the deleted rows' withdrawal not yet run - with or without deleted rows
-    "after_mark": ("chain.ingestion_worker", "_retract_deleted_rows", _before, lambda *a, **k: True),
+    "after_mark": ("chain.ingestion_worker", "_withdraw_unanswered_deletions", _before, lambda *a, **k: True),
 }
 
 
