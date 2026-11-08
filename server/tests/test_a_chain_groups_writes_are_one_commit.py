@@ -450,3 +450,19 @@ def test_only_the_plain_layer_moves_and_another_source_rows_layer_of_the_same_ru
     worker._settle(db, DST, [], [now], [])
 
     assert sorted(layer[2] for layer in _layers(db)) == sorted([crud.owned_layer_name(signed, "S1"), now.source_name])
+
+
+def test_a_deletion_no_rule_answered_takes_back_what_its_row_fed_through_the_settle(db):
+    """Owner 11-08 (one seat): what a deleted row no rule answered fed (a failed group, a depth refusal, a set-aside)
+    is settled as an answer of no rule - every writer's layer its origin stamps goes."""
+    from chain import ingestion_worker as worker
+
+    _push(db, [{"k": "K1", "v": "a"}])
+    ok, error, _ = _group(db, [_rule("oc_copy")])
+    assert ok, error
+    src_row = db.query(models.DYNAMIC_TABLES[SRC]).one().row_id
+    assert [layer[3] for layer in _layers(db)] == [src_row], "non-vacuous: the copy's layer names its source row"
+
+    worker._withdraw_unanswered_deletions(db, {SRC: [src_row]}, "unanswered")
+
+    assert _layers(db) == []

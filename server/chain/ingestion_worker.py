@@ -3692,13 +3692,16 @@ def _withdraw_what_those_rows_fed(db, table, row_ids, why):
     ⚠️ CONTAINED, like its neighbour: a failure here must not cost the group that already
     committed, nor propagate into the chain loop.
     """
+    from chain import cell_layer
     from database.context import channel
 
     try:
         # The follow-up lap is the chain's own write - said, so it does not lean on the
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
-            _withdraw_and_tell(db, table, row_ids, why)
+            # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
+            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
+                _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
         #   right: a rule that cannot be reverted is worth naming whichever path runs it.
@@ -3806,7 +3809,7 @@ def _settle_failed(db, tx_id, table, err):
     raise err
 
 
-def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True) -> tuple:
+def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True, why="settled") -> tuple:
     """`_unsettled`'s layers withdrawn, one rule at a time, by the one body (`_withdraw_and_tell`); a row whose key no
     source row holds any more that another writer keeps is named (뒤집음 · 소유자 10-28). Asked twice by the write
     seat: the rows each batch answered, before its shells and the grid's message (`ask_shells` False - the seat asks
@@ -3817,8 +3820,8 @@ def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True) -
 
     taken, lost, deleted = 0, set(), []
     for rule, gone in sorted(_unsettled(db, table, settles, items, covers, rows_too).items()):
-        stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in gone}), "settled", declarations=(rule,),
-                                   layers=gone, ask_shells=ask_shells)
+        stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in gone}), why,
+                                   declarations=(rule,) if rule else (), layers=gone, ask_shells=ask_shells)
         taken += stats.get("cells_withdrawn", 0)
         lost.update(row for _columns, rows in stats["lost_a_layer"].values() for row in rows)
     left = {}
@@ -3886,9 +3889,9 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
 
     keys = cell_layer.key_columns(table)
 
-    origins = defaultdict(set)
+    origins = defaultdict(set)          # "" - rows a deletion no rule answered handed: what they fed, any writer's
     for spec in settles or ():
-        origins[spec["declaration"]].update(str(row) for row in spec["origins"] or () if row)
+        origins[spec["declaration"] or ""].update(str(row) for row in spec["origins"] or () if row)
     rows, answered, cells = defaultdict(set), set(), defaultdict(set)
     for item, row_id in _row_of_each(db, table, items):
         name = rule_run.item_cell(item, "source_name")
@@ -3904,6 +3907,11 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
         for rule in cover.get("rules") or [str(rule_run.item_cell(item, "updated_by") or "")]:
             rows[str(rule)].update(covered)
     out = {}
+    if origins.get(""):
+        gone = [layer for layer in cell_layer.cells_stamped_by(db, sorted(origins.pop(""))) if layer[0] == table
+                and (layer[1], layer[2], layer[3]) not in answered and layer[2] not in keys]
+        if gone:
+            out[""] = gone
     for rule in sorted(set(rows) | set(origins) | set(cells)):
         stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, sorted(origins[rule])) if named == table}
         written = {row for row, _column in cells[rule]}
