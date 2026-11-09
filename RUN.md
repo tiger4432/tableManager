@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
+>
+> ```
+> 볼 것   어드민 Help 에서 «Collector 설치» 를 물으면 docs/guide/browser_collector.md 의 절이 답에 실림 · File · Tables 탭의 Guide 목록에 그 문서
+> 답의 뜻  안 나오면 API 가 재기동 전 (server/admin/help_guides.json 은 기동 때 한 번 읽음)
+> 끄기   server/admin/help_guides.json 에서 그 한 줄을 빼고 API 재기동
+> ```
+>
+> ---
+>
 > ## [11-09] **그리드 쪽 읽기가 다시 빨라짐 — 칸의 «쓴 이»는 규칙이 묻는 쓴 이의 층을 가진 칸만 읽음** — git pull · 런처 재기동(API)
 >
 > ```

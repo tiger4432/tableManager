@@ -7,6 +7,7 @@
     "docs/guide/config/enrichment_rules.md": ["chain"],
     "docs/guide/CONFIG_ROLLOUT_GUIDE.md": ["overview"],
     "docs/guide/ai_ask_tables.md": ["chain", "tables"],
-    "docs/guide/ai_report_tables.md": ["chain"]
+    "docs/guide/ai_report_tables.md": ["chain"],
+    "docs/guide/browser_collector.md": ["file", "tables"]
   }
 }

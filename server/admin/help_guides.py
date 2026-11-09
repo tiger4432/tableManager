@@ -3,7 +3,7 @@
 sections, the three nearest a guide-worded search picked, the model writing one declaration from them, and that
 declaration put through the save's own judgement without saving.
 
-    guides      the seven below (ask and report declarations' since lead 10-29) - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows,
+    guides      the ones help_guides.json lists (ask and report declarations' since lead 10-29, the browser collector's since 11-09) - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows,
                 blank lines or list items, a table piece with its table's header row; the Status line out, and of the rest only the SENTENCES
                 with a retired mark (⚰ 🪦) - a current rule on the same line stays
     pick        the embedding model llm_config.json names (owner 10-29: bge-m3) - cosine of the search and each
