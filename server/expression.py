@@ -39,6 +39,7 @@ class SeveralValues(Exception):
 #: Every refusal either calculator says, by key - `{name}` fills in. The screen's own (a sheet, markings, node
 #: constructors) are here too: one author for both (owner 11-09 «ㄴ»).
 SENTENCES = {
+    "too_long": "{name} would write a text longer than {most} characters",
     "text_open": "A text opened at {at} does not close",
     "name_open": "A name opened at {at} does not close",
     "stray": "«{ch}» at {at} is not part of an expression",
@@ -632,9 +633,17 @@ def _find(needle, within, nth=1):
     return at + 1
 
 
+#: The longest text Repeat writes - the guard of the process that answers it (lead 11-09 ㄴ); the catalogue carries it.
+REPEAT_MOST = 100000
+
+
 def _repeat(s, n):
     k = _whole(n)
-    return None if k is None or k < 0 else _text(s) * k
+    if k is None or k < 0:
+        return None
+    if len(_text(s)) * k > REPEAT_MOST:
+        raise ExpressionError(say("too_long", name="Repeat", most=REPEAT_MOST))
+    return _text(s) * k
 
 
 def _split(s, sep, n):
@@ -788,6 +797,35 @@ def _translated(name, pattern, dotall):
     return "".join(out), groups
 
 
+#: Under option i Python's re matches İ (U+0130) and ı (U+0131) with i; the screen's engine (simple case folding) and
+#: .NET do not (lead 11-09 ㄱ). So Python compiles the translated text with each class and each of those four letters
+#: pinned: i and I by ASCII case alone, İ and ı as themselves.
+_PINNED = {"i": "(?a:i)", "I": "(?a:I)", "\\u0130": "(?-i:\\u0130)", "\\u0131": "(?-i:\\u0131)"}
+
+
+def _no_case(text):
+    """The translated text as Python compiles it under option i - the screen's answer for İ and ı."""
+    out, i = [], 0
+    while i < len(text):
+        if text.startswith("\\u", i):
+            out.append(_PINNED.get(text[i:i + 6], text[i:i + 6]))
+            i += 6
+        elif text[i] == "\\":
+            out.append(text[i:i + 2])
+            i += 2
+        elif text[i] == "[":                    # a class holds no ] of its own - _lit writes it \u005D
+            j = i + 1
+            while text[j] != "]":
+                j += 2 if text[j] == "\\" else 1
+            c = text[i:j + 1]
+            out.append("(?:(?![iI\\u0130\\u0131])%s|(?=[iI])(?a:%s)|(?=[\\u0130\\u0131])(?-i:%s))" % (c, c, c))
+            i = j + 1
+        else:
+            out.append(_PINNED.get(text[i], text[i]))
+            i += 1
+    return "".join(out)
+
+
 @lru_cache(maxsize=256)
 def _rx(name, pattern, options):
     """A pattern with its options (g all · i no case · s «.» takes a newline too) -> (compiled, group count)."""
@@ -795,7 +833,7 @@ def _rx(name, pattern, options):
         raise ExpressionError(say("options", name=name, got=options))
     text, groups = _translated(name, pattern, "s" in options)
     try:
-        return re.compile(text, re.IGNORECASE if "i" in options else 0), groups
+        return re.compile(_no_case(text), re.IGNORECASE) if "i" in options else re.compile(text), groups
     except re.error:
         raise ExpressionError(say("pattern_bad", name=name, pattern=pattern)) from None
 
@@ -967,7 +1005,7 @@ FUNCTIONS = {
     "Len": _text_row(1, lambda s: len(_text(s)), ["text"]),
     "Lower": _text_row(1, lambda s: _text(s).lower(), ["text"]),
     "Mid": _text_row(3, _mid, ["text", "start", "count"]),
-    "Repeat": _text_row(2, _repeat, ["text", "count"]),
+    "Repeat": {**_text_row(2, _repeat, ["text", "count"]), "most": REPEAT_MOST},
     "Right": _text_row(2, _right, ["text", "count"]),
     "RXExtract": _text_row(3, _rx_extract, ["text", "pattern", "nth"], check=_rx_given("RXExtract")),
     "RXReplace": _text_row(4, _rx_replace, ["text", "pattern", "replacement", "options"],
@@ -1583,7 +1621,7 @@ def run(compiled, rows, types=None, zone=None):
 
 # ── the catalogue: what the screen reads of this table (owner 11-09 «ㄴ») ──────────────────────────────────────────────
 #: A function's grammar - what the catalogue carries. The rest (fn · zoned · check · within) is how a calculator answers.
-GRAMMAR = ("kind", "args", "arity", "least", "none", "rowwise", "params", "pair", "gives")
+GRAMMAR = ("kind", "args", "arity", "least", "none", "rowwise", "params", "pair", "gives", "most")
 CATALOGUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "contracts", "expression",
                               "catalogue.json")
 

@@ -158,7 +158,7 @@
 ## 9. 글자 — Text 20 + & (소유자 11-09 «ㄴ»)
 지은 것: ~= · & · Concatenate · Find · Left · Len · Lower · Mid · Repeat · Right · RXExtract · RXReplace · Split · Substitute · Substring · Trim · Upper (MostCommon · UniqueConcatenate 는 1-a). 근거 · 경우 · 거절 문장은 contracts/expression/vectors.json, 이름 · 인자 · 문장은 서버 표에서 짓는 contracts/expression/catalogue.json.
 - **NameEncode · NameDecode** 는 안 지음 — 설명서가 결과 줄도 인코딩 꼴도 안 적음(TERR 문서: 5.0 뒤로 쓰지 말 것). 이름 댄 거절(총괄 11-09 ③).
-- 설명서가 안 정해 우리가 정한 것(decided): 한 칸 Concatenate 는 «, » 로 잇기(UniqueConcatenate 와 같은 상수 하나) · Find 셋째 인자는 k 번째(앞 자리 한 칸 뒤부터 찾음, 겹침 허용) · Split 0 · 범위 밖 · 빈 구분자는 빈 값 · Substitute 빈 찾기는 그대로, 빈 바꿈은 지움 · Repeat 음수는 빈 값 · 숫자 인자는 정수 부분.
+- 설명서가 안 정해 우리가 정한 것(decided): 한 칸 Concatenate 는 «, » 로 잇기(UniqueConcatenate 와 같은 상수 하나) · Find 셋째 인자는 k 번째(앞 자리 한 칸 뒤부터 찾음, 겹침 허용) · Split 0 · 범위 밖 · 빈 구분자는 빈 값 · Substitute 빈 찾기는 그대로, 빈 바꿈은 지움 · Repeat 음수는 빈 값, 글이 100000 자를 넘으면 거절(카탈로그 Repeat.most, 총괄 11-09 ㄴ) · 숫자 인자는 정수 부분.
 - 글자 수와 자리는 코드 포인트로 셈(두 엔진 같음). 숫자는 화면 철자(21, 1.5, 1e+21)로 글이 됨.
 - **따옴표 안 역슬래시**(총괄 11-09 ①): `\\` `\"` `\'` 는 그 글자, 다른 `\x` 는 두 글자 그대로. 그 전에는 다음 따옴표까지 그대로 읽었음.
 
@@ -174,6 +174,6 @@
 | `(?<이름>` `(?<=` `(?<!` `(?i` `(?>` · `\A \Z \z \G \p \k \1 \x \u \0` | 읽음 | 이름 댄 거절 |
 | `[a-z-[aeiou]]` 클래스 빼기 | 읽음 | 거절 |
 | 바꿈 `$&` · `` $` `` · `$'` · `$+` · `$_` · `${이름}` | 읽음 | 거절. `$n ${n} $0 $$` 은 읽음, 없는 그룹 번호는 글자 그대로 |
-| `i` 옵션에서 İ(U+0130) · ı(U+0131) | i 와 안 맞음(불변 문화) | 화면 같음 · **서버는 i 와 맞음** |
+| `i` 옵션에서 İ(U+0130) · ı(U+0131) | i 와 안 맞음(불변 문화) | 같음 — 서버는 클래스와 i · I · İ · ı 를 고정해 컴파일(총괄 11-09 ㄱ) |
 
-마지막 줄이 두 엔진 사이에 남은 차이 하나 — 66 글자 × BMP 전체 대소문자 대조에서 10 쌍, 전부 İ · ı.
+두 엔진 사이에 남았던 차이 하나(66 글자 × BMP 전체 대소문자 대조에서 10 쌍, 전부 İ · ı)는 서버를 화면에 맞춰 닫음 — 벡터 pattern.nocase.dotted.*.

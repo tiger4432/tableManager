@@ -86,7 +86,7 @@
   "Len": {"kind": "row", "args": ["text"], "arity": 1, "says": ["text"]},
   "Lower": {"kind": "row", "args": ["text"], "arity": 1, "says": ["text"]},
   "Mid": {"kind": "row", "args": ["text", "start", "count"], "arity": 3, "says": ["text", "start", "count"]},
-  "Repeat": {"kind": "row", "args": ["text", "count"], "arity": 2, "says": ["text", "count"]},
+  "Repeat": {"kind": "row", "args": ["text", "count"], "arity": 2, "most": 100000, "says": ["text", "count"]},
   "Right": {"kind": "row", "args": ["text", "count"], "arity": 2, "says": ["text", "count"]},
   "RXExtract": {"kind": "row", "args": ["text", "pattern", "nth"], "arity": 3, "says": ["text", "pattern", "nth"]},
   "RXReplace": {"kind": "row", "args": ["text", "pattern", "replacement", "options"], "arity": 4, "says": ["text", "pattern", "replacement", "options"]},
@@ -117,6 +117,7 @@
   "namedecode": "unsettled"
  },
  "sentences": {
+  "too_long": "{name} would write a text longer than {most} characters",
   "text_open": "A text opened at {at} does not close",
   "name_open": "A name opened at {at} does not close",
   "stray": "«{ch}» at {at} is not part of an expression",

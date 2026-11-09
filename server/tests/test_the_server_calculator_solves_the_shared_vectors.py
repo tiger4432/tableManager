@@ -43,6 +43,9 @@ def test_a_vector(vector):
         assert not compiled["ok"] and compiled["why"] == vector["expect_refused"], compiled
         return
     out = expression.run(expression.compile(vector["expr"]), vector["rows"], vector.get("types"), vector.get("zone"))
+    if "expect_why" in vector:
+        assert out.get("why") == vector["expect_why"], out
+        return
     if "expect_not_time" in vector:
         assert out.get("not_time") == vector["expect_not_time"], out
     if "expect_not_number" in vector:

@@ -293,7 +293,14 @@ const find = (needle, within, nth = 1) => {
   }
   return at + 1;
 };
-const repeat = (s, n) => { const k = whole(n); return k === null || k < 0 ? null : String(s).repeat(k); };
+// The longest text Repeat writes - the catalogue's, the server's guard (lead 11-09 ㄴ).
+const repeat = (s, n) => {
+  const k = whole(n);
+  if (k === null || k < 0) return null;
+  const most = CATALOGUE.functions.Repeat.most;
+  if ([...String(s)].length * k > most) throw new ExpressionError(say('too_long', { name: 'Repeat', most }));
+  return String(s).repeat(k);
+};
 const split = (s, sep, n) => {
   const k = whole(n);
   if (k === null || k === 0 || String(sep) === '') return null;

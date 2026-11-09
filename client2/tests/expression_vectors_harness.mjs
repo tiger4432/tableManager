@@ -80,6 +80,8 @@ function suite(M, quiet = false) {
     let out;   // a mutant that throws fails this line, not the run
     try { out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page); } catch (e) { out = { threw: String(e && e.message) }; }
     const rows = 'expect_rows' in v;
+    // a refusal while answering: the run says why (lead 11-09 ㄴ: Repeat past its limit)
+    if ('expect_why' in v) { ok(`${tag}[${v.id}]`, out.why === v.expect_why, `got ${ascii(out)} want why ${ascii(v.expect_why)}`); return; }
     const good = rows
       ? Array.isArray(out.values) && out.values.length === v.expect_rows.length && out.values.every((x, i) => near(x, v.expect_rows[i]))
       : 'value' in out && near(out.value, v.expect);
@@ -247,6 +249,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, "(args[0].t === 'call' && args[0].fn.gives === 'time')", 'false') },
   { id: 'X48', what: 'Min over values it does not compare empty and silent - no row said', catches: 'V[min.texts.said]', file: E,
     mutate: (t) => swap(t, '    for (const [r, it] of rowed) if (unread(it.value)) met.add(r);\n', '') },
+  { id: 'X49', what: 'Repeat writes past the catalogue\'s limit', catches: 'V[repeat.too.long]', file: E,
+    mutate: (t) => swap(t, "  if ([...String(s)].length * k > most) throw new ExpressionError(say('too_long', { name: 'Repeat', most }));\n", '') },
   { id: 'X31', what: 'the same instant twice: the one met last', catches: 'V[time.min.offset.same.instant]', file: E,
     mutate: (t) => swap(t, 'const BY_TIME = { Min: times((a, b) => a < b),', 'const BY_TIME = { Min: times((a, b) => a <= b),') },
   { id: 'X32', what: 'a range read a column at a time', catches: 'O[sheet.range.order]', file: E,

@@ -4961,6 +4961,42 @@
       "expect_refused": "NameDecode is not settled - Spotfire's pages give no result to build it by",
       "basis": "decided",
       "cite": "lead 11-09 ③: no page prints a result or the encoding's form (6.5 · 10.10 · TERR SpotfireUtils: obsolete since 5.0)"
+    },
+    {
+      "id": "pattern.nocase.dotted.letter",
+      "expr": "RXReplace([s], \"i\", \"-\", \"gi\")",
+      "rows": [
+        {
+          "s": "İıIi"
+        }
+      ],
+      "expect_rows": [
+        "İı--"
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: under option i, i matches i and I only - not İ or ı (the screen's and .NET's answer)"
+    },
+    {
+      "id": "pattern.nocase.dotted.class",
+      "expr": "RXReplace([s] & \"z\", \"[a-z]\", \"-\", \"gi\")",
+      "rows": [
+        {
+          "s": "İıIi"
+        }
+      ],
+      "expect_rows": [
+        "İı---"
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: under option i, a class of a-z takes I and i, not İ or ı"
+    },
+    {
+      "id": "repeat.too.long",
+      "expr": "Repeat(\"ab\", 50001)",
+      "rows": [],
+      "expect_why": "Repeat would write a text longer than 100000 characters",
+      "basis": "decided",
+      "cite": "lead 11-09: Repeat's text past the catalogue's limit is refused"
     }
   ],
   "ours": [
