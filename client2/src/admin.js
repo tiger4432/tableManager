@@ -1435,6 +1435,14 @@ function openIndexes() {
       const res = await adminFetch(`${API_BASE}/admin/indexes`).catch(() => null);
       const body = res && res.ok ? await res.json().catch(() => null) : null;
       return { body, refused: body ? '' : fetchFailureLine(res ? failureFactOf(res) : null, 'Index list read failed') };
+    }, apply: async (table) => {
+      // «Apply declared» (lead 11-09 ⓑ): a refusal is the server's sentence (404 · 409 detail), else the failure's line
+      const res = await adminFetch(`${API_BASE}/admin/indexes/storage/apply`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table }) }).catch(() => null);
+      const body = res ? await res.json().catch(() => null) : null;
+      if (res && res.ok) return { done: body && body.done };
+      return { refused: (body && typeof body.detail === 'string' && body.detail)
+        || fetchFailureLine(res ? failureFactOf(res) : null, 'Apply declared failed') };
     } });
   }
   void indexPanel.open();

@@ -7,11 +7,14 @@
 //   I5 the indexes nothing declares stand below, under «Not declared»; none is said
 //   I6 an answer that did not come is the refusal's line, not an empty table
 //   R1-R3 given a read, the panel reads on open and on its Refresh, never two at once, and says when (lead 11-06)
+//   S1-S5 each table's declared storage under «Storage» (lead 11-09 ⓑ): the server's token on a tag, a value set by hand
+//         apart from its declaration offers «Apply declared» - one at a time, the server's refusal said, read again after
 //
 // The answer is the server's own (fixtures/admin_indexes.json, capture_admin_indexes.py - models.index_states on
 // the box PostgreSQL). The box holds no invalid and no building index, so those two rows are hand rows: a captured
-// row with its state and, for building, a sentence in the server's shape (models._building). Every defect below
-// must be caught by the line it names.
+// row with its state and, for building, a sentence in the server's shape (models._building). The storage rows are
+// hand rows in the server's shape (maintenance_line.storage_states, C f187025f2) - one of each state it says. Every
+// defect below must be caught by the line it names.
 //
 // Run: node client2/tests/index_table_panel_harness.mjs
 import { readFileSync } from 'node:fs';
@@ -31,6 +34,14 @@ const BODY = { declared: [...REAL.declared,
   { ...present[0], name: `${present[0].name}_hand_invalid`, state: 'invalid' },
   { ...present[1], name: `${present[1].name}_hand_building`, state: 'building', building: WAITS, size_bytes: null, scans: null }],
 outside: REAL.outside };
+const REFUSED_WHY = "storage {'fillfactor': 'x'}: fillfactor is not a number";
+const STORAGE = [
+  { table: 'cell_sources', source: 'model', parameter: 'fillfactor', declared: '80', held: '80', state: 'held' },
+  { table: 'cell_sources', source: 'model', parameter: 'vacuum_truncate', declared: 'false', held: null, state: 'owed' },
+  { table: 'audit_logs', source: 'model', parameter: 'vacuum_truncate', declared: 'false', held: 'true', state: 'differs' },
+  { table: 'lot_events', source: 'table', parameter: 'fillfactor', declared: '90', held: '70', state: 'follows' },
+  { table: 'ledger_default_2026_11', source: 'ledger', parameter: null, declared: null, held: null, state: 'refused', why: REFUSED_WHY }];
+const BUSY = 'audit_logs is in use - try again in a minute';
 
 const walk = (n) => [n, ...(n.children || []).flatMap(walk)];
 const byTag = (n, tag) => walk(n).filter((c) => c.tagName === tag);
@@ -72,7 +83,7 @@ async function suite(m) {
     [['present', 'building', 'missing', 'invalid'].map((s) => [...new Set(tags(s))]),
       rows.length === BODY.declared.length && rows.every((tr, i) => byClass(cell(tr, 'state'), 'tag')[0].textContent === BODY.declared[i].state)],
     [[['ok'], ['warn'], ['danger'], ['danger']], true]);
-  const said = rows.map((tr) => byClass(cell(tr, 'state'), 'index-building').map((n) => n.textContent));
+  const said = rows.map((tr) => byClass(cell(tr, 'state'), 'index-said').map((n) => n.textContent));
   eq('I3 a building index says the server\'s sentence whole under its tag; no other says one',
     [said.filter((s) => s.length).length, said[rows.findIndex((tr) => tr.getAttribute('data-index').endsWith('_hand_building'))]],
     [1, [WAITS]]);
@@ -86,12 +97,53 @@ async function suite(m) {
       (() => { const h = doc.createElement('div'); new m.IndexTablePanel(h, { doc }).render({ declared: [], outside: [] });
         return [byTag(h, 'TABLE').length, byClass(h, 'meta').map((n) => n.textContent)]; })()],
     ['Not declared', REAL.outside.map((r) => [r.name, r.valid === true ? 'yes' : r.valid === false ? 'no' : ABSENT]),
-      [1, ['None']]]);
+      [1, ['None', 'None']]]);
   const refusedHost = doc.createElement('div');
   new m.IndexTablePanel(refusedHost, { doc }).render(null, 'Token declined (HTTP 401)');
   eq('I6 an answer that did not come is its refusal line and no table',
     [byTag(refusedHost, 'TABLE').length, byClass(refusedHost, 'refusal').map((n) => n.textContent)],
     [0, ['Token declined (HTTP 401)']]);
+  // S — each table's declared storage (lead 11-09 ⓑ).
+  const applied = [];
+  const applies = [];
+  const storageHost = doc.createElement('div');
+  new m.IndexTablePanel(storageHost, { doc, apply: (table) => { applied.push(table); return new Promise((done) => applies.push(done)); } })
+    .render({ ...BODY, storage: STORAGE });
+  const sTitle = byClass(storageHost, 'index-storage-title')[0];
+  const storageOf = (h) => byTag(h, 'TABLE').find((tb) => byTag(tb, 'TH').some((th) => th.textContent === 'Parameter'));
+  const sRows = rowsOf(storageOf(storageHost));
+  const sCell = (i, k) => (sRows[i] ? cell(sRows[i], k) : null);
+  eq('S1 the storage stands under «Storage», a row per table and parameter: table, parameter, declared, set, from',
+    [Boolean(sTitle) && sTitle.textContent, sRows.map((tr) => ['table', 'parameter', 'declared', 'held', 'source'].map((k) => textOf(cell(tr, k))))],
+    ['Storage', STORAGE.map((r) => [r.table, r.parameter || ABSENT, r.declared || ABSENT, r.held || ABSENT, r.source])]);
+  const sTag = (tr) => byClass(cell(tr, 'state'), 'tag')[0];
+  eq('S2 the state is the server\'s token on a tag; held ok, owed · differs · follows warn, refused danger',
+    sRows.map((tr) => [sTag(tr).textContent, sTag(tr).getAttribute('data-tone')]),
+    [['held', 'ok'], ['owed', 'warn'], ['differs', 'warn'], ['follows', 'warn'], ['refused', 'danger']]);
+  const applyOf = (tr) => byClass(cell(tr, 'state'), 'index-apply')[0];
+  eq('S3 a value that differs alone offers Apply declared - no index row, none without apply; a refused one says why',
+    [sRows.filter(applyOf).map((tr) => textOf(cell(tr, 'table'))), byClass(host, 'index-apply').length,
+      byClass(storageHost, 'index-apply').length, sCell(4, 'state') ? byClass(sCell(4, 'state'), 'index-said').map((n) => n.textContent) : []],
+    [['audit_logs'], 0, 1, [REFUSED_WHY]]);
+  const applyBtn = sRows[2] ? applyOf(sRows[2]) : null;
+  if (applyBtn) { applyBtn.dispatch('click'); applyBtn.dispatch('click'); }
+  const applying = [applied.slice(), applyBtn && applyBtn.disabled, applyBtn && applyBtn.textContent];
+  for (const done of applies) done({ refused: BUSY });
+  await new Promise((r) => setTimeout(r, 0));
+  eq('S4 Apply asks once for its table, the button off saying Applying… meanwhile; refused, the server\'s sentence under the row, the button back',
+    [applying, sCell(2, 'state') ? byClass(sCell(2, 'state'), 'refusal').map((n) => n.textContent) : [], applyBtn && applyBtn.disabled,
+      applyBtn && applyBtn.textContent],
+    [[['audit_logs'], true, 'Applying…'], [BUSY], false, 'Apply declared']);
+  const againReads = [];
+  const againHost = doc.createElement('div');
+  const ap = new m.IndexTablePanel(againHost, { doc, apply: () => Promise.resolve({ done: 'set' }),
+    read: () => { againReads.push(1); return Promise.resolve({ body: { ...BODY, storage: STORAGE }, refused: '' }); } });
+  await ap.open();
+  const againRow = rowsOf(storageOf(againHost))[2];
+  if (againRow && applyOf(againRow)) applyOf(againRow).dispatch('click');
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  eq('S5 Apply done, the table is read again', againReads.length, 2);
   // R — the panel reads its own answer (lead 11-06): open and Refresh read, never two at once, the read's time said.
   const reads = [];
   const read = () => new Promise((done) => reads.push(done));
@@ -135,19 +187,28 @@ const MUTANTS = [
   { id: 'XI13', what: 'an index not yet counted reads 0 B', catches: ['I1c'],
     mutate: swap("isCount(r.size_bytes) ? sizeText(r.size_bytes) : '?'", 'sizeText(Number(r.size_bytes))') },
   { id: 'XI2', what: 'a building index wears no tone', catches: ['I2'], mutate: swap(" building: 'warn',", '') },
-  { id: 'XI3', what: 'an invalid index reads as present', catches: ['I2'], mutate: swap(" invalid: 'danger' });", " invalid: 'ok' });") },
+  { id: 'XI3', what: 'an invalid index reads as present', catches: ['I2'], mutate: swap(" invalid: 'danger',", " invalid: 'ok',") },
   { id: 'XI4', what: 'the state is the screen\'s word, not the server\'s token', catches: ['I2'],
     mutate: swap('token: text(r.state),', "token: r.state === 'present' ? 'OK' : text(r.state),") },
   { id: 'XI5', what: 'a build\'s sentence is not said', catches: ['I3'],
-    mutate: swap("        if (key === said && row.building) td.appendChild(this._el('div', 'meta index-building', row.building));\n", '') },
+    mutate: swap("        if (key === said && row.said) td.appendChild(this._el('div', 'meta index-said', row.said));\n", '') },
   { id: 'XI6', what: 'no scans is drawn like any count', catches: ['I4'], mutate: swap("} else if (key === 'scans' && row.unused) {", '} else if (false) {') },
   { id: 'XI7', what: 'the indexes nothing declares are not drawn', catches: ['I5'],
     mutate: swap("    if (view.outside.length) this.root.appendChild(this._table(OUTSIDE_COLUMNS, view.outside, 'valid'));", '    if (false) {}') },
   { id: 'XI8', what: 'an answer that did not come draws an empty table', catches: ['I6'],
-    mutate: swap("  if (!declared) return { state: 'unread', declared: [], outside: [] };", "  if (!declared) return { state: 'ready', declared: [], outside: [] };") },
+    mutate: swap("  if (!declared) return { state: 'unread', declared: [], outside: [], storage: [] };", "  if (!declared) return { state: 'ready', declared: [], outside: [], storage: [] };") },
   { id: 'XI9', what: 'a read still on its way is asked again', catches: ['R1'], mutate: swap('if (!this.read || this.reading) return false;', 'if (!this.read) return false;') },
   { id: 'XI10', what: 'the read\'s time not said', catches: ['R2'], mutate: swap('      this.readAt.textContent = `Read ${localHourMinute(this.now().toISOString())}`;\n', '') },
   { id: 'XI11', what: 'Refresh does not read', catches: ['R3'], mutate: swap("this.button.addEventListener('click', () => { this.open(); });", "this.button.addEventListener('click', () => {});") },
+  { id: 'XS1', what: 'the storage is not drawn', catches: ['S1'],
+    mutate: swap("    if (view.storage.length) this.root.appendChild(this._table(STORAGE_COLUMNS, view.storage, 'state'));", '    if (false) {}') },
+  { id: 'XS2', what: 'a storage state wears no tone', catches: ['S2'],
+    mutate: swap("  held: 'ok', owed: 'warn', follows: 'warn', differs: 'warn', refused: 'danger' });", '});') },
+  { id: 'XS3', what: 'every row offers Apply declared', catches: ['S3'], mutate: swap('if (row.differs && this.apply) {', 'if (this.apply) {') },
+  { id: 'XS4', what: 'Apply asks again while it is on its way', catches: ['S4'], mutate: swap('    if (this.applying) return false;\n', '') },
+  { id: 'XS5', what: 'a refusal of Apply is not said', catches: ['S4'],
+    mutate: swap("      cell.appendChild(this._el('div', 'refusal index-said', said));\n", '') },
+  { id: 'XS6', what: 'Apply done and the table not read again', catches: ['S5'], mutate: swap('    await this.open();\n    return true;', '    return true;') },
 ];
 console.log('');
 const { wrong } = await scoreMutants(MUTANTS, async (mu) => suite((await loadWithProbe(SUBJECT, { mutate: mu.mutate })).module),

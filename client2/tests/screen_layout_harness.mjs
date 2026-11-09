@@ -141,6 +141,19 @@ const QUEUE = {
 const LEDGER_TABLE = 'ledger_events';
 const LEDGER_SOURCE = { source: 'fake_measure_events', relation: LEDGER_TABLE, emits: ['has_measurement', 'of_quantity'], world: 'default' };
 const bodyOf = (a) => (typeof a.body === 'string' ? JSON.parse(a.body) : a.body);
+// A table's declared storage (lead 11-09 ⓑ, C f187025f2): while STORAGE.on the indexes answer carries one storage row of
+// each state the server says (maintenance_line.storage_states), and «Apply declared» is refused in the server's 409 words.
+const STORAGE = { on: false };
+const STORAGE_BUSY = 'audit_logs is in use - try again in a minute';
+const STORAGE_ROWS = [
+  { table: 'cell_sources', source: 'model', parameter: 'fillfactor', declared: '80', held: '80', state: 'held' },
+  { table: 'cell_sources', source: 'model', parameter: 'vacuum_truncate', declared: 'false', held: null, state: 'owed' },
+  { table: 'audit_logs', source: 'model', parameter: 'vacuum_truncate', declared: 'false', held: 'true', state: 'differs' },
+  { table: 'dt_log', source: 'table', parameter: 'fillfactor', declared: '90', held: '70', state: 'follows' },
+  { table: 'ledger_default_2026_11', source: 'ledger', parameter: null, declared: null, held: null, state: 'refused',
+    why: "storage {'fillfactor': 'x'}: fillfactor is not a number" }];
+const storageAnswer = (u) => (u.pathname === '/admin/indexes'
+  ? { ...ANSWERS['/admin/indexes'], body: { ...bodyOf(ANSWERS['/admin/indexes']), storage: STORAGE_ROWS } } : null);
 // The chain rules were recorded before a take's fn was a formula field (owner 11-09 «ㄴ»): that node is today's, read from
 // the skeleton file the server generates (server/chain_skeleton.json, tested equal to the code).
 const isTakeFn = (f) => Boolean(f && f.key === 'fn' && f.node && f.node.list === 'aggregation_functions');
@@ -586,6 +599,7 @@ const answerOf = (u) => {
   if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (FORMULA.on) { const v = formulaAnswer(u); if (v) return v; }
+  if (STORAGE.on) { const v = storageAnswer(u); if (v) return v; }
   if (SUGGEST.on) { const v = suggestAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
@@ -1160,6 +1174,20 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', 
   if (take !== '["value",{}]') return 'take holds ' + take;
   const p = document.querySelector('select[data-action="edit-shape-branch"][data-value="derive.join.take[1]"]');
   return p && p.value === 'record' ? null : 'the row picker says ' + (p ? p.value : 'nothing');
+})()` });
+// A table's declared storage (lead 11-09 ⓑ): a row each, the server's token on a tag, Apply on the one that differs alone;
+// refused, the server's sentence under it.
+CELLS.push({ entry: 'admin.html', after: "Overview, the indexes' storage", rule: 'contents', at: 'index-table', expr: `(() => {
+  const rows = [...document.querySelectorAll('.index-storage-title + table tbody tr')];
+  const tags = rows.map((tr) => (tr.querySelector('[data-col="state"] .tag') || {}).textContent).join(',');
+  if (tags !== 'held,owed,differs,follows,refused') return 'the storage tags say ' + tags;
+  const offers = rows.filter((tr) => tr.querySelector('.index-apply')).map((tr) => tr.querySelector('[data-col="table"]').textContent);
+  return offers.join(',') === 'audit_logs' ? null : 'Apply declared stands on ' + (offers.join(',') || 'none');
+})()` });
+CELLS.push({ entry: 'admin.html', after: 'Overview, Apply declared refused', rule: 'contents', at: 'index-apply', expr: `(() => {
+  const said = document.querySelector('.index-apply ~ .refusal');
+  return said && said.textContent === ${JSON.stringify("audit_logs is in use - try again in a minute")} ? null
+    : 'the refusal says ' + (said ? said.textContent : 'nothing');
 })()` });
 // The four formula inputs (owner 11-09 «ㄴ»): its list open under it, then its refusal line - one field, four places.
 const FIELD_OPEN = (field) => `(() => { const f = document.querySelector(${JSON.stringify(field)});
@@ -2159,6 +2187,10 @@ async function servePage(chrome, dist) {
       const sent = JSON.parse(request.postData || '{}').updates || [];
       const blankRow = (x) => !x.row_id && ['dt_job', 'b_wx', PIVOT_DECL.column].every((k) => x.updates && x.updates[k] != null);
       reply(200, 'application/json', JSON.stringify({ change_count: sent.filter((x) => /^pv-/.test(String(x.row_id || '')) || blankRow(x)).length }));
+      return;
+    }
+    if (STORAGE.on && request.method === 'POST' && u.pathname === '/admin/indexes/storage/apply') {
+      reply(409, 'application/json', JSON.stringify({ detail: STORAGE_BUSY }));
       return;
     }
     if (PIVOT.on && request.method === 'POST' && u.pathname === '/tables/dt_log/rows/batch_delete') {
@@ -3714,6 +3746,19 @@ const DRIVE = {
       await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
       await until(c, "Boolean(document.querySelector('.stall-line[hidden]'))");
       STALL.on = false;
+    }],
+    // A table's declared storage under the indexes (lead 11-09 ⓑ): its rows read again, then «Apply declared» refused.
+    ["Overview, the indexes' storage", async (c) => {
+      STORAGE.on = true;
+      await evaluate(c, "location.hash = '#overview'; true");
+      await evaluate(c, "(() => { const b = document.querySelector('.index-refresh'); if (b) b.click(); return Boolean(b); })()");
+      await until(c, "Boolean(document.querySelector('.index-storage-title + table .index-apply'))");
+      await evaluate(c, "(() => { const t = document.querySelector('.index-storage-title'); if (t) t.scrollIntoView({ block: 'start' }); return true; })()");
+    }],
+    ['Overview, Apply declared refused', async (c) => {
+      await evaluate(c, "(() => { const b = document.querySelector('.index-apply'); if (b) b.click(); return Boolean(b); })()");
+      await until(c, "Boolean(document.querySelector('.index-apply ~ .refusal'))");
+      STORAGE.on = false;
     }],
     // «Not adopted» under the chain rules (owner 11-08 ㄱ): its three states, each from the rules answer - counting (no pass
     // ended), the names with their layers and tables and the way out, none.
