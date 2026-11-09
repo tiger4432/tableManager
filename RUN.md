@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **운영이 계속 느리면 — Not adopted 센서스를 background 로** — 재기동 없음
+>
+> ```
+> 무엇     체인 워커가 cell_sources 를 1,000 행씩 통째로 한 바퀴 읽어 Rules 화면의 «Not adopted» 수를 셈. 바퀴 사이 600 s
+>          박스: 3,947 만 행 한 바퀴 8,184 s. 박스에선 이것이 그리드 읽기를 늦추는 것을 «못 잼»(운영 메모리 · 디스크는 모름)
+> 돌릴 것  server/pacing.json 의 "jobs" 에서 "chain_unowned_census": "slow" → "background"
+> 답의 뜻  다음 바퀴부터 1,000 행 읽고 60 s 쉼 — 지금 도는 바퀴는 원래 빠르기로 끝까지 (파일은 바퀴 시작 때 한 번 읽음)
+>          박스 크기면 한 바퀴 약 27 일 → Not adopted 수는 사실상 «마지막 바퀴의 수 · 그 시각» 에 멈춤. 다른 동작은 그대로
+>          되돌리기: "slow" 로 — 역시 다음 바퀴부터
+> 볼 줄    chain_worker.log «[ChainUnowned] pass: … row(s) read in N s» — 바퀴가 끝날 때만 한 줄
+> 주의     다음 릴리즈를 받기 전 git checkout -- server/pacing.json (안 그러면 받을 때 충돌)
 > ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
 >
 > ```
