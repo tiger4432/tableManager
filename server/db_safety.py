@@ -57,8 +57,11 @@ THE SECOND GUARD IN THIS FILE - "this OPERATOR PASS must not be able to write"
     alternative has been tried: the property had THREE spellings across seven
     operator scripts, one of which was wrong, and it spread by being copied.
 """
+import logging
 import os
 import sys
+
+logger = logging.getLogger("Server")
 
 #: The env var `server/tests/conftest.py` reads to redirect the suite at an
 #: isolated database. Declaring it here is the ONLY way a non-sqlite target
@@ -300,11 +303,63 @@ PER_TRANSACTION = "per_transaction"
 #: `database/database.py` so a script does not read text differently from the app.
 #:
 #: How long a product DDL waits for a lock before it fails and says so - one value for every
-#: seat that sets it: the ledger's partition DDL, the chain's unique index work (총괄
-#: 3ef5fe54f) and the schema sync's ADD COLUMN (총괄 a696ee4e8). Waiting longer is the danger:
+#: seat that sets it: the ledger's partition DDL and the chain's unique index work (총괄
+#: 3ef5fe54f). The DDLs reads queue behind go through `short_ddl` instead. Waiting longer is the danger:
 #: a DDL queued on a table makes an ALTER queue behind it, and every writer of that table
 #: behind the ALTER.
 DDL_LOCK_TIMEOUT = "20s"
+
+
+#: Seconds between two tries of `short_ddl`.
+DDL_TRY_GAP_SECONDS = 1.0
+
+_TABLE_LOCK_HOLDERS = ("SELECT a.pid, a.query FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid "
+                       "WHERE l.relation = to_regclass(:t) AND l.granted AND l.pid <> pg_backend_pid() "
+                       "GROUP BY a.pid, a.query ORDER BY a.pid")
+
+
+def short_ddl(engine, table, work, what):
+    """The one way a runtime DDL takes the lock reads queue behind (lead 11-09 ⓐ): `work(connection)` in a transaction
+    whose lock waits `ddl_lock_wait()`'s try, again every DDL_TRY_GAP_SECONDS while the tries' seconds last - each
+    try holds the reads behind it at most its own wait. Done: returns. Never had: one line naming who held `table`
+    (pid and `statement_head`), and the last try's lock error raised again, its `ddl_holders` set - each seat's own
+    `waited_past_the_lock_timeout` branch says what it leaves for its next round. Any other error raises at once.
+    Off PostgreSQL: one try, no limit."""
+    import time
+    from sqlalchemy import text
+
+    from parsers.directory_watcher import ddl_lock_wait
+
+    postgres = engine.dialect.name == "postgresql"
+    each, lasting = ddl_lock_wait() if postgres else (None, None)
+    began, tries = time.monotonic(), 0
+    while True:
+        tries += 1
+        try:
+            with engine.begin() as conn:
+                if each:
+                    conn.execute(text("SET LOCAL lock_timeout = '%dms'" % round(each * 1000)))
+                work(conn)
+            return
+        except Exception as error:
+            if not waited_past_the_lock_timeout(error):
+                raise
+            if lasting and time.monotonic() - began + DDL_TRY_GAP_SECONDS < lasting:
+                time.sleep(DDL_TRY_GAP_SECONDS)
+                continue
+            from error_said import told
+            from runtime.stall_watch import statement_head
+            try:
+                with engine.connect() as conn:
+                    held = ", ".join("pid %s %s" % (pid, statement_head(query) or "-")
+                                     for pid, query in conn.execute(text(_TABLE_LOCK_HOLDERS), {"t": table}))
+            except Exception as look:                                   # noqa: BLE001 - the line says it could not look
+                held = "unread (%s)" % told(look)
+            error.ddl_holders = held or "no one now"
+            logger.warning("[DDL] %s on %s - its lock not had in %d tries over %.0f s (%s ms each); held by %s",
+                           what, table, tries, time.monotonic() - began,
+                           "no limit" if each is None else "%.0f" % (each * 1000), error.ddl_holders)
+            raise
 
 
 def waited_past_the_lock_timeout(error) -> bool:

@@ -90,19 +90,15 @@ def sweep_images(db_session_factory):
         db.close()
 
 
-#: How long ALTER TABLE ... SET waits for its lock. Under deadlock_timeout (1 s by default): a waiter past it makes
-#: PostgreSQL cancel a running autovacuum of that table, and the one cleaning cell_sources may have run for hours.
-STORAGE_LOCK_TIMEOUT = "500ms"
-
-
 def apply_table_storage(db_session_factory):
     """Each model table's declared storage (`info["storage"]`, e.g. cell_sources' fillfactor - owner 10-20: an updated
     layer's old version is pruned on its page only where the page has room) that the table does not hold yet, set by
-    ALTER TABLE ... SET. A table whose lock is not had within STORAGE_LOCK_TIMEOUT is left for the next try.
-    -> {table: "set" | "busy"}. PostgreSQL only; elsewhere {}."""
+    ALTER TABLE ... SET through `db_safety.short_ddl` (lead 11-09 ⓐ). A table whose lock is not had is left for the
+    next try. -> {table: "set" | "busy"}. PostgreSQL only; elsewhere {}."""
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
 
+    import db_safety
     from database.database import Base
 
     db = db_session_factory()
@@ -123,14 +119,13 @@ def apply_table_storage(db_session_factory):
             held = dict(option.split("=", 1) for option in (held[0] or []))
             if all(held.get(k) == v for k, v in wanted.items()):
                 continue
+            statement = 'ALTER TABLE "%s" SET (%s)' % (
+                table.name, ", ".join("%s = %s" % (k, v) for k, v in sorted(wanted.items())))
             try:
-                db.execute(text("SET LOCAL lock_timeout = '%s'" % STORAGE_LOCK_TIMEOUT))
-                db.execute(text('ALTER TABLE "%s" SET (%s)' % (
-                    table.name, ", ".join("%s = %s" % (k, v) for k, v in sorted(wanted.items())))))
-                db.commit()
+                db_safety.short_ddl(db.get_bind(), table.name, lambda conn, q=statement: conn.execute(text(q)),
+                                    "storage")
                 done[table.name] = "set"
             except OperationalError:
-                db.rollback()
                 done[table.name] = "busy"
         return done
     finally:
@@ -144,8 +139,8 @@ def _storage_and_say(db_session_factory):
         if how == "set":
             logger.info("[Indexes] %s storage set as declared", table)
         else:
-            logger.warning("[Indexes] %s storage not set - its lock was busy past %s (a running vacuum keeps it); "
-                           "tried again at the next merge", table, STORAGE_LOCK_TIMEOUT)
+            logger.warning("[Indexes] %s storage not set - its lock was busy (the [DDL] line names who held it); "
+                           "tried again at the next merge", table)
     return "busy" not in done.values()
 
 

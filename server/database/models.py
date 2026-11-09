@@ -666,12 +666,13 @@ def ensure_run_columns(engine, add=True):
     if missing and not add:
         return False
     if missing:
-        with engine.begin() as conn:
-            if postgres:
-                conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+        import db_safety
+
+        def adding(conn):
             for name in missing:
                 conn.execute(text("ALTER TABLE retroactive_runs ADD COLUMN %s%s %s"
                                   % ("IF NOT EXISTS " if postgres else "", name, kinds[name])))
+        db_safety.short_ddl(engine, "retroactive_runs", adding, "run columns")
         logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
     _RUN_COLUMNS.add(engine)
     return True
@@ -682,10 +683,6 @@ _RUN_COLUMNS = weakref.WeakSet()
 
 #: The chain layer's owner (owner 11-06 step 2) - `CellSource.owner_rule` · `owner_key`.
 OWNER_COLUMNS = ("owner_rule", "owner_key")
-
-
-#: How many times the boot asks for cell_sources' lock before it leaves the columns to the next boot.
-OWNER_COLUMNS_TRIES = 5
 
 
 def _owner_columns_missing(bind) -> list:
@@ -706,32 +703,19 @@ def _owner_columns_missing(bind) -> list:
 def ensure_owner_columns(engine):
     """`cell_sources`' owner columns on a database without them - ADD COLUMN, nullable, no default: metadata only on
     PostgreSQL 11+, no rewrite whatever the table's size. Added at BOOT only (`sync_dynamic_tables_schema`, lead 11-06:
-    no DDL on a write path), on an autocommit connection of its own under a 5 s lock_timeout, asked again while the
-    lock times out (`OWNER_COLUMNS_TRIES`)."""
-    import time as _time
-
-    from sqlalchemy.exc import OperationalError
-
+    no DDL on a write path), through `db_safety.short_ddl` (lead 11-09 ⓐ) - never had, its lock error raises."""
     import db_safety
 
     missing = _owner_columns_missing(engine)
-    postgres = engine.dialect.name == "postgresql"
-    for attempt in range(1, OWNER_COLUMNS_TRIES + 1 if missing else 1):
-        try:
-            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-                if postgres:
-                    conn.execute(text("SET lock_timeout = '5s'"))
-                for name in missing:
-                    conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s%s VARCHAR"
-                                      % ("IF NOT EXISTS " if postgres else "", name)))
-            logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
-            break
-        except OperationalError as exc:
-            if not db_safety.waited_past_the_lock_timeout(exc) or attempt == OWNER_COLUMNS_TRIES:
-                raise
-            logger.warning("[Layers] cell_sources: its lock was not given in 5 s (attempt %d/%d) - asked again",
-                           attempt, OWNER_COLUMNS_TRIES)
-            _time.sleep(5)
+    if missing:
+        postgres = engine.dialect.name == "postgresql"
+
+        def add(conn):
+            for name in missing:
+                conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s%s VARCHAR"
+                                  % ("IF NOT EXISTS " if postgres else "", name)))
+        db_safety.short_ddl(engine, "cell_sources", add, "owner columns")
+        logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
     _OWNER_COLUMNS.add(engine)
 
 
@@ -1846,13 +1830,8 @@ def sync_dynamic_tables_schema(engine):
                 
                 # 각 컬럼 추가 DDL을 개별 독립 트랜잭션으로 격리하여, 한 곳의 실패가 전체 세션을 오염시키는 문제를 영구 방지
                 try:
-                    with engine.begin() as conn:
-                        if dialect.name == "postgresql":
-                            # 🔴 [총괄 a696ee4e8] The one DDL time limit, for THIS transaction:
-                            #    it ends with it, so no pooled connection is handed on with it.
-                            conn.execute(text("SET LOCAL lock_timeout = '%s'"
-                                              % db_safety.DDL_LOCK_TIMEOUT))
-                        conn.execute(text(alter_query))
+                    db_safety.short_ddl(engine, table_name, lambda conn, q=alter_query: conn.execute(text(q)),
+                                        "column '%s'" % col_name)
                     logger.info("[Schema Sync] added column '%s' to '%s'",
                                 col_name, table_name)
                 except Exception as err:
@@ -1866,11 +1845,10 @@ def sync_dynamic_tables_schema(engine):
                         # config save adds it. Until then the table itself fails - every SELECT
                         # and INSERT the model builds names the column (admin/schema_drift).
                         logger.error(
-                            "[Schema Sync] column '%s' was not added to '%s' - another session "
-                            "held the table past %s. Retried at the next start or config save; "
-                            "until then every read and write of '%s' fails on this column. Find "
-                            "the holder: python server/scripts/diagnose_db_health.py",
-                            col_name, table_name, db_safety.DDL_LOCK_TIMEOUT, table_name)
+                            "[Schema Sync] column '%s' was not added to '%s' - held by %s. Retried at "
+                            "the next start or config save; until then every read and write of '%s' "
+                            "fails on this column.",
+                            col_name, table_name, getattr(err, "ddl_holders", "?"), table_name)
                         continue
                     # 🔴 A LOGGER, NOT A print. This is the REPAIR: the one thing that
                     # closes a gap between what the declaration says a table has and what

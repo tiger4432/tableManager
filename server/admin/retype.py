@@ -315,24 +315,26 @@ def convert(db, table, column, declared, log, checkpoint=None):
         log("[Retype] %s.%s %s -> %s: rebuilding %s, est. lock %s s (box rate)"
             % (table, column, physical, declared, ", ".join(rebuilt) or "no index", out["estimated_lock_seconds"]))
         c = sql_table(table, sql_column(column)).c[column]
+        alter = "ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s" % (
+            _quoted(table), _quoted(column), cell["to"], using(c, cell, db.get_bind().dialect))
+
+        def work(conn):
+            for name in rebuilt:
+                conn.execute(text("DROP INDEX %s" % _quoted(name)))
+            conn.execute(text(alter))
+            for name, (ddl, said) in rebuilt.items():
+                conn.execute(text(ddl))
+                if said:
+                    conn.execute(text("COMMENT ON INDEX %s IS :said" % _quoted(name)), {"said": said})
+        db.commit()             # its reads end: the conversion's connection must not wait on this session's own lock
         began = time.monotonic()
         try:
-            db.execute(text("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT))
-            for name in rebuilt:
-                db.execute(text("DROP INDEX %s" % _quoted(name)))
-            db.execute(text("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s" % (
-                _quoted(table), _quoted(column), cell["to"], using(c, cell, db.get_bind().dialect))))
-            for name, (ddl, said) in rebuilt.items():
-                db.execute(text(ddl))
-                if said:
-                    db.execute(text("COMMENT ON INDEX %s IS :said" % _quoted(name)), {"said": said})
-            db.commit()
+            db_safety.short_ddl(db.get_bind(), table, work, "%s.%s type" % (table, column))
         except Exception as error:
-            db.rollback()
             if db_safety.waited_past_the_lock_timeout(error):
                 raise RetroactiveRefused(
-                    "%s.%s stays text: another session held %s past %s - save the declaration again"
-                    % (table, column, table, db_safety.DDL_LOCK_TIMEOUT)) from None
+                    "%s.%s stays text: %s was held by %s - save the declaration again"
+                    % (table, column, table, getattr(error, "ddl_holders", "another session"))) from None
             raise
         out.update(converted=True, indexes_rebuilt=sorted(rebuilt), lock_seconds=round(time.monotonic() - began, 2))
     ledger_admin.set_column_type(table, column, declared)

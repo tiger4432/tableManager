@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""The schema sync's ADD COLUMN waits `db_safety.DDL_LOCK_TIMEOUT` at most (총괄 3c26854c3 ·
-a696ee4e8, 소유자 「7번 ㄱ」).
+"""The schema sync's ADD COLUMN waits `db_safety.short_ddl`'s tries at most (총괄 3c26854c3 ·
+a696ee4e8, 소유자 「7번 ㄱ」; lead 11-09 ⓐ).
 
 Without a limit an ALTER queued behind a long transaction held the process that called it -
 the API's boot, the watcher's, the chain worker's import, a config save - and every reader
@@ -26,6 +26,7 @@ if SERVER_DIR not in sys.path:
 
 import db_safety                                                    # noqa: E402
 from database import models                                         # noqa: E402
+from parsers import directory_watcher                               # noqa: E402
 
 HELD, FREE = "ss_held", "ss_free"
 CONFIG = {name: {"business_key": "k", "composite_key_source": ["k"],
@@ -81,7 +82,7 @@ def test_each_of_the_four_seats_reaches_the_function(caller):
 @pytest.fixture(name="two_tables")
 def fixture_two_tables(pg_engine, monkeypatch):
     """Two declared tables whose `late` column the database does not have yet."""
-    monkeypatch.setattr(db_safety, "DDL_LOCK_TIMEOUT", "1s")
+    monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (1.0, None))   # one try of 1 s
     models.init_dynamic_models(CONFIG)
     monkeypatch.setattr(models, "DYNAMIC_TABLES",
                         {name: models.DYNAMIC_TABLES[name] for name in CONFIG})
@@ -135,7 +136,7 @@ def test_a_held_table_is_deferred_by_name_and_the_rest_goes_on(pg_engine, two_ta
         assert waited < 10, "the ALTER did not read the limit - it waited behind the holder"
         assert "error" not in out, out
         said = [r.getMessage() for r in caplog.records if HELD in r.getMessage()]
-        assert any("'late'" in m and "was not added" in m and "1s" in m
+        assert any("'late'" in m and "was not added" in m and "held by pid" in m
                    and "every read and write" in m for m in said), said
         assert "late" not in _columns(pg_engine, HELD)
         assert "late" in _columns(pg_engine, FREE), "the table nobody held was held up too"

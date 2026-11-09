@@ -499,6 +499,14 @@ AUTO_INDEX_PER_TABLE_DEFAULT = 10
 #: is cut and put off to the next poll (owner 11-08 ㄴ, `models._ensure_one_index_once`). null or 0: no limit.
 INDEX_BUILD_WAIT_SETTING = "index_build_wait_seconds"
 INDEX_BUILD_WAIT_DEFAULT = 300.0
+#: A runtime DDL that takes the lock reads queue behind - ADD COLUMN, ALTER TABLE SET, a column's type - waits this many
+#: milliseconds for it, a try (lead 11-09 ⓐ, C's board: behind a wraparound autovacuum a 5 s wait held every read 5 s).
+#: Under deadlock_timeout (1 s), so a waiting try does not get an ordinary autovacuum cancelled. null or 0: no limit.
+DDL_LOCK_TRY_SETTING = "ddl_lock_try_ms"
+DDL_LOCK_TRY_DEFAULT = 500.0
+#: Seconds those tries go on before the DDL is left to its seat's next round. null or 0: one try.
+DDL_LOCK_RETRY_SETTING = "ddl_lock_retry_seconds"
+DDL_LOCK_RETRY_DEFAULT = 30.0
 #: A re-read of a (table, source) stops after this many failed files with none read since it began (owner 10-24
 #: «연속 파일 3 번 에러 나면 멈추면 안 됨?» · «근본 불량 파일들도 있네»: a wrong parser fails every file, bad files only
 #: some). A whole number; 0 - never stops.
@@ -597,6 +605,15 @@ def index_build_wait(settings=None):
 
 
 _SAID_TOO_LONG = set()
+
+
+def ddl_lock_wait(settings=None):
+    """`(seconds a try waits for its lock or None = no limit, seconds the tries go on or None = one try)` - a runtime
+    DDL's (`db_safety.short_ddl`)."""
+    settings = load_ingestion_settings() if settings is None else settings
+    try_ms = _timeout_seconds(settings, DDL_LOCK_TRY_SETTING, DDL_LOCK_TRY_DEFAULT)
+    return (None if try_ms is None else try_ms / 1000.0,
+            _timeout_seconds(settings, DDL_LOCK_RETRY_SETTING, DDL_LOCK_RETRY_DEFAULT))
 
 
 def grid_auto_index_after(settings=None):

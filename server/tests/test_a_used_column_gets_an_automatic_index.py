@@ -382,14 +382,17 @@ def test_the_line_merges_no_partitioned_index_and_says_nothing_wrong(pg_engine):
 
 
 @pytest.mark.pg
-def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_later(pg_engine):
+def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_later(pg_engine, monkeypatch):
     """Owner 10-20: pages kept 30 % free so an updated layer's old version is pruned without vacuum. Owner 11-09: no end
     truncation on cell_sources and audit_logs - its ACCESS EXCLUSIVE queued every read in ops. An existing table takes
-    it by ALTER; a lock held elsewhere (a running vacuum's) is not waited for past STORAGE_LOCK_TIMEOUT."""
+    it by ALTER; a lock held elsewhere (a running vacuum's) is not waited for past `short_ddl`'s tries."""
     from sqlalchemy import text
     from sqlalchemy.orm import sessionmaker
 
+    from parsers import directory_watcher
     from runtime import maintenance_line
+
+    monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (0.2, None))   # one try of 0.2 s
 
     factory = sessionmaker(bind=pg_engine)
 

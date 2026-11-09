@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from conftest import _declared_as_test_database, _resolve_pg_test_url   # noqa: E402
 from database import models                                             # noqa: E402
+from parsers import directory_watcher                                   # noqa: E402
 from tests.support.isolated_pg import scratch_connect_args, scratch_schema   # noqa: E402
 
 pytestmark = pytest.mark.pg
@@ -43,7 +44,7 @@ def fixture_held(monkeypatch):
         handler = logging.Handler()
         handler.emit = lambda record: said.append(record.getMessage())
         models.logger.addHandler(handler)
-        monkeypatch.setattr(models, "OWNER_COLUMNS_TRIES", 2)
+        monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (0.2, 1.5))   # tries of 0.2 s for 1.5 s
         monkeypatch.setattr(models, "DYNAMIC_TABLES", {})
         try:
             yield {"engine": engine, "holding": holding, "said": said}
@@ -68,7 +69,6 @@ def test_a_held_table_let_go_between_the_tries_gets_its_columns_on_the_next(held
     monkeypatch.setattr(time, "sleep", lambda _seconds: held["holding"].commit())   # the holder lets go meanwhile
     models.ensure_owner_columns(held["engine"])
     assert {"owner_rule", "owner_key"} <= _columns(held["engine"])
-    assert any("its lock was not given in 5 s (attempt 1/2) - asked again" in line for line in held["said"]), held["said"]
     assert any("owner_rule and owner_key added" in line for line in held["said"]), held["said"]
     models.require_owner_columns(held["engine"])
 
@@ -77,7 +77,8 @@ def test_a_table_held_to_the_end_says_not_added_and_a_layer_write_refuses(held, 
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
     models.sync_dynamic_tables_schema(held["engine"])
     assert {"owner_rule", "owner_key"} & _columns(held["engine"]) == set()
-    assert any("attempt 1/2" in line for line in held["said"]), held["said"]
+    assert any("owner columns on cell_sources - its lock not had in" in line and "held by pid" in line
+               for line in held["said"]), held["said"]
     assert any("the owner columns were not added - layer writes refuse" in line for line in held["said"]), held["said"]
     with pytest.raises(RuntimeError, match="the boot adds them"):
         models.require_owner_columns(held["engine"])
