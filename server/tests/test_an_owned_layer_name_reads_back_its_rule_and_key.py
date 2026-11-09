@@ -113,3 +113,25 @@ def test_a_database_from_before_owners_is_refused_at_the_write_until_the_boot_ad
     with engine.connect() as conn:
         assert conn.execute(text("SELECT source_name, value, owner_rule, owner_key FROM cell_sources")).all() == [
             ("user", "x", None, None)]
+
+
+def test_a_session_bound_to_a_connection_is_asked_through_that_connection():
+    """Lead 11-09 (release 11-09's PG red, test_a_time_the_database_refuses_is_not_entered): a session bound to one
+    Connection - a held zone, the dev bench - asks with its bind: read through that Connection, remembered by its
+    Engine."""
+    from sqlalchemy import create_engine, text
+
+    from database import models
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
+    with engine.connect() as conn:
+        with pytest.raises(RuntimeError, match="the boot adds them"):
+            models.require_owner_columns(conn)
+    models.ensure_owner_columns(engine)
+    models._OWNER_COLUMNS.discard(engine)            # the boot remembered it - forget, so the next read is the
+    assert engine not in models._OWNER_COLUMNS       # Connection's own
+    with engine.connect() as conn:
+        models.require_owner_columns(conn)
+    assert engine in models._OWNER_COLUMNS

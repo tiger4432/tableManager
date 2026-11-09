@@ -685,14 +685,15 @@ OWNER_COLUMNS = ("owner_rule", "owner_key")
 OWNER_COLUMNS_TRIES = 5
 
 
-def _owner_columns_missing(engine) -> list:
-    """The owner columns `cell_sources` lacks - [] at once for a database this process has seen them on."""
+def _owner_columns_missing(bind) -> list:
+    """The owner columns `cell_sources` lacks - [] at once for a database this process has seen them on. `bind` an
+    Engine or a Connection - a session bound to one (lead 11-09) - read through itself, remembered by its Engine."""
+    engine = bind.engine
     if engine in _OWNER_COLUMNS:
         return []
     from sqlalchemy import inspect
 
-    with engine.connect() as conn:
-        have = {c["name"] for c in inspect(conn).get_columns("cell_sources")}
+    have = {c["name"] for c in inspect(bind).get_columns("cell_sources")}
     missing = [name for name in OWNER_COLUMNS if name not in have]
     if not missing:
         _OWNER_COLUMNS.add(engine)
