@@ -31,6 +31,7 @@ from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from error_said import told
 from utils import heartbeat
 
 logger = logging.getLogger(__name__)
@@ -122,13 +123,14 @@ def _tx():
     return None if counts is None else counts.tx
 
 
-def _quiet(where, exc):
-    """🔴 THE COUNTERS ARE SILENT ALONE. One line says which part stopped; the scope counts no more, the write goes on."""
+def _quiet(where, exc, said):
+    """🔴 THE COUNTERS ARE SILENT ALONE. One line says which part stopped and where it broke (`said`, `told`); the scope
+    counts no more, the write goes on."""
     counts = _COUNTS.get()
     if counts is not None:
         counts.tx = None
     logger.warning("[Counts] the write's transaction counts stopped at %s (%s: %s) - the write is unaffected",
-                   where, type(exc).__name__, exc)
+                   where, type(exc).__name__, said)
 
 
 @event.listens_for(Engine, "before_cursor_execute")
@@ -144,7 +146,7 @@ def _statement_began(conn, cursor, statement, parameters, context, executemany):
         conn.info.setdefault("assy_tx_counts", []).append((written.group(1) if written else READS, now))
         tx.statements += 1
     except Exception as exc:                                   # noqa: BLE001 - the counters' own failure
-        _quiet("a statement", exc)
+        _quiet("a statement", exc, told(exc))
 
 
 @event.listens_for(Engine, "after_cursor_execute")
@@ -157,7 +159,7 @@ def _statement_ended(conn, cursor, statement, parameters, context, executemany):
         name, at = began.pop()
         tx.by_table[name] = tx.by_table.get(name, 0.0) + (time.perf_counter() - at)
     except Exception as exc:                                   # noqa: BLE001
-        _quiet("a statement's end", exc)
+        _quiet("a statement's end", exc, told(exc))
 
 
 @event.listens_for(Engine, "commit")
@@ -178,7 +180,7 @@ def _committing(conn):
                 cursor.close()
         tx.commit_began = time.perf_counter()
     except Exception as exc:                                   # noqa: BLE001
-        _quiet("a commit", exc)
+        _quiet("a commit", exc, told(exc))
 
 
 @event.listens_for(Session, "after_commit")

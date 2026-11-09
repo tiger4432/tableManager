@@ -65,8 +65,10 @@ def test_the_counters_fail_alone(table, monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger=alignment_batch_counts.logger.name):
         said = _written(table, _batch("y"))
     assert said["transaction"] is None
-    assert [r.getMessage() for r in caplog.records if r.name == alignment_batch_counts.logger.name] == [
-        "[Counts] the write's transaction counts stopped at a statement (RuntimeError: counter broke) - "
-        "the write is unaffected"]
+    lines = [r.getMessage() for r in caplog.records if r.name == alignment_batch_counts.logger.name]
+    assert len(lines) == 1 and lines[0].startswith(
+        "[Counts] the write's transaction counts stopped at a statement (RuntimeError: counter broke (") and lines[0].endswith(
+        ")) - the write is unaffected"), lines
+    assert "test_a_write_line_says_its_transaction.py" in lines[0], "where it broke"
     assert table.execute(text('SELECT count(*) FROM "%s" WHERE a = %s' % (T, "'y'"))).scalar() == 3
     assert alignment_batch_counts.write_steps_text(said).endswith("cells offered"), "no TRANSACTION part"
