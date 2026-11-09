@@ -5226,6 +5226,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
         "generated_at": to_local_str(now_utc),
         "clock": "server",
         "rows": rows,
+        # runs queued with no outbox row to wake them (a chain replay behind a run, owner 11-09) - the seat's lines
+        "queued_runs": running_seat.queued_runs(db, now_utc),
         # 게이트 ①이 «집합»으로 대조하는 자리 — 수가 아니라 이름이다.
         "rules_known": sorted(str(x.get("name") or "") for x in rules),
         # ⛔ [게이트 ⑪] 행 «수»를 안 싣는다. 이 표를 비우는 것은 둘이라 합친 수는

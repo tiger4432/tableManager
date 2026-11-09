@@ -1258,6 +1258,17 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
 })()` });
+// owner 11-09 «리프레시 위로»: each queue panel's Refresh above its numbers, list and failures.
+CELLS.push({ entry: 'admin.html', after: 'Overview', rule: 'contents', at: 'chain-queue-refresh', expr: `(() => {
+  const shown = [...document.querySelectorAll('.chain-queue-panel .chain-queue-refresh')].filter((b) => b.getClientRects().length);
+  if (!shown.length) return 'no Refresh drawn';
+  for (const btn of shown) {
+    const panel = btn.closest('.chain-queue-panel');
+    const first = panel.querySelector('.chain-queue-numbers, .chain-queue-table, .chain-queue-empty, .empty-state');
+    if (first && btn.getBoundingClientRect().bottom > first.getBoundingClientRect().top + 1) return 'a Refresh under its list';
+  }
+  return null;
+})()` });
 // owner 11-09, lead ㄷ: a done replay says its pages beside done - drawn, whole, not small, in the Overview's recent runs.
 CELLS.push({ entry: 'admin.html', after: 'Overview, chain replays', rule: 'contents', at: 'running-body', expr: `(() => {
   const all = [...document.querySelectorAll('#running-body .run-line__chain')];

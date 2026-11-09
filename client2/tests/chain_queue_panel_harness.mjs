@@ -910,9 +910,12 @@ async function xSuite(m, say) {
   const d2 = makeDoc();
   const none = d2.createElement('div');
   new m.ChainQueuePanel(none, { doc: d2 }).render(BODY);
-  say('Y1 Refresh, read or not, asks the page for the queue once a press; no page read given, no button',
+  say('Y1 Refresh, read or not, asks the page for the queue once a press; no page read given, no button; it sits in the '
+    + 'head line, the panel\'s first, above the list (owner 11-09)',
     refreshed.length === 2 && byClass(none, 'chain-queue-refresh').length === 0
-      && byClass(byClass(r.host, 'chain-queue-meta')[0] || r.host, 'chain-queue-refresh').length === 1,
+      && byClass(byClass(r.host, 'chain-queue-head')[0] || { children: [] }, 'chain-queue-refresh').length === 1
+      && String(r.host.children[0].children[0].className).includes('chain-queue-head')
+      && byClass(byClass(r.host, 'chain-queue-meta')[0] || { children: [] }, 'chain-queue-refresh').length === 0,
     JSON.stringify([refreshed.length, byClass(none, 'chain-queue-refresh').length]));
   // The chain state, one function for both queues (lead 248ae20cd): each token, its one line, its tone.
   const whys = STATES.map((s) => m.chainStateWhy(s.chain_state));
@@ -1096,7 +1099,7 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
       mutate: swap("waiting ${unitText(b.waiting, 'event')} · oldest", 'waiting ${b.waiting} · oldest') },
     { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
     { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
-      mutate: swap('      const again = this._refresh();\n      if (again) this.root.appendChild(again);\n', '') },
+      mutate: swap('    if (!view.available) {\n      this.root.appendChild', '    if (!view.available) {\n      this.root.textContent = \'\';\n      this.root.appendChild') },
     { id: 'SM1', what: 'running does not say when it last moved', catches: 'S1',
       mutate: swap('    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],', '    running: [w.stage, formatAge(w.elapsed_seconds)],') },
     { id: 'SM2', what: 'a null field is drawn', catches: 'S2',
@@ -1161,7 +1164,8 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
   const host = doc.createElement('div');
   const panel = new ChainQueuePanel(host, { doc });
   panel.render(EMPTY, { age: 'Read 7 s ago' });
-  const first = host.children[0] && host.children[0].children[0];
+  const head = host.children[0] && host.children[0].children[0];
+  const first = head && head.children[0];
   const aged = first && String(first.className || '').includes('chain-queue-read-age') ? first.textContent : '';
   panel.render(EMPTY);
   ok('QA2 the age the screen hands it is the panel\'s first line; none handed, none drawn',

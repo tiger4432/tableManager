@@ -4041,6 +4041,12 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
     return out
 
 
+def wakes_by_outbox(op):
+    """Whether a queued run of `op` is woken by an outbox row (the scheduler's) - else its owner, the chain worker,
+    claims it from the run table, and the run has no queue line of its own (`runtime.running` lists it)."""
+    return event_constants.outbox_owner(RUN_EVENT_TYPE, op) != event_constants.OUTBOX_OWNER_CHAIN
+
+
 def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = None) -> dict:
     """Queue the run and return. Does NOT execute anything.
 
@@ -4080,7 +4086,7 @@ def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = N
     #    is what the row wakes - dropping it for them would leave those runs queued until the
     #    next restart. The axis is 「who empties this」, and `outbox_owner` is where it is
     #    already declared; this asks it rather than spelling a second answer.
-    if event_constants.outbox_owner(RUN_EVENT_TYPE, op) != event_constants.OUTBOX_OWNER_CHAIN:
+    if wakes_by_outbox(op):
         db.add(models.DatabaseOutbox(
             event_uuid=str(uuid.uuid4()),
             table_name=RUN_EVENT_TABLE,

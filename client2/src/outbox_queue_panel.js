@@ -4,7 +4,8 @@
 //    「체인 대기열」이라는 이름이 읽는 사람을 체인으로 보냈다. 서버도 경로에서 뺐다.
 // 🔴 판단을 여기서 «다시 내리지» 않는다 — 나이는 chain_queue_panel 의 좌석, 상태는 서버 어휘.
 // 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 경계는 모집단 문장이 말한다.
-import { chainStateCell, formatAge, line } from './chain_queue_panel.js';
+import { chainStateCell, formatAge, line, runLineRow } from './chain_queue_panel.js';
+import { RunLines } from './run_lines.js';
 import { widestCell } from './cell_fit.js';
 import { chainPagesLine } from './retroactive_view.js';
 
@@ -46,7 +47,7 @@ export function outboxQueueView(payload, opts = {}) {
       reason: failed || str(opts.unavailable),
       generatedAt: '', population: '', hasMore: false, empty: false,
       page: Object.freeze({ count: 0, shared: Object.freeze([]) }),
-      rows: Object.freeze([]), rulesKnown: Object.freeze([]),
+      rows: Object.freeze([]), rulesKnown: Object.freeze([]), waiting: Object.freeze([]),
     });
   }
   const listed = payload.listed || {};
@@ -72,6 +73,9 @@ export function outboxQueueView(payload, opts = {}) {
       replay: row.run_id ? Object.freeze({ run: str(row.run_id), pages: chainPagesLine(row.pages) }) : null,
     });
   });
+  // Runs queued with no outbox row to wake them (a chain replay behind a run, owner 11-09): the admin's run lines,
+  // without the × - this route is unsigned, the cancel is the admin's.
+  const waiting = list(payload.queued_runs).map((item) => Object.freeze({ ...runLineRow(item), cancel: false }));
   return Object.freeze({
     read: true,
     reason: '',
@@ -80,7 +84,7 @@ export function outboxQueueView(payload, opts = {}) {
     population: str(payload.population),
     hasMore: listed.next_cursor != null,
     // 🔴 「비었다」는 «읽고 나서만» 참이다. 못 읽은 것과 같은 픽셀이면 안 된다.
-    empty: rows.length === 0,
+    empty: rows.length === 0 && waiting.length === 0,
     // 🔴 서버는 행 «수»를 일부러 안 싣는다 — 이 표를 비우는 것이 둘이라 합친 수가
     //    「체인이 밀렸다」로 읽힌다(게이트 ⑪). 그래서 이 수는 «이 쪽»의 수이고,
     //    그 사실은 `hasMore` 와 «한 마디»로 나간다 (render 참조).
@@ -94,6 +98,7 @@ export function outboxQueueView(payload, opts = {}) {
     }),
     rulesKnown: Object.freeze(list(payload.rules_known).map(String)),
     rows: Object.freeze(rows),
+    waiting: Object.freeze(waiting),
   });
 }
 
@@ -194,7 +199,7 @@ export class OutboxQueuePanel {
       meta.appendChild(this._line('queue-at', view.generatedAt));
       if (view.population) meta.appendChild(this._line('queue-population', view.population));
       // 🔴 수와 「다음 쪽」이 «한 마디»다 (판정 조건). 떼어 놓으면 「50」이 «전부»로 읽힌다.
-      if (!view.empty) {
+      if (view.rows.length) {
         meta.appendChild(this._line('queue-page', [
           `${view.page.count} on this page`,
           ...view.page.shared,
@@ -207,10 +212,17 @@ export class OutboxQueuePanel {
     this.root.appendChild(meta);
     if (!view.read) return view;
 
+    if (view.waiting.length) {
+      const box = this.doc.createElement('div');
+      box.className = 'queue-waiting';
+      this.root.appendChild(box);
+      new RunLines(box, { doc: this.doc }).render(view.waiting);
+    }
     if (view.empty) {
       this.root.appendChild(this._line('queue-empty', 'Nothing to run right now'));
       return view;
     }
+    if (!view.rows.length) return view;
 
     // Head and rows roll sideways together in one box when the panel is narrower than the six columns (lead 10-09).
     const scroll = this.doc.createElement('div');

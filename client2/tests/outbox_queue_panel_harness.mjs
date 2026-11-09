@@ -492,6 +492,62 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
+console.log('\n[owner 11-09] runs queued with no outbox row - the admin\'s run lines, oldest first, no ×');
+{
+  // the seat's items as the server sends them (runtime.running.queued_runs)
+  const QUEUED = [
+    { what: 'Replay (R1) · rp-old', where: 'waiting', pid: null, started_at: '2026-11-09T10:00:00+00:00',
+      elapsed_seconds: 600, progress: { processed: null, total: null }, cancel: { run_id: 'rp-old' }, state: 'queued',
+      waiting: 'after withdraw · run-probe' },
+    { what: 'Replay (R1) · rp-new', where: 'waiting', pid: null, started_at: '2026-11-09T10:09:00+00:00',
+      elapsed_seconds: 60, progress: { processed: null, total: null }, cancel: { run_id: 'rp-new' }, state: 'queued',
+      waiting: 'after withdraw · run-probe' },
+  ];
+  const queuedSuite = (m, say) => {
+    const view = m.outboxQueueView({ ...REPLY([]), queued_runs: QUEUED });
+    say('QW1 the view carries them in the server\'s order, not empty, no × on any',
+      view.waiting.length === 2 && view.waiting[0].what.text === 'Replay (R1) · rp-old' && view.empty === false
+        && view.waiting.every((r) => r.cancel === false), JSON.stringify(view.waiting.map((r) => [r.what, r.cancel])));
+    const mount = doc.createElement('div');
+    new m.OutboxQueuePanel(mount, { doc }).render({ ...REPLY([WAITING]), queued_runs: QUEUED });
+    const lines = byClass(mount, 'queue-waiting').flatMap((box) => byClass(box, 'run-line'));
+    say('QW2 one run line each, above the rows, saying what it waits on; no × button',
+      lines.length === 2 && byClass(lines[0], 'run-line__summary')[0].textContent === 'after withdraw · run-probe'
+        && byClass(mount, 'running-x').length === 0
+        && walk(mount).indexOf(lines[1]) < walk(mount).indexOf(byClass(mount, 'queue-row')[0]),
+      lines.map((l) => l.textContent).join(' | '));
+    const alone = doc.createElement('div');
+    new m.OutboxQueuePanel(alone, { doc }).render({ ...REPLY([]), queued_runs: QUEUED });
+    say('QW3 no outbox row but a queued run: its lines, never «Nothing to run right now»',
+      byClass(alone, 'run-line').length === 2 && byClass(alone, 'queue-empty').length === 0, textOf(alone));
+  };
+  const W_NAMES = [];
+  queuedSuite(await import('../src/outbox_queue_panel.js'), (name, cond, shown) => { W_NAMES.push(name); ok(name, cond, shown); });
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 50)}`); return t.split(from).join(to); };
+  const SUBJECT = new URL('../src/outbox_queue_panel.js', import.meta.url);
+  const MUTANTS = [
+    { id: 'QWM1', what: 'the payload\'s queued runs are not read', catches: 'QW1',
+      mutate: swap('list(payload.queued_runs)', 'list(payload.queued)') },
+    { id: 'QWM2', what: 'the Queue tab draws the admin\'s ×', catches: 'QW1',
+      mutate: swap('({ ...runLineRow(item), cancel: false })', '({ ...runLineRow(item) })') },
+    { id: 'QWM3', what: 'the lines are not drawn', catches: 'QW2',
+      mutate: swap('      new RunLines(box, { doc: this.doc }).render(view.waiting);\n', '') },
+    { id: 'QWM4', what: 'a queued run alone reads as nothing to run', catches: 'QW1',
+      mutate: swap('empty: rows.length === 0 && waiting.length === 0,', 'empty: rows.length === 0,') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
+    const got = [];
+    let ran = 0;
+    queuedSuite(m, (name, cond) => { ran += 1; if (!cond) got.push(name); });
+    return { failures: got, ran };
+  }, { baselineRan: W_NAMES.length, baselineNames: W_NAMES, title: '\n  [mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`queued mutant verdict ${i + 1}`);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
