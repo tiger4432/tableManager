@@ -55,6 +55,10 @@ request_written_by = sys._context_vars_cache.setdefault(
 #: events woke (총괄 b3a4334db). `None` = no run: the write is its own transaction's.
 request_run_id = sys._context_vars_cache.setdefault(
     "request_run_id", contextvars.ContextVar("request_run_id", default=None))
+#: [ACCEPT-ENCODING] The asker's Accept-Encoding, set by the HTTP door - what `runtime.offloop_json.gzipped` asks
+#: (lead 11-09 ㄴ). "" = no request: nothing is gzipped.
+request_accept_encoding = sys._context_vars_cache.setdefault(
+    "request_accept_encoding", contextvars.ContextVar("request_accept_encoding", default=""))
 #: [CHAIN GROUP] True while a chain group runs - whatever channel its writes go out on - so its
 #: transactions take the chain's statement limit (소유자 10-08 「체인 타임아웃 걸어」).
 request_chain_group = sys._context_vars_cache.setdefault(

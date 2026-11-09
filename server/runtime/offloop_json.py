@@ -16,11 +16,15 @@ encoder's sqlalchemy_safe removed a name an operator wrote). The bytes go back a
 `_EncodedJSONResponse` renders them as they are. fastapi still builds the response: the decorator's status code, a
 bodyless status, and headers a dependency set all stay its own.
 
+GZIP (lead 11-09 ㄴ): gzipping is making bytes too, so it is done here and in the pool process (`process_pool._answer`),
+never on the loop - one judgement, `gzipped`. Only JSON: a picture, a zip, a file pass as they are.
+
 ⚠️ NOT WRAPPED, so still turned into bytes on the loop: an async endpoint, a route that declares `response_model` (or
 a return annotation fastapi reads as one) or its own `response_class`. An endpoint that returns a Response is wrapped
 and its Response passes through as it is.
 """
 import functools
+import gzip
 import inspect
 import json
 
@@ -30,12 +34,27 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from starlette.responses import Response
 
+from database.context import request_accept_encoding
+
+JSON = "application/json"
+#: Below this a body goes as it is (lead 11-09 ㄴ: 1 KB, level 1 - a 4.5 MB grid page 36x smaller in 12 ms).
+GZIP_MIN_BYTES = 1024
+GZIP_LEVEL = 1
+
 
 class _Encoded(str):
-    """An answer already turned into bytes (`payload`). A str, so `jsonable_encoder` returns it as it is."""
+    """An answer already turned into bytes (`payload`), `gzipped` or not. A str, so `jsonable_encoder` returns it as it
+    is."""
+    gzipped = False
 
 
 class _EncodedJSONResponse(JSONResponse):
+    def __init__(self, content=None, *args, **kwargs):
+        super().__init__(content, *args, **kwargs)
+        if getattr(content, "gzipped", False):
+            self.headers["content-encoding"] = "gzip"
+            self.headers.add_vary_header("Accept-Encoding")
+
     def render(self, content) -> bytes:
         if isinstance(content, _Encoded):
             return content.payload
@@ -57,11 +76,42 @@ def encode(answer) -> _Encoded:
     return encoded
 
 
+def gzipped(body, accepts, content_type=JSON):
+    """THE one judgement «send these bytes gzipped?»: `body` gzipped when it is JSON, `GZIP_MIN_BYTES` or more, and
+    `accepts` (the asker's Accept-Encoding) takes gzip - else None, sent as it is."""
+    if (not str(content_type or "").startswith(JSON) or len(body) < GZIP_MIN_BYTES
+            or "gzip" not in str(accepts or "").lower()):
+        return None
+    return gzip.compress(body, GZIP_LEVEL)
+
+
+def gzip_response(response, accepts):
+    """`response` gzipped in place when `gzipped` says so - one that carries its body (not a file or a stream) and is
+    not encoded yet."""
+    body = getattr(response, "body", None)
+    if body is None or "content-encoding" in response.headers:
+        return response
+    packed = gzipped(body, accepts, response.headers.get("content-type"))
+    if packed is not None:
+        response.body = packed
+        response.headers["content-encoding"] = "gzip"
+        response.headers["content-length"] = str(len(packed))
+        response.headers.add_vary_header("Accept-Encoding")
+    return response
+
+
 def _off_loop(endpoint):
     @functools.wraps(endpoint)
     def answered_as_bytes(*args, **kwargs):
         answer = endpoint(*args, **kwargs)
-        return answer if isinstance(answer, Response) else encode(answer)
+        accepts = request_accept_encoding.get()
+        if isinstance(answer, Response):
+            return gzip_response(answer, accepts)
+        encoded = encode(answer)
+        packed = gzipped(encoded.payload, accepts)
+        if packed is not None:
+            encoded.payload, encoded.gzipped = packed, True
+        return encoded
     return answered_as_bytes
 
 

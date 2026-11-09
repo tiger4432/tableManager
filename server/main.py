@@ -155,7 +155,7 @@ app.router.route_class = access.TableRoute                # OffLoopJSONRoute + t
 
 # --- ContextVars Middleware config ---
 from database.context import (request_user, request_transaction_id, request_source,
-                              request_channel,
+                              request_channel, request_accept_encoding,
                               outbox_mode)
 
 @app.middleware("http")
@@ -175,11 +175,13 @@ async def db_context_middleware(request: Request, call_next):
     # [⓪] Every write that enters over HTTP - a person's grid edit or another client - is
     # one channel: what the opt-in asks is only 「did the chain cause it」 (총괄 f42b48591 1).
     token_channel = request_channel.set(event_constants.CHANNEL_API)
+    token_encoding = request_accept_encoding.set(request.headers.get("accept-encoding", ""))
     
     try:
         response = await call_next(request)
         return response
     finally:
+        request_accept_encoding.reset(token_encoding)
         request_channel.reset(token_channel)
         request_user.reset(token_user)
         request_transaction_id.reset(token_tx)

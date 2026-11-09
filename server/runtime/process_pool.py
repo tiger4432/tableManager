@@ -28,6 +28,7 @@ from collections import OrderedDict
 
 from fastapi import HTTPException
 from starlette.responses import Response
+from database.context import request_accept_encoding
 from error_said import told
 
 SETTING = "walk_processes"
@@ -291,8 +292,6 @@ def _reply(answer):
 
     request_timing.add(*answer["db"])
     kind = answer["kind"]
-    if kind == "json":
-        return Response(answer["body"], media_type="application/json")
     if kind == "response":
         response = Response(answer["body"], status_code=answer["status"])
         response.raw_headers = answer["headers"]
@@ -364,7 +363,7 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
         if not pool.answer_waits:
             deadline = None
         process, connection, _generation_of = worker
-        connection.send((target, kwargs))
+        connection.send((target, kwargs, request_accept_encoding.get()))   # the pool process gzips (lead 11-09 ㄴ)
         if not connection.poll(left()):
             raise _unavailable("walk_timed_out", "The walk did not finish in %g s and its walk process was stopped - "
                                "narrow the walk, or raise walk_seconds_max in ingestion_settings.json" % seconds)
@@ -465,13 +464,13 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
     connection.send("ready")
     while True:
         try:
-            target, kwargs = connection.recv()
+            target, kwargs, accepts = connection.recv()
         except (EOFError, OSError):
             return
-        connection.send(_answer(target, kwargs))
+        connection.send(_answer(target, kwargs, accepts))
 
 
-def _answer(target, kwargs):
+def _answer(target, kwargs, accepts=""):
     from database.database import SessionLocal
     from runtime import offloop_json, request_timing
 
@@ -482,11 +481,10 @@ def _answer(target, kwargs):
     db = SessionLocal()
     try:
         answer = body(db=db, **kwargs)
-        if isinstance(answer, Response):
-            out = {"kind": "response", "body": answer.body, "status": answer.status_code,
-                   "headers": answer.raw_headers}
-        else:
-            out = {"kind": "json", "body": offloop_json.encode(answer).payload}
+        if not isinstance(answer, Response):
+            answer = Response(offloop_json.encode(answer).payload, media_type=offloop_json.JSON)
+        offloop_json.gzip_response(answer, accepts)
+        out = {"kind": "response", "body": answer.body, "status": answer.status_code, "headers": answer.raw_headers}
     except HTTPException as exc:
         out = {"kind": "http", "status": exc.status_code, "detail": exc.detail, "headers": exc.headers}
     except Exception as exc:                                    # noqa: BLE001 - the request's 500
