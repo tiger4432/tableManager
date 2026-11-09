@@ -10,6 +10,8 @@
 export const FLOW_FOLLOW = Object.freeze(['writes', 'reads_from', 'fills', 'has_column', 'writes_column',
   'joins_on', 'decides_by', 'triggered_by']);
 export const FLOW_HOPS = 2;
+/** A rule box names this many of the columns it writes, then «+N». */
+const SHOWN_COLUMNS = 2;
 
 const attr = (node, name) => {
   const value = node && node.attributes ? node.attributes[name] : undefined;
@@ -19,7 +21,7 @@ const sorted = (items) => [...new Set(items)].sort();
 
 /** The strip's model of one walk answer for `table` - null when the answer holds no node for it.
  *  {table: {name, keys, description}, comesFrom: [rule], fills: [{name, folder}], feeds: [rule],
- *   columns: {column: [rule]}} - a rule {name, kind, when, from, to, on}. */
+ *   columns: {column: [rule]}} - a rule {name, kind, when, from, to, on, writes}. */
 export function flowOf(body, table) {
   const nodes = new Map((body && Array.isArray(body.nodes) ? body.nodes : []).map((node) => [node.id, node]));
   const edges = body && Array.isArray(body.edges) ? body.edges : [];
@@ -29,17 +31,19 @@ export function flowOf(body, table) {
     .map((edge) => nodes.get(edge.target)).filter(Boolean);
   const into = (predicate) => edges.filter((edge) => edge.target === self.id && edge.predicate === predicate)
     .map((edge) => nodes.get(edge.source)).filter(Boolean);
+  const columnsOf = (node) => ends(node.id, 'writes_column');
   const rule = (node) => ({
     name: node.keys.rule, kind: attr(node, 'kind'), when: attr(node, 'when'),
     from: sorted(ends(node.id, 'reads_from').map((each) => each.keys.table)),
     to: sorted(ends(node.id, 'writes').map((each) => each.keys.table)),
     on: sorted(ends(node.id, 'joins_on').map((each) => each.keys.column)),
+    writes: sorted(columnsOf(node).map((each) => each.keys.column)),
   });
   const writers = into('writes').map(rule).sort((a, b) => a.name.localeCompare(b.name));
   const written = new Set(writers.map((each) => each.name));
   const columns = {};
   for (const node of into('writes').concat(into('reads_from'))) {
-    for (const column of ends(node.id, 'writes_column')) {
+    for (const column of columnsOf(node)) {
       if (column.keys.table !== table) continue;
       const list = columns[column.keys.column] || (columns[column.keys.column] = []);
       if (!list.some((each) => each.name === node.keys.rule)) list.push(rule(node));
@@ -199,11 +203,19 @@ export class FlowStrip {
     return box;
   }
 
+  /** A rule's box: the tables it reads or writes (the open table as words - a link to itself does nothing), its
+   *  name, its joins, the first columns it writes and how many more; the tip says when and every column (owner 11-09). */
   _rule(each, tables) {
-    const parts = tables.map((name) => this._tableLink(name));
+    const parts = tables.map((name) => (name === this.table ? this._el('span', 'flow-strip__self', name) : this._tableLink(name)));
     parts.push(this._id('flow-strip__rule', each.name));
     if (each.on.length) parts.push(this._el('span', 'flow-strip__meta', `on ${each.on.join(', ')}`));
-    return this._box('rule', each.kind || 'rule', parts, each.when || '');
+    const more = each.writes.length - SHOWN_COLUMNS;
+    if (each.writes.length) {
+      parts.push(this._id('flow-strip__meta flow-strip__writes',
+        `→ ${each.writes.slice(0, SHOWN_COLUMNS).join(', ')}${more > 0 ? ` +${more}` : ''}`));
+    }
+    return this._box('rule', each.kind || 'rule', parts,
+      [each.when, each.writes.length ? `writes ${each.writes.join(', ')}` : ''].filter(Boolean).join('\n'));
   }
 
   _side(title, items, emptyWord) {
@@ -229,9 +241,10 @@ export class FlowStrip {
     }
     const m = this.model;
     const comes = [
-      ...m.fills.map((each) => this._box('file', 'File', [this._id('flow-strip__rule', each.name),
-        ...(each.folder ? [this._id('flow-strip__meta flow-strip__path', each.folder)] : [])])),
-      ...m.comesFrom.map((each) => this._rule(each, each.from.filter((name) => name !== m.table.name))),
+      // the ingestion's name is the operator's word (its folder under the work root, or the source's id); the whole
+      // path is the box's tip (owner 11-09)
+      ...m.fills.map((each) => this._box('file', 'File', [this._id('flow-strip__rule', each.name)], each.folder || '')),
+      ...m.comesFrom.map((each) => this._rule(each, each.from)),
     ];
     const ledger = this._ledger();
     const feeds = [

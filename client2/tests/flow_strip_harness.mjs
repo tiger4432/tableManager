@@ -13,6 +13,10 @@
 //   F10 the header's tip lines name each rule, its tables, its joins and when
 //   F11 «Edit» and a table name hand their table to the page
 //   F12 a table no rule touches (dt_map): its file under «Comes from», no rule box, «Nothing reads it»
+//   F13 a rule that reads the open table itself (dt_inventory's decide rule): that table drawn as words, not a link,
+//       another table as a link (owner 11-09 ㄱ - 12e693602 left it out and the box read as having no source)
+//   F14 a rule box names the first two columns it writes and «+N»; its tip says when and every column (owner 11-09)
+//   F15 a file box says the ingestion's name; the whole folder is its tip, not its words (owner 11-09 ㄴ)
 // Run: node client2/tests/flow_strip_harness.mjs
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +48,7 @@ async function recorded(table) {
 }
 const ANSWER = await recorded('dt_log');
 const NO_RULE = await recorded('dt_map');
+const SELF_READ = await recorded('dt_inventory');
 const T = (table) => ({ id: `table:${table}`, type: 'table', keys: { table } });
 // The source label's answer (GridSourceLabel.answer) for dt_log over the same box: the declaration's dt_job reads it.
 const LABEL = { relation: 'dt_log', state: 'source', operating: 'default', rows: [{ source: 'dt_job', relation: 'dt_log', world: 'default' }] };
@@ -51,7 +56,7 @@ const LABEL = { relation: 'dt_log', state: 'source', operating: 'default', rows:
 async function answers(M) {
   const out = {};
   const m = M.flowOf(ANSWER, 'dt_log');
-  out.F1 = m && m.comesFrom.map((r) => [r.name, r.kind, r.when, r.from, r.on]);
+  out.F1 = m && m.comesFrom.map((r) => [r.name, r.kind, r.when, r.from, r.on, r.writes]);
   out.F2 = m && m.feeds.map((r) => [r.name, r.to]);
   out.F3 = { fills: m && m.fills.map((f) => [f.name, Boolean(f.folder)]) };
   out.F4 = m && Object.fromEntries(Object.entries(m.columns).map(([column, rules]) => [column, rules.map((r) => r.name)]));
@@ -73,6 +78,7 @@ async function answers(M) {
     walked.push(table);
     if (table === 'slow') return new Promise((resolve) => { hold = resolve; });
     if (table === 'dt_map') return Promise.resolve({ ok: true, body: NO_RULE });
+    if (table === 'dt_inventory') return Promise.resolve({ ok: true, body: SELF_READ });
     if (table === 'refused') return Promise.resolve({ ok: false, message: 'no relation w_system.ledger_events' });
     return Promise.resolve({ ok: true, body: ANSWER });
   };
@@ -110,6 +116,11 @@ async function answers(M) {
   const link = button(hostA, 'dt_inventory');
   if (link) link.dispatch('click');
   out.F11 = { edited: said.edited, picked: said.picked };
+  // F15 drawn on dt_log's strip: the file box's words and tip
+  const boxes = (kind) => walk(hostA).filter((n) => new RegExp(`flow-strip__item--${kind}\\b`).test(n.className || ''));
+  const ruleName = (box) => walk(box).find((n) => /flow-strip__rule/.test(n.className || '')).textContent;
+  const writesOf = (box) => (walk(box).find((n) => /flow-strip__writes/.test(n.className || '')) || { textContent: null }).textContent;
+  out.F15 = boxes('file').map((box) => [box.textContent, box.title]);
   // F3 drawn: the label's answers, one after another, on dt_log's strip
   const ledgerSide = () => ({ boxes: walk(hostA).filter((n) => /flow-strip__item--ledger/.test(n.className || '')).map((n) => n.textContent),
     pending: hostA.textContent.includes('…'), unknown: hostA.textContent.includes('declaration unreadable — no route'),
@@ -134,6 +145,14 @@ async function answers(M) {
   out.F12.drawn = { rules: walk(hostA).filter((n) => /flow-strip__item--rule/.test(n.className || '')).length,
     files: walk(hostA).filter((n) => /flow-strip__item--file/.test(n.className || '')).length,
     none: hostA.textContent.includes('Nothing reads it') };
+  // F13 · F14: dt_inventory - its decide rule reads and writes dt_inventory, the dedup rule reads dt_log; the join
+  // rules that read it write six and five of dt_log's columns
+  await a.setTable('dt_inventory');
+  await flush();
+  out.F13 = boxes('rule').filter((box) => /^enrichment_/.test(ruleName(box))).map((box) => [ruleName(box),
+    walk(box).filter((n) => n.tagName === 'BUTTON').map((n) => n.textContent),
+    walk(box).filter((n) => /flow-strip__self/.test(n.className || '')).map((n) => n.textContent)]);
+  out.F14 = boxes('rule').map((box) => [ruleName(box), writesOf(box), box.title]);
   await a.setOpen(false);
   out.F7.closedAgain = { hidden: hostA.hidden, text: hostA.textContent, last: said.answers[said.answers.length - 1] };
   out.F10 = M.chainTipLines(m && m.columns.dt_slot);
@@ -142,10 +161,10 @@ async function answers(M) {
 
 const expect = {
   F1: (v) => JSON.stringify(v) === JSON.stringify([
-    ['inventory_confirmed', 'join', 'on change of dt_job, dt_lot, dt_slot', ['dt_inventory'], ['dt_job']],
-    ['inventory_confirmed:target', 'join', 'on change of dt_job', ['dt_log'], ['dt_job']],
-    ['test', 'join', 'on change of dt_job, dt_lot', ['dt_inventory'], ['dt_job']],
-    ['test:target', 'join', 'on change of dt_job', ['dt_log'], ['dt_job']]]),
+    ['inventory_confirmed', 'join', 'on change of dt_job, dt_lot, dt_slot', ['dt_inventory'], ['dt_job'], ['dt_lot', 'dt_slot']],
+    ['inventory_confirmed:target', 'join', 'on change of dt_job', ['dt_log'], ['dt_job'], ['dt_lot', 'dt_slot']],
+    ['test', 'join', 'on change of dt_job, dt_lot', ['dt_inventory'], ['dt_job'], ['dt_lot']],
+    ['test:target', 'join', 'on change of dt_job', ['dt_log'], ['dt_job'], ['dt_lot']]]),
   F2: (v) => JSON.stringify(v) === JSON.stringify([['enrichment_dedup:enrich_in_chain_probe', ['dt_inventory']]]),
   F3: (v) => {
     const none = { boxes: [], pending: false, unknown: false, notSource: false };
@@ -170,6 +189,15 @@ const expect = {
   F11: (v) => JSON.stringify(v) === JSON.stringify({ edited: ['dt_log'], picked: ['dt_inventory'] }),
   F12: (v) => JSON.stringify(v) === JSON.stringify({ comesFrom: 0, feeds: 0, fills: ['dt_map'], columns: 0,
     drawn: { rules: 0, files: 1, none: true } }),
+  F13: (v) => JSON.stringify(v) === JSON.stringify([['enrichment_auto_confirm:enrich_in_chain_probe', [], ['dt_inventory']],
+    ['enrichment_dedup:enrich_in_chain_probe', ['dt_log'], []]]),
+  F14: (v) => JSON.stringify(v) === JSON.stringify([
+    ['enrichment_auto_confirm:enrich_in_chain_probe', null, null],
+    ['enrichment_dedup:enrich_in_chain_probe', '→ dt_job', 'writes dt_job'],
+    ['inventory_confirmed', '→ b_wx, b_wy +4', 'on change of dt_job, dt_lot, dt_slot\nwrites b_wx, b_wy, dt_cell_key, dt_job, dt_lot, dt_slot'],
+    ['test', '→ b_wx, b_wy +3', 'on change of dt_job, dt_lot\nwrites b_wx, b_wy, dt_cell_key, dt_job, dt_lot']]),
+  F15: (v) => JSON.stringify(v) === JSON.stringify([['Filedt_log',
+    'C:\\Users\\kk980\\Developments\\assyManager\\server\\ingestion_workspace\\dt_log']]),
 };
 
 let passed = 0;
@@ -196,6 +224,18 @@ const MUTANTS = [
   ['F10', 'the joins left out of the tip', "each.on.length ? `joined on ${each.on.join(', ')}` : '',", "'',"],
   ['F4', "a column's rules in the server's edge order", '  for (const list of Object.values(columns)) list.sort((a, b) => a.name.localeCompare(b.name));\n', ''],
   ['F12', 'an ingestion drawn as a rule', "this._box('file', 'File',", "this._box('rule', 'File',"],
+  ['F13', 'the open table left out of its own rule box again', 'this._rule(each, each.from)),',
+    'this._rule(each, each.from.filter((name) => name !== this.table))),'],
+  ['F13', 'the open table drawn as a link to itself', "name === this.table ? this._el('span', 'flow-strip__self', name)",
+    "false ? this._el('span', 'flow-strip__self', name)"],
+  ['F14', 'every written column on the box', 'each.writes.slice(0, SHOWN_COLUMNS)', 'each.writes'],
+  ['F14', 'the columns past two not counted', "${more > 0 ? ` +${more}` : ''}", ''],
+  ['F14', "the tip without the columns", "each.writes.length ? `writes ${each.writes.join(', ')}` : ''", "''"],
+  ['F14', 'a joined column read as written', "const columnsOf = (node) => ends(node.id, 'writes_column');", "const columnsOf = (node) => ends(node.id, 'joins_on');"],
+  ['F15', 'the whole folder back on the file box', "[this._id('flow-strip__rule', each.name)], each.folder || '')",
+    "[this._id('flow-strip__rule', each.name), this._el('span', '', each.folder)], each.folder || '')"],
+  ['F15', 'the folder not in the tip', "[this._id('flow-strip__rule', each.name)], each.folder || '')",
+    "[this._id('flow-strip__rule', each.name)], '')"],
   ['F11', 'Edit hands nothing', 'edit.addEventListener(\'click\', () => this.onEdit(m.table.name));', ''],
 ];
 let caught = 0;

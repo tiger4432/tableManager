@@ -3571,9 +3571,11 @@ const DRIVE = {
       await until(c, GRID_LOADED);
     }],
     // The Flow strip (owner 11-06, mockup 5X4wGr6QwEoa4bQ8D7BB47): pressed on dt_log - its rules, files and ledger
-    // sources from the system world's walk; then dt_map, which no rule writes; then closed, back on the first table.
+    // sources from the system world's walk; then dt_map, which no rule writes; then dt_inventory, whose decide rule reads
+    // the table itself and whose readers write six and five columns («+N»); then closed, back on the first table.
     ...[['Flow strip on dt_log', 'dt_log', "Boolean(document.querySelector('.flow-strip.is-ready[aria-label=\"Flow of dt_log\"] .flow-strip__item--rule'))"],
-      ['Flow strip on dt_map, no rule', 'dt_map', "(() => { const s = document.querySelector('.flow-strip.is-ready'); return Boolean(s) && /^Flow of dt_map$/.test(s.getAttribute('aria-label')) && !s.querySelector('.flow-strip__item--rule') && /Nothing reads it/.test(s.textContent); })()"]].map(([name, table, ready]) => [name, async (c, log) => {
+      ['Flow strip on dt_map, no rule', 'dt_map', "(() => { const s = document.querySelector('.flow-strip.is-ready'); return Boolean(s) && /^Flow of dt_map$/.test(s.getAttribute('aria-label')) && !s.querySelector('.flow-strip__item--rule') && /Nothing reads it/.test(s.textContent); })()"],
+      ['Flow strip on dt_inventory, a rule reading itself', 'dt_inventory', "(() => { const s = document.querySelector('.flow-strip.is-ready[aria-label=\"Flow of dt_inventory\"]'); return Boolean(s) && Boolean(s.querySelector('.flow-strip__self')) && /\\+\\d/.test(s.textContent); })()"]].map(([name, table, ready]) => [name, async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
         window.__flowFrom = window.__flowFrom || sel.value;
         if (sel.value !== ${JSON.stringify(table)}) { sel.value = ${JSON.stringify(table)}; sel.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -4164,6 +4166,10 @@ const MUTANTS = [
   // grid's rowDataUpdated is the seat; its first rows are fitted by onFirstDataRendered either way).
   { name: 'the columns not fitted', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/grid.js', edits: [['    onRowDataUpdated: () => fitColumnWidths(),\n', '']] },
+  // The side panel's six tabs (a table with a reference grid, dt_inventory) on one line again - the page went 84 px
+  // sideways at 1920 (release-2026-11-09 has it; owner 11-09).
+  { name: 'the side panel tabs on one line', entry: 'index.html', rule: 'overflow', at: 'page',
+    file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  gap: 0;\n  padding: 0;', '  gap: 0;\n  padding: 0;']] },
   // The defs' width laid again on every defs refresh, undoing the fit (measured on the box, 11-05).
   { name: 'the defs say a width again', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/grid.js', edits: [['      initialWidth: 150,\n', '      width: 150,\n']] },

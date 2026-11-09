@@ -460,7 +460,10 @@ body.resizing-active .gallery-seat {
    right for three tabs in 400px and wrong for four in 640px: the labels stop being the
    thing that sizes them. These rules restyle the row as underlined segments and leave
    every `.tab-btn` rule above untouched, so a sidebar put back to 400px is still correct. */
+/* six tabs (a table with a reference grid) are wider than the panel: the row goes to a second line, not the page
+   sideways (owner 11-09, the checker's «Flow strip on dt_inventory» found it) */
 .history-tabs--wide {
+  flex-wrap: wrap;
   gap: 0;
   padding: 0;
   background: none;
@@ -3115,9 +3118,10 @@ body.resizing-active .gallery-seat {
 .flow-strip__table, .flow-strip__edit { height: auto; min-height: 0; font: inherit; font-size: var(--fs-label); line-height: inherit;
   color: var(--accent); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
 .flow-strip__table { font-family: var(--font-mono); }
+.flow-strip__self { font-family: var(--font-mono); font-size: var(--fs-label); }
 .flow-strip__rule { font-family: var(--font-mono); font-size: var(--fs-label); overflow-wrap: anywhere; }
 .flow-strip__meta, .flow-strip__none { font-size: var(--fs-label); color: var(--text-dim); }
-.flow-strip__path { overflow-wrap: anywhere; min-width: 0; }
+.flow-strip__writes { font-family: var(--font-mono); overflow-wrap: anywhere; min-width: 0; }
 .flow-strip__arrow { align-self: center; justify-self: center; color: var(--text-dim); }
 .flow-strip__centre { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
   border: 2px solid var(--accent); min-width: 0; }
