@@ -940,6 +940,15 @@ for (const after of ['row picked, Queue tab', 'Queue tab, a beat later', 'a row 
   return '';
 })()` });
 }
+// A colour picked for a new rule is the one the form holds and the one its swatches mark; the picked value cell's paint
+// has its picker too.
+CELLS.push({ entry: 'index.html', after: 'Colours tab, a colour picked', rule: 'colour picked', at: 'look-panel', expr: `(() => {
+  const form = document.querySelector('.look-form'); if (!form) return 'no rule form';
+  if (form.elements.role.value !== '#c0392b') return 'the form holds ' + form.elements.role.value + ', not the colour picked';
+  const on = [...form.querySelectorAll('.look-swatch.is-on')];
+  if (on.length !== 1 || !on[0].matches('[data-role-colour]')) return 'swatches marked: ' + on.length + (on[0] ? ' ' + (on[0].dataset.role || 'colour') : '');
+  return document.querySelector('.look-paint [data-paint-colour]') ? null : 'the paint has no colour picker';
+})()` });
 CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'filter typed', at: 'ag-floating-filter', expr: `(() => {
   const t = window.__filterTyped;
   if (!t) return 'the right-most filter was never typed';
@@ -3422,6 +3431,39 @@ const DRIVE = {
     ['Colours, the condition cleared', (c) => evaluate(c, `(() => { const i = document.querySelector('.look-form__when input'); if (!i) return false;
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '');
       i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`).then(() => sleep(200))],
+    // A colour picked for a new rule (owner 11-09 «색깔 선택»): on dt_log, a table that is edited, its value cell dt_lot picked
+    // (the paint draws its swatches for it) and the form's native picker given a value, as its dialog does (lead 11-10).
+    ['Colours tab, a colour picked', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
+        window.__coloursFrom = sel.value; sel.value = 'dt_log'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      // a real press, as pivotPasted's: a dispatched mousedown picks no cell. Under Global: a pick under another tab
+      // asks the row's history, and Colours opened after the pick asks none
+      const at = await evaluate(c, `(() => { const tab = document.getElementById('tab-global'); if (tab) tab.click();
+        const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell[col-id="dt_lot"]');
+        if (!cell) return null;
+        const r = cell.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+      if (at) {
+        for (const type of ['mousePressed', 'mouseReleased']) {
+          await c.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
+        }
+      }
+      await sleep(300);
+      await evaluate(c, `(() => { const tab = document.getElementById('tab-colours'); if (tab) tab.click();
+        const pick = document.querySelector('.look-form [data-role-colour]'); if (!pick) return false;
+        pick.value = '#c0392b'; pick.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(600);
+    }],
+    // The table the colours were picked from, back: the Queue steps after it are that table's.
+    ['the table before the colours', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__coloursFrom) return false;
+        sel.value = window.__coloursFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],
@@ -4305,6 +4347,11 @@ const MUTANTS = [
   // sideways at 1920 (release-2026-11-09 has it; owner 11-09).
   { name: 'the side panel tabs on one line', entry: 'index.html', rule: 'overflow', at: 'page',
     file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  gap: 0;\n  padding: 0;', '  gap: 0;\n  padding: 0;']] },
+  // A picked colour not kept by the form - the rule saved in the role before (owner 11-09).
+  { name: 'a picked colour not kept by the rule form', entry: 'index.html', rule: 'colour picked', at: 'look-panel',
+    file: 'src/look_panel.js', edits: [['    this.form.elements.role.value = role;\n', '']] },
+  { name: 'the paint without its colour picker', entry: 'index.html', rule: 'colour picked', at: 'look-panel',
+    file: 'src/look_panel.js', edits: [["${colourPick('data-paint', on, 'data-paint-colour')}", "${colourPick('data-paint', on, 'data-paint-gone')}"]] },
   // The Flow strip's cells back on their own heights, the strip scrolled whole (owner 11-09).
   { name: 'the Flow strip cells on their own heights', entry: 'index.html', rule: 'flow heights', at: 'flow-strip',
     file: 'src/style.css', edits: [['  align-items: stretch; padding: var(--space-4) var(--space-5); background: var(--bg-surface);',

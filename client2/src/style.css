@@ -834,7 +834,7 @@ body.resizing-active .gallery-seat {
 .look-line-warn { --look-line: var(--warning); }
 .look-line-danger { --look-line: var(--danger); }
 .look-line-accent { --look-line: var(--accent); }
-.look-line-ok, .look-line-warn, .look-line-danger, .look-line-accent {
+.look-line-ok, .look-line-warn, .look-line-danger, .look-line-accent, .look-line-colour {
   color: var(--look-line) !important;
   border-left: 2px solid var(--look-line) !important;
 }
@@ -898,7 +898,9 @@ body.resizing-active .gallery-seat {
 .look-warn { --look-tint: color-mix(in srgb, var(--warning) 22%, transparent); }
 .look-danger { --look-tint: color-mix(in srgb, var(--danger) 18%, transparent); }
 .look-accent { --look-tint: color-mix(in srgb, var(--accent) 16%, transparent); }
-.look-ok, .look-warn, .look-danger, .look-accent { background-color: var(--look-tint); }
+/* a picked colour (owner 11-09): its value on the element's own style - --look-colour, a line's --look-line */
+.look-colour { --look-tint: color-mix(in srgb, var(--look-colour) 18%, transparent); }
+.look-ok, .look-warn, .look-danger, .look-accent, .look-colour { background-color: var(--look-tint); }
 /* the Colours tab (look_panel.js) - base boxes; a rule one line: its text, its role, its × */
 .colours-view { flex: 1; min-height: 0; overflow-y: auto; }
 .look-panel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) 0; }
@@ -919,6 +921,9 @@ body.resizing-active .gallery-seat {
 .look-swatches { display: flex; gap: var(--space-2); }
 .look-swatch { width: var(--control-h-small); height: var(--control-h-small); padding: 0; border: 1px solid var(--border); color: var(--text-dim); }
 .look-swatch.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+/* the native colour picker as a swatch (owner 11-09): its value its face */
+input[type="color"].look-swatch { block-size: var(--control-h-small); inline-size: var(--control-h-small); background: none; cursor: pointer; }
+.look-form__colour { grid-column: 1 / -1; }
 
 .cell-system-readonly.is-ledger-changed {
   color: var(--warning) !important;

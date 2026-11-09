@@ -2,8 +2,9 @@
 (`grid_order.LOOK_TABLE`), beside the places. A rule (look_axis `rule`, look_key its id, position its order) gives a cell
 its role when `rule_when` (the expression language; [value] the cell's value) holds and the cell's writer is its
 `written_by` - each blank = any - on `rule_columns` (a JSON list; blank = every column), drawn as its `shape` (`FILL`,
-`LINE`). A paint (look_axis `paint`, look_key «<row_id>/<column>») gives one cell its role by hand. A blank role is no
-look: a paint wiped, a rule taken off. The rules every table has: the look table's declaration (`DECLARED`, the
+`LINE`); a role is a design role's word or a picked colour «#rrggbb» (owner 11-09), carried as written. A paint
+(look_axis `paint`, look_key «<row_id>/<column>») gives one cell its role by hand. A blank role is no look: a paint
+wiped, a rule taken off. The rules every table has: the look table's declaration (`DECLARED`, the
 lowest layer), then rows of look_table `EVERY`, then each table's own rows (`fold`). The screen judges a cell
 (client2/src/grid_look.js lookOf); this reads a page's looks."""
 import json

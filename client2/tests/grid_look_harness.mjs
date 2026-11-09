@@ -14,13 +14,17 @@
 //   B  what a sys_looks broadcast does: a paint drawn from the message; a rule, a place moved, or a count-only message
 //      (past the server's BROADCAST_ITEM_LIMIT) reads the page again unless its edits_of leaves the table out;
 //      another table's nothing; a rule every table has (look_table «*», owner 11-08 1ㄱ) read again on every table
+//   K  a picked colour (owner 11-09 «색깔 선택»): «#rrggbb» in a role's place - a rule's fill or line, a paint, a broadcast;
+//      its style says both properties always, '' for the one not picked (AG Grid's cellStyle never clears one it is not
+//      given again); a word, a short «#abc» or a blank is no colour
 //   M  mutants - a copy of the whole module (its imports pointed at the real ones), one change, its cases again
 //
 // Run: node client2/tests/grid_look_harness.mjs
-import { lookOf, ruleRefusal, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, paintTargets, lookBroadcast, looksOn, pageLooks, RULE_EMPTY_NOTE } from '../src/grid_look.js';
+import { lookOf, ruleRefusal, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, paintTargets, lookBroadcast, looksOn, pageLooks, RULE_EMPTY_NOTE,
+  isColour, lookStyle, hasPickedColour } from '../src/grid_look.js';
 import * as stateModule from '../src/state.js';
 import { placeUpdate, placesOn, dropPlace } from '../src/grid_order.js';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -198,6 +202,32 @@ eq('B1 a paint drawn from the message; a count-only message read again (two shap
   ['draw r1/a', 'reread', 'reread', 'reread', 'nothing', 'reread', 'nothing', 'reread', 'nothing', 'nothing', 'reread', 'reread', 'nothing',
     'reread', 'reread']);
 
+// ── K: a picked colour ──
+const PICKED = { rules: [rule('k1', '0', '#2b7de9', { when: '[value] > 1' }), rule('k2', '1', '#C0392B', { when: '[value] > 2', shape: 'line' })],
+  paints: { [paintKey('row-9', 'v')]: { role: '#00aa55', row_id: 'p9' } } };
+const colours = (m) => {
+  const on = (rowId, value) => m.lookOf(PICKED, rowId, 'v', { value });
+  return [['#2b7de9', '#ABCDEF', 'warn', '#abc', '', null].map(m.isColour),
+    [on('row-1', '1.5'), on('row-1', '3'), on('row-9', '3')].map((look) => [look, m.lookStyle(look)]),
+    m.lookStyle({ role: 'warn', hand: false, line: 'danger' }), m.lookStyle(null),
+    [PICKED, LOOKS, { rules: [], paints: PICKED.paints }, { rules: [rule('w', '0', 'warn', { when: '[value] > 0' })], paints: {} }, null].map(m.hasPickedColour)];
+};
+const picked = colours({ lookOf, isColour, lookStyle, hasPickedColour });
+eq('K1 a colour is «#rrggbb» (either case); a role word, a short «#abc», a blank, none is not', picked[0], [true, true, false, false, false, false]);
+eq('K2 a picked fill; a picked line over it; a paint\'s picked colour over the fill, the line kept - each style saying both properties',
+  picked[1], [[{ role: '#2b7de9', hand: false }, { '--look-colour': '#2b7de9', '--look-line': '' }],
+    [{ role: '#2b7de9', hand: false, line: '#C0392B' }, { '--look-colour': '#2b7de9', '--look-line': '#C0392B' }],
+    [{ role: '#00aa55', hand: true, line: '#C0392B' }, { '--look-colour': '#00aa55', '--look-line': '#C0392B' }]]);
+eq('K3 a role\'s look and no look: both properties said blank - the classes draw a role, nothing stays from a picked colour before',
+  [picked[2], picked[3]], [{ '--look-colour': '', '--look-line': '' }, { '--look-colour': '', '--look-line': '' }]);
+eq('K5 the looks pick a colour - a rule\'s or a paint\'s alone; role words or no looks do not (the grid redraws only then)',
+  picked[4], [true, false, true, false, false]);
+eq('K4 a picked colour comes in a broadcast as a role does - a rule\'s and a paint\'s', (() => {
+  const taken = looksOn({ items: [item('c1', { look_table: 'T', look_axis: 'rule', look_key: 'k9', position: '5', role: '#123abc', rule_when: '[value] > 0' }),
+    item('c2', { look_table: 'T', look_axis: 'paint', look_key: paintKey('row-4', 'etch'), role: '#fedcba' })] }, 'T', null);
+  return [taken.rules.map((r) => r.role), taken.paints[paintKey('row-4', 'etch')].role, ruleUpdate('T', 'k9', { role: '#123abc', when: '[value] > 0' }, 'kim').updates.role];
+})(), [['#123abc'], '#fedcba', '#123abc']);
+
 // ── mutants: the whole module copied, its imports pointed at the real modules, one change ──
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const decide = (m) => {
@@ -206,7 +236,8 @@ const decide = (m) => {
     on('row-1', 'cmp', '0.12', 'chain'), on('row-1', 'cmp', '0.12'),
     ...[['row-1', '2', 'person'], ['row-1', '0', 'merge'], ['row-2', '2', 'person']].map(([r, v, w]) => m.lookOf(LINED, r, 'v', { value: v, written_by: w }))];
 };
-const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js'], (m) => [decide(m), paintsOf(m), told(m)]];
+const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js', 'testbed/palette.js'], (m) => [decide(m), paintsOf(m), told(m), colours(m)]];
+const PALETTE = ['testbed/palette.js', [], (m) => [['#2b7de9', '#ABCDEF', 'warn', '#abc', '', null].map(m.isColour)]];   // the colour's one seat
 const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js'], choose];
 const MUTANTS = [
   ['M1 a paint not over the rules', LOOK, '  if (hand) role = paint.role;\n', ''],
@@ -224,6 +255,10 @@ const MUTANTS = [
   ['M9 edits_of ignored (every screen reads again on any big paint)', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', 'false'],
   ['M10 a count-only message without edits_of not read again', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) && !msg.edits_of.includes(EVERY)',
     '!(msg.edits_of || []).includes(table) && !(msg.edits_of || []).includes(EVERY)'],
+  ['M19 a style that leaves an unpicked line out (AG Grid keeps the colour drawn before)', LOOK,
+    "  '--look-line': look && isColour(look.line) ? look.line : '' });", "  ...(look && isColour(look.line) ? { '--look-line': look.line } : {}) });"],
+  ['M20 any word a colour', PALETTE, '/^#[0-9a-f]{6}$/i.test(', '/./.test('],
+  ['M21 a paint\'s picked colour not asked', LOOK, '\n  || Object.values(looks.paints || {}).some((paint) => isColour(paint.role)));', ');'],
   ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && anyKey(clicked)) return', 'if (false) return'],
   ['M7 the gutter and every column counted', STATE, 'within(shape.cols, map[id]) && keep(id))', 'within(shape.cols, map[id]))'],
   ['M11 no focused cell when nothing is selected', STATE, 'return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];', 'return [];'],
@@ -239,8 +274,9 @@ for (const [name, [module, deps, cases], from, to] of MUTANTS) {
     if (!text.includes(from)) { eq(`${name}: its anchor is in ${module}`, false, true); continue; }
     for (const dep of deps) text = text.replace(`'./${dep}'`, `'${pathToFileURL(path.join(SRC, dep)).href}'`);
     const file = path.join(dir, module);
+    mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text.replace(from, to));
-    const real = JSON.stringify(cases(module === 'state.js' ? stateModule : { lookOf, paintTargets, lookBroadcast }));
+    const real = JSON.stringify(cases(module === 'state.js' ? stateModule : { lookOf, paintTargets, lookBroadcast, isColour, lookStyle, hasPickedColour }));
     let caught;
     try { caught = JSON.stringify(cases(await import(pathToFileURL(file).href))) !== real; } catch (e) { caught = `threw ${e.message}`; }
     eq(`${name}: caught`, caught, true);

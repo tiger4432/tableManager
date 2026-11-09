@@ -2,12 +2,14 @@
 // beside the places (server/grid_look.py reads a page's). A rule gives a cell its role when its condition holds
 // ([value] the cell's value, the expression language - src/expression.js) and the cell's writer is its written_by - each
 // blank = any - on its columns (none = every column) - drawn as its shape: a fill behind the text, or a line (a left edge
-// and the text in its role's colour, over a fill - owner 11-08 2ㄱ). A paint gives one cell its fill by hand. The rules
+// and the text in its role's colour, over a fill - owner 11-08 2ㄱ). A role is a design role's word or a colour a person
+// picked («#rrggbb», owner 11-09 - isColour). A paint gives one cell its fill by hand. The rules
 // every table has come with the read (server/grid_look.py fold, `every`). `lookOf` is the one seat that says which: a
 // paint over every rule, a later rule over an earlier one (lead 11-07 ㄱ).
 
 import { compile, run } from './expression.js';
 import { LOOK_TABLE, cellOf, lookUpdate, placesOn } from './grid_order.js';
+import { isColour } from './testbed/palette.js';
 
 export const RULE = 'rule';
 /** Said on the document when the looks or the picked cell changed - the Colours tab and the legend draw again. */
@@ -20,9 +22,18 @@ export const PAINT = 'paint';
 export const EVERY = '*';
 /** A rule's shapes - its word, as it is stored (blank = fill), and its name on screen. */
 export const LINE = 'line';
-export const SHAPES = Object.freeze([['fill', 'Fill'], [LINE, 'Line']]);
+export const SHAPES = Object.freeze([['fill', 'Fill'], [LINE, 'Left line']]);
 /** The design roles a look takes - its word, as it is stored, and its name on screen. */
 export const ROLES = Object.freeze([['ok', 'Ok'], ['warn', 'Warn'], ['danger', 'Danger'], ['accent', 'Accent']]);
+/** A colour a person picked, written in a role's place - «#rrggbb» (owner 11-09 «색깔 선택»): drawn in itself. */
+export { isColour };
+/** A cell look's picked colours as the custom properties its classes (look-colour, look-line-colour) draw with - both
+ *  always said, '' when none: AG Grid's cellStyle sets what it is given and never clears what it is not given again. */
+export const lookStyle = (look) => ({ '--look-colour': look && isColour(look.role) ? look.role : '',
+  '--look-line': look && isColour(look.line) ? look.line : '' });
+/** Does a rule or a paint of `looks` pick a colour. */
+export const hasPickedColour = (looks) => Boolean(looks) && ((looks.rules || []).some((rule) => isColour(rule.role))
+  || Object.values(looks.paints || {}).some((paint) => isColour(paint.role)));
 /** Who wrote a cell (crud.writer_kind) - the words a rule's written_by picks. */
 export const PERSON = 'person';
 export const WRITERS = Object.freeze([[PERSON, 'Person'], ['chain', 'Chain'], ['ai', 'AI'], ['file', 'File'], ['merge', 'Merge']]);

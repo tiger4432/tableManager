@@ -4,7 +4,7 @@ import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
 import { ENTERED, ROW, GROUP, ITEM, dropPlace } from './grid_order.js';
-import { PERSON, ROLES, lookOf } from './grid_look.js';
+import { PERSON, ROLES, lookOf, isColour, lookStyle, hasPickedColour } from './grid_look.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
@@ -1109,12 +1109,17 @@ export function buildColumnDefs() {
         const { server, at } = edit.conflict;
         return `Server: ${isBlank(server) ? ABSENT : server}${at ? ` · ${localStamp(at)}` : ''}`;
       },
+      // a picked colour's value for look-colour / look-line-colour (grid_look.lookStyle - both always said)
+      cellStyle: (params) => lookStyle(isSystem ? null : cellLookOf(params.data, col)),
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
         // its look (owner 11-06, lead L2): a rule's or a hand's fill, a line rule's edge (owner 11-08 2ㄱ - who wrote it,
         // by the rules every table has), the hand's mark
         ...Object.fromEntries(ROLES.map(([word]) => [`look-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.role === word])),
         ...Object.fromEntries(ROLES.map(([word]) => [`look-line-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.line === word])),
+        // a colour a person picked (owner 11-09): its value on the cell's own style (cellStyle below)
+        'look-colour': (params) => !isSystem && isColour(cellLookOf(params.data, col)?.role),
+        'look-line-colour': (params) => !isSystem && isColour(cellLookOf(params.data, col)?.line),
         // a carried cell reads as read-only; one whose long rows hold more than one value says «N values», dim (owner 11-06)
         'pivot-carry': () => isCarried,
         'pivot-carry-many': (params) => isCarried && Boolean(carryText(params.data && params.data.data && params.data.data[col])),
@@ -1619,7 +1624,14 @@ export function renderGrid(initialRows) {
       renderFilterBar();
     },
     // every later row set (a read, a page, a table opened): the fit renderGrid owes is paid here, once (lead 11-08 ㄱ)
-    onRowDataUpdated: () => fitColumnWidths(),
+    // A row of the same id takes its new data as an update: AG Grid reruns a cell's class rules, but its cellStyle (a
+    // picked colour, grid_look.lookStyle) only when its value changed - a look changed on a cell that did not (a rule's
+    // colour, a colour back to a role) kept the colour drawn before (measured 11-09). A forced refresh draws it again -
+    // only while a picked colour is asked or still drawn (a table without one reads as before, lead 11-09).
+    onRowDataUpdated: (e) => {
+      fitColumnWidths();
+      if (hasPickedColour(state.looks) || gridDiv.querySelector('.ag-cell[style*="--look-"]')) e.api.refreshCells({ force: true, suppressFlash: true });
+    },
     onGridSizeChanged: () => {
       // The strip's right edge moved, so how many chips fit moved with it.
       foldFilterChips();

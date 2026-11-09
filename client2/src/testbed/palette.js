@@ -2,6 +2,9 @@
 // themes) - written once there. A canvas cannot read CSS, so it is handed what the page's computed style says, read again
 // each time a part draws (`paletteOf`): a theme changed is the next picture's.
 
+/** A colour as the native colour picker gives it - «#rrggbb»: the one seat that says so (the grid's looks, Color by). */
+export const isColour = (value) => /^#[0-9a-f]{6}$/i.test(String(value || ''));
+
 /** The tokens a canvas draws with: a role each, the category colours fill and line in Spotfire's order, one value alone. */
 export const TOKENS = Object.freeze({
   bg: '--sf-bg', text: '--sf-text', axis: '--sf-axis', active: '--sf-active', brush: '--sf-brush',

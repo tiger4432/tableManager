@@ -3,7 +3,7 @@
 // (main.js), no module state. What a cell shows is grid_look.lookOf's; this writes sys_looks rows and draws.
 // The form is built once: a read of the page draws the list and the paint again, never what a person is typing.
 
-import { ROLES, SHAPES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, ruleOn, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
+import { ROLES, SHAPES, WRITERS, roleName, isColour, ruleText, ruleUpdate, ruleMove, ruleOff, ruleOn, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
 import { placeBetween, dropPlace } from './grid_order.js';
 import { escapeHtml } from './utils.js';
 import { FormulaInput } from './formula_input.js';
@@ -12,6 +12,12 @@ import { localShort } from './server_time.js';
 const NO_CELL = 'Pick a cell of the table';
 const NOT_PAINTABLE = 'A key or carried cell is no one row - pick a value cell';
 const options = (pairs) => pairs.map(([word, name]) => `<option value="${word}">${name}</option>`).join('');
+/** A role's tint on a chip or a swatch - a design role's class, or a picked colour's on the element's own style. */
+const tone = (role) => (isColour(role) ? `look-colour" style="--look-colour:${escapeHtml(role)}` : `look-${escapeHtml(role)}`);
+/** The colours a rule or a paint takes: the design roles, then any colour (owner 11-09 «색깔 선택») - `on` the one on. */
+const colourPick = (data, on, colourData) => `${ROLES.map(([word, name]) => `<button type="button" class="look-swatch look-${word}${
+  on === word ? ' is-on' : ''}" ${data}="${word}" aria-label="${name}" title="${name}"></button>`).join('')}<input type="color" class="look-swatch${
+  isColour(on) ? ' is-on' : ''}" ${colourData} value="${isColour(on) ? on : '#2b7de9'}" aria-label="Colour" title="Colour">`;
 
 /** The panel's line for what a swatch paints - the picked cell's name, or «N cells · M skipped (key or carried)». */
 const paintLabel = ({ targets, skipped, single }) => (single ? single.label : targets.length || skipped
@@ -41,8 +47,9 @@ export class LookPanel {
           <form class="look-form">
             <span class="look-form__when"></span>
             <select name="written_by" class="ctl-small" aria-label="Written by"><option value="">Any writer</option>${options(WRITERS)}</select>
-            <select name="role" class="ctl-small" aria-label="Role">${options(ROLES)}</select>
             <select name="shape" class="ctl-small" aria-label="Shape">${options(SHAPES)}</select>
+            <input type="hidden" name="role" value="${ROLES[0][0]}">
+            <div class="look-swatches look-form__colour" role="group" aria-label="Colour">${colourPick('data-role', ROLES[0][0], 'data-role-colour')}</div>
             <select name="columns" class="ctl-small look-form__cols" multiple aria-label="Columns" title="None picked: every column"></select>
             <button type="submit" class="btn-quiet ctl-small look-form__add">+ Rule</button>
           </form>
@@ -58,6 +65,9 @@ export class LookPanel {
     this.when = new FormulaInput(this.root.querySelector('.look-form__when'), { doc: document, name: 'when', cls: 'ctl-small',
       placeholder: '[value] > 0.3', label: 'Condition', columns: () => ['value'], refusal: (when) => ruleRefusal({ when }) || '' });
     this.root.addEventListener('click', (e) => this.clicked(e));
+    this.form.addEventListener('input', (e) => { if (e.target.matches('[data-role-colour]')) this.pickRole(e.target.value); });
+    // a colour picked for the selection's paint - the native picker says it on change (its dialog closed)
+    this.root.addEventListener('change', (e) => { if (e.target.matches('[data-paint-colour]')) this.paint(e.target.value); });
     this.form.addEventListener('submit', (e) => { e.preventDefault(); this.addRule(new FormData(this.form)); });
     // a rule dragged to another place in the list - a later rule wins, so its place is what it does
     this.root.addEventListener('dragstart', (e) => {
@@ -105,7 +115,7 @@ export class LookPanel {
       rule.role ? '' : ' is-off'}" draggable="${rule.every ? 'false' : 'true'}" data-rule="${escapeHtml(rule.id)}">
       <span class="look-rule__text">${escapeHtml(ruleText(rule))}${rule.columns ? `<span class="look-rule__cols"> · ${escapeHtml(rule.columns.join(', '))}</span>` : ''}${
         rule.every ? '<span class="look-rule__every"> · Every table</span>' : ''}</span>
-      ${rule.role ? `<span class="chip look-role look-${escapeHtml(rule.role)}">${escapeHtml(roleName(rule.role))}</span>
+      ${rule.role ? `<span class="chip look-role ${tone(rule.role)}">${escapeHtml(roleName(rule.role))}</span>
       <button type="button" class="chip-remove" data-remove="${escapeHtml(rule.id)}" aria-label="${rule.every ? 'Off on this table' : 'Remove rule'}">×</button>`
         : `<span></span><button type="button" class="btn-quiet ctl-small" data-on="${escapeHtml(rule.id)}">On here</button>`}</li>`).join('');
     this.root.querySelector('.look-list').innerHTML = rules ? `<ul class="look-rules">${rules}</ul>` : '<p class="look-empty">No rules</p>';
@@ -124,8 +134,8 @@ export class LookPanel {
     const roles = targets.map((t) => (paintOf(t.rowId, t.column) || {}).role || '');
     const on = roles.length && roles.every((role) => role === roles[0]) ? roles[0] : null;   // the role they all have
     this.root.querySelector('.look-target').textContent = label;
-    const swatches = [...ROLES, ['', 'None']].map(([word, name]) => `<button type="button" class="look-swatch${word ? ` look-${word}` : ''}${
-      on === word ? ' is-on' : ''}" data-paint="${word}" aria-label="${name}" title="${name}">${word ? '' : '∅'}</button>`).join('');
+    const swatches = `${colourPick('data-paint', on, 'data-paint-colour')}<button type="button" class="look-swatch${on === '' ? ' is-on' : ''}"
+      data-paint="" aria-label="None" title="None">∅</button>`;
     this.root.querySelector('.look-paint').innerHTML = !label ? `<p class="look-empty">${NO_CELL}</p>`
       : !targets.length ? `<p class="look-empty">${NOT_PAINTABLE}</p>`
         : `<div class="look-swatches">${swatches}</div><p class="look-hist"></p>`;
@@ -145,7 +155,25 @@ export class LookPanel {
     line.textContent = `${was(last.new_value)} · ${last.updated_by || ''} · ${localShort(last.timestamp)} — before: ${was(last.old_value)}`;
   }
 
+  /** The new rule's colour - a design role's word or a picked colour - marked on its swatch. */
+  pickRole(role) {
+    this.form.elements.role.value = role;
+    for (const el of this.form.querySelectorAll('[data-role], [data-role-colour]')) {
+      el.classList.toggle('is-on', el.matches('[data-role-colour]') ? isColour(role) : el.dataset.role === role);
+    }
+  }
+
+  /** The selection's cells painted `role` ('' wipes them). */
+  async paint(role) {
+    const table = this.deps.table();
+    const { targets } = this.paintable();
+    if (!table || !targets.length) return;
+    if (await this.deps.write(targets.map((t) => paintUpdate(table, t.rowId, t.column, role, this.deps.by)), 'Paint not saved')) this.deps.written();
+  }
+
   async clicked(e) {
+    const role = e.target.closest('[data-role]');
+    if (role) { this.pickRole(role.dataset.role); return; }
     const table = this.deps.table();
     const remove = e.target.closest('[data-remove]');
     const swatch = e.target.closest('[data-paint]');
@@ -159,10 +187,8 @@ export class LookPanel {
       if (!rule || !rule.under) return;
       done = await this.deps.write([ruleOn(table, rule, this.deps.by)], 'Rule not turned on');
     } else {
-      const { targets } = this.paintable();
-      if (!targets.length) return;
-      done = await this.deps.write(targets.map((t) => paintUpdate(table, t.rowId, t.column, swatch.dataset.paint, this.deps.by)),
-        'Paint not saved');
+      await this.paint(swatch.dataset.paint);
+      return;
     }
     if (done) this.deps.written();
   }
@@ -184,6 +210,7 @@ export class LookPanel {
     if (!done) return;
     this.form.reset();
     this.when.value = '';
+    this.pickRole(ROLES[0][0]);
     this.deps.written();
   }
 }

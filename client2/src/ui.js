@@ -51,7 +51,7 @@ export function updateSelectedCellUI() {
   // ⚠️ The `!== null` ternary is kept as it was: it is what turns an absent value into the word
   //    NULL, and folding it into escapeHtml would print an empty cell instead.
   elements.selectedCellInfo.innerHTML = `
-    <div><strong>Row ID:</strong> <span style="color:var(--color-secondary)">${escapeHtml(state.selectedCell.rowId)}</span></div>
+    <div><strong>Row ID:</strong> <span data-wrap-ok style="color:var(--color-secondary)">${escapeHtml(state.selectedCell.rowId)}</span></div>
     <div><strong>Column:</strong> <span style="color:var(--color-primary)">${escapeHtml(String(state.selectedCell.colId).toUpperCase())}</span></div>
     <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? escapeHtml(String(state.selectedCell.value)) : 'NULL'}</code></div>
     ${isSystem ? '<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only System Column</div>' : ''}

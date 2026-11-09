@@ -4,7 +4,7 @@
 // it (a scatter point, a table line, a cross table cell, a map cell). The legend and its palette are drawn here too.
 // The one seat a colour is asked: colorsOf; a hub (a marker, a cell) asks colorOfIds.
 
-import { mix } from './palette.js';
+import { isColour, mix } from './palette.js';
 import { numberOf } from '../walk/reach_table.js';
 import { MULTIPLE, categoryOrder } from './slot.js';
 
@@ -198,7 +198,7 @@ export function paletteBox(doc, palette, current, onPick) {
   const more = el('label', 'sf-swatches__more');
   const input = el('input');
   input.type = 'color';
-  input.value = /^#[0-9a-f]{6}$/i.test(current || '') ? current : '#000000';
+  input.value = isColour(current) ? current : '#000000';
   input.addEventListener('change', () => onPick(input.value));
   more.append(input, el('span', '', 'More colors'));
   box.append(grid, more);
