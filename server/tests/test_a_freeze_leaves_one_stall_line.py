@@ -21,6 +21,8 @@ class Readings:
     def __init__(self):
         self.open, self.path, self.lag, self.threads, self.grid = 0.0, None, 0.0, (3, 40), 0
         self.statements, self.cpu, self.pids, self.table = (1, 0.1, None), (5.0, ("api", 2.0)), {1: "api"}, None
+        self.blocked = (0, None)
+        self.oldest = None
 
     def watch(self, said):
         def fail_or(value):
@@ -30,7 +32,8 @@ class Readings:
         return stall_watch.Watch(lambda: fail_or((self.open, self.path)), lambda now: fail_or(self.lag),
                                  lambda: fail_or(self.threads), lambda: fail_or(self.grid),
                                  lambda: fail_or(self.statements), lambda pids: fail_or(self.cpu),
-                                 lambda: fail_or((self.pids, self.table)), say=said.append)
+                                 lambda: fail_or((self.pids, self.table)), lambda: fail_or(self.blocked),
+                                 lambda: fail_or(self.oldest), say=said.append)
 
 
 def test_no_freeze_says_nothing():
@@ -54,7 +57,7 @@ def test_a_freeze_ends_in_one_line_of_its_highest_readings():
     assert said == []
     r.open, r.lag = 0.0, 0.0
     w.tick(105.0)
-    assert said == ["STALL 11s P /dashboard/summary L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log"]
+    assert said == ["STALL 11s P /dashboard/summary L12 T40/40 G6 D9/11s B0 X0 C97 slot2:61 ING dt_log"]
     assert w.last["line"] == said[0] and w.last["at"]
     w.tick(106.0)
     assert len(said) == 1, "one freeze, one line"
@@ -81,7 +84,7 @@ def test_a_failed_reading_says_question_mark_in_its_cell_only(caplog):
     w.tick(2.0)
     r.open = 0.0
     w.tick(3.0)
-    assert said == ["STALL 10s L0 T3/40 G0 D? C5 api:2 ING dt_log"]
+    assert said == ["STALL 10s L0 T3/40 G0 D? B0 X0 C5 api:2 ING dt_log"]
     assert sum("the D reading failed" in m for m in caplog.messages) == 1, "said once, not every tick"
 
 
@@ -92,7 +95,7 @@ def test_no_open_claim_leaves_the_ing_cell_out():
     w.tick(1.0)
     r.open = 0.0
     w.tick(2.0)
-    assert said == ["STALL 7s L0 T3/40 G0 D1/0s C5 api:2"]
+    assert said == ["STALL 7s L0 T3/40 G0 D1/0s B0 X0 C5 api:2"]
 
 
 def test_a_beat_file_of_a_gone_process_does_not_blank_the_cpu_cell():
@@ -213,13 +216,13 @@ def test_a_pool_child_busiest_names_its_pool(monkeypatch):
     said = []
     w = stall_watch.Watch(lambda: (8.0, "/tables/split_table/data"), lambda now: 0.0, lambda: (1, 40), lambda: 0,
                           lambda: (1, 0.0, None), lambda pids: (41.0, (pids[515151], 38.0)), stall_watch.workers,
-                          say=said.append)
+                          lambda: (0, None), lambda: None, say=said.append)
     w.tick(1.0)
     w.tick(2.0)
     assert said == [] and w.freeze is not None
     w.open_requests = lambda: (0.0, None)
     w.tick(3.0)
-    assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s C41 grid:38"]
+    assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s B0 X0 C41 grid:38"]
 
 
 def test_no_pool_child_leaves_the_line_as_it_was(monkeypatch):
@@ -239,7 +242,7 @@ def test_a_failed_name_reading_says_question_mark_in_the_name_cell():
     w.tick(1.0)
     r.open = 0.0
     w.tick(2.0)
-    assert said == ["STALL 9s L0 T3/40 G0 D1/0s C5 ?"]
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X0 C5 ?"]
 
 
 @pytest.mark.parametrize("query, head", [
@@ -253,6 +256,12 @@ def test_a_failed_name_reading_says_question_mark_in_the_name_cell():
     ("INSERT INTO t VALUES ('a text cut short from k", "INSERT t"),
     ("SELECT 'a value cut short from secret_name", "SELECT"),
     ("", None), (None, None), ("  -- only a comment", None),
+    ("autovacuum: VACUUM public.pfab_metro", "AUTOVACUUM public.pfab_metro"),
+    ("autovacuum: VACUUM ANALYZE public.cell_sources (to prevent wraparound)", "AUTOVACUUM+ANALYZE-WRAP public.cell_sources"),
+    ("autovacuum: VACUUM public.audit_logs (to prevent wraparound)", "AUTOVACUUM-WRAP public.audit_logs"),
+    ("autovacuum: ANALYZE public.dt_log", "AUTOANALYZE public.dt_log"),
+    ("VACUUM (VERBOSE) audit_logs", "VACUUM"),
+    ("ANALYZE dt_log", "ANALYZE dt_log"),
 ])
 def test_the_statement_head_is_a_word_and_a_table_and_never_a_value(query, head):
     assert stall_watch.statement_head(query) == head
@@ -271,4 +280,103 @@ def test_the_d_cell_carries_the_head_of_the_longest_statement_of_the_freeze():
     w.tick(3.0)
     r.open = 0.0
     w.tick(4.0)
-    assert said == ["STALL 11s L0 T3/40 G0 D10/9s INSERT cell_sources C5 api:2"]
+    assert said == ["STALL 11s L0 T3/40 G0 D10/9s INSERT cell_sources B0 X0 C5 api:2"]
+
+
+def test_the_b_cell_says_the_most_sessions_held_up_and_who_held_them():
+    """Owner 11-09 «거의 모든 stall 에 autovacuum»: an autovacuum worker holding three sessions is named; the most held
+    up in the freeze is kept; a reading that fails says «?» in its cell only."""
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.blocked = 8.0, (1, "UPDATE job_queue")
+    w.tick(1.0)
+    r.blocked = (3, "AUTOVACUUM public.pfab_metro")
+    w.tick(2.0)
+    r.blocked = (0, None)
+    w.tick(3.0)
+    r.open = 0.0
+    w.tick(4.0)
+    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B3 AUTOVACUUM public.pfab_metro X0 C5 api:2"]
+    said.clear()
+    r.open, r.blocked = 8.0, RuntimeError("no database")
+    w.tick(10.0)
+    r.open = 0.0
+    w.tick(11.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B? X0 C5 api:2"]
+
+
+def test_the_holder_holding_up_the_most_is_read_off_backend_waits(monkeypatch):
+    """`blocked` reads `db_waits.backend_waits` - one row per (held up, holder); an autovacuum worker holder counts like
+    any (backend_waits does not filter by backend type)."""
+    import db_waits
+
+    class Conn:
+        connection = type("C", (), {"dbapi_connection": object()})()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(stall_watch, "_kept", lambda: type("E", (), {"connect": lambda self: Conn()})())
+    holder = lambda pid, query: {"pid": pid, "query": query}              # noqa: E731
+    monkeypatch.setattr(db_waits, "backend_waits", lambda conn, chars=60: [
+        {"pid": 11, "blocker": holder(90, "autovacuum: VACUUM public.pfab_metro")},
+        {"pid": 12, "blocker": holder(90, "autovacuum: VACUUM public.pfab_metro")},
+        {"pid": 12, "blocker": holder(91, "UPDATE job_queue SET a = 1")},
+        {"pid": 13, "blocker": holder(90, "autovacuum: VACUUM public.pfab_metro")}])
+    assert stall_watch.blocked() == (3, "AUTOVACUUM public.pfab_metro")
+    monkeypatch.setattr(db_waits, "backend_waits", lambda conn, chars=60: [])
+    assert stall_watch.blocked() == (0, None)
+
+
+def test_the_x_cell_says_the_oldest_open_transaction():
+    """Lead 11-09: the oldest open transaction in the freeze - its seconds, its snapshot's xmin age, its statement's
+    head; none open «X0»; a reading that fails «X?» in its cell only."""
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.oldest = 8.0, (30.2, 900, "UPDATE job_queue")
+    w.tick(1.0)
+    r.oldest = (412.4, 18234, "UPDATE pfab_metro")
+    w.tick(2.0)
+    r.oldest = (5.0, None, "SELECT cell_sources")
+    w.tick(3.0)
+    r.open = 0.0
+    w.tick(4.0)
+    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B0 X412s/18234 UPDATE pfab_metro C5 api:2"]
+    said.clear()
+    r.open, r.oldest = 8.0, (6.0, None, None)
+    w.tick(10.0)
+    r.open = 0.0
+    w.tick(11.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X6s C5 api:2"]
+    said.clear()
+    r.open, r.oldest = 8.0, RuntimeError("no database")
+    w.tick(20.0)
+    r.open = 0.0
+    w.tick(21.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X? C5 api:2"]
+
+
+def test_the_oldest_transaction_is_read_off_pg_stat_activity(monkeypatch):
+    """One row ordered by xact_start: (seconds, xmin age or None, head) - no value rides the head; None with no row."""
+    rows = [(412.4, 18234, "UPDATE pfab_metro SET x = 'secret' WHERE id = 1")]
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, statement):
+            assert str(statement).endswith("ORDER BY xact_start LIMIT 1")         # the oldest
+            return type("R", (), {"first": lambda self: rows[0] if rows else None})()
+
+    monkeypatch.setattr(stall_watch, "_kept", lambda: type("E", (), {"connect": lambda self: Conn()})())
+    assert stall_watch.oldest_transaction() == (412.4, 18234, "UPDATE pfab_metro")
+    rows[0] = (3.0, None, "idle")
+    assert stall_watch.oldest_transaction() == (3.0, None, "IDLE")
+    rows.clear()
+    assert stall_watch.oldest_transaction() is None

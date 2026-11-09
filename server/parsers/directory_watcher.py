@@ -207,7 +207,8 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None, forced: boo
                         raise
                     if sampler is not None:
                         sampler.stop()
-                    logger.warning("[%s] ANALYZE skipped: %s locked by %s", table_name, table_name,
+                    logger.warning("[%s] ANALYZE skipped after %.1fs waiting (lock limit %.1fs): %s locked by %s",
+                                   table_name, time.time() - started, limit, table_name,
                                    sampler.blocker if sampler is not None and sampler.blocker
                                    else "a session the sampler did not see")
                     return False
@@ -215,10 +216,11 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None, forced: boo
             if sampler is not None:
                 sampler.stop()
             connection.close()
-        logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - %s",
+        # what it waited on while it ran (lead 11-09 ③): the sampler's counts, «waits: Lock 12 · none 3 | <holder>»
+        logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - %s%s",
                     table_name, rows, time.time() - started,
                     why or "the planner was costing this table as it was BEFORE "
-                           "the load")
+                           "the load", sampler.summary() if sampler is not None else "")
         return True
     except Exception as err:                                           # noqa: BLE001
         logger.warning("[%s] could not re-analyse after %d row(s): %s - the rows landed, "

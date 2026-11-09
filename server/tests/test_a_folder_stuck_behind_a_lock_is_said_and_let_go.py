@@ -16,6 +16,7 @@ import codecs
 import json
 import logging
 import os
+import re
 import threading
 import time
 
@@ -305,8 +306,10 @@ def test_an_analyze_held_up_by_a_lock_is_skipped_and_the_folder_goes_on(box, cap
         locker.release()
     assert [box["logs"](name)[-1][0] for name in ("f1.csv", "f2.csv")] == ["SUCCESS", "SUCCESS"]
     skipped = [r.getMessage() for r in caplog.records if "ANALYZE skipped" in r.getMessage()]
-    said = "[%s] ANALYZE skipped: %s locked by waiting Lock:relation on pid %d " % (TABLE, TABLE, locker.pid)
-    assert len(skipped) == 2 and all(line.startswith(said) for line in skipped), skipped
+    # how long it waited before it gave up, and the limit (lead 11-09 ③)
+    said = re.compile(r"\[%s\] ANALYZE skipped after \d+\.\ds waiting \(lock limit 1\.0s\): %s locked by waiting "
+                      r"Lock:relation on pid %d " % (TABLE, TABLE, locker.pid))
+    assert len(skipped) == 2 and all(said.match(line) for line in skipped), skipped
     assert not os.path.exists(os.path.join(handler.raws_path, "batch"))
 
 

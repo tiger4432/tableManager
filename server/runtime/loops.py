@@ -114,9 +114,7 @@ def _vacuum_phase(db):
 
     if db.get_bind().dialect.name != "postgresql":
         return {"alive": None}
-    row = db.execute(text(
-        "SELECT relid::regclass::text AS relation, phase, heap_blks_scanned, "
-        "       heap_blks_total FROM pg_stat_progress_vacuum LIMIT 1")).fetchone()
+    row = next(iter(vacuums_running(db)), None)
     if row is None:
         return {"alive": True, "state": "idle"}
     cells = {"alive": True, "state": "vacuuming", "phase": row.phase,
@@ -124,6 +122,16 @@ def _vacuum_phase(db):
     if row.heap_blks_total:
         cells["depth"] = int(row.heap_blks_total) - int(row.heap_blks_scanned or 0)
     return cells
+
+
+def vacuums_running(db):
+    """The vacuums PostgreSQL is running now - rows of (relation, phase, heap_blks_scanned, heap_blks_total), the
+    relation as its name reads; /runtime's phase and the [LayerHealth] line (lead 11-09) both ask this."""
+    from sqlalchemy import text
+
+    return db.execute(text(
+        "SELECT relid::regclass::text AS relation, phase, heap_blks_scanned, "
+        "       heap_blks_total FROM pg_stat_progress_vacuum")).fetchall()
 
 
 def runtime_loops(db, *, heartbeats=None, now=None):

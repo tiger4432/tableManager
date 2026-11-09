@@ -6,6 +6,7 @@
   "_a_job_that_nobody_starts_by_hand_names_its_pace_here": "A backfill takes its pace from whoever pressed the button. A job that runs by itself has nobody to ask, so the answer is declared - one cell, no restart. The ledger follow-up runs `fast` (owner 10-13, reversing 129-bis's slowest pace): a deletion's withdrawal and every walk wait on this queue, so at `trickle` (one event, three seconds of rest) the owner saw ten rows per five seconds. An empty queue still waits FOLLOWUP_IDLE_SECONDS between looks, so `fast` never spins.",
   "page_seconds": 3,
   "jobs": {
+    "layer_health": "watch",
     "chain_followup": "fast",
     "ledger_row_census": "background",
     "chain_unowned_census": "slow",
@@ -29,6 +30,12 @@
       "when": "When staying out of the way matters more than when it finishes",
       "units_per_cycle": 1,
       "rest_seconds": 3.0
+    },
+    "watch": {
+      "label": "Watch - a line every few minutes",
+      "when": "A watch's lines: units_per_cycle is how many tables it names, rest_seconds the time between",
+      "units_per_cycle": 8,
+      "rest_seconds": 300.0
     },
     "background": {
       "label": "Background - measuring, not finishing",

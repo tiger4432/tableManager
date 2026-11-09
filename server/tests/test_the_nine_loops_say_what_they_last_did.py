@@ -57,7 +57,7 @@ class _FakeDb:
 
     def execute(self, *a, **kw):
         self.asked.append("vacuum")
-        return type("R", (), {"fetchone": lambda _s: self.vacuum})()
+        return type("R", (), {"fetchall": lambda _s: [] if self.vacuum is None else [self.vacuum]})()
 
 
 def by_loop(payload):

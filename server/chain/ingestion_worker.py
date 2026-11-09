@@ -4152,8 +4152,22 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     return analysed
 
 
-def _report_layer_table_health(db_session_factory):
-    """One startup line per layer table: its indexes, their use, and its vacuum state.
+#: The tables written that are largest - [LayerHealth]'s, a line each (lead 11-09 ②): how many and how many minutes
+#: apart are this `pacing.json` job's units_per_cycle and rest_seconds. No table is named here.
+LAYER_HEALTH_JOB = "layer_health"
+#: Size is the catalogue's page count (pg_class.relpages, as of the last vacuum or analyze): pg_total_relation_size
+#: asks every table's files - 21 s on the box's 1,183 tables against 16 ms, the same eight first.
+LAYER_HEALTH_TABLES = ("SELECT s.relid::regclass::text, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.autovacuum_count, "
+                       "age(c.relfrozenxid) FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid "
+                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 ORDER BY c.relpages DESC LIMIT :n")
+
+
+def _report_layer_table_health():
+    """A line for each of the largest tables this database writes (lead 11-09 ② - data tables, cell_sources,
+    audit_logs, the outbox, ledger partitions alike, by size): live · dead · its last autovacuum's end · autovacuums ·
+    the vacuum on it now (phase, heap blocks scanned / total) or none. On the stall watch's own connection (one-second
+    statement limit), each read its own try - a failed one says «?» in its cells. -> the seconds until the next lap.
+    Was: one startup line per three named tables, its caller long gone.
 
     🔴 THE OWNER CANNOT ISSUE SQL (판정 276), so the product has to say this itself.
     Production ingestion spends 10 s of a chunk in prefetch where this box spends 0.03 s,
@@ -4173,40 +4187,43 @@ def _report_layer_table_health(db_session_factory):
     """
     from sqlalchemy import text as _text
 
-    db = db_session_factory()
-    try:
-        for table in ("cell_sources", "cell_overwrites", "audit_logs"):
-            try:
-                idx = db.execute(_text(
-                    "SELECT indexrelname, pg_size_pretty(pg_relation_size(indexrelid)), idx_scan"
-                    " FROM pg_stat_user_indexes WHERE relname = :t ORDER BY idx_scan"),
-                    {"t": table}).fetchall()
-                stat = db.execute(_text(
-                    "SELECT n_live_tup, n_dead_tup, last_autovacuum, autovacuum_count"
-                    " FROM pg_stat_user_tables WHERE relname = :t"), {"t": table}).fetchone()
-            except Exception as exc:
-                db.rollback()
-                logger.info("[LayerHealth] %s: statistics unavailable (%s: %s)",
-                            table, type(exc).__name__, told(exc))
-                continue
-            if stat is None:
-                continue
-            logger.info(
-                "[LayerHealth] %s: live %s · dead %s · last_autovacuum %s · autovacuums %s"
-                " | indexes%s",
-                table, stat[0], stat[1], stat[2], stat[3],
-                "".join(" · %s %s scans=%s" % (r[0], r[1], r[2]) for r in idx)
-                or " (none)")
-        # S-182 ⓐ: the same count the chunk line carries, on the line the owner already
-        # reads at startup — so 「did anything arrive naive」 is answerable without SQL even
-        # when no file has landed yet this run.
-        from utils.time_format import naive_time_note
+    import pacing
+    from runtime import loops, stall_watch
 
-        note = naive_time_note()
-        if note:
-            logger.warning("[LayerHealth] %s", note)
-    finally:
-        db.close()
+    try:
+        units, rest = pacing.job_pace(LAYER_HEALTH_JOB)
+    except Exception as exc:                                           # noqa: BLE001
+        logger.warning("[LayerHealth] pace unreadable, using 8 tables 300 s apart: %s", told(exc))
+        units, rest = 8, 300.0
+    engine = stall_watch._kept()
+    if engine is None:
+        return rest
+    try:
+        with engine.connect() as conn:
+            tables = conn.execute(_text(LAYER_HEALTH_TABLES), {"n": int(units or 1)}).fetchall()
+    except Exception as exc:                                           # noqa: BLE001 - the watch alone goes quiet
+        logger.warning("[LayerHealth] tables ? - %s", told(exc))
+        return rest
+    try:
+        with engine.connect() as conn:
+            vacuums = {row[0]: row for row in loops.vacuums_running(conn)}
+    except Exception as exc:                                           # noqa: BLE001
+        logger.warning("[LayerHealth] vacuum progress unread: %s - its cell says ?", told(exc))
+        vacuums = None
+    for name, live, dead, last, count, xid_age in tables:
+        running = vacuums.get(name) if vacuums is not None else None
+        # xid age: transactions since its rows were last frozen - near autovacuum_freeze_max_age a wraparound vacuum starts
+        logger.info("[LayerHealth] %s: live %s · dead %s · last autovacuum %s · autovacuums %s · xid age %s · vacuum %s",
+                    name, live, dead, last.isoformat(sep=" ", timespec="seconds") if last else "never", count, xid_age,
+                    "?" if vacuums is None else "none" if running is None else "%s %s/%s" % (
+                        running[1], running[2], running[3]))
+    # S-182 ⓐ: the same count the chunk line carries, on this line - «did anything arrive naive» without SQL
+    from utils.time_format import naive_time_note
+
+    note = naive_time_note()
+    if note:
+        logger.warning("[LayerHealth] %s", note)
+    return rest
 
 
 def _ensure_human_claims_index_sync(db_session_factory):
@@ -4797,6 +4814,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     purge_task = None
     last_census_ts = None
     census_task = None
+    next_health_ts, health_task = 0.0, None
     # the AI report's files waiting for their rule's send_to (`report_loop.send_waiting` - each a marker file)
     last_send_ts, send_task = 0.0, None
 
@@ -5045,6 +5063,16 @@ async def start_chain_ingestion_worker(db_session_factory):
                         last_census_ts = maint_ts
                         census_task = asyncio.create_task(
                             asyncio.to_thread(count_unowned_layers_sync, db_session_factory))
+
+                    # the written tables' health (lead 11-09 ②) - the purge's shape; a lap says when the next is due
+                    if health_task is not None and health_task.done():
+                        rest = None if health_task.cancelled() or health_task.exception() else health_task.result()
+                        if rest is None:
+                            logger.error("[LayerHealth] the lap failed: %s", told(health_task.exception())
+                                         if not health_task.cancelled() else "cancelled")
+                        next_health_ts, health_task = maint_ts + (rest or 300.0), None
+                    if health_task is None and maint_ts >= next_health_ts:
+                        health_task = asyncio.create_task(asyncio.to_thread(_report_layer_table_health))
 
                     # the AI report's waiting sends (lead 10-23 ㄱ) - the purge's shape: a thread this loop does
                     # not await, one at a time, at the sweep's interval, so a big file never holds a slot or a tick

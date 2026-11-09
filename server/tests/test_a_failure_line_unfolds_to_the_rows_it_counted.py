@@ -96,7 +96,7 @@ class _NoDb:
         return 0
 
     def execute(self, *a, **kw):
-        return type("R", (), {"fetchone": lambda _s: None})()
+        return type("R", (), {"fetchall": lambda _s: []})()
 
 
 def test_the_on_demand_row_says_what_health_says():
