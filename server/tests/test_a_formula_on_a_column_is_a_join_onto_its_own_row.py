@@ -132,6 +132,24 @@ def test_a_text_operand_answers_blank(db, tmp_path, monkeypatch):
     assert _c(db) == {"k1": 8, "k2": None}
 
 
+def test_the_formula_is_read_once_a_page_not_once_a_row(db, tmp_path, monkeypatch):
+    """Owner 11-09 «수식 소급이 너무 오래»: C's board counted 50,663 compiles over 10,000 rows - the formula's text was
+    read again a key. A group of 40 rows reads it as often as one of 4."""
+    import expression
+
+    rules = _rules(tmp_path, monkeypatch, "=[a]*2")
+    real, read = expression.compile, []
+    monkeypatch.setattr(expression, "compile", lambda text: read.append(text) or real(text))
+    asked = []
+    for rows in (4, 40):
+        _put(db, [{"k": "k%d-%d" % (rows, i), "a": i} for i in range(rows)])
+        before = len(read)
+        _drain(db, rules)
+        asked.append(len(read) - before)
+    assert asked[0] == asked[1] and asked[0] > 0, asked
+    assert _c(db) == {"k%d-%d" % (rows, i): i * 2 for rows in (4, 40) for i in range(rows)}
+
+
 @pytest.mark.parametrize("take, said", [
     ({"into": "c", "fn": "=[c]+1"}, "take 'c' fn '=[c]+1' reads c itself - a formula reads the row's other columns"),
     ({"into": "c", "fn": "=[nope]+1"}, "take 'c' from 'nope' - not a column of fx"),
