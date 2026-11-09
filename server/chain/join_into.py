@@ -541,21 +541,21 @@ def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
     return None
 
 
-def _gathered(spec: dict, found, row=None, ref=None, functions=None) -> dict:
+def _gathered(spec: dict, fns: dict, at: dict, found, row=None, ref=None, functions=None) -> dict:
     """{left column: value} of the `fn` takes over ONE key's value-table rows `found` ([(row id, take values)], what
     `_read_once` read - the join's key, blank and require). Each by the gap fill's calculation: the expression its
     record becomes (`config.aggregation_record` -> `expression`), else its `unique_concat` join (`mapper._joined`); a
     function take's function with the values left blank-free, the target row's key and `row` columns from `row`, and
-    its `ref` tables from `ref`. How each take is computed is `functions`, made once a batch by `_functions_and_ref`. A
+    its `ref` tables from `ref`. How each take is computed is `functions`, made once a batch by `_functions_and_ref`;
+    `fns` (`_fn_takes`) and `at` (each take's index) are the page's, read once a page - read here a key, a formula's
+    text was compiled five times a row (owner 11-09, C's board: 50,663 compiles over 10,000 rows, 29% of the write). A
     key with no row has no value - its cell is taken back, never written 0 (lead 10-20)."""
-    fns = _fn_takes(spec)
-    if not fns or not found:
+    if not found:
         return dict.fromkeys(fns)
     import expression
     from chain.enrichment import mapper
     from database import crud
 
-    at = {into: index for index, (_right, into) in enumerate(_takes(spec))}
     out = {}
     for into, (column, record) in fns.items():
         values = [take[at[into]] for _row_id, take in found]
@@ -1022,7 +1022,8 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
     from chain import keyset_scan
 
     page, after, pages = keyset_scan.pages(left_rows, start)
-    blank = (None,) * len(_takes(spec))
+    takes = _takes(spec)
+    blank = (None,) * len(takes)
     rows = [_Answer(row_id, origin, values, key)
             for row_id, key in page
             for origin, values in (answers.get(key) or [(None, blank)])]
@@ -1033,6 +1034,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
 
         # a formula's blank is written, not withdrawn: its column holds no layer to take back (lead 10-28 ㄴ)
         said = {into for into, (_column, record) in fns.items() if formula_of(record["fn"]) is not None}
+        at = {into: index for index, (_right, into) in enumerate(takes)}
 
         # 🔴 [lead 10-20] NO ORIGIN, AND A BLANK ONE IS WITHDRAWN - the gap fill's door: a gathered cell has every row
         #    of its key for a source, so no one row's deletion or move may take it back by origin; the recount is its
@@ -1045,7 +1047,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
             mine = rows_of.get(row_id) or {}
             asked = (key, tuple(mine.values()))
             if asked not in once:
-                once[asked] = _gathered(spec, answers.get(key) or (), mine, ref, functions)
+                once[asked] = _gathered(spec, fns, at, answers.get(key) or (), mine, ref, functions)
             gathered = once[asked]
             # a blank one is not written: what this rule owned there goes (owner 11-06 step 2)
             cells = {c: v for c, v in gathered.items() if c in said or not crud.is_blank_value(v)}
@@ -1059,7 +1061,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
         # 🔴 [총괄 529fc7ce8 ①] THE COUNT IS ALL THE PAGES', read off what was read once: a row
         #    with exactly one right answer is one proposed row, on whichever page it lands -
         #    unless a `blank: skip` join has nothing left to say for it (14c75ff43).
-        intos = [into for _right, into in _takes(spec)]
+        intos = [into for _right, into in takes]
         for _id, key in left_rows:
             found = answers.get(key) or ()
             if fns and found:
