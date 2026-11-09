@@ -45,6 +45,8 @@ def test_a_vector(vector):
     out = expression.run(expression.compile(vector["expr"]), vector["rows"], vector.get("types"), vector.get("zone"))
     if "expect_not_time" in vector:
         assert out.get("not_time") == vector["expect_not_time"], out
+    if "expect_not_number" in vector:
+        assert out.get("not_number") == vector["expect_not_number"], out
     if "expect_rows" in vector:
         got = out.get("values")
         assert got is not None and len(got) == len(vector["expect_rows"]) and all(

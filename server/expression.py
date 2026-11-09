@@ -572,7 +572,8 @@ def _times(f):
     return folded
 
 
-#: A fold whose argument is a datetime column answers by these instead (Min · Max, lead 10-13).
+#: A fold whose argument answers a time - a datetime column, or a function the catalogue says `gives` one (lead 11-09:
+#: Min(ParseDateTime(...))) - answers by these instead (Min · Max, lead 10-13).
 BY_TIME = {"Min": _times(lambda a, b: a < b), "Max": _times(lambda a, b: a > b)}
 
 # ── text (owner 11-09 «ㄴ»: Spotfire's Text functions) ─────────────────────────────────────────────────────────────────
@@ -953,12 +954,12 @@ FUNCTIONS = {
     "ATan2": _num2(math.atan2, ["y", "x"]),
     "If": {"kind": "if", "args": ["condition", "then", "else"]},
     # dates (lead fe2ba4b1f) - on the zone's wall clock
-    "Date": _dated(lambda t: _time_text(t.replace(hour=0, minute=0, second=0, microsecond=0))),
-    "DateTime": _dated(_time_text),
+    "Date": {**_dated(lambda t: _time_text(t.replace(hour=0, minute=0, second=0, microsecond=0))), "gives": "time"},
+    "DateTime": {**_dated(_time_text), "gives": "time"},
     **{name: _dated(f) for name, f in PART_OF.items()},
     "DatePart": {"kind": "row", "arity": 2, "args": ["part", "value"], "fn": _date_part, "zoned": True},
     "ParseDateTime": {"kind": "row", "arity": 2, "args": ["text", "format"], "fn": _parse_date_time, "zoned": True,
-                      "check": _net_format_given},
+                      "check": _net_format_given, "gives": "time"},
     # text (owner 11-09 «ㄴ») - a number or a boolean read as its text; counts by their integer part
     "Concatenate": _fold(_joined, rowwise=True, within=_concatenated, args=["text"]),
     "Find": {**_row(3, _find, ["text", "within", "nth"]), "least": 2},
@@ -1498,7 +1499,8 @@ def _fold_value(node, ctx):
             if not is_blank(x) and not is_blank(y):
                 pairs.append((x, y))
         return fn["fn"](pairs)["value"]
-    items = [it for r in ctx.rows for it in _items_of(across(args[0], r), _time_of_row(r))]
+    rowed = [(r, it) for r in ctx.rows for it in _items_of(across(args[0], r), _time_of_row(r))]
+    items = [it for _, it in rowed]
     if node["distinct"]:
         kept = {}
         for it in items:                        # the place of the first, the item of the last - as a Map keeps them
@@ -1506,9 +1508,14 @@ def _fold_value(node, ctx):
         items = list(kept.values())
     params = [number_of(_value(a, ctx.at(row=None))) for a in args[1:]]
     by_time = BY_TIME.get(node["name"])
-    if by_time and args[0]["t"] == "ref" and (ctx.types or {}).get(args[0]["name"]) == "datetime":
-        return by_time(items)["value"]
-    return fn["fn"](items, params)["value"]
+    timed = by_time and ((args[0]["t"] == "ref" and (ctx.types or {}).get(args[0]["name"]) == "datetime")
+                         or (args[0]["t"] == "call" and args[0]["fn"].get("gives") == "time"))
+    answer = by_time(items)["value"] if timed else fn["fn"](items, params)["value"]
+    # Min · Max empty over values it does not compare: those rows said - not a time, or not a number (lead 11-09)
+    if answer is None and by_time:
+        met, unread = (ctx.not_time, lambda v: not is_blank(v) and _instant(v) is None) if timed else (ctx.not_number, _not_number)
+        met.update(id(r) for r, it in rowed if unread(it["value"]))
+    return answer
 
 
 def _if_value(node, ctx):
@@ -1576,7 +1583,7 @@ def run(compiled, rows, types=None, zone=None):
 
 # ── the catalogue: what the screen reads of this table (owner 11-09 «ㄴ») ──────────────────────────────────────────────
 #: A function's grammar - what the catalogue carries. The rest (fn · zoned · check · within) is how a calculator answers.
-GRAMMAR = ("kind", "args", "arity", "least", "none", "rowwise", "params", "pair")
+GRAMMAR = ("kind", "args", "arity", "least", "none", "rowwise", "params", "pair", "gives")
 CATALOGUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "contracts", "expression",
                               "catalogue.json")
 

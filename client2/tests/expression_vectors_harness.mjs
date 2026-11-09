@@ -83,7 +83,8 @@ function suite(M, quiet = false) {
     const good = rows
       ? Array.isArray(out.values) && out.values.length === v.expect_rows.length && out.values.every((x, i) => near(x, v.expect_rows[i]))
       : 'value' in out && near(out.value, v.expect);
-    ok(`${tag}[${v.id}]`, good && (!('expect_not_time' in v) || out.notTime === v.expect_not_time),
+    ok(`${tag}[${v.id}]`, good && (!('expect_not_time' in v) || out.notTime === v.expect_not_time)
+      && (!('expect_not_number' in v) || out.notNumber === v.expect_not_number),
       `got ${ascii(out)} want ${ascii(rows ? v.expect_rows : v.expect)}`);
   };
   for (const v of FILE.vectors) score('V', v);
@@ -241,7 +242,11 @@ const MUTANTS = [
   { id: 'X29', what: 'Marked folded once over the rows, not row by row', catches: 'O[marked.row]', file: E,
     mutate: (t) => swap(t, "const rowLevel = (node) => node.t === 'ref' || (node.t === 'call' && node.fn.kind === 'mark')", "const rowLevel = (node) => node.t === 'ref'") },
   { id: 'X30', what: 'a datetime column folded as numbers - its types not read', catches: 'V[time.min]', file: E,
-    mutate: (t) => swap(t, "  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;\n", '') },
+    mutate: (t) => swap(t, "(args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime')", 'false') },
+  { id: 'X47', what: 'a time a function gives folded as numbers - the catalogue\'s gives not read', catches: 'V[time.min.parsed]', file: E,
+    mutate: (t) => swap(t, "(args[0].t === 'call' && args[0].fn.gives === 'time')", 'false') },
+  { id: 'X48', what: 'Min over values it does not compare empty and silent - no row said', catches: 'V[min.texts.said]', file: E,
+    mutate: (t) => swap(t, '    for (const [r, it] of rowed) if (unread(it.value)) met.add(r);\n', '') },
   { id: 'X31', what: 'the same instant twice: the one met last', catches: 'V[time.min.offset.same.instant]', file: E,
     mutate: (t) => swap(t, 'const BY_TIME = { Min: times((a, b) => a < b),', 'const BY_TIME = { Min: times((a, b) => a <= b),') },
   { id: 'X32', what: 'a range read a column at a time', catches: 'O[sheet.range.order]', file: E,

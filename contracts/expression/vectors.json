@@ -3184,6 +3184,65 @@
       "cite": "lead 10-13 (5667ea0fe): Spotfire's pages print Min/Max over real only - a datetime column is our ruling and may differ from Spotfire: instants compared, the row's value as written, a text that is not a time and an empty value left out, the same instant twice the one met first"
     },
     {
+      "id": "time.min.parsed",
+      "expr": "Min(ParseDateTime([t], \"yyMMdd_HHmmss\"))",
+      "rows": [
+        {
+          "t": "251109_101500"
+        },
+        {
+          "t": "251108_235900"
+        },
+        {
+          "t": ""
+        }
+      ],
+      "zone": "UTC",
+      "expect": "2025-11-08T23:59:00Z",
+      "expect_not_time": 0,
+      "basis": "decided",
+      "cite": "lead 11-09: a fold of a time a function gives compares instants, as of a datetime column"
+    },
+    {
+      "id": "time.max.parsed",
+      "expr": "Max(ParseDateTime([t], \"yyMMdd_HHmmss\"))",
+      "rows": [
+        {
+          "t": "251109_101500"
+        },
+        {
+          "t": "251108_235900"
+        },
+        {
+          "t": ""
+        }
+      ],
+      "zone": "UTC",
+      "expect": "2025-11-09T10:15:00Z",
+      "expect_not_time": 0,
+      "basis": "decided",
+      "cite": "lead 11-09: a fold of a time a function gives compares instants, as of a datetime column"
+    },
+    {
+      "id": "min.texts.said",
+      "expr": "Min([t])",
+      "rows": [
+        {
+          "t": "251109_101500"
+        },
+        {
+          "t": "251108_235900"
+        },
+        {
+          "t": ""
+        }
+      ],
+      "expect": null,
+      "expect_not_number": 2,
+      "basis": "decided",
+      "cite": "lead 11-09: Min over values that are neither number nor time is empty and says the rows (not_number)"
+    },
+    {
       "id": "time.min.blank",
       "expr": "Min([t])",
       "types": {

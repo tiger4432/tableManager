@@ -506,7 +506,8 @@ const times = (wins) => (items) => {
   }
   return { value: best ? best.value : null };
 };
-/** A fold whose argument is a datetime column (run's `types`) answers by these instead. */
+/** A fold whose argument answers a time - a datetime column (run's `types`), or a function the catalogue says `gives`
+ *  one (lead 11-09) - answers by these instead. */
 const BY_TIME = { Min: times((a, b) => a < b), Max: times((a, b) => a > b) };
 
 // How this calculator answers each function; the grammar (kind · args · counts) is the catalogue's - the server's
@@ -1001,12 +1002,20 @@ function foldValue(node, ctx) {
   }
   // An argument that reads a sheet's cells and no row's value (Sum(B1:B9)) folds its own items once, not once a row.
   const once = !rowLevel(args[0]) && cellsOf(args[0]).size > 0;
-  let items = once ? itemsOf(value(args[0], { ...ctx, row: null }), null)
-    : ctx.rows.flatMap((r) => itemsOf(across(args[0], r), timeOfRow(r)));
+  const rowed = once ? [] : ctx.rows.flatMap((r) => itemsOf(across(args[0], r), timeOfRow(r)).map((it) => [r, it]));
+  let items = once ? itemsOf(value(args[0], { ...ctx, row: null }), null) : rowed.map(([, it]) => it);
   if (node.distinct) items = [...new Map(items.map((it) => [spelling(it.value), it])).values()];
   const params = args.slice(1).map((a) => numberOf(value(a, { ...ctx, row: null })));
-  if (BY_TIME[node.name] && args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime') return BY_TIME[node.name](items).value;
-  return fn.fn(items, params).value;
+  const byTime = BY_TIME[node.name];
+  const timed = byTime && ((args[0].t === 'ref' && ctx.types[args[0].name] === 'datetime')
+    || (args[0].t === 'call' && args[0].fn.gives === 'time'));
+  const answer = timed ? byTime(items).value : fn.fn(items, params).value;
+  // Min · Max empty over values it does not compare: those rows said - not a time, or not a number (lead 11-09)
+  if (answer == null && byTime) {
+    const [met, unread] = timed ? [ctx.notTime, (v) => !isBlank(v) && !parseServerInstant(v)] : [ctx.notNumber, notNumber];
+    for (const [r, it] of rowed) if (unread(it.value)) met.add(r);
+  }
+  return answer;
 }
 
 // An If's branches fold only the rows their condition sends them (Logic «More about using if»).

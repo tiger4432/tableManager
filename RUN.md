@@ -9,6 +9,7 @@
 > 말이 바뀜 따옴표 안 \\ \" \' 가 이스케이프로 읽힘 — 전에는 글자 그대로. 그 밖의 \x 는 그대로 두 글자
 >          Sum([a], [b]) 처럼 행 값 여럿을 한 함수에 넣는 식이 이제 행마다 계산됨 — 전에는 두 계산기 다 거절
 >          체인 폼 take fn 이 드롭다운에서 수식 칸으로 — 빈 칸을 누르면 함수 전부가 목록으로 뜸
+> Min/Max  ParseDateTime · Date · DateTime 이 낸 시간을 시각으로 견줌 — 전에는 숫자로 접어 조용한 빈칸. 숫자도 시간도 아닌 값만 만나 빈칸이면 그 행을 not_number / not_time 에 셈
 > 목록 고치기 server/expression.py 를 고친 뒤  python server/expression.py  — catalogue.json 을 다시 씀
 > 답의 뜻  git diff contracts/expression/catalogue.json 이 비어 있음 = 파일이 코드와 같음
 >          비어 있지 않음 = 코드만 고치고 파일을 안 다시 씀 — 서버 시험(표 = 파일)이 빨강, 화면은 옛 목록

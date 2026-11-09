@@ -1388,7 +1388,7 @@ export const FLOORS = new Map([
   ['browser_collector_harness.mjs', 23],   // the browser collector's run without a browser - values, opened, a batch, a run, a page in batches, pause, retry, M1-M8 (lead 11-07)
   ['board_layout_harness.mjs', 199],   // the Board: layout, markings, chain, root base set, Sheet on the root (the count it reports 10-14)
   ['sheet_kind_harness.mjs', 40],   // the Sheet's visible area: grid, formats, key, formula bar, #MANY #NAME? #CYCLE, SM1-SM12 (lead 10-14 ㄱ)
-  ['expression_vectors_harness.mjs', 474],   // -> 474 (owner 11-09 «ㄴ»): Text 20 + & and patterns, F4 F5 the catalogue read, X37-X46; the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
+  ['expression_vectors_harness.mjs', 479],   // -> 479 (lead 11-09): Min/Max of a time a function gives, a silent empty said, X47 X48; -> 474 (owner 11-09 «ㄴ»): Text 20 + & and patterns, F4 F5 the catalogue read, X37-X46; the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
   ['walk_worlds_harness.mjs', 26],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
