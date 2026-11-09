@@ -1,7 +1,8 @@
 // A cell's look (owner 11-06 mockup v3, lead L2): src/grid_look.js lookOf - the one seat that says a cell's role - and
 // the rows the Colours tab writes. Every subject is IMPORTED.
 //
-//   P  a paint over every rule; a later rule over an earlier one (lead 11-07 ㄱ); no look -> null; looks not said -> null
+//   P  a paint over every rule; a later rule over an earlier one (lead 11-07 ㄱ); no look -> null; looks not said -> null;
+//      a line rule's role beside the fill, a paint over the fill and not the line (owner 11-08 2ㄱ)
 //   S  a rule on its columns only (none = every column); a writer rule on that writer's cells - absent writer: no match
 //   C  the condition is the calculator's: «0.52» > 0.5 holds, «hold» and blank do not; a refused condition is refused
 //   L  a broadcast's rule and paint rows taken in, a wiped role gone, rules in their order; another table's left alone
@@ -12,7 +13,7 @@
 //   T  what a selection paints: each stored cell once, a pivot's key or carried cell skipped and counted
 //   B  what a sys_looks broadcast does: a paint drawn from the message; a rule, a place moved, or a count-only message
 //      (past the server's BROADCAST_ITEM_LIMIT) reads the page again unless its edits_of leaves the table out;
-//      another table's nothing
+//      another table's nothing; a rule every table has (look_table «*», owner 11-08 1ㄱ) read again on every table
 //   M  mutants - a copy of the whole module (its imports pointed at the real ones), one change, its cases again
 //
 // Run: node client2/tests/grid_look_harness.mjs
@@ -46,6 +47,13 @@ eq('P1 the later rule wins - 0.52 is Danger, 0.34 is Warn (the mockup)', [at('ro
 eq('P2 a paint over every rule - even one that holds', at('row-2', 'cmp', '0.52', 'ai'), { role: 'ok', hand: true });
 eq('P3 no rule holds: no look', at('row-1', 'etch', '0.12'), null);
 eq('P4 the looks not said (absent from the read): nothing drawn', lookOf(null, 'row-1', 'etch', { value: '0.9' }), null);
+const LINED = { rules: [rule('d1', '0', 'warn', { written_by: 'person', shape: 'line' }), rule('d2', '01', 'danger', { written_by: 'merge' }),
+  rule('t1', '8', 'ok', { when: '[value] > 1' })], paints: { [paintKey('row-2', 'v')]: { role: 'accent', row_id: 'p' } } };
+const lined = (rowId, value, writtenBy) => lookOf(LINED, rowId, 'v', { value, written_by: writtenBy });
+eq('P5 a person\'s cell: its line under another rule\'s fill; alone its line; a merge\'s cell its fill, no line',
+  [lined('row-1', '2', 'person'), lined('row-1', '0', 'person'), lined('row-1', '0', 'merge')],
+  [{ role: 'ok', hand: false, line: 'warn' }, { role: null, hand: false, line: 'warn' }, { role: 'danger', hand: false }]);
+eq('P6 a paint covers the fill, never the line', lined('row-2', '2', 'person'), { role: 'accent', hand: true, line: 'warn' });
 eq('S1 a writer rule on its column, that writer: Accent (the last rule); elsewhere not',
   [at('row-1', 'cmp', '0.12', 'ai'), at('row-1', 'etch', '0.12', 'ai'), at('row-1', 'cmp', '0.12', 'chain')],
   [{ role: 'accent', hand: false }, null, null]);
@@ -85,7 +93,7 @@ eq('L4 a page\'s looks: a first page replaces, a later page of the scroll keeps 
 eq('W1 a rule\'s write - its role, condition, writer, columns as JSON, place',
   ruleUpdate('T', 'r5', { role: 'warn', when: '[value] > 1', written_by: 'ai', columns: ['a', 'b'], position: '88' }, 'kim'),
   { updates: { look_table: 'T', look_axis: 'rule', look_key: 'r5', role: 'warn', rule_when: '[value] > 1', written_by: 'ai',
-    rule_columns: '["a","b"]', position: '88' }, source_name: 'user', updated_by: 'kim' });
+    rule_columns: '["a","b"]', shape: '', position: '88' }, source_name: 'user', updated_by: 'kim' });
 eq('W2 a rule taken off - its role wiped, its condition, writer and columns not touched', ruleOff('T', 'r5', 'kim').updates,
   { look_table: 'T', look_axis: 'rule', look_key: 'r5', role: '' });
 eq('W3 a paint\'s write - one cell, its role; a wipe its role blank', [paintUpdate('T', 'row-1', 'etch', 'danger', 'kim').updates,
@@ -181,31 +189,41 @@ const told = (m) => {
     said({ items: [item('T', 'row', 'r9', { position: '8' })] }, true), said({ items: [item('T', 'row', 'r9', { position: '8' })] }, false),
     said({ count: 300, edits_of: ['S', 'T'] }), said({ count: 300, edits_of: ['U'] }), said({ count: 300, edits_of: [] }),
     said({ count: 300, truncated: { edits_of: { cut: true, omitted: 120 } } }),
-    said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['T'] }), said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['U'] })];
+    said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['T'] }), said({ event: 'batch_row_delete', row_ids: ['id-1'], edits_of: ['U'] }),
+    said({ items: [item('*', 'rule', 'written-by-person', { role: '' })] }), said({ count: 300, edits_of: ['*'] })];
 };
 eq('B1 a paint drawn from the message; a count-only message read again (two shapes); a rule read again; another table\'s nothing;'
   + ' a place on a table read in entered order read again, not on another; a count-only message naming this table in edits_of'
   + ' read again, naming others or none nothing, its edits_of cut read again; a delete the same (D 538297673)', told({ lookBroadcast }),
-  ['draw r1/a', 'reread', 'reread', 'reread', 'nothing', 'reread', 'nothing', 'reread', 'nothing', 'nothing', 'reread', 'reread', 'nothing']);
+  ['draw r1/a', 'reread', 'reread', 'reread', 'nothing', 'reread', 'nothing', 'reread', 'nothing', 'nothing', 'reread', 'reread', 'nothing',
+    'reread', 'reread']);
 
 // ── mutants: the whole module copied, its imports pointed at the real modules, one change ──
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const decide = (m) => {
   const on = (rowId, column, value, writtenBy) => m.lookOf(LOOKS, rowId, column, { value, ...(writtenBy ? { written_by: writtenBy } : {}) });
   return [on('row-1', 'etch', '0.52'), on('row-2', 'cmp', '0.52', 'ai'), on('row-1', 'cmp', '0.12', 'ai'), on('row-1', 'etch', '0.12', 'ai'),
-    on('row-1', 'cmp', '0.12', 'chain'), on('row-1', 'cmp', '0.12')];
+    on('row-1', 'cmp', '0.12', 'chain'), on('row-1', 'cmp', '0.12'),
+    ...[['row-1', '2', 'person'], ['row-1', '0', 'merge'], ['row-2', '2', 'person']].map(([r, v, w]) => m.lookOf(LINED, r, 'v', { value: v, written_by: w }))];
 };
 const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js'], (m) => [decide(m), paintsOf(m), told(m)]];
 const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js'], choose];
 const MUTANTS = [
-  ['M1 a paint not over the rules', LOOK, 'if (paint && paint.role) return { role: paint.role, hand: true };', ''],
-  ['M2 the first rule wins, not the later', LOOK, '    role = rule.role;', '    role = role || rule.role;'],
+  ['M1 a paint not over the rules', LOOK, '  if (hand) role = paint.role;\n', ''],
+  ['M2 the first rule wins, not the later', LOOK, '    else role = rule.role;', '    else role = role || rule.role;'],
+  ['M15 a line rule drawn as a fill', LOOK, '    if (rule.shape === LINE) line = rule.role;\n    else role = rule.role;', '    role = rule.role;'],
+  ['M16 a paint covers the line too', LOOK, '  if (hand) role = paint.role;', '  if (hand) { role = paint.role; line = null; }'],
+  ['M17 a rule every table has not read again on this table', LOOK,
+    "  if (items.some((item) => cellOf(item, 'look_table') === EVERY && cellOf(item, 'look_axis') === RULE)) return { reread: true };\n", ''],
+  ['M18 a count-only message naming «*» not read again', LOOK, ' && !msg.edits_of.includes(EVERY)', ''],
   ['M3 a rule on every column, its columns ignored', LOOK, '(rule.columns && !rule.columns.includes(column))', 'false'],
   ['M4 a writer rule on any writer', LOOK, '    if (rule.written_by && !(cell && cell.written_by === rule.written_by)) continue;\n', ''],
   ['M5 a key cell skipped without being counted', LOOK, 'if (!at || !at.rowId) { skipped += 1; continue; }', 'if (!at || !at.rowId) continue;'],
-  ['M8 a count-only broadcast not read again (a big paint never reaches another screen)', LOOK, '  if (!items.length) return Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) ? {} : { reread: true };\n', ''],
+  ['M8 a count-only broadcast not read again (a big paint never reaches another screen)', LOOK,
+    '    return Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) && !msg.edits_of.includes(EVERY) ? {} : { reread: true };\n', ''],
   ['M9 edits_of ignored (every screen reads again on any big paint)', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', 'false'],
-  ['M10 a count-only message without edits_of not read again', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table)', '!(msg.edits_of || []).includes(table)'],
+  ['M10 a count-only message without edits_of not read again', LOOK, 'Array.isArray(msg && msg.edits_of) && !msg.edits_of.includes(table) && !msg.edits_of.includes(EVERY)',
+    '!(msg.edits_of || []).includes(table) && !(msg.edits_of || []).includes(EVERY)'],
   ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && anyKey(clicked)) return', 'if (false) return'],
   ['M7 the gutter and every column counted', STATE, 'within(shape.cols, map[id]) && keep(id))', 'within(shape.cols, map[id]))'],
   ['M11 no focused cell when nothing is selected', STATE, 'return colId && keep(colId) ? [{ rowIndex: focused.rowIndex, colId }] : [];', 'return [];'],

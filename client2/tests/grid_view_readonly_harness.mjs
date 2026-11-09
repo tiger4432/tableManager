@@ -357,12 +357,13 @@ async function suite(M) {
   const bare = { data: { row_id: 'R0', data: { note: { value: 'x' } } }, node: { rowIndex: 0 } };
   ok(paintNames.length > 0 && paintNames.every((k) => rules[k](bare) !== true),
     `D1 a cell with no marker draws no badge -- rules [${paintNames.join(', ')}]`);
-  const marked = {
-    data: { row_id: 'R0', data: { note: { value: 'x', priority_source: 'user', is_overwrite: true } } },
-    node: { rowIndex: 0 },
-  };
-  ok(paintNames.some((k) => rules[k](marked) === true),
-    'D2 a cell that DOES carry a marker still draws one -- D1 is not vacuous');
+  // a staged edit is the marker - a person's overwrite has no built-in paint since the colour rules every table has
+  // (on the state the grid imports - a mutated state.js copy is not the grid's)
+  const pending = realState.pendingTxEdits;
+  realState.pendingTxEdits = { R0_note: { value: 'y' } };
+  ok(paintNames.some((k) => rules[k](bare) === true),
+    'D2 a cell that DOES carry a marker (a staged edit) still draws one -- D1 is not vacuous');
+  realState.pendingTxEdits = pending;
 
   // ── E: the source rows ───────────────────────────────────────────────────────────────
   const hasBtns = (html) => /class="[^"]*pin-btn/.test(html) || /class="[^"]*del-btn/.test(html);

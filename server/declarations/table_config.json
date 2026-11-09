@@ -86,16 +86,22 @@
     "display_columns": ["world", "source_id", "entity_type", "declared"]
   },
   "sys_looks": {
-    "__comment": "One row per place a person dragged on a table that reads in entered order (order: entered): look_table the table, look_axis row · group · item, look_key the first row_id of what was moved, position its place - a text between its neighbours' keys. A colour rule (look_axis rule, look_key its id, position its order) and a hand paint (look_axis paint, look_key <row_id>/<column>) give cells a role; rule_when, rule_columns (a JSON list) and written_by say which cells (server/grid_look.py). Every key part is filled: a blank one makes no business key, and every write a new row.",
+    "__comment": "One row per place a person dragged on a table that reads in entered order (order: entered): look_table the table, look_axis row · group · item, look_key the first row_id of what was moved, position its place - a text between its neighbours' keys. A colour rule (look_axis rule, look_key its id, position its order) and a hand paint (look_axis paint, look_key <row_id>/<column>) give cells a role; rule_when, rule_columns (a JSON list) and written_by say which cells, shape how (fill | line, blank fill); look_table * is every table's rule, a table's row of its look_key covering it there; rules are the ones every table has under those (server/grid_look.py). Every key part is filled: a blank one makes no business key, and every write a new row.",
     "group": "System",
     "composite_key_source": ["look_table", "look_axis", "look_key"],
     "composite_key_separator": "|",
     "column_types": {"look_table": "string", "look_axis": "string", "look_key": "string", "position": "string",
-                     "role": "string", "rule_when": "string", "rule_columns": "string", "written_by": "string"},
+                     "role": "string", "rule_when": "string", "rule_columns": "string", "written_by": "string",
+                     "shape": "string"},
     "display_columns": ["look_table", "look_axis", "look_key", "position", "role", "rule_when", "rule_columns",
-                        "written_by"],
+                        "written_by", "shape"],
     "indexes": [{"columns": ["look_table", "look_axis", "look_key"], "purpose": "a read in entered order finds each place"}],
-    "access": {"edit_by": "look_table"}
+    "access": {"edit_by": "look_table"},
+    "rules": [
+      {"look_key": "written-by-person", "position": "0", "role": "warn", "written_by": "person", "shape": "line"},
+      {"look_key": "written-by-merge", "position": "01", "role": "danger", "written_by": "merge", "shape": "fill"},
+      {"look_key": "written-by-ai", "position": "02", "role": "accent", "written_by": "ai", "shape": "line"}
+    ]
   },
   "sys_templates": {
     "__comment": "One row per page the browser collector reads into target_table (its rows' source_name is the template). Elements are CSS selectors; open_method in_place | new_tab; content_area the opened content, what base content reads under; next_method button | scroll (scroll ends after scroll_end_seconds with no new item); max_items empty = no limit; ready_match <item column>=<content column> - the content is the item's only when the two read the same. A row is an edit of target_table.",

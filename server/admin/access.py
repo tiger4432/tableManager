@@ -30,6 +30,8 @@ ROWS_DOOR = "/tables/{table_name}/data/updates"
 DELETE_DOORS = ("/tables/{table_name}/rows/{row_id}", "/tables/{table_name}/rows/batch_delete")
 DENIED = "%s may not %s the table %s - an administrator adds the name to access.%s.allow in table_config.json"
 DENIED_BY = "%s is denied by access.%s.deny of %s - remove the name there"   # an allow would not lift a deny
+#: An edit of the rules every table has (grid_look.EVERY, owner 11-08 3ㄱ) - no table's access answers it.
+ADMINS_ONLY = "%s may not edit the colour rules every table has (look_table %s) - an administrator does"
 
 
 def _cell(table):
@@ -53,11 +55,16 @@ def _judged(table, what, row):
 
 
 def _refused_on(user, table, what, row):
-    """(table, read | edit, deny | allow) - the cell that refuses `user` this `what` (read | edit) on `table`, None
-    when none does. `row` (its cells) - for a table that declares edit_by, an edit its own cell lets past (its read, its
-    edit.deny) is judged on the table that row names; without the row the table's own cell answers."""
+    """(table, read | edit, deny | allow | admin) - the cell that refuses `user` this `what` (read | edit) on
+    `table`, None when none does; admin: the rules every table has (`grid_look.EVERY`). `row` (its cells) - for a
+    table that declares edit_by, an edit its own cell lets past (its read, its edit.deny) is judged on the table that
+    row names; without the row the table's own cell answers."""
+    from grid_look import EVERY
+
     if user is None or not sso.enabled() or sso.is_admin(user):
         return None
+    if table == EVERY:
+        return table, what, "admin"
     cell = _cell(table)
     names = _names(user)
     read = cell.get(READ) or {}
@@ -91,7 +98,7 @@ def refuse(user, table, what, row=None):
     """The refusal - the cell that refused (`_refused_on`) and its next step: a deny's name removed, an allow's added."""
     at, cell, kind = _refused_on(user, table, what, row) or (table, what, "allow")
     raise HTTPException(status_code=403, detail=DENIED_BY % (user, cell, at) if kind == "deny" else
-                        DENIED % (user, what, at, cell))
+                        ADMINS_ONLY % (user, at) if kind == "admin" else DENIED % (user, what, at, cell))
 
 
 def may_delete(request, db, table, row_ids):

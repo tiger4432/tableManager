@@ -44,6 +44,8 @@ function suite(M) {
   ok(b.data.c1.priority_source === 'user',
     'A3 marking ALSO sets `priority_source` -- the half four sites used to omit');
   ok(b.data.c1.value === 'v', 'A4 the supplied value is written');
+  ok(b.data.c1.written_by === 'person',
+    'A4b marking says who wrote it -- the cell the colour rule «Written by person» reads (owner 11-08 1ㄱ)');
 
   ok(M.PRIORITY_SOURCE_USER === 'user',
     'A5 the writer and the paint rule share one spelling of the pin value');
@@ -109,6 +111,8 @@ ok(restoresFlag > 0 && restoresFlag === restoresPin,
 const DEFECTS = [
   ['the pin half is dropped again',
     s => s.replace('  cell.priority_source = PRIORITY_SOURCE_USER;\n', '')],
+  ['the writer half is dropped (a person\'s cell drawn as no one\'s until the next read)',
+    s => s.replace('  cell.written_by = PERSON;\n', '')],
   ['the writer spells the pin value differently from the rule',
     s => s.replace("export const PRIORITY_SOURCE_USER = 'user';",
                    "export const PRIORITY_SOURCE_USER = 'User';")],
@@ -121,8 +125,8 @@ const CONTROLS = [
   ['a local rename', s => s
     .replace('  const cell = dataObj && dataObj.data ? dataObj.data[colId] : null;\n  if (!cell) return;',
              '  const target = dataObj && dataObj.data ? dataObj.data[colId] : null;\n  if (!target) return;')
-    .replace('  if (value !== undefined) cell.value = value;\n  cell.is_overwrite = true;\n  cell.priority_source = PRIORITY_SOURCE_USER;',
-             '  if (value !== undefined) target.value = value;\n  target.is_overwrite = true;\n  target.priority_source = PRIORITY_SOURCE_USER;')],
+    .replace('  if (value !== undefined) cell.value = value;\n  cell.is_overwrite = true;\n  cell.priority_source = PRIORITY_SOURCE_USER;\n  cell.written_by = PERSON;',
+             '  if (value !== undefined) target.value = value;\n  target.is_overwrite = true;\n  target.priority_source = PRIORITY_SOURCE_USER;\n  target.written_by = PERSON;')],
   ['comments stripped', s => s.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')],
 ];
 

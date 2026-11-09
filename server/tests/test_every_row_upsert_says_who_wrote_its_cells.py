@@ -6,7 +6,8 @@ change learns it from batch_row_upsert - so every sender's item carries the cell
   senders   PUT data/updates · DELETE <row>/<col>/sources/<source> · PUT <row>/<col>/priority ·
             PUT cells/priority/batch · POST cells/sources/delete/batch · the chain worker's group
   rule      a written_by rule on «note» -> each item's note cell says what the page read says for that cell
-  no rule   no cell says written_by, and the layers' writers are never read
+  no rule   (the look table declaring none every table has) no cell says written_by, and the layers' writers are
+            never read
 """
 import json
 import uuid
@@ -100,8 +101,15 @@ async def test_each_item_says_who_wrote_the_cell_as_the_page_read_does(grid, db_
 @pytest.mark.anyio
 @pytest.mark.parametrize("sender", SENDERS)
 async def test_without_a_writer_rule_no_cell_says_it_and_no_layer_is_read(grid, db_session, sent, sender, monkeypatch):
+    """TURNED (owner 11-08 1ㄱ): the look table declares the rules every table has (person · merge · ai) - without them,
+    as before."""
+    import grid_order
+    from database import crud
+
     client, ids = grid
     _board(db_session, ids)
+    monkeypatch.setitem(crud.TABLE_CONFIG, grid_order.LOOK_TABLE, {
+        k: v for k, v in crud.TABLE_CONFIG[grid_order.LOOK_TABLE].items() if k != grid_look.DECLARED})
 
     def no(*_a, **_k):
         raise AssertionError("the layers' writers were read with no rule asking")

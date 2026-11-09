@@ -3,7 +3,7 @@
 // (main.js), no module state. What a cell shows is grid_look.lookOf's; this writes sys_looks rows and draws.
 // The form is built once: a read of the page draws the list and the paint again, never what a person is typing.
 
-import { ROLES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
+import { ROLES, SHAPES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, ruleOn, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
 import { placeBetween, dropPlace } from './grid_order.js';
 import { escapeHtml } from './utils.js';
 import { localShort } from './server_time.js';
@@ -41,6 +41,7 @@ export class LookPanel {
             <input name="when" class="ctl-small" placeholder="[value] > 0.3" aria-label="Condition" />
             <select name="written_by" class="ctl-small" aria-label="Written by"><option value="">Any writer</option>${options(WRITERS)}</select>
             <select name="role" class="ctl-small" aria-label="Role">${options(ROLES)}</select>
+            <select name="shape" class="ctl-small" aria-label="Shape">${options(SHAPES)}</select>
             <select name="columns" class="ctl-small look-form__cols" multiple aria-label="Columns" title="None picked: every column"></select>
             <button type="submit" class="btn-quiet ctl-small look-form__add">+ Rule</button>
           </form>
@@ -96,10 +97,14 @@ export class LookPanel {
 
   draw() {
     const looks = this.deps.looks() || { rules: [], paints: {} };
-    const rules = looks.rules.map((rule) => `<li class="look-rule" draggable="true" data-rule="${escapeHtml(rule.id)}">
-      <span class="look-rule__text">${escapeHtml(ruleText(rule))}${rule.columns ? `<span class="look-rule__cols"> · ${escapeHtml(rule.columns.join(', '))}</span>` : ''}</span>
-      <span class="chip look-role look-${escapeHtml(rule.role)}">${escapeHtml(roleName(rule.role))}</span>
-      <button type="button" class="chip-remove" data-remove="${escapeHtml(rule.id)}" aria-label="Remove rule">×</button></li>`).join('');
+    // a rule every table has: «Every table», not dragged; its × turns it off here, «On here» back on (server fold)
+    const rules = looks.rules.filter((rule) => rule.role || rule.every).map((rule) => `<li class="look-rule${rule.every ? ' is-every' : ''}${
+      rule.role ? '' : ' is-off'}" draggable="${rule.every ? 'false' : 'true'}" data-rule="${escapeHtml(rule.id)}">
+      <span class="look-rule__text">${escapeHtml(ruleText(rule))}${rule.columns ? `<span class="look-rule__cols"> · ${escapeHtml(rule.columns.join(', '))}</span>` : ''}${
+        rule.every ? '<span class="look-rule__every"> · Every table</span>' : ''}</span>
+      ${rule.role ? `<span class="chip look-role look-${escapeHtml(rule.role)}">${escapeHtml(roleName(rule.role))}</span>
+      <button type="button" class="chip-remove" data-remove="${escapeHtml(rule.id)}" aria-label="${rule.every ? 'Off on this table' : 'Remove rule'}">×</button>`
+        : `<span></span><button type="button" class="btn-quiet ctl-small" data-on="${escapeHtml(rule.id)}">On here</button>`}</li>`).join('');
     this.root.querySelector('.look-list').innerHTML = rules ? `<ul class="look-rules">${rules}</ul>` : '<p class="look-empty">No rules</p>';
 
     // the table's columns - the ones picked stay picked while the table is the same
@@ -141,10 +146,15 @@ export class LookPanel {
     const table = this.deps.table();
     const remove = e.target.closest('[data-remove]');
     const swatch = e.target.closest('[data-paint]');
-    if (!table || (!remove && !swatch)) return;
+    const on = e.target.closest('[data-on]');
+    if (!table || (!remove && !swatch && !on)) return;
     let done = false;
     if (remove) {
       done = await this.deps.write([ruleOff(table, remove.dataset.remove, this.deps.by)], 'Rule not removed');
+    } else if (on) {
+      const rule = ((this.deps.looks() || { rules: [] }).rules).find((r) => r.id === on.dataset.on);
+      if (!rule || !rule.under) return;
+      done = await this.deps.write([ruleOn(table, rule, this.deps.by)], 'Rule not turned on');
     } else {
       const { targets } = this.paintable();
       if (!targets.length) return;
@@ -167,7 +177,8 @@ export class LookPanel {
     const last = rules.length ? rules[rules.length - 1].position : null;
     const columns = form.getAll('columns').map(String);
     const done = await this.deps.write([ruleUpdate(table, this.deps.newId(), { role: String(form.get('role')), when, written_by: writtenBy,
-      columns: columns.length ? columns : null, position: placeBetween(last, null) }, this.deps.by)], 'Rule not saved');
+      columns: columns.length ? columns : null, shape: String(form.get('shape') || ''), position: placeBetween(last, null) }, this.deps.by)],
+    'Rule not saved');
     if (!done) return;
     this.form.reset();
     this.deps.written();

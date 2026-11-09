@@ -4,7 +4,7 @@ paint), written through the table write door; a page read carries the table's ru
 when a rule asks who wrote a cell - each cell of that rule's columns says its writer, in four words or none.
 
   writer   crud.writer_kind: a person · the chain (a bracketed layer by its base name, the enrichment chain) · a
-           language model · a file; a merge's value has no word (lead 11-07 ②), nor has no layer
+           language model · a file · a merge (owner 11-08 1ㄱ - TURNED, was «no word», lead 11-07 ②); no layer none
   looks    rules in their order, a wiped role gone; the paints of the page's rows only; none - no "looks" at all
   writers  the cell's winning layer by the value's own ranking (a person over a model's draft); asked only by a
            written_by rule, on its columns; the pivot's cells carry it too
@@ -72,7 +72,7 @@ def _read(client, **params):
     return answer.json()
 
 
-def test_a_layer_is_written_by_a_person_the_chain_a_model_or_a_file_and_a_merge_by_none():
+def test_a_layer_is_written_by_a_person_the_chain_a_model_a_file_or_a_merge():
     said = {name: crud.writer_kind(name) for name in (
         "user", "chain_ingestion", "chain_ingestion (r1 k%7C1)", "enrichment_auto_confirm (r1 k1)",
         "enrichment_auto_confirm_partial_key", "enrichment_backfill", "custom_script", "llm_draft",
@@ -81,12 +81,14 @@ def test_a_layer_is_written_by_a_person_the_chain_a_model_or_a_file_and_a_merge_
         "user": "person", "chain_ingestion": "chain", "chain_ingestion (r1 k%7C1)": "chain",
         "enrichment_auto_confirm (r1 k1)": "chain", "enrichment_auto_confirm_partial_key": "chain",
         "enrichment_backfill": "chain", "custom_script": "chain", "llm_draft": "ai", "pipeline_parser": "file",
-        "lots (2).csv": "file", "external:csv@t@root|a/b.csv": "file", "collision_merge": None, None: None, "": None}
+        "lots (2).csv": "file", "external:csv@t@root|a/b.csv": "file", "collision_merge": "merge", None: None, "": None}
 
 
 def test_a_page_carries_the_rules_in_order_and_the_paints_of_its_rows_and_nothing_without_looks(grid):
     client, ids = grid
-    assert "looks" not in _read(client), "no rule, no paint: the answer as before"
+    every = [(r["id"], r["role"], r["shape"], r["every"]) for r in _read(client)["looks"]["rules"]]
+    assert every == [("written-by-person", "warn", "line", True), ("written-by-merge", "danger", "fill", True),
+                     ("written-by-ai", "accent", "line", True)], "no rule of its own: the rules every table has"
     _look(client, "rule", "r-1", position="8", role="danger", rule_when="[value] > 0.3")
     _look(client, "rule", "r-2", position="08", role="warn", rule_when="[value] > 0.1", rule_columns='["value"]')
     _look(client, "rule", "r-gone", position="9", role="accent", rule_when="[value] > 0")
@@ -94,14 +96,13 @@ def test_a_page_carries_the_rules_in_order_and_the_paints_of_its_rows_and_nothin
     _look(client, "paint", "%s/value" % ids[0], role="ok")
     _look(client, "paint", "%s/value" % ids[3], role="danger")
     looks = _read(client, limit=2)["looks"]
-    assert [(r["id"], r["role"], r["columns"]) for r in looks["rules"]] == [("r-2", "warn", ["value"]),
-                                                                           ("r-1", "danger", None)], \
-        "by position, not by id"
+    assert [(r["id"], r["role"], r["columns"]) for r in looks["rules"] if not r["every"]] == [
+        ("r-2", "warn", ["value"]), ("r-1", "danger", None)], "by position, not by id"
     assert {key: paint["role"] for key, paint in looks["paints"].items()} == {"%s/value" % ids[0]: "ok"}, \
         "a paint of a row off the page is not sent"
     assert all(paint["row_id"] for paint in looks["paints"].values()), "a paint names its row - its history"
-    assert not any("written_by" in cell for row in _read(client)["data"] for cell in row["data"].values()), \
-        "no rule asks who wrote a cell - no layer is read"
+    assert all("written_by" in cell for row in _read(client)["data"] for cell in row["data"].values()
+               if "priority_source" in cell), "TURNED (owner 11-08 1ㄱ): the rules every table has ask who wrote it"
 
 
 def test_a_written_by_rule_has_its_cells_say_their_writer_by_the_values_own_ranking(grid, db_session):
@@ -113,8 +114,8 @@ def test_a_written_by_rule_has_its_cells_say_their_writer_by_the_values_own_rank
     _layers(db_session, ids[1], "note", "llm_draft")
     _look(client, "rule", "r-ai", position="8", role="accent", written_by="ai", rule_columns='["value"]')
     data = {row["row_id"]: row["data"] for row in _read(client)["data"]}
-    assert [data[rid]["value"].get("written_by") for rid in ids] == ["person", "ai", "chain", None]
-    assert "written_by" not in data[ids[1]]["note"], "a column no written_by rule names is not read"
+    assert [data[rid]["value"].get("written_by") for rid in ids] == ["person", "ai", "chain", "merge"]
+    assert data[ids[1]]["note"].get("written_by") == "ai", "TURNED (owner 11-08 1ㄱ): the rules every table has name no column"
     pivot = _read(client, pivot="true")
     by_cell = {(row["lot"], item): cell.get("written_by") for row in pivot["data"] for item, cell in row["cells"].items()}
-    assert by_cell == {("L1", "a"): "person", ("L1", "b"): "ai", ("L2", "a"): "chain", ("L2", "b"): None}
+    assert by_cell == {("L1", "a"): "person", ("L1", "b"): "ai", ("L2", "a"): "chain", ("L2", "b"): "merge"}

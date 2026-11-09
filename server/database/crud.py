@@ -786,7 +786,7 @@ USER_SOURCE = "user"
 #: (`layer_writer`). None = no word, said here so it is not mistaken for one left out: a merge's value is other writers'
 #: and the legend would say whose it cannot back (lead 11-07 ②). A name not here is a file's (`is_file_layer`).
 WRITER_KINDS = {USER_SOURCE: "person", CHAIN_SOURCE: "chain", "custom_script": "chain", LLM_DRAFT_SOURCE: "ai",
-                "pipeline_parser": "file", "collision_merge": None}
+                "pipeline_parser": "file", "collision_merge": "merge"}
 
 
 def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:

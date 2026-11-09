@@ -4,7 +4,7 @@ import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
 import { ENTERED, ROW, GROUP, ITEM, dropPlace } from './grid_order.js';
-import { ROLES, lookOf } from './grid_look.js';
+import { PERSON, ROLES, lookOf } from './grid_look.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
@@ -796,9 +796,9 @@ export function ensureCellObject(dataObj, colId) {
 }
 
 // 🔴 THE ONE PLACE THAT SAYS "A PERSON OVERWROTE THIS CELL", AND IT SAYS IT IN FULL.
-//    The paint rules below read `priority_source` / `manual_priority_source` and NEVER
-//    `is_overwrite`, so a site that sets only `is_overwrite` leaves a real overwrite drawn as
-//    an untouched cell. Measured 2026-09-06 across the five marking sites: two set both, three
+//    The colour rules read `written_by` (grid_look.lookOf - «Written by person», a rule every table has) and the
+//    server reads `priority_source`, NEVER `is_overwrite`, so a site that sets only `is_overwrite` leaves a real
+//    overwrite drawn as an untouched cell until the next read. Measured 2026-09-06 across the five marking sites: two set both, three
 //    set only `is_overwrite`, and the split is invisible on a cell that ALREADY carried a
 //    'user' pin, because these patches merge -- it shows on a cell's FIRST overwrite, through
 //    paste, range-write, or a transaction commit.
@@ -817,6 +817,7 @@ export function markCellOverwritten(dataObj, colId, value) {
   if (value !== undefined) cell.value = value;
   cell.is_overwrite = true;
   cell.priority_source = PRIORITY_SOURCE_USER;
+  cell.written_by = PERSON;
 }
 
 // The raw stored value behind one grid cell, in the shape the row payload uses.
@@ -1110,10 +1111,11 @@ export function buildColumnDefs() {
       },
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
-        // its look (owner 11-06, lead L2): a rule's or a hand's role, the hand's mark, a model's writing
+        // its look (owner 11-06, lead L2): a rule's or a hand's fill, a line rule's edge (owner 11-08 2ㄱ - who wrote it,
+        // by the rules every table has), the hand's mark
         ...Object.fromEntries(ROLES.map(([word]) => [`look-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.role === word])),
+        ...Object.fromEntries(ROLES.map(([word]) => [`look-line-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.line === word])),
         'look-hand': (params) => !isSystem && Boolean(cellLookOf(params.data, col)?.hand),
-        'look-ai': (params) => !isSystem && lookTarget(params.data, col)?.cell?.written_by === 'ai',
         // a carried cell reads as read-only; one whose long rows hold more than one value says «N values», dim (owner 11-06)
         'pivot-carry': () => isCarried,
         'pivot-carry-many': (params) => isCarried && Boolean(carryText(params.data && params.data.data && params.data.data[col])),
@@ -1128,37 +1130,6 @@ export function buildColumnDefs() {
           if (isSystem || !params.data) return false;
           const edit = state.pendingTxEdits[`${params.data.row_id}_${col}`];
           return Boolean(edit && edit.conflict);
-        },
-        // 🔴 F-13. BOTH rules also read `manual_priority_source`, and that is the whole fix.
-        //    `priority_source` is computed TWICE on the server with different answers
-        //    (server/main.py:894-907): the cheap read lights 'user' from `is_ow` alone, the
-        //    declared read defers to `compute_priority_value`. So a pin was visible or not
-        //    depending on WHICH READ the screen happened to make. `manual_priority_source` is
-        //    the STORED pin -- it ships already (main.py:920) and the source-detail panel
-        //    already reads it (main.js:1541) -- so consulting it here bypasses both
-        //    computations and gives the same answer either way. That is why this and not a
-        //    unified `priority_source`, which is C-7 and belongs to the server.
-        // ⚠️ If the write path leaves `manual_priority_source` null for a real pin, this arm is
-        //    simply never true and nothing changes -- inert, not wrong. That question is open.
-        // 🔵 No new class and no new badge: a pin is an overwrite, and it wears the mark this
-        //    grid already gives one.
-        'cell-collision-merge': (params) => {
-          if (isSystem) return false;
-          if (!params.data) return false;
-          const key = `${params.data.row_id}_${col}`;
-          if (state.pendingTxEdits.hasOwnProperty(key)) return false;
-          const cell = params.data.data?.[col];
-          return cell?.priority_source === 'collision_merge'
-            || cell?.manual_priority_source === 'collision_merge';
-        },
-        'cell-overwrite': (params) => {
-          if (isSystem) return false;
-          if (!params.data) return false;
-          const key = `${params.data.row_id}_${col}`;
-          if (state.pendingTxEdits.hasOwnProperty(key)) return false;
-          const cell = params.data.data?.[col];
-          return cell?.priority_source === PRIORITY_SOURCE_USER
-            || cell?.manual_priority_source === PRIORITY_SOURCE_USER;
         },
         'custom-range-selected': (params) => {
           return isCellInRange(params.node.rowIndex, col);
@@ -1315,12 +1286,11 @@ export function buildColumnDefs() {
       cellClass: 'cell-system-readonly',
       ...columnTypeParts(vc.type),
       cellClassRules: {
-        // The other four stored-column rules are deliberately absent, not forgotten:
+        // The other stored-column rules are deliberately absent, not forgotten:
         // `cell-dirty-tx` keys on `pendingTxEdits`, which a column that cannot be edited
-        // never enters; `cell-overwrite`/`cell-collision-merge` test `priority_source`
-        // against 'user'/'collision_merge' and `attach` stamps 'virtual_join', so both would
-        // be permanently false. Range highlighting is the one that still means something —
-        // these cells ARE selectable and copyable.
+        // never enters; the looks judge a stored cell (`lookTarget`), and `attach` stamps
+        // 'virtual_join', which no writer word names. Range highlighting is the one that still
+        // means something — these cells ARE selectable and copyable.
         'custom-range-selected': (params) => isCellInRange(params.node.rowIndex, col)
       }
     });
