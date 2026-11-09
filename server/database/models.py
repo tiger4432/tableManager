@@ -708,6 +708,8 @@ def ensure_owner_columns(engine):
 
     from sqlalchemy.exc import OperationalError
 
+    import db_safety
+
     missing = _owner_columns_missing(engine)
     postgres = engine.dialect.name == "postgresql"
     for attempt in range(1, OWNER_COLUMNS_TRIES + 1 if missing else 1):
@@ -721,7 +723,7 @@ def ensure_owner_columns(engine):
             logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
             break
         except OperationalError as exc:
-            if getattr(getattr(exc, "orig", None), "pgcode", None) != "55P03" or attempt == OWNER_COLUMNS_TRIES:
+            if not db_safety.waited_past_the_lock_timeout(exc) or attempt == OWNER_COLUMNS_TRIES:
                 raise
             logger.warning("[Layers] cell_sources: its lock was not given in 5 s (attempt %d/%d) - asked again",
                            attempt, OWNER_COLUMNS_TRIES)
