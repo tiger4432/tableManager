@@ -6410,6 +6410,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
                 "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {},
                 "refused_times": refused_times}
+        alignment_batch_counts.write_count("cells offered", sum(len(item.updates) for item in batch.updates),
+                                           "cells offered")
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:

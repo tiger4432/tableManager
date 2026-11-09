@@ -23,9 +23,17 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import logging
+import re
 import time
 
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
 from utils import heartbeat
+
+logger = logging.getLogger(__name__)
 
 _COUNTS: contextvars.ContextVar = contextvars.ContextVar(
     "assy_manager.alignment_batch_counts", default=None)
@@ -50,7 +58,7 @@ class _Counts:
     """One group's tally. Plain attributes: this is read once, by the line that prints it."""
 
     __slots__ = ("view_builds", "reference_resolutions", "maps", "started", "phases",
-                 "stages", "write_steps", "write_counts")
+                 "stages", "write_steps", "write_counts", "tx")
 
     def __init__(self):
         self.view_builds = 0
@@ -62,6 +70,7 @@ class _Counts:
         self.stages: dict = {}
         self.write_steps: dict = {}
         self.write_counts: dict = {}      # write step -> [how many, of what]
+        self.tx = _Transaction()          # what the scope's statements and commits did (lead 11-09)
 
     def summary(self) -> dict:
         return {
@@ -77,7 +86,119 @@ class _Counts:
                             for name, seconds in sorted(self.write_steps.items())},
             "write_counts": {name: list(count)
                              for name, count in sorted(self.write_counts.items())},
+            "transaction": self.tx.summary() if self.tx is not None else None,
         }
+
+
+class _Transaction:
+    """The scope's database side, from the engine's own events (lead 11-09 «행 수 · 단계별 초 · 쥔 초 · 문장 수 · 표마다
+    넣음/고침/지움»): statements; seconds by the table a statement writes (reads together); from the first write to
+    each commit's end - what the scope held - and the commits themselves; and per table the row versions each
+    committed transaction made, asked on its connection just before COMMIT (pg_stat_xact_user_tables, PostgreSQL)."""
+
+    __slots__ = ("statements", "by_table", "first_write", "held", "commit", "commit_began", "tuples")
+
+    def __init__(self):
+        self.statements, self.by_table, self.tuples = 0, {}, {}
+        self.first_write = self.commit_began = None
+        self.held = self.commit = 0.0
+
+    def summary(self) -> dict:
+        return {"statements": self.statements, "held": round(self.held, 3), "commit": round(self.commit, 3),
+                "db": {name: round(seconds, 3) for name, seconds in sorted(self.by_table.items())},
+                "rows": {name: list(n) for name, n in sorted(self.tuples.items())}}
+
+
+#: The table a write statement names: INSERT INTO / UPDATE / DELETE FROM / COPY, a schema before it or not.
+_WRITTEN = re.compile(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|COPY)\s+(?:"?\w+"?\.)?"?(\w+)"?', re.I)
+#: Reads, and anything else not naming a written table.
+READS = "reads"
+_XACT = ("SELECT relname, n_tup_ins, n_tup_upd, n_tup_hot_upd, n_tup_del FROM pg_stat_xact_user_tables "
+         "WHERE n_tup_ins + n_tup_upd + n_tup_del > 0")
+
+
+def _tx():
+    counts = _COUNTS.get()
+    return None if counts is None else counts.tx
+
+
+def _quiet(where, exc):
+    """🔴 THE COUNTERS ARE SILENT ALONE. One line says which part stopped; the scope counts no more, the write goes on."""
+    counts = _COUNTS.get()
+    if counts is not None:
+        counts.tx = None
+    logger.warning("[Counts] the write's transaction counts stopped at %s (%s: %s) - the write is unaffected",
+                   where, type(exc).__name__, exc)
+
+
+@event.listens_for(Engine, "before_cursor_execute")
+def _statement_began(conn, cursor, statement, parameters, context, executemany):
+    tx = _tx()
+    if tx is None:
+        return
+    try:
+        written = _WRITTEN.match(statement)
+        now = time.perf_counter()
+        if written and tx.first_write is None:
+            tx.first_write = now
+        conn.info.setdefault("assy_tx_counts", []).append((written.group(1) if written else READS, now))
+        tx.statements += 1
+    except Exception as exc:                                   # noqa: BLE001 - the counters' own failure
+        _quiet("a statement", exc)
+
+
+@event.listens_for(Engine, "after_cursor_execute")
+def _statement_ended(conn, cursor, statement, parameters, context, executemany):
+    tx = _tx()
+    began = conn.info.get("assy_tx_counts")
+    if tx is None or not began:
+        return
+    try:
+        name, at = began.pop()
+        tx.by_table[name] = tx.by_table.get(name, 0.0) + (time.perf_counter() - at)
+    except Exception as exc:                                   # noqa: BLE001
+        _quiet("a statement's end", exc)
+
+
+@event.listens_for(Engine, "commit")
+def _committing(conn):
+    tx = _tx()
+    if tx is None:
+        return
+    try:
+        if conn.dialect.name == "postgresql":
+            cursor = conn.connection.cursor()
+            try:
+                cursor.execute(_XACT)
+                for name, ins, upd, hot, dele in cursor.fetchall():
+                    had = tx.tuples.setdefault(name, [0, 0, 0, 0])
+                    for at, n in enumerate((ins, upd, hot, dele)):
+                        had[at] += n
+            finally:
+                cursor.close()
+        tx.commit_began = time.perf_counter()
+    except Exception as exc:                                   # noqa: BLE001
+        _quiet("a commit", exc)
+
+
+@event.listens_for(Session, "after_commit")
+def _committed(session):
+    tx = _tx()
+    if tx is None or tx.commit_began is None:
+        return
+    now = time.perf_counter()
+    tx.commit += now - tx.commit_began
+    if tx.first_write is not None:
+        tx.held += now - tx.first_write
+    tx.first_write = tx.commit_began = None
+
+
+@event.listens_for(Session, "after_rollback")
+def _rolled_back(session):
+    """A rolled-back attempt held nothing that stays - the next commit is held from its own first write."""
+    tx = _tx()
+    if tx is not None:
+        tx.first_write = tx.commit_began = None
 
 
 @contextlib.contextmanager
@@ -201,6 +322,14 @@ def _not_counting(n):
     """What a write step's `count` is when no scope is open - nothing to add to."""
 
 
+def write_count(name: str, n: int, unit: str):
+    """A count with no clock of its own, said beside the write steps (`cells offered`, lead 11-09)."""
+    counts = _COUNTS.get()
+    if counts is not None:
+        tally = counts.write_counts.setdefault(name, [0, unit])
+        tally[0] += int(n)
+
+
 def write_steps_rewind():
     """A callable that puts this scope's write steps back to what they are NOW.
 
@@ -229,12 +358,27 @@ def _not_rewinding():
 def write_steps_text(summary: dict) -> str:
     """The INSIDE THE WRITE part of a line - one spelling for the watcher's chunk line and
     the chain's group line: each step's seconds and, when it counted, how many of what."""
-    counts = summary.get("write_counts") or {}
-    return "".join(
+    counts = dict(summary.get("write_counts") or {})
+    steps = summary.get("write_steps") or {}
+    said = "".join(
         " · %s %.3f s%s" % (name, seconds,
                             " / %d %s" % tuple(counts[name]) if name in counts else "")
-        for name, seconds in sorted((summary.get("write_steps") or {}).items())
+        for name, seconds in sorted(steps.items())
     ) or " (none named)"
+    said += "".join(" · %d %s" % tuple(count) for name, count in sorted(counts.items()) if name not in steps)
+    return said + transaction_text(summary.get("transaction"))
+
+
+def transaction_text(tx) -> str:
+    """The TRANSACTION part: statements, seconds held (first write to commit end), commit seconds, database seconds
+    by written table, and per table its row versions - inserted / updated (HOT) / deleted; dead = updated + deleted."""
+    if not tx:
+        return ""
+    return (" · TRANSACTION %d statement(s) · held %.3f s · commit %.3f s · db%s · rows%s"
+            % (tx["statements"], tx["held"], tx["commit"],
+               "".join(" %s %.3f s" % (name, s) for name, s in tx["db"].items()) or " -",
+               "".join(" %s +%d ~%d(hot %d) -%d" % (name, n[0], n[1], n[2], n[3])
+                       for name, n in tx["rows"].items()) or " -"))
 
 
 def in_group() -> bool:
