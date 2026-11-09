@@ -289,7 +289,7 @@ def _keep_or_end(worker, limit, pool=None):
 def _reply(answer):
     from runtime import request_timing
 
-    request_timing.add(*answer["db"])
+    request_timing.add(**answer["db"])
     kind = answer["kind"]
     if kind == "json":
         return Response(answer["body"], media_type="application/json")
@@ -313,8 +313,11 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
     is waited for up to `seconds` of its own and the body then has `seconds` (총괄 9752e91f7: a wait for another's walk
     is not this walk being slow, and a body cut short ends the process and every walk it keeps); not there, `gone(why it
     ended)`."""
+    from runtime import request_timing
+
     pool = WALK if pool is None else pool
-    deadline = None if seconds is None else time.monotonic() + seconds
+    began = time.monotonic()
+    deadline = None if seconds is None else began + seconds
 
     def left():
         return None if deadline is None else max(deadline - time.monotonic(), 0)
@@ -355,10 +358,13 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
         pool.taken[0] += 1
         if worker is not None:
             pool.busy.add(worker[0].pid)
+    request_timing.add(0.0, 0, stages=[("pool wait", time.monotonic() - began, 0.0, 0, 0, 0)])
     keep = False
     try:
         if worker is None:
+            began = time.monotonic()
             worker = _start(left(), pool)                   # outside the lock: another body takes an idle one
+            request_timing.add(0.0, 0, stages=[("pool start", time.monotonic() - began, 0.0, 0, 0, 0)])
             with pool.cond:
                 pool.busy.add(worker[0].pid)
         if not pool.answer_waits:

@@ -1,6 +1,6 @@
 {
   "_comment": "서버 전역 설정. 실제 적용하려면 이 파일을 server_settings.json 으로 복사하세요. 파일이 없으면 모든 값이 기본값으로 동작합니다. 고쳐 저장하면 재기동 없이 다시 읽습니다.",
-  "_slow_request_ms_doc": "HTTP 요청 하나가 이 ms 를 넘으면 서버 로그에 한 줄 «[Slow] <메서드> <경로> <상태> - 응답이 …ms 걸렸습니다 (예산 …ms) · db … ms · … queries» 를 남깁니다(쿼리 문자열과 바디는 싣지 않음). 적지 않으면 1000. null 이면 남기지 않습니다. 응답 머리 Server-Timing(total · db)은 값과 무관하게 모든 요청에 붙습니다.",
+  "_slow_request_ms_doc": "HTTP 요청 하나가 이 ms 를 넘으면 서버 로그에 한 줄 «[Slow] <메서드> <경로> <상태> - 응답이 …ms 걸렸습니다 (예산 …ms) · db … ms · … queries · … rows · … bytes · <구간> … s (SQL … s · … rows · Python … s)» 를 남깁니다 — 그리드 쪽 읽기는 count · pool wait · keys · data rows · layers · serialize 구간까지(쿼리 문자열과 바디는 싣지 않음). 적지 않으면 1000. null 이면 남기지 않습니다. 응답 머리 Server-Timing(total · db)은 값과 무관하게 모든 요청에 붙습니다.",
   "slow_request_ms": 1000,
   "_public_url_doc": "다른 곳에서 이 서버를 여는 주소(예 https://assy.example.com). 적으면 AI 리포트 파일의 그림 링크가 <이 주소>/reports/<파일>/image/<n> 이 되어, 메일로 나간 파일에서 그림을 눌러도 원본이 열립니다(로그인 쪽 주소 — 서명 키는 파일에 적지 않음). 끝의 / 는 있어도 없어도 같습니다. 비우면 링크는 파일 기준 상대 주소입니다. 주소 꼴이 아니면 chain_worker.log 에 한 줄 남기고 상대 주소로 둡니다. 새로 만드는 리포트부터 적용됩니다.",
   "public_url": ""

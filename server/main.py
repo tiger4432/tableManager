@@ -1669,11 +1669,13 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
             raise HTTPException(status_code=400, detail=f"Invalid recent cursor: {e}")
     else:
         # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
-        audit_cache.load_initial(db, limit_groups)
+        with request_timing.stage("load initial"):         # the slow line's stages (lead 11-09)
+            audit_cache.load_initial(db, limit_groups)
         # Chain replay is written by a separate worker process. Its committed audit
         # rows cannot mutate this process-local cache, so reconcile before Admin
         # renders the recent transaction list.
-        audit_cache.refresh_if_stale(db, limit_groups)
+        with request_timing.stage("refresh"):
+            audit_cache.refresh_if_stale(db, limit_groups)
         cache_groups = audit_cache.groups
         truncated = audit_cache.truncated
         next_cursor = audit_cache.next_cursor
@@ -1683,7 +1685,8 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
         response.headers["X-Audit-Next-Cursor"] = next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
-    return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
+    with request_timing.stage("shape"):
+        return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
 
 
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
@@ -2280,7 +2283,8 @@ def _table_data_response(payload, table_name: str):
     rediscover it from scratch.
     """
     try:
-        return JSONResponse(content=payload)
+        with request_timing.stage("serialize"):
+            return JSONResponse(content=payload)
     except (TypeError, ValueError) as exc:
         SLOW_JSON_FALLBACKS[table_name] = SLOW_JSON_FALLBACKS.get(table_name, 0) + 1
         logger.warning(
@@ -2667,7 +2671,8 @@ def grid_page(
     by_key = (after or before) and not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
     id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
     if id_results is None:
-        id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
+        with request_timing.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
+            id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
     
@@ -2684,7 +2689,8 @@ def grid_page(
         from sqlalchemy import tuple_ as _tuple
 
         matches = _tuple(*page_keys).in_(id_list)
-    raw_rows = db.query(table_model).filter(matches).all()
+    with request_timing.stage("data rows"):
+        raw_rows = db.query(table_model).filter(matches).all()
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
     # ⚠️ THE INSTANCE ATTRIBUTE NEEDS THE KEY'S NAME, not its column — this restores the
     # page's order after an unordered `IN` fetch, and a hardcoded `x.row_id` would put
@@ -2703,7 +2709,8 @@ def grid_page(
     # [성능 최적화] 그리드 목록 조회에서는 cell_sources 로딩을 생략(include_sources=False)하여
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
-    data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
+    with request_timing.stage("layers"):
+        data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
     t_dict = time.time() - t_dict_start
@@ -2748,7 +2755,8 @@ def grid_page(
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}, key={'after' if after else 'before' if before else '-'}")
     
-    unread = _attach_ledger_sources(db, table_name, data_list)
+    with request_timing.stage("ledger keys"):
+        unread = _attach_ledger_sources(db, table_name, data_list)
     looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
@@ -2861,9 +2869,10 @@ def get_table_data(
             grid_pivot.order(db.query(table_model), table_model, grid_pivot.of(table_name), order_by, order_desc)
         else:
             resolve_sort(None, table_model, table_name, order_by, order_desc)
-        counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
-                             transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
-                             enrichment_queue_scope=enrichment_queue_scope)
+        with request_timing.stage("count"):
+            counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
+                                 transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
+                                 enrichment_queue_scope=enrichment_queue_scope)
     return grid_page(table_name=table_name, skip=skip, limit=limit, q=q, cols=cols, order_by=order_by,
                      order_desc=order_desc, target_row_id=target_row_id, transaction_id=transaction_id,
                      filters=filters, enrichment_queue=enrichment_queue,

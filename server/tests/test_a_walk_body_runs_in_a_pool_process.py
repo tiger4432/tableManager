@@ -5,7 +5,9 @@ function itself gets a dict, as before (QA on 407448592)."""
 import asyncio
 import datetime
 import json
+import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -142,9 +144,16 @@ def test_the_body_ran_in_another_process(client):
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] != os.getpid()
 
 
-def test_the_pool_s_database_time_joins_the_request_s(client):
-    timing = client.get("/body", params={"kind": "query"}).headers["server-timing"]
+def test_the_pool_s_database_time_joins_the_request_s(client, monkeypatch, caplog):
+    monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        timing = client.get("/body", params={"kind": "query"}).headers["server-timing"]
     assert 'desc="1 queries"' in timing
+    [said] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Slow] ")]
+    # the pool's wait (and a start, with no idle process) is the server's, the serialize stage the pool process's -
+    # both on the one line (lead 11-09)
+    assert re.search(r" · 1 queries · (\?|1) rows · \d+ bytes · pool wait \d+\.\d\d s(?: · pool start \d+\.\d\d s)? · serialize \d+\.\d\d s$",
+                     said), said
 
 
 @pytest.mark.parametrize("settings,expected", [

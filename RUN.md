@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **느린 요청 한 줄이 «어디에 썼나»를 말한다 — 그리드 쪽 읽기 · 어드민 큰 읽기** — git pull · API 재기동(풀 자식도 같이 새로 뜸)
+>
+> ```
+> 볼 줄    server.log  [Slow] GET /tables/<표>/data 200 - 응답이 …ms 걸렸습니다 (예산 1000ms) · db … ms · … queries
+>          · <읽은 행> rows · <보낸 바이트> bytes · count … s (…) · pool wait … s · pool start … s(새로 띄웠을 때만) · keys … s (SQL … s · … rows · Python … s)
+>          · data rows … s (…) · layers … s (SQL … s · <층 행> rows · Python … s) · ledger keys … s (…) · serialize … s
+>          어드민 큰 읽기도 같은 줄 — /audit_logs/recent 는 load initial(재기동 뒤 첫 걷기) · refresh · shape 구간,
+>          다른 라우트는 db · queries · rows · bytes(dict 를 내는 라우트는 serialize 하나)
+> 답의 뜻  layers 의 SQL 이 크면 층 읽기(DB) · layers 의 Python 이 크면 층으로 칸 만들기(파이썬) · pool wait 가 크면 그리드 풀 자식이 다 바빴음
+>          (grid_processes 가 작거나 다른 큰 읽기가 앞에 있음) · pool start 가 크면 풀 자식을 새로 띄운 것(재기동 직후 첫 읽기 · 설정 다시 읽은 뒤)
+>          · serialize 가 크면 응답이 큼(bytes 를 같이 봄)
+>          · «?» 는 그 칸만 못 잰 것(줄은 그대로) · rows 가 «?» 면 그 드라이버가 행 수를 안 알려 줌(SQLite) — 운영 PG 는 수
+> 끄기     server/config/server_settings.json 의 slow_request_ms 를 null — 줄 전체가 꺼짐(기준을 올리려면 그 칸에 밀리초)
+> ```
+>
+> ---
+>
 > ## [11-09] **큰 표의 vacuum 끝자리 자르기를 끔 — cell_sources · audit_logs · 원장 파티션 전부** — git pull · 런처 재기동(스케줄러 · 원장 워커)
 >
 > ```

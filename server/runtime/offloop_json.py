@@ -46,14 +46,17 @@ _dumps = functools.partial(json.dumps, ensure_ascii=False, allow_nan=False, inde
 
 
 def encode(answer) -> _Encoded:
-    """`answer` as JSONResponse would write it, here."""
+    """`answer` as JSONResponse would write it, here - the request's «serialize» stage (`request_timing.stage`)."""
+    from runtime import request_timing
+
     encoded = _Encoded("")
-    try:
-        text = _dumps(answer, default=jsonable_encoder)
-    except TypeError:
-        # json.dumps never asks `default` about a dict KEY - a date or a UUID key is the old path's whole pass
-        text = _dumps(jsonable_encoder(answer))
-    encoded.payload = text.encode("utf-8")
+    with request_timing.stage("serialize"):
+        try:
+            text = _dumps(answer, default=jsonable_encoder)
+        except TypeError:
+            # json.dumps never asks `default` about a dict KEY - a date or a UUID key is the old path's whole pass
+            text = _dumps(jsonable_encoder(answer))
+        encoded.payload = text.encode("utf-8")
     return encoded
 
 
