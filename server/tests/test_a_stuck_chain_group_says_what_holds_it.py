@@ -24,8 +24,8 @@ from sqlalchemy.orm import sessionmaker
 
 import db_waits
 from chain import ingestion_worker as iw
-from maps import alignment_batch_counts
 from runtime.health import compute_health
+from runtime.stages import stage
 from utils import heartbeat
 from utils import logger as process_logging
 
@@ -135,7 +135,7 @@ def test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it(
     group_pid = _backend_pid(db.connection())
 
     def body(tx_id, events, session, rules):
-        with alignment_batch_counts.stage("write:stall_probe"):
+        with stage("write:stall_probe"):
             session.execute(text("UPDATE stall_probe SET v = 'chain' WHERE k = 1"))
         return True, None, []
 
@@ -173,7 +173,7 @@ def test_a_group_in_its_own_slow_query_says_so_with_no_lock(
     db = sessionmaker(bind=probe_table)()
 
     def body(tx_id, events, session, rules):
-        with alignment_batch_counts.stage("mapper"):
+        with stage("mapper"):
             session.execute(text("SELECT pg_sleep(4)"))
         return True, None, []
 
@@ -195,7 +195,7 @@ def test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged(fast, monk
 
     def body(tx_id, events, session, rules):
         for step in range(10):                    # 3 s in all - twice the stall window
-            with alignment_batch_counts.stage("write:t%d" % step):
+            with stage("write:t%d" % step):
                 time.sleep(0.3)
         return True, None, []
 

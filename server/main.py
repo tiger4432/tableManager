@@ -10,6 +10,7 @@ from database import models, schemas, crud
 from runtime import system_reload
 from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
 from runtime import index_wants  # a slow grid read's automatic index (총괄 ff7890892)
+from runtime import stages  # a named stage on every line open around it - the slow-request line here
 from runtime.offloop_json import OffLoopJSONRoute
 from listing_absence import absent_listing
 from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
@@ -1685,7 +1686,7 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
         response.headers["X-Audit-Next-Cursor"] = next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
-    with request_timing.stage("shape"):
+    with stages.stage("shape"):
         page = _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
     return dict(page, updating=updating)
 
@@ -2271,7 +2272,7 @@ def _table_data_response(payload, table_name: str):
     rediscover it from scratch.
     """
     try:
-        with request_timing.stage("serialize"):
+        with stages.stage("serialize"):
             return JSONResponse(content=payload)
     except (TypeError, ValueError) as exc:
         SLOW_JSON_FALLBACKS[table_name] = SLOW_JSON_FALLBACKS.get(table_name, 0) + 1
@@ -2676,7 +2677,7 @@ def grid_page(
     by_key = (after or before) and not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
     id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
     if id_results is None:
-        with request_timing.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
+        with stages.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
             keys_query = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit)
             index_wants.read_keys(keys_query, final_sort)                 # a slow page's plan is read from it
             id_results = keys_query.all()
@@ -2696,7 +2697,7 @@ def grid_page(
         from sqlalchemy import tuple_ as _tuple
 
         matches = _tuple(*page_keys).in_(id_list)
-    with request_timing.stage("data rows"):
+    with stages.stage("data rows"):
         raw_rows = db.query(table_model).filter(matches).all()
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
     # ⚠️ THE INSTANCE ATTRIBUTE NEEDS THE KEY'S NAME, not its column — this restores the
@@ -2717,10 +2718,10 @@ def grid_page(
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
     if part == grid_look.WRITERS:
-        with request_timing.stage("writers"):
+        with stages.stage("writers"):
             merged, _looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
         return {"table_name": table_name, "skip": skip, "written_by": grid_look.written_of(merged)}
-    with request_timing.stage("layers"):
+    with stages.stage("layers"):
         data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False, writers=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
@@ -2766,7 +2767,7 @@ def grid_page(
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}, key={'after' if after else 'before' if before else '-'}")
     
-    with request_timing.stage("ledger keys"):
+    with stages.stage("ledger keys"):
         unread = _attach_ledger_sources(db, table_name, data_list)
     looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
     return _table_data_response({
@@ -2892,7 +2893,7 @@ def get_table_data(
             grid_pivot.order(db.query(table_model), table_model, grid_pivot.of(table_name), order_by, order_desc)
         else:
             resolve_sort(None, table_model, table_name, order_by, order_desc)
-        with request_timing.stage("count"):
+        with stages.stage("count"):
             counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
                                  transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                                  enrichment_queue_scope=enrichment_queue_scope)

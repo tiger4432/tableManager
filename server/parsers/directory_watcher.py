@@ -27,6 +27,7 @@ if server_dir not in sys.path:
 import db_safety
 from database.database import SessionLocal
 from maps import alignment_batch_counts
+from runtime.stages import stage
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
 from utils import heartbeat
@@ -4184,7 +4185,7 @@ class IngestionHandler(FileSystemEventHandler):
                     chunk_started = time.monotonic()
                     items = []
 
-                    with alignment_batch_counts.stage("parse"):
+                    with stage("parse"):
                         for file_row, row in (chunk if map_columns else enumerate(chunk, start=processed_rows + 1)):
                             normalized_row = {}
                             bk_val = None
@@ -4257,7 +4258,7 @@ class IngestionHandler(FileSystemEventHandler):
                             _sampler = None
 
                         _time_left, _replaced, _dropped = {}, ({} if map_columns else None), {}
-                        with alignment_batch_counts.stage("apply"):
+                        with stage("apply"):
                             results, changed_cells, created_logs, deleted_row_ids = \
                                 crud.apply_batch_updates(db, t_name, batch_obj,
                                                          replace_report=_replaced,
@@ -4274,7 +4275,7 @@ class IngestionHandler(FileSystemEventHandler):
                         nokey_counts["rows"] += (batch_obj._nokey or {}).get("rows", 0)
                         nokey_counts["columns"].update((batch_obj._nokey or {}).get("columns") or ())
 
-                        with alignment_batch_counts.stage("commit"):
+                        with stage("commit"):
                             db.commit()
 
                         # Between chunks, immediately after the commit that made this chunk

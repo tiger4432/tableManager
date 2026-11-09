@@ -3369,6 +3369,7 @@ def _beating(control, engine):
     from sqlalchemy import event
 
     from chain import keyset_scan
+    from runtime import stages as receivers
 
     here, held = threading.get_ident(), {}
 
@@ -3380,7 +3381,7 @@ def _beating(control, engine):
     def given_back(_dbapi_conn, record):
         held.pop(id(record), None)
 
-    token = keyset_scan.RUN_CONTROL.set(control)
+    token, receiving = keyset_scan.RUN_CONTROL.set(control), receivers.opened(control)
     stop = threading.Event()
     # pg_stat_activity is PostgreSQL's - another database runs with the stage lines alone
     beat = (threading.Thread(target=_beat, args=(control, stop, engine.url, held), name="retroactive-beat",
@@ -3393,7 +3394,8 @@ def _beating(control, engine):
     try:
         yield
     finally:
-        keyset_scan.RUN_CONTROL.reset(token)  # first - whatever below raises, this thread's run control is not left set
+        receivers.closed(receiving)        # first - whatever below raises, this thread's run control is not left set
+        keyset_scan.RUN_CONTROL.reset(token)
         stop.set()
         control.stop_telling()            # before the run's ending notice - no RUNNING after its DONE (QA 10-14 ④)
         if beat is not None:
@@ -3544,7 +3546,7 @@ class RunControl:
         #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
         self._said, self._boundary, self._pages = 0, time.monotonic(), 0
         self._began, self._total = self._boundary, None
-        #: The stages the page in progress is inside, outermost first - `(name, since, rows)` (`stage`, the beat reads it).
+        #: The stages the page in progress is inside, outermost first - `(name, since, rows)` (`enter`, the beat reads it).
         self.stages = []
         #: The stage lines on or off - `retroactive_debug`, read again at every page boundary.
         self.debug = retroactive_debug()
@@ -3731,23 +3733,23 @@ class RunControl:
         finally:
             session.close()
 
-    @contextlib.contextmanager
-    def stage(self, name, rows=None):
-        """A stage inside the page in progress (`keyset_scan.stage`, 총괄 d9be013cb): in `stages` while it runs - the
-        beat says the innermost and how long it has run - and its step line when it ends, while `debug` is on: a
-        line only - the run row's time moves once a page, at its boundary (총괄 bdc08ec39 ③: it was an UPDATE and a
-        COMMIT a stage, 14 a page). Yields a dict: a `note` ends the line, a `rows` there replaces the one given."""
+    #: The run's receiver of `runtime.stages.stage` takes inner stages too - the beat says the innermost.
+    outer_only = False
+
+    def enter(self, name, rows, said):
+        """A stage inside the page in progress (총괄 d9be013cb): in `stages` while it runs - the beat says the innermost
+        and how long it has run - and its step line when it ends (`leave`), while `debug` is on: a line only - the run
+        row's time moves once a page, at its boundary (총괄 bdc08ec39 ③: it was an UPDATE and a COMMIT a stage, 14 a
+        page). A `note` the stage's dict holds ends the line, a `rows` there replaces the one given."""
         entry = (name, time.monotonic(), rows)
         self.stages.append(entry)
-        said = {}
-        try:
-            yield said
-        finally:
-            if entry in self.stages:
-                self.stages.remove(entry)
-            if self.debug:
-                self._step_line(name, self._pages + 1, said.get("rows", rows), time.monotonic() - entry[1],
-                                said.get("note"))
+        return entry
+
+    def leave(self, entry, seconds, told):
+        if entry in self.stages:
+            self.stages.remove(entry)
+        if self.debug:
+            self._step_line(entry[0], self._pages + 1, told.get("rows", entry[2]), seconds, told.get("note"))
 
     def _stamp(self, values) -> None:
         """`last_progress_at` = now, with `values`, on this control's own session."""

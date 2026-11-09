@@ -485,44 +485,40 @@ def select_files(db, table, folder, limit=None):
     the file)], "not_taken": {why: count}, "not_taken_files": [first names], "walked": files looked at}.
     More than `limit` files under the folder is refused (RereadRefused) before anything is judged."""
     from directory_watcher import _safe_relative_path, one_sweep, source_taking
+    from runtime.stages import Seconds, receiving, stage
 
     limit = WALK_MAX_ENTRIES if limit is None else limit
-    began = clock = time.perf_counter()
-    took = {}
-
-    def stage(name):
-        nonlocal clock
-        now = time.perf_counter()
-        took[name], clock = round(now - clock, 3), now
-
-    files, folders = [], 0
-    for top, _dirs, names in os.walk(folder):
-        folders += 1
-        for name in names:
-            files.append(os.path.join(top, name))
-            if len(files) > limit:
-                raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
-    stage("walk")
-    raws, specs = table_sources(table)
-    stage("sources")
-    rows = _newest_rows_of(db, table, files)
-    stage("lookup")
-    picked, not_taken, names = [], {}, []
-    with one_sweep():
-        for path in sorted(files):
-            why = None
-            if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
-                why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
-                    else OUTSIDE_SOURCES
-            log = rows.get(os.path.normcase(os.path.abspath(path)))
-            if why is None and log is not None and log.status == "PENDING":
-                why = BEING_READ
-            if why is not None:
-                not_taken[why] = not_taken.get(why, 0) + 1
-                names.append(os.path.basename(path))
-                continue
-            picked.append((log, _safe_relative_path(path, folder), path))
-    stage("judge")
+    began = time.perf_counter()
+    took = Seconds()
+    with receiving(took):
+        files, folders = [], 0
+        with stage("walk"):
+            for top, _dirs, names in os.walk(folder):
+                folders += 1
+                for name in names:
+                    files.append(os.path.join(top, name))
+                    if len(files) > limit:
+                        raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
+        with stage("sources"):
+            raws, specs = table_sources(table)
+        with stage("lookup"):
+            rows = _newest_rows_of(db, table, files)
+        picked, not_taken, names = [], {}, []
+        with stage("judge"), one_sweep():
+            for path in sorted(files):
+                why = None
+                if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
+                    why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
+                        else OUTSIDE_SOURCES
+                log = rows.get(os.path.normcase(os.path.abspath(path)))
+                if why is None and log is not None and log.status == "PENDING":
+                    why = BEING_READ
+                if why is not None:
+                    not_taken[why] = not_taken.get(why, 0) + 1
+                    names.append(os.path.basename(path))
+                    continue
+                picked.append((log, _safe_relative_path(path, folder), path))
+    took = {name: round(seconds, 3) for name, seconds in took.items()}
     took["total"] = round(time.perf_counter() - began, 3)
     logger.info("[Reread] preview of %s for %s: %d file(s) in %d folder(s), %d picked - %.1f s (walk %.1f · sources "
                 "%.1f · lookup %.1f · judge %.1f)", folder, table, len(files), folders, len(picked), took["total"],

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **구간 기록이 한 함수 — 소급 비트 · 느린 요청 줄에 구간이 더 보인다** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     소급 실행 단계 줄 · 체인 그룹 줄 · 느린 요청 줄이 같은 구간 기록을 씀. 한 구간은 그때 열린 줄 «전부»에 감
+> 새로 보임 소급 비트 · 단계 줄(retroactive_debug 켜면): 규칙 다시 돌리기 · 재생 fold 안의 체인 구간 — «Page 1: mapper» · «Page 1: write:<표>»
+>          느린 요청 줄 [Slow] … · <구간> s (SQL s · 행 · Python s): 실패 파일 재시도 → parse · apply · commit,
+>          소급 count 미리보기 · 선언 Test run → withdrawal count · translate · sql translate · event frames · dry run · row refs,
+>          파일 다시 읽기 미리보기 → walk · sources · lookup · judge
+> 그대로   그룹 줄 · [Reread] 줄 · 요청 줄의 db 초 · 질의 수 · 바이트. 줄을 합하는 쪽(그룹 · 요청)은 바깥 구간만 셈 — 구간 초 합 ≤ 전체
+> 답의 뜻  소급 비트가 «Page N: write:<표>» 에 오래 머묾 = 그 표 쓰기가 느림(체인 워커의 같은 구간과 같은 뜻)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```

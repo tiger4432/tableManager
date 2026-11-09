@@ -4,7 +4,7 @@ A `Server-Timing` header on every response - `total;dur=<ms>, db;dur=<ms>;desc="
 look at the browser's network panel says which call was slow and whether the time was the database.
 A request over `slow_request_ms` (server/config/server_settings.json, default 1000) also says so in one
 log line: method, path, status, total, db, queries, rows read, bytes sent, and each stage the request named
-(`stage` - a grid page's count, keys, data rows, layers, ledger keys, serialize; a pool's wait and start), with
+(`runtime.stages.stage` - a grid page's count, keys, data rows, layers, ledger keys, serialize; a pool's wait and start), with
 its database seconds, rows and the Python rest (lead 11-09: what a slow read spent where, owner «필요한 로그는
 빨리 다 지어») - never the query string or the body. A measure that does not read says «?» in its own place.
 The same file's `public_url` is read here too (`public_url()`): one reader of server_settings.json.
@@ -16,7 +16,6 @@ database pid a request's query runs on while it runs, and a pool hand-off the na
 by its request (`slow_line`), so the freeze's line can carry it.
 """
 import collections
-import contextlib
 import contextvars
 import itertools
 import json
@@ -33,6 +32,7 @@ import error_said
 import event_constants
 import paths
 from database.crud import _decode_config_text
+from runtime import stages as receivers
 
 logger = logging.getLogger("Server")
 
@@ -152,7 +152,8 @@ def begin(path=None):
     """Start this request's counter; hand the token to `end`. `path`: the request's, without its query."""
     key, started = next(_keys), time.perf_counter()
     _open[key] = [started, path, None]
-    return _counter.set([0.0, 0, 0, 0, []]), started, key, _key.set(key)
+    counter = [0.0, 0, 0, 0, []]
+    return (_counter.set(counter), receivers.opened(_Stages(counter))), started, key, _key.set(key)
 
 
 def runs_in(application_name):
@@ -202,28 +203,30 @@ def add(seconds, queries, rows=0, untold=0, stages=()):
         counter[4].extend(stages)
 
 
-@contextlib.contextmanager
-def stage(name):
-    """A named part of this request, said on its slow line: its seconds, and the database seconds, queries and rows
-    inside it. Outside a request it measures nothing."""
-    counter = _counter.get()
-    if counter is None:
-        yield
-        return
-    before, started = counter[:4], time.perf_counter()
-    try:
-        yield
-    finally:
-        counter[4].append((name, time.perf_counter() - started) + tuple(
-            now - was for now, was in zip(counter[:4], before)))
+class _Stages:
+    """This request's receiver of `receivers.stage`: each outer stage with the database seconds, queries and rows inside it
+    - what the slow line says (`_parts`)."""
+
+    outer_only = True
+
+    def __init__(self, counter):
+        self.counter = counter
+
+    def enter(self, name, rows, said):
+        return name, self.counter[:4]
+
+    def leave(self, entry, seconds, told):
+        name, before = entry
+        self.counter[4].append((name, seconds) + tuple(now - was for now, was in zip(self.counter[:4], before)))
 
 
 def end(began, method, path, response):
     """Stamp the response's header and, over the budget, say it once. No response (the app
     raised): the counter is only put away."""
-    token, started, key, key_token = began
+    (token, receiving), started, key, key_token = began
     _open.pop(key, None)
     seconds, queries, rows, untold, stages = _counter.get()
+    receivers.closed(receiving)
     _counter.reset(token)
     _key.reset(key_token)
     if response is None:
