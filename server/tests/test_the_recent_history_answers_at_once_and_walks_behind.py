@@ -103,3 +103,15 @@ def test_rows_another_process_wrote_come_from_the_merge_behind_the_read(client, 
     _settle()
     merged = client.get(URL).json()
     assert _mine(merged) == ["aw-b", "aw-a"] and merged["updating"] is False, merged
+
+
+def test_the_screens_read_again_does_not_start_the_next_catch_up(client, db_session):
+    # The panel reads again HISTORY_REREAD_MS (2 s) after an `updating` answer; with the gap at 2 s every read-again
+    # started another catch-up and the panel said «Updating» for ever (Chrome look 11-09).
+    seed(db_session, [("aw-a", 2)])
+    audit_cache.audit_cache.__init__()
+    assert client.get(URL).json()["updating"] is True
+    _settle()
+    audit_cache.audit_cache._behind_ended -= 2.5               # the screen's read-again, a little late
+    again = client.get(URL).json()
+    assert _mine(again) == ["aw-a"] and again["updating"] is False, again

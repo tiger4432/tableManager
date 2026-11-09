@@ -130,8 +130,10 @@ RECENT_DEFAULTS = {
 
 
 #: A read starts the walk or the merge behind it (`AuditLogCache.behind`) when none runs and the last one ended at
-#: least this long ago - a screen that reads again while `updating` does not start one after another.
-CATCH_UP_GAP_SECONDS = 2
+#: least this long ago. 🔴 Well past the screen's read-again after an `updating` answer (timeline HISTORY_REREAD_MS,
+#: 2 s): at 2 s here every read-again started the next catch-up and the panel said «Updating» for ever (Chrome look
+#: 11-09). What another process wrote reaches the list by its notification at once; this merge is the reconciliation.
+CATCH_UP_GAP_SECONDS = 10
 
 
 # Sort placeholder for a null `timestamp`. Never compared against a real value -
