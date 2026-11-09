@@ -15,14 +15,20 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from runtime import process_pool, request_timing, stall_watch  # noqa: E402
 
 
+#: The C cell's parts a reading gives by default - PostgreSQL's processes, the API, the rest.
+PARTS = {"pg": 1.0, "api": 2.0, "other": 2.0}
+
+
 class Readings:
     """What the cells read, set per tick by the test."""
 
     def __init__(self):
         self.open, self.path, self.lag, self.threads, self.grid = 0.0, None, 0.0, (3, 40), 0
-        self.statements, self.cpu, self.pids, self.table = (1, 0.1, None), (5.0, ("api", 2.0)), {1: "api"}, None
+        self.statements, self.pids, self.table = (1, 0.1, None, 0), {1: "api"}, None
+        self.cpu = (5.0, None, PARTS)
         self.blocked = (0, None)
         self.oldest = None
+        self.disk = (1.0, 2.0, 3.0)
 
     def watch(self, said):
         def fail_or(value):
@@ -33,7 +39,7 @@ class Readings:
                                  lambda: fail_or(self.threads), lambda: fail_or(self.grid),
                                  lambda: fail_or(self.statements), lambda pids: fail_or(self.cpu),
                                  lambda: fail_or((self.pids, self.table)), lambda: fail_or(self.blocked),
-                                 lambda: fail_or(self.oldest), say=said.append)
+                                 lambda: fail_or(self.oldest), lambda: fail_or(self.disk), say=said.append)
 
 
 def test_no_freeze_says_nothing():
@@ -49,15 +55,17 @@ def test_a_freeze_ends_in_one_line_of_its_highest_readings():
     r, said = Readings(), []
     w = r.watch(said)
     w.tick(100.0)
-    r.open, r.path, r.threads, r.grid, r.statements = 7.0, "/dashboard/summary", (40, 40), 6, (9, 11.2, None)
-    r.cpu, r.table = (97.0, ("slot2", 61.3)), "dt_log"
+    r.open, r.path, r.threads, r.grid, r.statements = 7.0, "/dashboard/summary", (40, 40), 6, (9, 11.2, None, 4)
+    r.cpu, r.table = (97.0, ("slot2", 61.3), {"pg": 30.0, "api": 4.0, "other": 2.0}), "dt_log"
     w.tick(101.0)
-    r.open, r.lag, r.grid, r.cpu = 9.0, 12.4, 2, (40.0, ("watcher", 12.0))
+    r.open, r.lag, r.grid = 9.0, 12.4, 2
+    r.cpu, r.disk = (40.0, ("watcher", 12.0), {"pg": 20.0, "api": 1.0, "other": 7.0}), (180.4, 420.0, 950.0)
     w.tick(103.0)
     assert said == []
     r.open, r.lag = 0.0, 0.0
     w.tick(105.0)
-    assert said == ["STALL 11s P /dashboard/summary L12 T40/40 G6 D9/11s B0 X0 C97 slot2:61 ING dt_log"]
+    assert said == ["STALL 11s P /dashboard/summary L12 T40/40 G6 D9/11s B0 X0 C97 api:4 slot2:61 pg:30 other:7 "
+                    "IO r180w420MB/s 950iops pgIO4 ING dt_log"]
     assert w.last["line"] == said[0] and w.last["at"]
     w.tick(106.0)
     assert len(said) == 1, "one freeze, one line"
@@ -84,7 +92,7 @@ def test_a_failed_reading_says_question_mark_in_its_cell_only(caplog):
     w.tick(2.0)
     r.open = 0.0
     w.tick(3.0)
-    assert said == ["STALL 10s L0 T3/40 G0 D? B0 X0 C5 api:2 ING dt_log"]
+    assert said == ["STALL 10s L0 T3/40 G0 D? B0 X0 C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO? ING dt_log"]
     assert sum("the D reading failed" in m for m in caplog.messages) == 1, "said once, not every tick"
 
 
@@ -95,35 +103,159 @@ def test_no_open_claim_leaves_the_ing_cell_out():
     w.tick(1.0)
     r.open = 0.0
     w.tick(2.0)
-    assert said == ["STALL 7s L0 T3/40 G0 D1/0s B0 X0 C5 api:2"]
+    assert said == ["STALL 7s L0 T3/40 G0 D1/0s B0 X0 C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
 
 
 def test_a_beat_file_of_a_gone_process_does_not_blank_the_cpu_cell():
     """Measured: a worker's heartbeat file outlived its process and the whole C cell read «?»."""
     import psutil
     gone = max(psutil.pids()) + 100_000
-    cpu = stall_watch.Cpu()
-    names = {os.getpid(): "api", gone: "slot9"}
-    cpu(names)
-    sum(i * i for i in range(200_000))
-    machine, top = cpu(names)
-    assert 0.0 <= machine <= 100.0 and top[0] == "api"
+    for cpu in (stall_watch.Cpu(), stall_watch.Cpu(snapshot=_failing)):
+        names = {os.getpid(): "api", gone: "slot9"}
+        cpu(names)
+        sum(i * i for i in range(200_000))
+        machine, top, parts = cpu(names)
+        assert 0.0 <= machine <= 100.0 and top is None and parts["api"] is not None
 
 
-def test_the_cpu_cell_reads_only_the_named_pids_never_the_whole_process_table(monkeypatch):
+def test_the_cpu_cell_never_walks_the_process_table_through_psutil(monkeypatch):
     """C 10-29: walking this PC's 541 processes with psutil took 3.5 s - a watch that did it would grow the freeze it
-    reads. The cell asks Process(pid) of the heartbeat pids and the API only; the machine's process table is never
-    walked, so its cost follows the named pids, not how many processes the PC runs."""
+    reads. The snapshot reads every process in one system call (13-19 ms for ~700 on the box's machine, 11-09); the
+    fallback asks Process(pid) of the heartbeat pids and the API only. Neither walks psutil's process table."""
     import psutil
 
     def walked(*_a, **_k):
         raise AssertionError("the whole process table was walked")
     monkeypatch.setattr(psutil, "process_iter", walked)
     monkeypatch.setattr(psutil, "pids", walked)
-    cpu = stall_watch.Cpu()
-    cpu({os.getpid(): "api"})
-    machine, top = cpu({os.getpid(): "api"})
-    assert top[0] == "api" and 0.0 <= machine <= 100.0
+    for cpu in (stall_watch.Cpu(), stall_watch.Cpu(snapshot=_failing)):
+        cpu({os.getpid(): "api"})
+        machine, top, parts = cpu({os.getpid(): "api"})
+        assert top is None and parts["api"] is not None and 0.0 <= machine <= 100.0
+
+
+def _failing():
+    raise OSError("NtQuerySystemInformation status 0xC0000022")
+
+
+class Snapshots:
+    """`process_times` read from a list of tables, one a call - {pid: (image, CPU seconds)}."""
+
+    def __init__(self, *tables):
+        self.tables = list(tables)
+
+    def __call__(self):
+        return self.tables.pop(0)
+
+
+def test_one_snapshot_reads_the_machine_postgres_the_api_the_busiest_and_the_rest_on_one_scale():
+    """Lead 11-09 «C83 인데 가장 바쁜 이름 있는 프로세스는 chain.slot.1 6 %»: the CPU was the unnamed processes'. Every
+    share is of all processes' CPU time between two snapshots; pid 0 is the idle; «other» is what is left."""
+    me = os.getpid()
+    # 10 s of CPU between the two: idle 4, the API 0.5, a slot 1, postgres 2 + 1, explorer 1.5; pid 11 started between
+    # (no share yet), pid 12 is a new process on a reused pid (its image changed - no share)
+    cpu = stall_watch.Cpu(snapshot=Snapshots(
+        {0: ("", 100.0), me: ("python.exe", 10.0), 7: ("python.exe", 5.0), 8: ("postgres.exe", 1.0),
+         9: ("postgres.exe", 2.0), 10: ("explorer.exe", 3.0), 12: ("postgres.exe", 0.5)},
+        {0: ("", 104.0), me: ("python.exe", 10.5), 7: ("python.exe", 6.0), 8: ("postgres.exe", 3.0),
+         9: ("postgres.exe", 3.0), 10: ("explorer.exe", 4.5), 11: ("postgres.exe", 9.0), 12: ("chrome.exe", 1.0)}))
+    names = {me: "api", 7: "chain.slot.1"}
+    first = cpu(names)
+    assert first[1:] == (None, {"pg": None, "api": None, "ours": None, "other": None, "pg_top": None}), \
+        "the first snapshot has none to compare"
+    machine, top, parts = cpu(names)
+    assert machine == pytest.approx(60.0) and top == ("chain.slot.1", pytest.approx(10.0))
+    assert parts == {"pg": pytest.approx(30.0), "api": pytest.approx(5.0), "ours": pytest.approx(15.0),
+                     "other": pytest.approx(15.0), "pg_top": (8, pytest.approx(20.0))}
+    assert parts["ours"] + parts["pg"] + parts["other"] == pytest.approx(machine), "the three are the machine"
+
+
+def test_the_line_says_ours_and_what_the_busiest_postgres_process_ran_at_its_busiest():
+    """Lead 11-10 (a)(b): «C83 ours:23 api:17 chain.slot.1:6 pg:61 AUTOANALYZE public.database_outbox other:12» - the
+    product's processes together, and pg's CPU named by what its busiest process ran (its kind when no statement)."""
+    r, said, asked = Readings(), [], []
+    doing = {8: "AUTOANALYZE public.database_outbox", 9: "checkpointer"}
+
+    def pg_doing(pid):
+        asked.append(pid)
+        return doing[pid]
+    w = stall_watch.Watch(lambda: (r.open, r.path), lambda now: 0.0, lambda: (3, 40), lambda: 0,
+                          lambda: (1, 0.1, None, 0), lambda pids: r.cpu, lambda: ({1: "api"}, None),
+                          lambda: (0, None), lambda: None, lambda: (1.0, 2.0, 3.0), say=said.append, pg_doing=pg_doing)
+    r.open = 8.0
+    r.cpu = (83.0, ("chain.slot.1", 6.0), {"pg": 61.0, "api": 17.0, "ours": 23.0, "other": 12.0, "pg_top": (8, 40.0)})
+    w.tick(1.0)
+    r.cpu = (70.0, ("chain.slot.1", 3.0), {"pg": 50.0, "api": 10.0, "ours": 13.0, "other": 7.0, "pg_top": (9, 20.0)})
+    w.tick(2.0)
+    r.open = 0.0
+    w.tick(3.0)
+    assert said == ["STALL 10s L0 T3/40 G0 D1/0s B0 X0 C83 ours:23 api:17 chain.slot.1:6 "
+                    "pg:61 AUTOANALYZE public.database_outbox other:12 IO r1w2MB/s 3iops pgIO0"]
+    assert asked == [8], "asked only when a busier PostgreSQL process is seen"
+
+
+def test_a_failed_pg_head_says_question_mark_after_pg_only(caplog):
+    r, said = Readings(), []
+
+    def pg_doing(pid):
+        raise RuntimeError("no database")
+    w = stall_watch.Watch(lambda: (r.open, None), lambda now: 0.0, lambda: (3, 40), lambda: 0,
+                          lambda: (1, 0.1, None, 0), lambda pids: r.cpu, lambda: ({1: "api"}, None),
+                          lambda: (0, None), lambda: None, lambda: (1.0, 2.0, 3.0), say=said.append, pg_doing=pg_doing)
+    r.open, r.cpu = 8.0, (50.0, None, {"pg": 30.0, "api": 5.0, "ours": 5.0, "other": 15.0, "pg_top": (8, 30.0)})
+    w.tick(1.0)
+    r.open = 0.0
+    w.tick(2.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X0 C50 ours:5 api:5 pg:30 ? other:15 IO r1w2MB/s 3iops pgIO0"]
+    assert sum("the pg head reading failed" in m for m in caplog.messages) == 1
+
+
+def test_a_failed_snapshot_falls_back_to_the_named_pids_and_pg_says_question_mark_said_once(caplog):
+    cpu = stall_watch.Cpu(snapshot=_failing)
+    names = {os.getpid(): "api"}
+    cpu(names)
+    sum(i * i for i in range(200_000))
+    machine, top, parts = cpu(names)
+    assert parts["pg"] == stall_watch.UNREAD and parts["api"] is not None and 0.0 <= machine <= 100.0
+    assert sum("the process snapshot failed" in m for m in caplog.messages) == 1, "said once, then psutil"
+
+
+def test_other_is_the_machine_less_the_rest_never_under_0():
+    """psutil reads the machine and each process a moment apart - their sum can pass the machine's."""
+    cpu = stall_watch.Cpu(snapshot=_failing)
+    me = os.getpid()
+    assert cpu._said(10.0, {me: "api", 7: "slot"}, {me: 8.0, 7: 6.0}, stall_watch.UNREAD)[2]["other"] == 0.0
+    assert cpu._said(50.0, {me: "api", 7: "slot"}, {me: 8.0, 7: 6.0}, 30.0)[2]["other"] == pytest.approx(6.0)
+
+
+def test_the_line_says_pg_question_mark_and_io_question_mark_in_their_cells_only():
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.cpu, r.disk = 8.0, (5.0, None, {"pg": stall_watch.UNREAD, "api": 2.0, "other": 3.0}), OSError("no disk")
+    w.tick(1.0)
+    r.open = 0.0
+    w.tick(2.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X0 C5 api:2 pg:? other:3 IO? pgIO0"]
+
+
+def test_the_disks_say_megabytes_and_ios_a_second(monkeypatch):
+    """Owner 11-09 «C30 대에 메인 그리드 읽기 stall»: a CPU-low stall is IO, a lock or a pool start - IO had no cell. The
+    disks' time counters are not read (they stood still on the box's machine); no IO between two reads says 0."""
+    import collections
+    import psutil
+    Io = collections.namedtuple("Io", "read_count write_count read_bytes write_bytes read_time write_time")
+    counters = [Io(100, 200, 0, 0, 1000, 2000), Io(140, 260, 180_000_000, 420_000_000, 1600, 3600),
+                Io(140, 260, 180_000_000, 420_000_000, 1600, 3600)]
+    clock = [10.0, 12.0, 13.0, 14.0]
+    monkeypatch.setattr(psutil, "disk_io_counters", lambda: counters.pop(0))
+    disk = stall_watch.Disk()
+    monkeypatch.setattr(stall_watch.time, "monotonic", lambda: clock.pop(0))
+    assert disk() is None, "the first read has none to compare"
+    assert disk() == (pytest.approx(90.0), pytest.approx(210.0), pytest.approx(50.0))      # 40 reads + 60 writes in 2 s
+    assert disk() == (0.0, 0.0, 0.0)
+    monkeypatch.setattr(psutil, "disk_io_counters", lambda: None)
+    with pytest.raises(OSError):
+        disk()
 
 
 def test_the_loop_probe_reads_how_long_a_blocked_loop_has_not_answered():
@@ -215,14 +347,16 @@ def test_a_pool_child_busiest_names_its_pool(monkeypatch):
 
     said = []
     w = stall_watch.Watch(lambda: (8.0, "/tables/split_table/data"), lambda now: 0.0, lambda: (1, 40), lambda: 0,
-                          lambda: (1, 0.0, None), lambda pids: (41.0, (pids[515151], 38.0)), stall_watch.workers,
-                          lambda: (0, None), lambda: None, say=said.append)
+                          lambda: (1, 0.0, None, 0), lambda pids: (41.0, (pids[515151], 38.0), {
+                              "pg": 0.0, "api": 1.0, "other": 2.0}), stall_watch.workers,
+                          lambda: (0, None), lambda: None, lambda: None, say=said.append)
     w.tick(1.0)
     w.tick(2.0)
     assert said == [] and w.freeze is not None
     w.open_requests = lambda: (0.0, None)
     w.tick(3.0)
-    assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s B0 X0 C41 grid:38"]
+    assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s B0 X0 C41 api:1 grid:38 pg:0 other:2 "
+                    "pgIO0"], "no disk reading yet: no IO cell"
 
 
 def test_no_pool_child_leaves_the_line_as_it_was(monkeypatch):
@@ -237,12 +371,12 @@ def test_no_pool_child_leaves_the_line_as_it_was(monkeypatch):
 def test_a_failed_name_reading_says_question_mark_in_the_name_cell():
     r, said = Readings(), []
     w = r.watch(said)
-    r.open, r.cpu = 8.0, (5.0, None)        # no pid named - no busiest one
+    r.open, r.cpu = 8.0, (5.0, None, PARTS)        # no pid named - no busiest one
     w.named = lambda: (_ for _ in ()).throw(RuntimeError("pool list changed"))
     w.tick(1.0)
     r.open = 0.0
     w.tick(2.0)
-    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X0 C5 ?"]
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X0 C5 api:2 ? pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
 
 
 @pytest.mark.parametrize("query, head", [
@@ -272,15 +406,15 @@ def test_the_statement_head_is_a_word_and_a_table_and_never_a_value(query, head)
 def test_the_d_cell_carries_the_head_of_the_longest_statement_of_the_freeze():
     r, said = Readings(), []
     w = r.watch(said)
-    r.open, r.statements = 8.0, (3, 5.0, "SELECT audit_logs")
+    r.open, r.statements = 8.0, (3, 5.0, "SELECT audit_logs", 1)
     w.tick(1.0)
-    r.statements = (2, 9.4, "INSERT cell_sources")
+    r.statements = (2, 9.4, "INSERT cell_sources", 6)
     w.tick(2.0)
-    r.statements = (10, 2.0, "UPDATE job_queue")
+    r.statements = (10, 2.0, "UPDATE job_queue", 2)
     w.tick(3.0)
     r.open = 0.0
     w.tick(4.0)
-    assert said == ["STALL 11s L0 T3/40 G0 D10/9s INSERT cell_sources B0 X0 C5 api:2"]
+    assert said == ["STALL 11s L0 T3/40 G0 D10/9s INSERT cell_sources B0 X0 C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO6"]
 
 
 def test_the_b_cell_says_the_most_sessions_held_up_and_who_held_them():
@@ -296,13 +430,13 @@ def test_the_b_cell_says_the_most_sessions_held_up_and_who_held_them():
     w.tick(3.0)
     r.open = 0.0
     w.tick(4.0)
-    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B3 AUTOVACUUM public.pfab_metro X0 C5 api:2"]
+    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B3 AUTOVACUUM public.pfab_metro X0 C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
     said.clear()
     r.open, r.blocked = 8.0, RuntimeError("no database")
     w.tick(10.0)
     r.open = 0.0
     w.tick(11.0)
-    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B? X0 C5 api:2"]
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B? X0 C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
 
 
 def test_the_holder_holding_up_the_most_is_read_off_backend_waits(monkeypatch):
@@ -344,19 +478,19 @@ def test_the_x_cell_says_the_oldest_open_transaction():
     w.tick(3.0)
     r.open = 0.0
     w.tick(4.0)
-    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B0 X412s/18234 UPDATE pfab_metro C5 api:2"]
+    assert said == ["STALL 11s L0 T3/40 G0 D1/0s B0 X412s/18234 UPDATE pfab_metro C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
     said.clear()
     r.open, r.oldest = 8.0, (6.0, None, None)
     w.tick(10.0)
     r.open = 0.0
     w.tick(11.0)
-    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X6s C5 api:2"]
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X6s C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
     said.clear()
     r.open, r.oldest = 8.0, RuntimeError("no database")
     w.tick(20.0)
     r.open = 0.0
     w.tick(21.0)
-    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X? C5 api:2"]
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s B0 X? C5 api:2 pg:1 other:2 IO r1w2MB/s 3iops pgIO0"]
 
 
 def test_the_oldest_transaction_is_read_off_pg_stat_activity(monkeypatch):
@@ -380,3 +514,27 @@ def test_the_oldest_transaction_is_read_off_pg_stat_activity(monkeypatch):
     assert stall_watch.oldest_transaction() == (3.0, None, "IDLE")
     rows.clear()
     assert stall_watch.oldest_transaction() is None
+
+
+def test_the_active_statements_and_those_waiting_on_io_are_read_off_one_row(monkeypatch):
+    """The D cell's one query carries the sessions waiting on IO in its fourth column (lead 11-09) - no new query; no
+    active statement but this one, (0, 0.0, None, 0)."""
+    rows = [(5, 12.6, "SELECT v FROM cell_sources WHERE v = 'secret'", 3)]
+    asked = []
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, statement):
+            asked.append(str(statement))
+            return type("R", (), {"first": lambda self: rows[0] if rows else None})()
+
+    monkeypatch.setattr(stall_watch, "_kept", lambda: type("E", (), {"connect": lambda self: Conn()})())
+    assert stall_watch.active_statements() == (5, 12.6, "SELECT cell_sources", 3)
+    rows.clear()
+    assert stall_watch.active_statements() == (0, 0.0, None, 0)
+    assert asked == [stall_watch.ACTIVE_STATEMENTS] * 2 and "wait_event_type = 'IO'" in asked[0]

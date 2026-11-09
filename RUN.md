@@ -62,6 +62,35 @@
 >
 > ---
 >
+> ## [11-09] **STALL 줄 C 칸이 «누가 CPU 를 먹나»를 한 눈금으로 — ours · api · 가장 바쁜 이름 · pg(와 그 일) · other, 새 IO 칸** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     C 칸 뒤에 같은 눈금(기계 전체 %)의 몫: ours(이 제품 프로세스 합 — API · 워커 · 슬롯 · 풀 자식) · api(API 자신)
+>          · 가장 바쁜 이름 있는 프로세스(풀 자식 · 워커) · pg(PostgreSQL 프로세스 전부 합 — autovacuum 작업자 포함)와
+>          그중 가장 바쁜 프로세스가 하던 일(문장 머리, 문장이 없으면 종류 — checkpointer 등) · other(나머지 전부)
+>          ours + pg + other = C (스냅샷으로 읽을 때)
+>          Windows 에서는 시스템 스냅샷 한 번으로 모든 프로세스를 읽음(박스 기계 프로세스 ~700 에 13~19 ms)
+>          새 칸 IO r<읽기>w<쓰기>MB/s <n>iops: 기계 디스크의 초당 MB 와 초당 IO 횟수 · pgIO<n>: IO 를 기다리는 DB 세션 수
+>          (칸마다 굳음 동안의 최댓값 — 다른 칸과 같음)
+> 꼴       STALL 43s P /dashboard/summary L0 T6/40 G0 D13/40s SELECT cell_sources B0 X0 C83 ours:23 api:17 chain.slot.1:6
+>          pg:61 AUTOANALYZE public.database_outbox other:12
+>          IO r180w420MB/s 950iops pgIO7
+> 볼 것    API 로그의 STALL 줄 · 어드민 머리 «LAST STALL …» — 그대로 폰으로 옮겨 보내 주시면 됩니다
+> 답의 뜻  C 가 높고 pg 가 큼 = DB 가 CPU 를 씀 — D 칸 머리(가장 긴 문장) · B 칸(autovacuum) 을 같이 봄
+>          pg 뒤 머리 = 그 굳음에서 가장 바빴던 DB 프로세스가 하던 일 — AUTO… 면 자동 청소 · 통계, 문장이면 그 요청,
+>            checkpointer · background-writer 면 디스크에 몰아 쓰는 중 · pg:61 ? = 그 프로세스를 DB 에 못 물음
+>          C 가 높고 ours 가 큼 = 이 제품이 CPU 를 씀 — api 와 가장 바쁜 이름으로 어느 쪽인지 봄
+>          C 가 높고 other 가 큼 = 이 제품 밖 프로그램(백신 · 백업 · 다른 앱)이 CPU 를 씀 — 작업 관리자에서 그 시각의 프로세스를 봄
+>          C 가 낮고 pgIO 가 여럿 = DB 가 디스크를 기다림 — 같은 시각 MB/s · iops 가 크면 디스크를 같이 쓰는 일(백업 · vacuum ·
+>            큰 적재)을, 작으면 디스크 자체가 느린 것을 봄
+>          C 낮고 pgIO 0 이고 B 큼 = 자물쇠 · C 낮고 pgIO 0 이고 G 큼 = 그리드 풀 대기
+>          pg:? = 프로세스 스냅샷을 못 읽어 이름 있는 프로세스만 읽는 중(첫 실패에 «[Stall] the process snapshot failed» 한 줄)
+>          IO? = 디스크 카운터를 못 읽음 · pgIO? = DB 에 못 물음(D? 와 같이 남)
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-09] **걸어 둔 소급이 «기다리는 중»으로 보임 — 어드민 대기열 · 그리드 Queue 탭에 «queued · after <앞 실행>» 줄, 어드민 Refresh 는 머리줄로** — git pull · 런처 재기동(API) · 브라우저 새로고침(dist)
 >
 > ```
