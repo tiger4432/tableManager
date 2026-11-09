@@ -1,5 +1,45 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **STALL 줄이 «무엇을 청소 중인가 · 누가 자물쇠를 쥐었나»를 말함 — autovacuum 표 이름, 새 칸 B** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     D 칸의 가장 긴 문장이 autovacuum 이면 표 이름까지: «D13/406s AUTOVACUUM public.pfab_metro»
+>          새 칸 B<n> <머리>: 굳음 동안 다른 세션에 막힌 세션 수의 최댓값과, 가장 많이 막은 쪽의 문장 머리
+> 꼴       STALL 43s P /dashboard/summary T6/40 G0 D13/406s AUTOVACUUM public.x B3 AUTOVACUUM public.x C62
+> 볼 것    어드민 머리 Help 왼쪽 «LAST STALL …» 줄 · API 로그의 STALL 줄 — 그대로 폰으로 옮겨 보내 주시면 됩니다
+> 답의 뜻  B0 = 굳음 동안 자물쇠에 막힌 세션이 없었음 — 느린 것은 막힘이 아니라 일 자체(D 칸 · C 칸)
+>          B3 AUTOVACUUM <표> = autovacuum 이 그 표를 쥐고 세 세션을 막음 — 그 표의 청소가 끝나야 풀림
+>          B? = 막힘을 못 읽음(DB 연결 실패) — 그 칸만 «?», 나머지 칸은 그대로
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
+> ## [11-09] **로그 셋 — STALL 줄 X 칸(가장 오래 열린 트랜잭션) · 표 건강 줄 5 분마다 · 와처 ANALYZE 가 기다렸나** — git pull · 런처 재기동(API · 체인 워커 · 와처)
+>
+> ```
+> 무엇     STALL 줄 B 칸 뒤에 X 칸: 굳음 동안 가장 오래 열린 트랜잭션의 초 / 그 스냅숏 xmin 나이(트랜잭션 수) 머리
+>          체인 워커가 5 분마다 «쓰기가 닿는 가장 큰 표 8 개»마다 한 줄 [LayerHealth]
+>          와처 ANALYZE 성공 줄 끝에 «| waits: …»(그동안 기다린 것) · 건너뜀 줄에 «after N.Ns waiting (lock limit …)»
+> 꼴       STALL 43s … B3 AUTOVACUUM public.x X412s/18234 UPDATE pfab_metro C62
+>          [LayerHealth] cell_sources: live 39536071 · dead 1617371 · last autovacuum never · autovacuums 0 · xid age 5141859 · vacuum none
+>          [LayerHealth] audit_logs: … · vacuum scanning heap 1200/50000      (지금 도는 vacuum 의 단계 · 훑은 쪽/전체)
+>          [dt_log] statistics re-analysed after 5000 row(s) in 3.214s - … | waits: Lock 11 · none 2 | waiting Lock:… on pid 812
+> 볼 줄    api.log 의 STALL · chain.log 의 [LayerHealth] · watcher 로그의 [<표>] statistics / ANALYZE skipped
+> 답의 뜻  AUTOVACUUM-WRAP <표> = wraparound 방지 vacuum — 다른 세션에 자리를 안 내줌(기다리는 쪽이 끝까지 기다림)
+>          AUTOVACUUM+ANALYZE · AUTOANALYZE = 통계까지 / 통계만. xid age 가 기본 한도 2 억(autovacuum_freeze_max_age)에
+>          가까우면 그 표에 곧 WRAP vacuum 이 섬
+>          X0 = 굳음 동안 열린 트랜잭션 없음. X 초가 크고 xmin 나이도 큼 = 그 트랜잭션 때문에 vacuum 이 dead 를 못 치움
+>          [LayerHealth] dead 가 랩마다 늘고 last autovacuum 이 never/오래 = autovacuum 이 그 표를 못 따라감
+>          vacuum ? · tables ? = 그 읽기가 1 초 안에 안 끝남(그 칸만) — 표 줄이 매번 tables ? 면 카탈로그가 바쁨
+>          waits 에 Lock 이 많음 = ANALYZE 가 자물쇠를 기다렸음(시간 대부분이 기다림)
+> 끄기     끄기는 없음 — 표 건강 줄의 표 수 · 간격 = pace "watch"(units_per_cycle 8 · rest_seconds 300, 샘플
+>          server/config/sample/pacing.json.sample). 바꾸려면 server/config/pacing.json 에 그 칸만 적음 — 줄이 많으면
+>          수를 줄이고 간격을 늘림, outbox 가 안 보이면 수를 늘림. 다음 랩부터, 재기동 없음
+> ```
+>
+> ---
+>
 > ## [11-09] **페이싱 표가 git 추적에서 빠짐 — 운영자 파일은 server/config/pacing.json, 바꾼 칸만** — 받기 전 한 단계 · 재기동 없음
 >
 > ```
