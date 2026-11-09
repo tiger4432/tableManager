@@ -2160,8 +2160,11 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         if needs_items and results:
                             import grid_read
 
-                            merged, _looks = grid_read.read_as_page(db, target_table, [row for row, _new in results],
-                                                                    user_cols, include_sources=False)
+                            # 🔴 [lead 11-09, C's board] ITS READS IN A SAVEPOINT: a refused read here aborted the held
+                            #    transaction, so the «rows are written» line below was false - the group's write went too.
+                            merged, _looks = session_contract.in_savepoint(
+                                db, "chain broadcast build", lambda: grid_read.read_as_page(
+                                    db, target_table, [row for row, _new in results], user_cols, include_sources=False))
                             for item, (_row, is_new) in zip(merged, results):
                                 msg_items.append(event_constants.upsert_item(
                                     item["row_id"], item["data"], item["created_at"], item["updated_at"],
@@ -2193,7 +2196,9 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                 transaction_id=chain_tx_id,
                                 created_logs=serialized_logs,
                                 total_log_count=total_log_count,
-                                edits_of=access.edits_of(db, target_table, [row for row, _new in results]))
+                                edits_of=session_contract.in_savepoint(
+                                    db, "chain broadcast build",
+                                    lambda: access.edits_of(db, target_table, [row for row, _new in results])))
                         else:
                             msg = {
                                 "event": "batch_row_upsert",

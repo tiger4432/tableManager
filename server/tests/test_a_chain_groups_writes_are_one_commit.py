@@ -406,6 +406,37 @@ def test_a_held_write_locks_the_rows_it_read_even_when_it_changes_none(pg_sessio
     pg_session.commit()
 
 
+@pytest.mark.pg
+@pytest.mark.parametrize("module, read, limit", [("grid_read", "read_as_page", 100), ("admin.access", "edits_of", 0)])
+def test_a_refused_broadcast_read_leaves_the_held_write(pg_session, monkeypatch, module, read, limit):
+    """Lead 11-09 (C's formula board, a database without sys_looks): a read the broadcast build makes was refused, the
+    held transaction died with it and the group failed - under «rows are written but clients will NOT be notified». Its
+    reads sit in a SAVEPOINT: the rows stand, so the line is true."""
+    import importlib
+
+    from sqlalchemy import text
+
+    def refused(*_a, **_k):
+        return pg_session.execute(text("SELECT * FROM no_such_relation_c1109"))
+
+    monkeypatch.setattr(importlib.import_module(module), read, refused)
+    monkeypatch.setattr(worker, "BROADCAST_ITEM_LIMIT", limit)          # 100: items read · 0: a refresh's edits
+    table = "pgqa_bk_table"
+    ok, reason = worker.apply_chain_writes(
+        pg_session, "tx-c1109", {"name": "r_probe", "target_table": table}, 0, {table: {"r_probe"}},
+        {table: [{"business_key_val": "B1109", "updates": {"part_no": "B1109", "note": "kept"}}]}, [], [],
+        {table: ["r_probe"]}, [])
+    assert ok is True, reason
+    session_contract.release_hold(pg_session)
+    pg_session.commit()
+    model = models.DYNAMIC_TABLES[table]
+    try:
+        assert [row.note for row in pg_session.query(model).filter(model.part_no == "B1109")] == ["kept"]
+    finally:
+        pg_session.query(model).filter(model.part_no == "B1109").delete()
+        pg_session.commit()
+
+
 # ------------------------------------------------------------------------------ a deletion set aside, run again
 
 def test_a_deletion_run_again_after_its_set_aside_withdrew_it_withdraws_nothing_more(db, monkeypatch):
