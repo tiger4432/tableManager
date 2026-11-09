@@ -36,10 +36,7 @@ def names_path():
     import paths
 
     live = paths.config_path(NAMES_FILE)
-    # the TRACKED sample, not the data root's: an isolated root has no sample folder, and the table was read from the
-    # code tree before it moved
-    shipped = os.path.join(paths.SERVER_DIR, "config", paths.CONFIG_SAMPLE_DIRNAME, NAMES_FILE + ".sample")
-    return live if os.path.exists(live) else shipped
+    return live if os.path.exists(live) else paths.config_sample_path(NAMES_FILE)
 
 
 from declaration_names import bare_name as _bare_name

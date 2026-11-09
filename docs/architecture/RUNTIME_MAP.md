@@ -150,7 +150,7 @@ Resume   POST /admin/chain/resume — 남은 대기열이 다시 흐름. 멈춤�
 
 ## 3. 어디에 무엇을 적나 (손잡이는 «셀»이고 재기동이 필요한 것만 표시)
 ```
-server/pacing.json                     ④⑤ 의 pace. 바퀴마다 다시 읽음 → 재기동 없음
+server/config/pacing.json              ④⑤ 의 pace (바꾼 칸만, 출하 sample 위). 바퀴마다 다시 읽음 → 재기동 없음
 server/config/ingestion_settings.json  ② analyze_after_rows · heavy 임계 · 파일 경계 핫리로드 → 재기동 없음
                                        🆕 10-13 ① grid_read_timeout_seconds(검색 · 무늬 필터 그리드 읽기마다 읽음) · ①-b count_recount_seconds(세기마다 읽음) · count_max_age_seconds(요청마다 읽음) · ⑥-b retroactive_debug ·
                                        retroactive_slow_statement_seconds(쪽마다 읽음) · ledger_translate_slices(실행마다) · ③ build_missing_indexes(색인 일 — 기동 · SYSTEM_RELOAD) · 🆕 grid_auto_index_after_seconds(그리드 읽기마다) · auto_index_per_table(자동 인덱스 짓기마다 — 체인 워커가 기동 · 리로드 · INDEX_WANTED 때)

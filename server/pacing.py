@@ -15,15 +15,25 @@ A pace is two numbers and nothing else: how many units of work before yielding, 
 to yield for. What a "unit" is belongs to the caller - a page for the ledger, a chunk for
 ingestion - because that is the boundary where ITS work is already committed and resuming is
 exact. The table does not need to know.
+
+The table ships as `config/sample/pacing.json.sample` (tracked); an operator's `config/pacing.json` holds only the
+cells they changed and is read over it, cell by cell - a pace or a job by its name, any other key by itself (owner
+11-09 «페이싱 깃 트래킹 빼»). A pace or job a release adds reaches a deployment whose own file predates it.
 """
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
+
+import paths
 from error_said import told
 
-PACING_PATH = Path(__file__).with_name("pacing.json")
+#: The operator's cells (not tracked) - read over the shipped table.
+PACING_PATH = Path(paths.config_path("pacing.json"))
+SHIPPED_PATH = Path(paths.config_sample_path("pacing.json"))
+#: Keys whose entries are read over by name rather than whole.
+BY_NAME = ("paces", "jobs")
 
 #: The pace that means "exactly what this did before the handle existed". Changing which
 #: pace is the default is a different decision and it belongs to the owner.
@@ -40,8 +50,19 @@ class UnknownPace(ValueError):
     """
 
 
+def read_table(path=None):
+    """The shipped table with the operator's cells over it; `path`: that one file alone."""
+    if path:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    table = json.loads(SHIPPED_PATH.read_text(encoding="utf-8"))
+    if PACING_PATH.exists():
+        for key, value in json.loads(PACING_PATH.read_text(encoding="utf-8")).items():
+            table[key] = dict(table.get(key) or {}, **value) if key in BY_NAME and isinstance(value, dict) else value
+    return table
+
+
 def load_paces(path=None):
-    return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8"))["paces"]
+    return read_table(path)["paces"]
 
 
 #: The seconds a page aims at unless pacing.json says `page_seconds` (소유자 10-12 「모든 소급은 5 초에 한 번은 진행
@@ -53,7 +74,7 @@ def page_seconds(path=None):
     """The declared page time, the default when absent, unreadable or not a positive number, and never above the cap -
     a typo in pacing.json must not stop every page loop (the ledger follow-up reads its pace the same way)."""
     try:
-        value = json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get(PAGE_SECONDS_KEY)
+        value = read_table(path).get(PAGE_SECONDS_KEY)
     except Exception as exc:                      # noqa: BLE001
         logging.getLogger(__name__).warning("[Pacing] page_seconds unreadable, using the default: %s", told(exc), exc_info=exc)
         return PAGE_SECONDS_DEFAULT
@@ -64,7 +85,7 @@ def page_seconds(path=None):
 
 def load_jobs(path=None):
     """Which pace each self-starting job runs at. `{}` when the file declares none."""
-    return json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get("jobs", {})
+    return read_table(path).get("jobs", {})
 
 
 def job_pace(job, path=None):
@@ -87,7 +108,7 @@ def resolve(name, paces=None):
     if name not in paces:
         raise UnknownPace(
             f"'{name}' is not a declared pace. Declared: {', '.join(sorted(paces))} "
-            f"(server/pacing.json)")
+            f"(server/config/pacing.json)")
     chosen = paces[name]
     return chosen.get("units_per_cycle", chosen.get("pages_per_cycle")), float(
         chosen.get("rest_seconds") or 0)

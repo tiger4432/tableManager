@@ -584,7 +584,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 | | |
 |---|---|
-| 선언 | **`server/pacing.json`** — 🔴 **`server/config/` 가 아니라 코드 옆이고 git 에 추적됩니다**(현장이 고쳐 쓰는 값이 아니라 제품이 든 표라서. 그래서 `.sample` 이 없습니다) |
+| 선언 | 출하 **`server/config/sample/pacing.json.sample`**(추적) 위에 운영자의 **`server/config/pacing.json`**(추적 안 함 — 바꾼 칸만, pace·job 은 이름 단위로 덮음). 🔴 11-09 소유자 «페이싱 깃 트래킹 빼» 로 종전 «코드 옆 · 추적»을 뒤집었다 — 운영이 고치면 릴리즈 merge 마다 stash 가 필요했다 |
 | 모양 | `paces.<이름> = {label, when, units_per_cycle, rest_seconds}`. 오늘 셋: `fast`(상한 없음 · 쉼 0 — **기본값이자 「오늘의 행동」**) · `slow` · `trickle` |
 | 읽기 | `server/pacing.py` — `load_paces()` · `resolve(name)` → `(units_per_cycle, rest_seconds)` · 모르는 이름은 `UnknownPace` |
 | 소비자 | **셋.** 원장 백필(`ledger/backfill.py` — 단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 파라미터가 고른다) · 🆕 **체인 재적용 R1**(`chain/replay.py::resolve_pace` → `replay_rule(pace=…)` — 단위 = **페이지**, 이름은 `chain_replay` 의 `pace` 파라미터 또는 CLI `--pace` 가 고른다, **2026-09-02 합류**) · 파일 인제션(`parsers/directory_watcher.py` — 단위 = **청크**, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다) |

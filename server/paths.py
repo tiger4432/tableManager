@@ -71,9 +71,10 @@ def config_backup_path(*parts):
 
 
 def config_sample_path(filename):
-    """Tracked sample path; filenames keep the explicit ``.sample`` suffix."""
+    """Tracked sample path; filenames keep the explicit ``.sample`` suffix. The code tree's, not the data root's: an
+    isolated root has no sample folder."""
     name = filename if str(filename).endswith(".sample") else f"{filename}.sample"
-    return config_path(CONFIG_SAMPLE_DIRNAME, name)
+    return os.path.join(SERVER_DIR, "config", CONFIG_SAMPLE_DIRNAME, name)
 
 
 def sample_for_config(path):

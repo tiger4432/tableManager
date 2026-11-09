@@ -858,7 +858,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>
 ```
 
 - **이름을 고르지 숫자를 고르지 않습니다.** `fast`(기본 — **여태까지와 정확히 같다**: 상한 없음·쉼 0) · `slow` · `trickle`. 각 이름이 무엇을 뜻하는지와 「언제 쓰나」는 선언이 든다.
-- 🔴 **표는 `server/pacing.json` «하나»이고 여기 사본을 만들지 않았습니다.** 원장 백필·파일 인제션도 **같은 표**를 읽습니다(계약은 [backend §4](../architecture/backend.md), 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md)). 노브를 작업마다 만들면 운영자가 작업마다 다른 숫자를 외워야 합니다.
+- 🔴 **표는 페이싱 표 «하나»(`server/config/pacing.json`, 출하 sample 위)이고 여기 사본을 만들지 않았습니다.** 원장 백필·파일 인제션도 **같은 표**를 읽습니다(계약은 [backend §4](../architecture/backend.md), 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md)). 노브를 작업마다 만들면 운영자가 작업마다 다른 숫자를 외워야 합니다.
 - 🔴 **여기서 한 «단위»는 «페이지»입니다.** 같은 `slow` 가 파일 인제션에서는 «청크»를 뜻합니다 — 표가 선언하는 것은 «리듬»이지 «양»이 아닙니다.
 - 🔴 **모르는 이름은 «첫 페이지 전에» 거절됩니다**(`resolve_pace` → `ReplayRefused`). 반쯤 돌고 나서 거절하면 그 실행은 되돌릴 것과 이어 갈 것을 둘 다 갖습니다. 오타를 안은 채 전속력으로 도는 것도 막습니다.
 - ⚠️ **쉼은 «자기 페이지의 SELECT 가 이미 끝난 뒤»에 옵니다.** `iter_pages` 는 질의하고 나서 내주므로, 쉬는 동안 열린 커서를 붙들고 있지 않습니다.

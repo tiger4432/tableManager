@@ -49,7 +49,7 @@
 
 | 경로 | 무엇 | 누가 읽나 |
 |---|---|---|
-| **`server/pacing.json`** | 페이싱 프로파일 `fast`·`slow`·`trickle`(각 `label`·`when`·`units_per_cycle`·`rest_seconds`) — 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬» | **셋.** 원장 백필(단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 가 고른다) · **체인 재적용 R1**(단위 = **페이지**, 2026-09-02 합류) · 파일 인제션(단위 = **청크**, 이름은 **`ingestion_settings.json` 의 `ingestion_pace`** 가 고른다). ⚠️ 종전 이 자리가 「둘」이라 SSOT §5 와 갈려 있었다 — **수의 정본은 [backend §4](../architecture/backend.md)** 이고 이 표는 사본이다 |
+| **`server/config/pacing.json`** (바꾼 칸만 · 출하 기본은 `config/sample/pacing.json.sample`, 11-09) | 페이싱 프로파일 `fast`·`slow`·`trickle`(각 `label`·`when`·`units_per_cycle`·`rest_seconds`) — 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬» | **셋.** 원장 백필(단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 가 고른다) · **체인 재적용 R1**(단위 = **페이지**, 2026-09-02 합류) · 파일 인제션(단위 = **청크**, 이름은 **`ingestion_settings.json` 의 `ingestion_pace`** 가 고른다). ⚠️ 종전 이 자리가 「둘」이라 SSOT §5 와 갈려 있었다 — **수의 정본은 [backend §4](../architecture/backend.md)** 이고 이 표는 사본이다 |
 | ~~**`server/ledger/gap_names.json`**~~ → 🆕 **`server/config/gap_names.json`**(없으면 sample `config/sample/gap_names.json.sample`, 10-27 `cd210579f`) | 결측 질문의 **이름과 뜻**(`pairs`·`subject_sides`·`object_sides`) — 찾는 것은 코드가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다. `_source` 가 그 이름을 정한 명세를 가리킨다 | `server/ledger/gaps.py` → `GET /api/ledger/gaps` |
 
 - ⚠️ **`ingestion_pace` 는 `ingestion_settings.json` 에 있고 값은 `pacing.json` 이 정의한다** — 두 파일을 함께 봐야 뜻이 완성된다. 프로파일 이름을 지우면 그것을 고른 인제션이 «경고 후 전속력»으로 떨어지고, 백필은 **거절**한다(같은 오타에 반응이 다르다).

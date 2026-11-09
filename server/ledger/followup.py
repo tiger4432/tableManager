@@ -66,7 +66,7 @@ FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")
 #    `sources_for_table` alone and there is no view to follow.
 
 
-#: The job name the pace is declared under, in `server/pacing.json`.
+#: The job name the pace is declared under, in the pacing table (`pacing.read_table`).
 FOLLOWUP_JOB = "chain_followup"
 
 #: The audit column, source layer and writer a ledger receipt carries. Imported from the

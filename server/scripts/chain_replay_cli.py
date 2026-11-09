@@ -169,7 +169,7 @@ def main(argv=None):
     p.add_argument("--pace", default=None,
                    help="fast (default, unchanged) | slow | trickle - yield between pages "
                         "so the database stays free for everything else. Declared in "
-                        "server/pacing.json")
+                        "server/config/pacing.json")
     # 🪦 `--cascade` (ac918a451) is gone: a script replay cascades nothing - the owner's
     #    「큰 소급 스크립트 문으로 가는 거 연쇄 안 하면 되겠네」 (09-26) · 「한번만」 (09-27).
     #    The grid's click replay is the one seat that asks for it (총괄 5057d030b).
@@ -213,13 +213,13 @@ def main(argv=None):
     p.add_argument("--mark-column", default=None, help="a text column: mark the rows that fold there, delete none")
     p.add_argument("--only-column", default=None, help="with --only-text: only rows whose column holds it fold")
     p.add_argument("--only-text", default=None, help="the text (any case) --only-column holds")
-    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/config/pacing.json")
     p.add_argument("--apply", action="store_true")
 
     # 총괄 10-11 (소유자 「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」): a fold rule's answer, written by pages.
     p = sub.add_parser("fold-units")
     p.add_argument("rule_name", help="the fold_by_unit rule on the unit table")
-    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/config/pacing.json")
     p.add_argument("--apply", action="store_true")
 
     # 총괄 eddf9e38e ②: the per-row events withdrawals queued, folded into collapsed ones per table.
@@ -229,13 +229,13 @@ def main(argv=None):
     # 총괄 5eee501eb: the rows left with only the chain's keys - the chain's write seat's judgement.
     p = sub.add_parser("remove-shells")
     p.add_argument("table")
-    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/config/pacing.json")
     p.add_argument("--apply", action="store_true")
 
     # 총괄 4435b9b29: every row of one table, through the grid's delete door - the file checklist kept.
     p = sub.add_parser("delete-every-row")
     p.add_argument("table")
-    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/config/pacing.json")
     p.add_argument("--how", default=None, choices=("by_row", "full_reset"),
                    help="full_reset: one transaction, no chain rule told, a person's values too (owner 10-23)")
     p.add_argument("--confirm-rows", type=int, default=None, help="with --how full_reset --apply: the preview's row count")

@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **페이싱 표가 git 추적에서 빠짐 — 운영자 파일은 server/config/pacing.json, 바꾼 칸만** — 받기 전 한 단계 · 재기동 없음
+>
+> ```
+> 무엇     server/pacing.json 이 없어지고 출하 표는 server/config/sample/pacing.json.sample (추적). 운영자 파일 server/config/pacing.json 은 추적 안 함
+>          읽는 법: 출하 표 위에 운영자 파일의 칸을 덮음 — pace · job 은 이름 하나씩, page_seconds 는 그 키만. 안 적은 칸은 출하 값
+>          그래서 릴리즈가 새 job 을 더해도 운영자 파일이 낡았든 말든 닿음. 받을 때 stash 가 더는 필요 없음
+> 받기 전  git status 에 server/pacing.json 이 안 나오면 할 일 없음 (안 고친 것 — merge 가 지우고 출하 값으로 돎)
+>          나오면 순서대로:
+>          1) 바꾼 칸만 server/config/pacing.json 에 적음. 예 (Not adopted 센서스를 background 로 바꿨던 경우):
+>             {"jobs": {"chain_unowned_census": "background"}}
+>          2) git checkout -- server/pacing.json
+>          3) 릴리즈 merge
+> 답의 뜻  merge 가 «Your local changes … would be overwritten by merge: server/pacing.json» 으로 거절 = 1) 2) 를 안 한 것. 하고 다시
+> 확인     server 에서: python -c "import pacing; print(pacing.load_jobs())" — 출하 job 넷, 그중 1) 에 적은 것만 그 값
+> 끄기     server/config/pacing.json 을 지우면 전부 출하 값 (재기동 없이 다음 읽기부터)
+> 주의     job 을 «끄려면» 운영자 파일에 "fast" 로 적음 — 운영자 파일에서 지우면 출하 값이 돎
+> ```
+>
+> ---
+>
 > ## [11-09] **대기 수정이 있으면 표 바꿈 거절 · 필터 칸 테두리 · 손 칠 그림자 · 어드민 stall 줄** — git pull, 화면 새로고침 (dist 포함, 서버 변화 없음)
 >
 > ```
@@ -68,12 +88,12 @@
 > ```
 > 무엇     체인 워커가 cell_sources 를 1,000 행씩 통째로 한 바퀴 읽어 Rules 화면의 «Not adopted» 수를 셈. 바퀴 사이 600 s
 >          박스: 3,947 만 행 한 바퀴 8,184 s. 박스에선 이것이 그리드 읽기를 늦추는 것을 «못 잼»(운영 메모리 · 디스크는 모름)
-> 돌릴 것  server/pacing.json 의 "jobs" 에서 "chain_unowned_census": "slow" → "background"
+> 돌릴 것  server/config/pacing.json 에 {"jobs": {"chain_unowned_census": "background"}} (맨 위 블록 · 바꾼 칸만)
 > 답의 뜻  다음 바퀴부터 1,000 행 읽고 60 s 쉼 — 지금 도는 바퀴는 원래 빠르기로 끝까지 (파일은 바퀴 시작 때 한 번 읽음)
 >          박스 크기면 한 바퀴 약 27 일 → Not adopted 수는 사실상 «마지막 바퀴의 수 · 그 시각» 에 멈춤. 다른 동작은 그대로
 >          되돌리기: "slow" 로 — 역시 다음 바퀴부터
 > 볼 줄    chain_worker.log «[ChainUnowned] pass: … row(s) read in N s» — 바퀴가 끝날 때만 한 줄
-> 주의     다음 릴리즈를 받기 전 git checkout -- server/pacing.json (안 그러면 받을 때 충돌)
+> 주의     11-09 부터 server/pacing.json 은 추적 안 함 — 맨 위 블록
 > ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
 >
 > ```
@@ -194,8 +214,8 @@
 >          «[SystemCatalog] the <rules' state | tables' state | ingestion state | collectors' state> were not read - …»
 >          = 그 읽기 하나만 실패, 나머지는 씀 · 그 칸은 그대로 — 고칠 때까지 60 초마다 다시 찍힘
 >          last_outcome 칸이 안 바뀜 = 체인 루프가 이 프로세스에서 안 보임 — 마지막 값 그대로 둔 것 (지운 게 아님)
-> 끄기     server/pacing.json 의 jobs.system_runtime 을 지우거나 "fast" 로 -> 60 초 틱이 멈춤, 재기동 없이 지금 기다리는 틱 뒤부터
->          (빈 job 은 fast = 쉼 0 = 틱 없음. 선언 읽을 때의 동기화와 그 상태 쓰기는 그대로)
+> 끄기     server/config/pacing.json 의 jobs 에 "system_runtime": "fast" -> 60 초 틱이 멈춤, 재기동 없이 지금 기다리는 틱 뒤부터
+>          (지우면 출하 값 background 가 돎. fast = 쉼 0 = 틱 없음. 선언 읽을 때의 동기화와 그 상태 쓰기는 그대로)
 > ```
 >
 > ---
@@ -333,7 +353,7 @@
 > 답의 뜻  two_values_in_one_answer 는 «규칙»을 고친다 - 데이터 문제가 아님
 > 바뀐 것  지운 행 거두기가 잠금을 잃으면 다시 거두지 않고 그룹이 통째로 되감겨 다시 돈다
 >          시험 이름: test_a_withdrawal_that_loses_a_lock_rewinds_its_group_pg.py (옛 이름으로 -k 하던 명령은 이 이름으로)
-> 끄는 곳  센서스가 무거우면 server/pacing.json 의 "chain_unowned_census" 를 "background" 로 (재기동 없이 다음 바퀴부터)
+> 끄는 곳  센서스가 무거우면 server/config/pacing.json 의 jobs 에 "chain_unowned_census": "background" (재기동 없이 다음 바퀴부터)
 >          [ChainUnowned] the census failed: … 는 센서스만 멈춘 것 - 체인은 돈다
 > ```
 
@@ -7401,7 +7421,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          assy_retroactive 줄 · wait_event_type = IO(DataFileRead 등) -> 디스크 읽기 대기 — 큰 표를 캐시 밖에서 읽음
 >          assy_retroactive 줄 · wait_event 비어 있고 active -> DB 가 계산 중 — query 칸이 그 문장
 >          assy_retroactive · assy_retroactive_slice<k> 줄이 다 거의 안 보임 -> 시간이 DB 가 아니라 번역 프로세스의 파이썬에 있음 — 구현자 B 최우선 일(fd550df13)이 받는다
-> 급할 때   ① server/pacing.json jobs.chain_followup 을 "trickle" — 따라가기를 다시 늦춰 다시 번역에 길을 비킴(재기동 없음, 다 끝나면 "fast" 로)
+> 급할 때   ① server/config/pacing.json jobs.chain_followup 을 "trickle" — 따라가기를 다시 늦춰 다시 번역에 길을 비킴(재기동 없음, 다 끝나면 "fast" 로)
 > ```
 
 > ## [10-13] **PostgreSQL CPU 가 높을 때 — 누가 쓰고 있나 (소유자 「psql server가 cpu 점유율 70퍼」)** — 읽기만 · 재기동 없음
@@ -7420,7 +7440,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          assy_retroactive -> 소급 실행
 >          원장 다시 번역(Re-translate)이 도는 중 -> 그 실행이 표를 쪽마다 읽고 원장에 쓰는 몫. 혼자 돌려도 느린 것은 번역기의 행당 파이썬 비용
 >            (박스 단순 선언 판 약 6 ms/행 — 운영 선언은 안 잼) — 구현자 B 최우선 일이 받는다
-> 급할 때   assy_chain 이 대부분 -> server/pacing.json jobs.chain_followup 을 "slow"(재기동 없음)
+> 급할 때   assy_chain 이 대부분 -> server/config/pacing.json jobs.chain_followup 을 "slow"(재기동 없음)
 >          assy_walkpool 이 대부분 -> ingestion_settings.json "walk_processes": 0(재기동 없음)
 >          assy_server 의 그리드 질의가 대부분 -> 큰 표 그리드 탭을 닫아 둔 사람 수만큼 준다 — 고침은 A 착지
 > ```

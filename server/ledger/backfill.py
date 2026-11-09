@@ -2771,7 +2771,7 @@ def main(argv=None):
     parser.add_argument("--pace", default=None,
                         help="fast (default, unchanged) | slow | trickle - yield between "
                              "pages so the database stays free for everything else. "
-                             "Declared in ledger/pacing.json")
+                             "Declared in server/config/pacing.json")
     parser.add_argument("--scope-column", default=None,
                         help="redo only the rows whose <column> is one of --scope-values; "
                              "the column must be one this source's read declares")

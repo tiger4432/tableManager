@@ -2581,7 +2581,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
 #: How often the worker asks whether a whole replay ended (`replay.sweep_finished_replays`).
 REPLAY_SWEEP_SECONDS = 5.0
 
-#: The census of the chain's layers no rule owns (owner 11-08 ㄱ): its pace's name in `server/pacing.json`, the lap it
+#: The census of the chain's layers no rule owns (owner 11-08 ㄱ): its pace's name in the pacing table, the lap it
 #: records on this process's beat (`heartbeat.record_lap`) - what GET /admin/chain/rules reads as «not_adopted» - and
 #: at most one lap started every so many seconds, one at a time.
 UNOWNED_CENSUS_JOB = "chain_unowned_census"

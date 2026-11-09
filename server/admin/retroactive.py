@@ -159,7 +159,7 @@ def _resolved_choices(param):
 def _pace_choices():
     """The pacing table's own entries, in its own words.
 
-    Read from `server/pacing.json` rather than written here, so adding a pace is one entry
+    Read from the pacing table (`pacing.read_table`) rather than written here, so adding a pace is one entry
     in that file and no change anywhere else - not in this module and not on the screen.
     """
     import pacing
@@ -179,7 +179,7 @@ def _pace_param():
     return _p("pace", required=False, choices=_pace_choices,
               help="how hard to push. Slowing yields between units of work so the "
                    "database stays free for everything else; the paces and their names "
-                   "are declared in server/pacing.json. Retroactive runs go ONE AT A "
+                   "are declared in server/config/pacing.json. Retroactive runs go ONE AT A "
                    "TIME, so a slower pace also makes whatever is queued behind this "
                    "wait that much longer")
 

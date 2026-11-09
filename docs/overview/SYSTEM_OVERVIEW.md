@@ -200,7 +200,7 @@ graph TD
 
 | 경로 | 무엇 | 왜 거기 있나 |
 |---|---|---|
-| `server/pacing.json` | **페이싱 프로파일**(`fast`·`slow`·`trickle` — 각 `label`·`when`·`units_per_cycle`·`rest_seconds`). 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬»을 선언한다. 소비자 **셋** — 원장 백필(단위 = 페이지) · 체인 재적용 R1(단위 = 페이지, 2026-09-02 합류) · 파일 인제션(단위 = 청크, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다). 세부·단위는 [backend §4](../architecture/backend.md) | 현장이 고쳐 쓰는 값이 아니라 **제품이 든 프로파일 표**라 코드 옆에 살고 **git 에 추적된다**(그래서 `.sample` 이 없다) |
+| `server/config/pacing.json` | **페이싱 프로파일**(`fast`·`slow`·`trickle` — 각 `label`·`when`·`units_per_cycle`·`rest_seconds`). 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬»을 선언한다. 소비자 **셋** — 원장 백필(단위 = 페이지) · 체인 재적용 R1(단위 = 페이지, 2026-09-02 합류) · 파일 인제션(단위 = 청크, 이름은 `ingestion_settings.json` 의 `ingestion_pace` 가 고른다). 세부·단위는 [backend §4](../architecture/backend.md) | 출하 표는 `config/sample/pacing.json.sample`(추적), 운영자 파일은 바꾼 칸만 적고 추적하지 않는다(11-09 소유자 «페이싱 깃 트래킹 빼») |
 | ~~`server/ledger/gap_names.json`~~ → 🆕 `server/config/gap_names.json`(없으면 sample, 10-27 `cd210579f`) | **결측 질문의 «이름과 뜻»**(`pairs`·`subject_sides`·`object_sides`). 찾는 것은 코드(`ledger/gaps.py`)가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다 — `_source` 가 그 이름을 정한 명세를 가리킨다 | 같은 이유. 🔴 ~~**표와 선언이 어긋나면 양방향으로 거절한다**~~ 🆕 이름 없는 질문은 날 낱말 «<술어> · <타입> (no name)», 질문 없는 이름(표가 선언에 없는 술어를 댐)은 ~~거절~~ 🆕 `8f7a7e7f2` 안 쓰고 `unused` 에 셈 — 거절 없음 |
 
 재사용 관점은 [PRIMITIVES §6 「여러 긴 작업의 속도는 표 하나가 선언한다」](../architecture/PRIMITIVES.md) · [§3 「무엇이 빠졌나는 어휘를 순회해서 찾는다」](../architecture/PRIMITIVES.md).

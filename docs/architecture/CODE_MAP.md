@@ -4899,6 +4899,8 @@ good」이라 적는다. 모양은 여기, 판정은 로더. 두 자리가 같�
 
 ## 5-J. `server/pacing.py` + `pacing.json` — 긴 작업이 얼마나 미는가 (표 하나, `49988247` 신설)
 
+- 🆕 **[11-09 추적 뺌]** 출하 `config/sample/pacing.json.sample` + 운영자 `config/pacing.json`(바꾼 칸만) — `read_table` 이 겹쳐 읽음. `paths.config_sample_path` 는 이제 코드 트리의 sample(격리 루트엔 sample 폴더가 없다) — `ledger/gaps.names_path` 도 그것을 부름
+
 - 🆕 **[10-12 `011df243d`] `page_seconds`** — 소급 쪽 루프의 쪽 시간. `pacing.json` 의 `page_seconds`(지금 3)를 `page_seconds(path=None)` 이 읽고, 없거나 · 못 읽거나 · 0 이하이거나 · 숫자가 아니면 `PAGE_SECONDS_DEFAULT`(3.0), 위로는 `PAGE_SECONDS_CAP`(5.0) — `pacing.py` **92줄** @`c6bc9bcc0` · `pacing.json` **39줄** @`c6bc9bcc0`
 
 > 🟢 🆕㉑ **[2026-09-08 재측정 — `1d4bb79d`]** `pacing.py` **73줄**(🆕⑯ 56) · `pacing.json` **30줄**(🆕⑯ 26). 증분은 «스스로 도는 작업»의 자리다 — 아래 `jobs` 문단.
@@ -4913,7 +4915,7 @@ good」이라 적는다. 모양은 여기, 판정은 로더. 두 자리가 같�
 
 | 심볼 (`server/pacing.py`) | 무엇인가 |
 |---|---|
-| `PACING_PATH` | `Path(__file__).with_name("pacing.json")` |
+| `PACING_PATH` · `SHIPPED_PATH` | `paths.config_path("pacing.json")`(운영자 칸, 추적 안 함) · `paths.config_sample_path("pacing.json")`(출하 표). `read_table(path=None)` 이 출하 위에 운영자 칸을 덮음 — `BY_NAME`(paces · jobs)은 이름 단위, 나머지 키는 그 키만. `path` 를 주면 그 파일 하나 |
 | `DEFAULT_PACE = "fast"` | 🔴 **「이 손잡이가 생기기 «전»과 정확히 같다」는 뜻**(상한 없음·쉼 0). **어느 것이 기본인가는 다른 결정이고 소유자 소관**이라고 소스가 적어 둔다 |
 | `class UnknownPace(ValueError)` | 🔴 **폴백이 «여기서는» 위험한 답이다.** 서비스가 이미 힘들어서 `slow` 를 고른 사람인데 오타가 조용히 `fast` 를 뜻하면, 막으려던 바로 그것을 보면서 **「손잡이가 안 듣는다」와 「손잡이가 도움이 안 됐다」를 구별할 수 없고** 다시 눌러도 아무 일이 없다 |
 | `load_paces(path=None)` | JSON 의 `["paces"]` 를 그대로 |

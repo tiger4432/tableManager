@@ -231,12 +231,12 @@ conda run -n assy_manager python -m ledger.setup
 conda run -n assy_manager python -m ledger.backfill --source <source> --pace slow
 ```
 
-`fast`(기본 · 오늘까지의 행동 그대로) · `slow` · `trickle`. 선언은 **`server/pacing.json` 하나**이고
+`fast`(기본 · 오늘까지의 행동 그대로) · `slow` · `trickle`. 선언은 **`server/config/pacing.json` 하나**(바꾼 칸만 · 나머지는 출하 sample)이고
 **파일 인제션도 같은 표를 읽는다**(그쪽 이름은 `ingestion_settings.json` 의 `ingestion_pace`).
 백필의 한 사이클 단위는 **페이지**이고 인제션은 **청크**다 — 표가 정하는 것은 «리듬»이지 «양»이 아니다.
 모르는 이름은 **거절**한다(오타를 안은 채 전속력으로 도는 것을 막는다).
 ⚠️ 도는 중에 그 파일을 고쳐도 **그 실행에는 안 듣는다** — 읽기가 실행 시작마다 한 번이다.
-🔴 **CLI 도움말이 `ledger/pacing.json` 이라 적지만 실제 경로는 `server/pacing.json` 이다**(2026-08-31 실측).
+🔴 **자리는 `server/config/pacing.json` 이다**(11-09 — CLI 도움말도 그렇게 적는다. 종전 `ledger/pacing.json` 도움말은 고쳤다).
 
 #### 4.1-ter 범위를 정해 다시 번역하기 — `--scope-column` (2026-08-31 신설)
 

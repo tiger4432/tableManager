@@ -129,7 +129,7 @@ DEFAULT_MAX_REPORT = 10000
 def resolve_pace(name, paces=None):
     """The shared pacing table, with this module's refusal shape.
 
-    🔴 THE TABLE IS NOT COPIED. `server/pacing.json` already holds the paces every long job
+    🔴 THE TABLE IS NOT COPIED. The pacing table already holds the paces every long job
     reads, and a second table here would be a second thing to keep in step - which is
     exactly the drift that lifting it out of `ledger/` was meant to end. What belongs to
     this module is the translation of its refusal into `ReplayRefused`, because every other
