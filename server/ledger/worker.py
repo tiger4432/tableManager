@@ -61,6 +61,10 @@ def _drain_ledger_followup_sync(db_session_factory, rows=None):
                 if world == schema.operating_world():
                     raise FollowUpStopped(world, exc) from exc
                 _switch_off(world, exc)
+        if not followers:
+            # every world paused (owner 11-09 «전면 가상전환»): nothing taken - the events wait unmarked, followed when a
+            # world is switched on (an empty list fell to the operating world's setup, None, and failed every lap)
+            return None
         return ledger_followup.drain_outbox_once(engine, None, followers, rows=rows)
     finally:
         db.close()
@@ -234,6 +238,7 @@ async def run_ledger_row_census(db_session_factory):
     relation was dropped must not silence the fourteen after it.
     """
     import pacing
+    from ledger import schema
     from ledger.backfill import ROW_CENSUS_JOB, census_sources
 
     while True:
@@ -242,6 +247,10 @@ async def run_ledger_row_census(db_session_factory):
         except Exception as exc:
             logger.warning("[LedgerCensus] pace unreadable, using the default: %s", told(exc))
             units, rest = 1, 60.0
+        # the operating world paused (owner 11-09 «전면 가상전환»): its ledger stops, so do the scans counting it
+        if not schema.live():
+            await asyncio.sleep(max(rest, 60.0))
+            continue
         # 🔴 ONE COMPILE PER LAP, NOT ONE PER SOURCE (S-122). `load_setup()` compiles the
         # whole declaration - 91 ms on this box - and it cannot change inside a lap, so
         # fifteen sources were paying for fifteen identical answers.
