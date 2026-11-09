@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
+>
+> ```
+> 볼 것   어드민 Help 에서 «Collector 설치» 를 물으면 docs/guide/browser_collector.md 의 절이 답에 실림 · File · Tables 탭의 Guide 목록에 그 문서
+> 답의 뜻  안 나오면 API 가 재기동 전 (server/admin/help_guides.json 은 기동 때 한 번 읽음)
+> 끄기   server/admin/help_guides.json 에서 그 한 줄을 빼고 API 재기동
+> ```
+>
+> ---
+>
 > ## [11-09] **화면 검사기 변이의 닻이 끊기면 그 변이만 빨강, 실행은 계속** — git pull (시험만, 화면 · 서버 변화 없음)
 >
 > ```
