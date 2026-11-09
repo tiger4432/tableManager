@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **System 표에 부품마다 «지금 상태» 칸 · 수집기 표 sys_collectors 신설** — 17c65704a · git pull · 런처 재기동(체인 워커 · API)
+>
+> ```
+> 무엇     sys_chain_rules  switched_off_at · switched_off_cause · failures_in_a_row · last_outcome · last_outcome_at · last_reason
+>          sys_tables       row_estimate · events_waiting · oldest_waiting_at
+>          sys_ingestion    last_file · last_file_at · last_error
+>          sys_collectors   (신설) Auto Update 수집기 하나에 한 행 — schedule · window · active · last_run_at · last_status · last_error
+>          쓰는 이: 체인 워커 안의 카탈로그 스레드, 층 system_runtime, 60 초마다 + 선언을 읽을 때마다, 바뀐 칸만
+>          이 칸들은 이력을 안 남김 — 표 선언 칸 no_history_columns (빈 칸 = 모든 칸 이력 남김)
+> 볼 줄     재기동 직후  «[SystemCatalog] synced - … state written …»
+>          그 뒤 무엇이 바뀐 틱만  «[SystemCatalog] state - <표> <n> state written …»
+>          첫 기동 뒤 «[Indexes] 2 declared index(es) the database lacks or holds invalid: ix_file_checklist_newest …,
+>          ix_file_checklist_newest_failed … - building them one at a time» 한 줄 = 짓는 중 (300 만 행 박스 판 9 s + 1.4 s)
+>          «… cut - waited past index_build_wait_seconds» 면 나중에 스스로 다시 지음 — 그동안 상태 읽기가 느릴 뿐
+> 답의 뜻  «[SystemCatalog] the state pass stopped - the next pass tries again: …» = 그 틱 상태를 못 씀, 다음 틱 재시도
+>          «[SystemCatalog] the <rules' state | tables' state | ingestion state | collectors' state> were not read - …»
+>          = 그 읽기 하나만 실패, 나머지는 씀 · 그 칸은 그대로 — 고칠 때까지 60 초마다 다시 찍힘
+>          last_outcome 칸이 안 바뀜 = 체인 루프가 이 프로세스에서 안 보임 — 마지막 값 그대로 둔 것 (지운 게 아님)
+> 끄기     server/pacing.json 의 jobs.system_runtime 을 지우거나 "fast" 로 -> 60 초 틱이 멈춤, 재기동 없이 지금 기다리는 틱 뒤부터
+>          (빈 job 은 fast = 쉼 0 = 틱 없음. 선언 읽을 때의 동기화와 그 상태 쓰기는 그대로)
+> ```
+>
+> ---
+>
 > ## [11-09] **소급 실행의 «시작 일»을 첫 쪽 앞에서 하고 한 줄로 말함 — 첫 쪽 줄의 초는 쪽 일만** — git pull · 런처 재기동(스케줄러; 소급 실행은 다음 실행부터)
 >
 > ```
