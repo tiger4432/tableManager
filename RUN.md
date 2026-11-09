@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **제품이 거는 DDL(칸 추가 · 표 저장 옵션 · 칸 타입 바꾸기)이 읽기를 길게 세우지 않음 — 0.5 s 씩 30 s 동안 다시 물음** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     칸 추가가 긴 쓰기나 wraparound vacuum 뒤에서 20 s 를 기다리면, 그 표의 읽기가 전부 그 뒤에 줄을 섰음
+>          (판: 읽기 최대 8.9 s · 17.0 s). 이제 한 번에 0.5 s 만 기다리고 1 초 뒤 다시 묻기를 30 s 동안 (판: 0.6 s · 0.7 s)
+> 칸       ingestion_settings.json  "ddl_lock_try_ms": 500 (한 번 기다리는 상한) · "ddl_lock_retry_seconds": 30 (다시 묻는 총 시간)
+>          적지 않으면 그 값. 재기동 없이 다음 DDL 부터
+> 볼 줄    못 잡았을 때만 한 줄: [DDL] <무엇> on <표> - its lock not had in N tries over 30 s (500 ms each); held by pid <pid> <문장 머리>
+> 답의 뜻  held by pid … AUTOVACUUM-WRAP <표>  -> wraparound vacuum 이 쥠. 양보 안 하는 청소라 끝날 때까지 미뤄짐 — 고장 아님
+>          held by pid … UPDATE <표> 등        -> 긴 쓰기 트랜잭션이 쥠. 그 쓰기가 끝나면 다음 바퀴에 됨
+>          칸 추가가 못 잡히면 그 표의 읽기·쓰기는 «그 칸 없음»으로 실패 — 다음 기동이나 설정 저장 때 다시 함(전과 같음)
+>          칸 타입 바꾸기는 큐 줄에 «<표> was held by pid … - save the declaration again» — 다시 저장하면 됨
+> 끄기     예전처럼 오래 기다리게: "ddl_lock_try_ms": 20000 , "ddl_lock_retry_seconds": 0  (한 번에 20 s)
+> ```
+>
+> ---
+>
 > ## [11-09] **느린 요청 한 줄이 «어디에 썼나»를 말한다 — 그리드 쪽 읽기 · 어드민 큰 읽기** — git pull · API 재기동(풀 자식도 같이 새로 뜸)
 >
 > ```
