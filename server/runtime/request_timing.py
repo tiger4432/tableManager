@@ -3,12 +3,16 @@
 A `Server-Timing` header on every response - `total;dur=<ms>, db;dur=<ms>;desc="<n> queries"` - so one
 look at the browser's network panel says which call was slow and whether the time was the database.
 A request over `slow_request_ms` (server/config/server_settings.json, default 1000) also says so in one
-log line: method, path, status, total, db, queries - never the query string or the body.
+log line: method, path, status, total, db, queries, rows read, bytes sent, and each stage the request named
+(`stage` - a grid page's count, keys, data rows, layers, ledger keys, serialize; a pool's wait and start), with
+its database seconds, rows and the Python rest (lead 11-09: what a slow read spent where, owner «필요한 로그는
+빨리 다 지어») - never the query string or the body. A measure that does not read says «?» in its own place.
 The same file's `public_url` is read here too (`public_url()`): one reader of server_settings.json.
 
 The database time is counted by two cursor hooks while a request's counter is set; a query outside a
 request (a worker, a thread the request started) finds no counter and is not counted.
 """
+import contextlib
 import contextvars
 import itertools
 import json
@@ -20,6 +24,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
+import error_said
 import event_constants
 import paths
 from database.crud import _decode_config_text
@@ -33,7 +38,8 @@ SLOW_REQUEST_CELL = "slow_request_ms"
 DEFAULT_SLOW_REQUEST_MS = 1000
 PUBLIC_URL_CELL = "public_url"
 
-#: [database seconds, queries] of the request running in this context, or None outside one.
+#: [database seconds, queries, rows, queries whose rows the driver did not tell, stages] of the request running in
+#: this context, or None outside one. A stage: (name, seconds, database seconds, queries, rows, untold).
 _counter = contextvars.ContextVar("request_database_time", default=None)
 _STARTED = "request_timing_started"
 
@@ -48,7 +54,11 @@ def _query_started(conn, cursor, statement, parameters, context, executemany):
 def _query_ended(conn, cursor, statement, parameters, context, executemany):
     started = conn.info.pop(_STARTED, None)
     if started is not None:
-        add(time.perf_counter() - started, 1)
+        rows = getattr(cursor, "rowcount", -1)
+        told = isinstance(rows, int) and rows >= 0
+        # a statement with no result (SET) tells no rows and reads none; one with a result untold (SQLite) is «?»
+        add(time.perf_counter() - started, 1, rows if told else 0,
+            0 if told or getattr(cursor, "description", None) is None else 1)
 
 
 def slow_request_ms():
@@ -117,7 +127,7 @@ def begin(path=None):
     """Start this request's counter; hand the token to `end`. `path`: the request's, without its query."""
     key, started = next(_keys), time.perf_counter()
     _open[key] = (started, path)
-    return _counter.set([0.0, 0]), started, key
+    return _counter.set([0.0, 0, 0, 0, []]), started, key
 
 
 def oldest_open():
@@ -130,17 +140,38 @@ def oldest_open():
 
 
 def spent():
-    """[database seconds, queries] counted so far in this request - what a pool process hands back."""
-    return list(_counter.get() or (0.0, 0))
+    """What this request counted so far, as `add` takes it - what a pool process hands back."""
+    seconds, queries, rows, untold, stages = _counter.get() or (0.0, 0, 0, 0, [])
+    return {"seconds": seconds, "queries": queries, "rows": rows, "untold": untold, "stages": list(stages)}
 
 
-def add(seconds, queries):
+def add(seconds, queries, rows=0, untold=0, stages=()):
     """Database time spent for this request outside its cursor events - a pool process's (`runtime.process_pool`), a
-    COPY's (`crud._pg_multirow_upsert`, QA 11-08: the slow-request line left it out) - and the events' own."""
+    COPY's (`crud._pg_multirow_upsert`, QA 11-08: the slow-request line left it out) - and the events' own; `stages`
+    measured elsewhere (a pool process's, a pool's wait)."""
     counter = _counter.get()
     if counter is not None:
         counter[0] += seconds
         counter[1] += queries
+        counter[2] += rows
+        counter[3] += untold
+        counter[4].extend(stages)
+
+
+@contextlib.contextmanager
+def stage(name):
+    """A named part of this request, said on its slow line: its seconds, and the database seconds, queries and rows
+    inside it. Outside a request it measures nothing."""
+    counter = _counter.get()
+    if counter is None:
+        yield
+        return
+    before, started = counter[:4], time.perf_counter()
+    try:
+        yield
+    finally:
+        counter[4].append((name, time.perf_counter() - started) + tuple(
+            now - was for now, was in zip(counter[:4], before)))
 
 
 def end(began, method, path, response):
@@ -148,7 +179,7 @@ def end(began, method, path, response):
     raised): the counter is only put away."""
     token, started, key = began
     _open.pop(key, None)
-    seconds, queries = _counter.get()
+    seconds, queries, rows, untold, stages = _counter.get()
     _counter.reset(token)
     if response is None:
         return
@@ -157,5 +188,29 @@ def end(began, method, path, response):
     headers["Server-Timing"] = 'total;dur=%.1f, db;dur=%.1f;desc="%d queries"' % (total_ms, db_ms, queries)
     budget = slow_request_ms()
     if budget is not None and total_ms > budget:
-        logger.warning("[Slow] %s %s %d - %s · db %d ms · %d queries", method, path, status,
-                       event_constants.slow_sentence(total_ms, budget), db_ms, queries)
+        logger.warning("[Slow] %s %s %d - %s · db %d ms · %d queries%s", method, path, status,
+                       event_constants.slow_sentence(total_ms, budget), db_ms, queries,
+                       "".join(" · " + part for part in _parts(rows, untold, headers, stages)))
+
+
+def _parts(rows, untold, headers, stages):
+    """The slow line after its queries: rows read, bytes sent, then each stage as `name s (SQL s · rows · Python s)` -
+    a stage with no query as `name s`. A part that does not read says «?» in its place, the line goes on."""
+    def said(part):
+        try:
+            return part()
+        except Exception as exc:                                   # noqa: BLE001 - this part only, said as «?»
+            logger.warning("[Slow] the next line says «?» for a part that could not be said: %s", error_said.told(exc))
+            return "?"
+
+    def counted(rows, untold):
+        return "?" if untold else format(rows, ",")
+
+    def one(name, seconds, db, queries, rows, untold):
+        if not queries:
+            return "%s %.2f s" % (name, seconds)
+        return "%s %.2f s (SQL %.2f s · %s rows · Python %.2f s)" % (name, seconds, db, counted(rows, untold),
+                                                                      seconds - db)
+    return ([said(lambda: "%s rows" % counted(rows, untold)),
+             said(lambda: "%s bytes" % format(int(headers["content-length"]), ","))]
+            + [said(lambda each=each: one(*each)) for each in stages])
