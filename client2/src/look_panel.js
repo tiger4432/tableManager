@@ -6,6 +6,7 @@
 import { ROLES, SHAPES, WRITERS, roleName, ruleText, ruleUpdate, ruleMove, ruleOff, ruleOn, paintUpdate, paintKey, ruleRefusal } from './grid_look.js';
 import { placeBetween, dropPlace } from './grid_order.js';
 import { escapeHtml } from './utils.js';
+import { FormulaInput } from './formula_input.js';
 import { localShort } from './server_time.js';
 
 const NO_CELL = 'Pick a cell of the table';
@@ -38,7 +39,7 @@ export class LookPanel {
         <div class="box-body">
           <div class="look-list"></div>
           <form class="look-form">
-            <input name="when" class="ctl-small" placeholder="[value] > 0.3" aria-label="Condition" />
+            <span class="look-form__when"></span>
             <select name="written_by" class="ctl-small" aria-label="Written by"><option value="">Any writer</option>${options(WRITERS)}</select>
             <select name="role" class="ctl-small" aria-label="Role">${options(ROLES)}</select>
             <select name="shape" class="ctl-small" aria-label="Shape">${options(SHAPES)}</select>
@@ -53,8 +54,10 @@ export class LookPanel {
       </section>`;
     mount.appendChild(this.root);
     this.form = this.root.querySelector('.look-form');
+    // the condition is a formula over the cell's [value]: the one formula field, the calculator's words as one types
+    this.when = new FormulaInput(this.root.querySelector('.look-form__when'), { doc: document, name: 'when', cls: 'ctl-small',
+      placeholder: '[value] > 0.3', label: 'Condition', columns: () => ['value'], refusal: (when) => ruleRefusal({ when }) || '' });
     this.root.addEventListener('click', (e) => this.clicked(e));
-    this.form.addEventListener('input', () => this.form.querySelector('input').setCustomValidity(''));
     this.form.addEventListener('submit', (e) => { e.preventDefault(); this.addRule(new FormData(this.form)); });
     // a rule dragged to another place in the list - a later rule wins, so its place is what it does
     this.root.addEventListener('dragstart', (e) => {
@@ -168,11 +171,10 @@ export class LookPanel {
     const table = this.deps.table();
     const when = String(form.get('when') || '').trim();
     const writtenBy = String(form.get('written_by') || '');
-    const box = this.form.querySelector('input');
     if (!table) return;
     const refused = ruleRefusal({ when, written_by: writtenBy });
-    box.setCustomValidity(refused || '');
-    if (refused) { this.form.reportValidity(); return; }
+    this.when.refuse(refused || '');
+    if (refused) return;
     const rules = (this.deps.looks() || { rules: [] }).rules;
     const last = rules.length ? rules[rules.length - 1].position : null;
     const columns = form.getAll('columns').map(String);
@@ -181,6 +183,7 @@ export class LookPanel {
     'Rule not saved');
     if (!done) return;
     this.form.reset();
+    this.when.value = '';
     this.deps.written();
   }
 }

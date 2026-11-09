@@ -15,9 +15,13 @@ without is read as that wall clock. Date · DateTime answer a time text («2026-
 ParseDateTime(text, format) reads a text by a format in Spotfire's .NET spelling (owner 11-07 «2»: yyMMdd_HHmmss) - a
 closed token set (`NET_TOKENS`), refused when read outside it; the reader is `utils.time_format.parse_occurred_at`.
 The same zone and the same reader (`_wall`) spell a datetime key part, its join and «did this cell change» (599fc1988).
+The function table's grammar (names · kinds · args), the names refused and every refusal sentence are written HERE and
+nowhere else: `catalogue()` is contracts/expression/catalogue.json (`python server/expression.py` writes it), the file
+the screen's calculator and formula inputs import (owner 11-09 «ㄴ»).
 """
 import json
 import math
+import os
 import re
 from functools import cmp_to_key, lru_cache
 
@@ -30,6 +34,63 @@ class ExpressionError(Exception):
 
 class SeveralValues(Exception):
     """A row-by-row use of a value the row holds several of."""
+
+
+#: Every refusal either calculator says, by key - `{name}` fills in. The screen's own (a sheet, markings, node
+#: constructors) are here too: one author for both (owner 11-09 «ㄴ»).
+SENTENCES = {
+    "text_open": "A text opened at {at} does not close",
+    "name_open": "A name opened at {at} does not close",
+    "stray": "«{ch}» at {at} is not part of an expression",
+    "expected": "{what} expected {where}",
+    "at_end": "at the end",
+    "at": "at {at}",
+    "want_null": "«null»",
+    "want_close": "«)»",
+    "want_open_after": "«(» after {name}",
+    "want_close_of": "«)» closing {name}",
+    "want_when": "«when»",
+    "want_then": "«then»",
+    "want_end": "«end»",
+    "ends_soon": "The expression ends too soon",
+    "unexpected": "«{snippet}» {where} is not expected",
+    "not_in_edition": "{name} is not in this edition",
+    "unsettled": "{name} is not settled - Spotfire's pages give no result to build it by",
+    "takes": "{name} takes {want} argument{s} - got {n}",
+    "distinct": "distinct goes in a one-column aggregation, not {name}",
+    "row_value": "[{name}] is a row's value - fold it (Avg([{name}])) or use it row by row",
+    "not_zone": "«{zone}» is not a time zone",
+    "screen_marks": "{name} is the screen's - it reads the page's markings",
+    "screen_sheet": "{name} is the screen's - a sheet's cells (A1, B1:B9)",
+    "screen_way": "[{name}] is a way from the row - ways are not read on the server yet",
+    "screen_constructor": "{name} is not a function here - node constructors (type(\"key\")) are the screen's",
+    "no_function": "No function named {name}",
+    "type_keys": "{type} takes {n} key{s} ({keys}) - got {got}",
+    "cannot_answer": "Cannot answer {t}",
+    "marked_row": "Marked is a row's - use it row by row",
+    "marked_way": "Marked takes a way in brackets second - Marked(\"B\", [in_container])",
+    "cell_sheet": "Cell references are the sheet's - {at} reads a sheet's cell",
+    "key_and_value": "[{name}] is both a key and a value of {type}",
+    "node_and_edge": "[{name}] is both a value of the node it reaches and of its edge",
+    "datepart_other": "DatePart «{part}» is not in this edition",
+    "datepart_name": "DatePart takes a part name (year · quarter · month · day · week · day of week · hour) - got {got}",
+    "net_spelling": "ParseDateTime: use .NET spelling, e.g. " + NET_EXAMPLE + " - got «{fmt}»",
+    "net_quote": "ParseDateTime: the quote at {at} is not closed - got «{fmt}»",
+    "net_reads": "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text - got «{token}»",
+    "net_again": "ParseDateTime: «{token}» reads the {unit} again - got «{fmt}»",
+    "net_needs": "ParseDateTime needs the year, month and day (yyyy or yy, MM, dd) - got «{fmt}»",
+    "net_quoted": "ParseDateTime takes its format in quotes, e.g. \"" + NET_EXAMPLE + "\"",
+    "quoted": "{name} takes its {what} in quotes",
+    "pattern_part": "{name} does not read «{part}» in a pattern",
+    "pattern_bad": "{name}: «{pattern}» is not a pattern",
+    "replacement_part": "{name} does not read «{part}» in a replacement",
+    "options": "{name} takes its options from g i s - got «{got}»",
+}
+
+
+def say(key, **fill):
+    """The sentence `key` with its blanks filled - the one way a refusal is worded."""
+    return SENTENCES[key].format(**fill)
 
 
 # ── values ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -236,16 +297,14 @@ def _date_part(part, v, ctx):
     name = PARTS.get(str(part).strip().lower()) if isinstance(part, str) else None
     if name is None:
         said = str(part).strip().lower() if isinstance(part, str) else part
-        raise ExpressionError("DatePart «%s» is not in this edition" % said if said in OTHER_PARTS
-                              else "DatePart takes a part name (year · quarter · month · day · week · day of week · "
-                                   "hour) - got %s" % _text(part))
+        raise ExpressionError(say("datepart_other", part=said) if said in OTHER_PARTS
+                              else say("datepart_name", got=_text(part)))
     return _dated(PART_OF[name])["fn"](v, ctx)
 
 
 # ── ParseDateTime (owner 11-07 «2»: Spotfire's .NET spelling) ─────────────────────────────────────────────────────────
 #: The tokens it reads live with the time reader (`utils.time_format.NET_TOKENS`) - the ledger's validator names a
 #: ParseDateTime format from the same table. yy is .NET's window (TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx.
-NET_READS = "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text"
 NET_UNITS = {"y": "year", "M": "month", "d": "day", "H": "hour", "m": "minute", "s": "second", "f": "fraction"}
 
 
@@ -253,14 +312,14 @@ NET_UNITS = {"y": "year", "M": "month", "d": "day", "H": "hour", "m": "minute", 
 def _net_format(fmt):
     """`fmt` in .NET's spelling -> (the strptime format, the text's exact shape), or refused naming what it reads."""
     if "%" in fmt:
-        raise ExpressionError("ParseDateTime: use .NET spelling, e.g. %s - got «%s»" % (NET_EXAMPLE, fmt))
+        raise ExpressionError(say("net_spelling", fmt=fmt))
     strp, shape, units, i = [], [], set(), 0
     while i < len(fmt):
         ch = fmt[i]
         if ch in "'\"":
             end = fmt.find(ch, i + 1)
             if end < 0:
-                raise ExpressionError("ParseDateTime: the quote at %d is not closed - got «%s»" % (i + 1, fmt))
+                raise ExpressionError(say("net_quote", at=i + 1, fmt=fmt))
             literal, i = fmt[i + 1:end], end + 1
         elif ch == "\\" and i + 1 < len(fmt):
             literal, i = fmt[i + 1], i + 2
@@ -270,9 +329,9 @@ def _net_format(fmt):
                 j += 1
             token, i = fmt[i:j], j
             if token not in NET_TOKENS:
-                raise ExpressionError("%s - got «%s»" % (NET_READS, token))
+                raise ExpressionError(say("net_reads", token=token))
             if ch in units:
-                raise ExpressionError("ParseDateTime: «%s» reads the %s again - got «%s»" % (token, NET_UNITS[ch], fmt))
+                raise ExpressionError(say("net_again", token=token, unit=NET_UNITS[ch], fmt=fmt))
             units.add(ch)
             strp.append(NET_TOKENS[token][1])
             shape.append("[0-9]{%d}" % NET_TOKENS[token][0])
@@ -282,14 +341,14 @@ def _net_format(fmt):
         strp.append(literal)
         shape.append(re.escape(literal))
     if not {"y", "M", "d"} <= units:
-        raise ExpressionError("ParseDateTime needs the year, month and day (yyyy or yy, MM, dd) - got «%s»" % fmt)
+        raise ExpressionError(say("net_needs", fmt=fmt))
     return "".join(strp), re.compile("".join(shape))
 
 
 def _net_format_given(args):
     """ParseDateTime's format is read with the expression: a text in quotes, in the closed set."""
     if args[1]["t"] != "lit" or not isinstance(args[1]["v"], str):
-        raise ExpressionError('ParseDateTime takes its format in quotes, e.g. "%s"' % NET_EXAMPLE)
+        raise ExpressionError(say("net_quoted"))
     _net_format(args[1]["v"])
 
 
@@ -516,6 +575,307 @@ def _times(f):
 #: A fold whose argument is a datetime column answers by these instead (Min · Max, lead 10-13).
 BY_TIME = {"Min": _times(lambda a, b: a < b), "Max": _times(lambda a, b: a > b)}
 
+# ── text (owner 11-09 «ㄴ»: Spotfire's Text functions) ─────────────────────────────────────────────────────────────────
+#: What a fold of texts writes between them - UniqueConcatenate and a one-column Concatenate (lead 11-09 ②).
+JOINER = ", "
+
+
+def _whole(v):
+    """A count's integer part (Text «Left»: 3.99 is 3), else None."""
+    x = number_of(v)
+    return None if x is None else math.trunc(x)
+
+
+def _texts(f):
+    """A row function of texts: an empty argument is an empty answer. A text of spaces in quotes is a text - a
+    row's empty value is None already (`_one_of`)."""
+    def one(*vs):
+        return None if any(v is None for v in vs) else f(*vs)
+    return one
+
+
+def _left(s, n):
+    k, s = _whole(n), _text(s)
+    if k is None:
+        return None
+    return s[:k] if k >= 0 else s[:max(len(s) + k, 0)]       # a negative count takes that many off the right
+
+
+def _right(s, n):
+    k, s = _whole(n), _text(s)
+    if k is None:
+        return None
+    return s[max(len(s) - k, 0):] if k >= 0 else s[min(-k, len(s)):]
+
+
+def _mid(s, start, length):
+    st, ln, s = _whole(start), _whole(length), _text(s)
+    if st is None or ln is None or st < 1 or ln < 0:
+        return None                             # Text «Mid»: a start below 1 or a negative length is an error
+    return s[st - 1:st - 1 + ln]
+
+
+def _find(needle, within, nth=1):
+    if needle is None or within is None or nth is None:
+        return None
+    k, a, b = _whole(nth), _text(needle), _text(within)
+    if k is None:
+        return None
+    if a == "" or k < 1 or k > len(b):
+        return 0
+    at = -1
+    for _ in range(k):                          # the k-th, each looked for one past the last
+        at = b.find(a, at + 1)
+        if at < 0:
+            return 0
+    return at + 1
+
+
+def _repeat(s, n):
+    k = _whole(n)
+    return None if k is None or k < 0 else _text(s) * k
+
+
+def _split(s, sep, n):
+    k = _whole(n)
+    if k is None or k == 0 or _text(sep) == "":
+        return None
+    parts = _text(s).split(_text(sep))
+    if abs(k) > len(parts):
+        return None
+    return parts[k - 1] if k > 0 else parts[k]   # a negative count from the end
+
+
+def _substitute(s, old, new):
+    if s is None:
+        return None
+    s = _text(s)
+    if old is None or _text(old) == "":
+        return s
+    return s.replace(_text(old), "" if new is None else _text(new))
+
+
+def _joined(items, _params=None):
+    return {"value": JOINER.join(_text(it["value"]) for it in items) if items else None}
+
+
+def _concatenated(values):
+    """Concatenate's arguments in one row: empty ones left out (Text «Concatenate»: null + "Ape" is "Ape")."""
+    kept = [_text(v) for v in values if v is not None]
+    return "".join(kept) if kept else None
+
+
+# ── patterns (RXExtract · RXReplace · ~=): only what Python's re, JavaScript's RegExp and .NET read alike ────────────
+# A pattern is read once into the one text both calculators compile: classes spelled out (\d is [0-9], ASCII as
+# JavaScript's), «.» not a newline, «$» the end or before a last newline (.NET's and Python's) - anything else is
+# refused by name. task/SPOTFIRE_FUNCTIONS.md «Patterns» is the table of what differs from .NET.
+WORDISH = "[A-Za-z0-9_]"
+_OUTSIDE = {"d": "[0-9]", "D": "[^0-9]", "w": WORDISH, "W": "[^A-Za-z0-9_]", "s": "[\\t\\n\\v\\f\\r ]",
+            "S": "[^\\t\\n\\v\\f\\r ]", "t": "\\t", "n": "\\n", "r": "\\r", "f": "\\f", "v": "\\v",
+            "b": "(?:(?<=%s)(?!%s)|(?<!%s)(?=%s))" % ((WORDISH,) * 4),
+            "B": "(?:(?<=%s)(?=%s)|(?<!%s)(?!%s))" % ((WORDISH,) * 4)}
+_INSIDE = {"d": "0-9", "w": "A-Za-z0-9_", "s": "\\t\\n\\v\\f\\r ", "t": "\\t", "n": "\\n", "r": "\\r", "f": "\\f",
+           "v": "\\v"}
+_COUNT = re.compile(r"\{[0-9]+(,[0-9]*)?\}")
+_GROUP_HEADS = ("(?:", "(?=", "(?!")
+
+
+def _lit(ch):
+    """One character as itself in both engines' pattern grammar."""
+    return ch if ch.isascii() and ch.isalnum() else "\\u%04X" % ord(ch) if ord(ch) < 0x10000 else ch
+
+
+def _translated(name, pattern, dotall):
+    """`pattern` -> (the text both compile, its group count), or refused naming the part."""
+    def part(k):
+        raise ExpressionError(say("pattern_part", name=name, part=k))
+
+    def bad():
+        raise ExpressionError(say("pattern_bad", name=name, pattern=pattern))
+
+    def item(i):                                # one member of a [ ] -> (its text, one character?, the index after)
+        ch = pattern[i]
+        if ch != "\\":
+            return _lit(ch), True, i + 1
+        if i + 1 >= len(pattern):
+            bad()
+        e = pattern[i + 1]
+        if e in _INSIDE:
+            return _INSIDE[e], e not in "dws", i + 2
+        if not (e.isascii() and e.isalnum()):
+            return _lit(e), True, i + 2
+        part("\\" + e)
+
+    out, i, groups, opened, repeat = [], 0, 0, [], False
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\":
+            if i + 1 >= len(pattern):
+                bad()
+            e = pattern[i + 1]
+            if e in _OUTSIDE:
+                out.append(_OUTSIDE[e])
+                repeat = e not in "bB"
+            elif not (e.isascii() and e.isalnum()):
+                out.append(_lit(e))
+                repeat = True
+            else:
+                part("\\" + e)
+            i += 2
+        elif ch == "[":
+            body, i = ["["], i + 1
+            if pattern.startswith("^", i):
+                body.append("^")
+                i += 1
+            first = True
+            while True:
+                if i >= len(pattern):
+                    bad()
+                if pattern[i] == "]" and not first:
+                    break
+                if pattern.startswith("-[", i):
+                    part("-[")                  # .NET's class subtraction
+                first = False
+                text, single, i = item(i)
+                if pattern.startswith("-", i) and i + 1 < len(pattern) and pattern[i + 1] != "]":
+                    if not single or pattern[i + 1] == "[":
+                        part(pattern[i:i + 2] if single else "-")
+                    high, high_single, i = item(i + 1)
+                    if not high_single:
+                        part("-")
+                    text = text + "-" + high
+                body.append(text)
+            out.append("".join(body) + "]")
+            i += 1
+            repeat = True
+        elif ch == "(":
+            head = next((h for h in _GROUP_HEADS if pattern.startswith(h, i)), None)
+            if head is None and pattern.startswith("(?", i):
+                part(pattern[i:i + 3])
+            if head is None:
+                head = "("
+                groups += 1
+            out.append(head)
+            opened.append(head)
+            i += len(head)
+            repeat = False
+        elif ch == ")":
+            if not opened:
+                bad()
+            repeat = opened.pop() in ("(", "(?:")
+            out.append(")")
+            i += 1
+        elif ch in "*+?" or (ch == "{" and _COUNT.match(pattern, i)):
+            q = _COUNT.match(pattern, i).group(0) if ch == "{" else ch
+            if not repeat:
+                part(q)                         # nothing before it to repeat
+            i += len(q)
+            if pattern.startswith("+", i):
+                part(q + "+")                   # .NET has no possessive
+            if pattern.startswith("?", i):
+                q += "?"
+                i += 1
+            out.append(q)
+            repeat = False
+        else:
+            out.append({".": "[\\s\\S]" if dotall else "[^\\n]", "^": "^", "$": "(?=\\n?(?![\\s\\S]))",
+                        "|": "|"}.get(ch) or _lit(ch))
+            repeat = ch not in "^$|"
+            i += 1
+    if opened:
+        bad()
+    return "".join(out), groups
+
+
+@lru_cache(maxsize=256)
+def _rx(name, pattern, options):
+    """A pattern with its options (g all · i no case · s «.» takes a newline too) -> (compiled, group count)."""
+    if any(ch not in "gis" for ch in options):
+        raise ExpressionError(say("options", name=name, got=options))
+    text, groups = _translated(name, pattern, "s" in options)
+    try:
+        return re.compile(text, re.IGNORECASE if "i" in options else 0), groups
+    except re.error:
+        raise ExpressionError(say("pattern_bad", name=name, pattern=pattern)) from None
+
+
+def _replacement(name, text, groups):
+    """`$1` `${1}` `$0` (the match) `$$` -> parts: texts and group numbers; a number past the groups is its own text;
+    .NET's other $ forms are refused by name."""
+    parts, i = [], 0
+    while i < len(text):
+        m = re.match(r"\$([0-9]+)|\$\{([0-9]+)\}", text[i:])
+        if m:
+            k = int(m.group(1) or m.group(2))
+            parts.append(k if k <= groups else m.group(0))
+            i += len(m.group(0))
+        elif text.startswith("$$", i):
+            parts.append("$")
+            i += 2
+        elif text[i] == "$" and text[i + 1:i + 2] in ("&", "`", "'", "+", "_", "{"):
+            raise ExpressionError(say("replacement_part", name=name, part=text[i:i + 2]))
+        else:
+            parts.append(text[i])
+            i += 1
+    return tuple(parts)
+
+
+def _matches(compiled, s):
+    """Each match left to right, an empty one stepped past by one character - the same walk as the screen's."""
+    at = 0
+    while at <= len(s):
+        m = compiled.search(s, at)
+        if not m:
+            return
+        yield m
+        at = m.end() if m.end() > m.start() else m.end() + 1
+
+
+def _quoted(name, args, at, what):
+    a = args[at]
+    if a["t"] != "lit" or not isinstance(a["v"], str):
+        raise ExpressionError(say("quoted", name=name, what=what))
+    return a["v"]
+
+
+def _rx_given(name, replacement=False, options=False):
+    """The pattern (and a replacement · options) are read with the expression: texts in quotes, read once."""
+    def check(args):
+        pattern = _quoted(name, args, 1, "pattern")
+        said = _quoted(name, args, 2, "replacement") if replacement else None
+        flags = _quoted(name, args, 3, "options") if options else ""
+        _, groups = _rx(name, pattern, flags)
+        if said is not None:
+            _replacement(name, said, groups)
+    return check
+
+
+def _rx_extract(s, pattern, nth):
+    k = _whole(nth)
+    if k is None or k < 1:
+        return None
+    for m in _matches(_rx("RXExtract", pattern, "")[0], _text(s)):
+        k -= 1
+        if k == 0:
+            return m.group(0)
+    return None
+
+
+def _rx_replace(s, pattern, replacement, options):
+    compiled, groups = _rx("RXReplace", pattern, options)
+    parts, s, out, last = _replacement("RXReplace", replacement, groups), _text(s), [], 0
+    for m in _matches(compiled, s):
+        out += [s[last:m.start()]] + [p if isinstance(p, str) else m.group(p) or "" for p in parts]
+        last = m.end()
+        if "g" not in options:
+            break
+    return "".join(out) + s[last:]
+
+
+def _text_row(arity, f, args, **more):
+    return {**_row(arity, _texts(f), args), **more}
+
+
 #: `args`: each argument's name, as the formula's signature line says it (lead 11-07) - a fold's column «...» more
 #: (rowwise) or none at all (none) is read from those keys, not written here: the count has one answer.
 FUNCTIONS = {
@@ -535,7 +895,7 @@ FUNCTIONS = {
     "Last": _fold(lambda items, _p=None: {"value": items[-1]["value"] if items else None}),
     "Latest": _fold(_latest),
     "MostCommon": _fold(_most_common),
-    "UniqueConcatenate": _fold(lambda items, _p=None: {"value": ", ".join(
+    "UniqueConcatenate": _fold(lambda items, _p=None: {"value": JOINER.join(
         _text(v) for v in sorted(_distinct(items), key=cmp_to_key(_order))) if items else None}),
     "StdDev": _fold(_numeric(lambda xs, _p: _sd(xs))),
     "Var": _fold(_numeric(lambda xs, _p: _var(xs))),
@@ -599,13 +959,33 @@ FUNCTIONS = {
     "DatePart": {"kind": "row", "arity": 2, "args": ["part", "value"], "fn": _date_part, "zoned": True},
     "ParseDateTime": {"kind": "row", "arity": 2, "args": ["text", "format"], "fn": _parse_date_time, "zoned": True,
                       "check": _net_format_given},
+    # text (owner 11-09 «ㄴ») - a number or a boolean read as its text; counts by their integer part
+    "Concatenate": _fold(_joined, rowwise=True, within=_concatenated, args=["text"]),
+    "Find": {**_row(3, _find, ["text", "within", "nth"]), "least": 2},
+    "Left": _text_row(2, _left, ["text", "count"]),
+    "Len": _text_row(1, lambda s: len(_text(s)), ["text"]),
+    "Lower": _text_row(1, lambda s: _text(s).lower(), ["text"]),
+    "Mid": _text_row(3, _mid, ["text", "start", "count"]),
+    "Repeat": _text_row(2, _repeat, ["text", "count"]),
+    "Right": _text_row(2, _right, ["text", "count"]),
+    "RXExtract": _text_row(3, _rx_extract, ["text", "pattern", "nth"], check=_rx_given("RXExtract")),
+    "RXReplace": _text_row(4, _rx_replace, ["text", "pattern", "replacement", "options"],
+                           check=_rx_given("RXReplace", replacement=True, options=True)),
+    "Split": _text_row(3, _split, ["text", "separator", "nth"]),
+    "Substitute": _row(3, _substitute, ["text", "old", "new"]),
+    "Substring": _text_row(3, _mid, ["text", "start", "count"]),
+    "Trim": _text_row(1, lambda s: _text(s).strip(), ["text"]),
+    "Upper": _text_row(1, lambda s: _text(s).upper(), ["text"]),
 }
 _BY_NAME = {name.lower(): name for name in FUNCTIONS}
 #: The screen's alone - the page's markings.
-SCREEN_ONLY = {"marked": "Marked"}
-#: task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
-NOT_YET = {"normdist", "norminv", "tdist", "tinv", "chidist", "chiinv", "fdist", "finv", "lag", "lead", "rand",
-           "randbetween", "concatenate", "reach"}
+SCREEN_ONLY = {"Marked": {"kind": "mark"}}
+_SCREEN_BY_NAME = {name.lower(): name for name in SCREEN_ONLY}
+#: Names not built, refused by name with the sentence each says: task/SPOTFIRE_FUNCTIONS.md's not in this edition (the
+#: vectors' out_of_edition), and NameEncode · NameDecode, which no page gives a result for (lead 11-09 ③).
+NOT_YET = {**{name: "not_in_edition" for name in ("normdist", "norminv", "tdist", "tinv", "chidist", "chiinv", "fdist",
+                                                  "finv", "lag", "lead", "rand", "randbetween", "reach")},
+           "nameencode": "unsettled", "namedecode": "unsettled"}
 #: A sheet's cell (A1) or range (B1:B9) - the screen's Sheet (lead 10-14, owner 3b97fcfb9).
 CELL = re.compile(r"^[A-Za-z]+[0-9]+$")
 #: A name holding one of these is a way from the row ([a.b~.x]) - not read on the server yet (lead 5667ea0fe).
@@ -613,7 +993,7 @@ WAY_MARKS = (".", "~")
 
 # ── reading the text ────────────────────────────────────────────────────────────────────────────────────────────────
 KEYWORDS = {"and", "or", "xor", "not", "case", "when", "then", "else", "end", "is", "null", "true", "false", "distinct"}
-OPS = ["<=>", "<=", ">=", "<>", "!=", "<", ">", "=", "+", "-", "*", "/", "%", "^", "(", ")", ",", ":"]
+OPS = ["<=>", "<=", ">=", "<>", "!=", "~=", "<", ">", "=", "+", "-", "*", "/", "%", "^", "&", "(", ")", ",", ":"]
 NUMBER = re.compile(r"(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -631,12 +1011,17 @@ def _tokens(text):
             out.append(("num", float(n.group(0)), at))
             i = n.end()
             continue
-        if ch in "\"'":
-            close = text.find(ch, i + 1)
-            if close < 0:
-                raise ExpressionError("A text opened at %d does not close" % (at + 1))
-            out.append(("str", text[i + 1:close], at))
-            i = close + 1
+        if ch in "\"'":                          # \\ \" \' are the character (lead 11-09 ①); any other \x is itself
+            j, said = i + 1, []
+            while j < len(text) and text[j] != ch:
+                if text[j] == "\\" and text[j + 1:j + 2] in ("\\", "\"", "'"):
+                    j += 1
+                said.append(text[j])
+                j += 1
+            if j >= len(text):
+                raise ExpressionError(say("text_open", at=at + 1))
+            out.append(("str", "".join(said), at))
+            i = j + 1
             continue
         if ch == "[":                            # «]]» is a «]» inside a name (Spotfire's escape)
             j, name = i + 1, ""
@@ -644,7 +1029,7 @@ def _tokens(text):
                 name += text[j]
                 j += 2 if text[j] == "]" else 1
             if j >= len(text):
-                raise ExpressionError("A name opened at %d does not close" % (at + 1))
+                raise ExpressionError(say("name_open", at=at + 1))
             out.append(("ref", name, at))
             i = j + 1
             continue
@@ -659,8 +1044,7 @@ def _tokens(text):
             out.append(("op", op, at))
             i += len(op)
             continue
-        raise ExpressionError("«&» is not in this edition" if ch == "&"
-                              else "«%s» at %d is not part of an expression" % (ch, at + 1))
+        raise ExpressionError(say("stray", ch=ch, at=at + 1))
     out.append(("end", None, len(text)))
     return out
 
@@ -679,17 +1063,18 @@ def _parse(text):
         return tk()[0] == "kw" and tk()[1] == v
 
     def where():
-        return "at the end" if tk()[0] == "end" else "at %d" % (tk()[2] + 1)
+        return say("at_end") if tk()[0] == "end" else say("at", at=tk()[2] + 1)
 
     def need(test, what):
         if not test():
-            raise ExpressionError("%s expected %s" % (what, where()))
+            raise ExpressionError(say("expected", what=what, where=where()))
         p[0] += 1
 
     def snippet():
         return text[tk()[2]:tk()[2] + 12]
 
-    # lowest first: or · xor · and · not · = <> <=> · < > <= >= · Is Null · + - · * / % · unary - + · ^ (lead 10-13)
+    # lowest first: or · xor · and · not · = <> <=> ~= · < > <= >= · Is Null · & · + - · * / % · unary - + · ^
+    # (lead 10-13; & and ~= Ops · Prec, owner 11-09)
     def or_():
         a = xor()
         while kw("or"):
@@ -719,9 +1104,16 @@ def _parse(text):
 
     def equality():
         a = relational()
-        while any(op(o) for o in ("=", "<>", "!=", "<=>")):
+        while any(op(o) for o in ("=", "<>", "!=", "<=>", "~=")):
             o = tk()[1]
             p[0] += 1
+            if o == "~=":
+                pattern = relational()
+                if pattern["t"] != "lit" or not isinstance(pattern["v"], str):
+                    raise ExpressionError(say("quoted", name="«~=»", what="pattern"))
+                _rx("«~=»", pattern["v"], "")
+                a = {"t": "match", "a": a, "pattern": pattern["v"]}
+                continue
             a = {"t": "cmp", "op": "<>" if o == "!=" else o, "a": a, "b": relational()}
         return a
 
@@ -734,15 +1126,22 @@ def _parse(text):
         return a
 
     def is_null():
-        a = additive()
+        a = concat()
         if not kw("is"):
             return a
         p[0] += 1
         negate = kw("not")
         if negate:
             p[0] += 1
-        need(lambda: kw("null"), "«null»")
+        need(lambda: kw("null"), say("want_null"))
         return {"t": "isnull", "a": a, "negate": negate}
+
+    def concat():
+        a = additive()
+        while op("&"):
+            p[0] += 1
+            a = {"t": "concat", "a": a, "b": additive()}
+        return a
 
     def additive():
         a = multiplicative()
@@ -783,7 +1182,7 @@ def _parse(text):
         if kind == "ref":
             p[0] += 1
             if any(mark in v for mark in WAY_MARKS):
-                raise ExpressionError("[%s] is a way from the row - ways are not read on the server yet" % v)
+                raise ExpressionError(say("screen_way", name=v))
             return {"t": "ref", "name": v}
         if kw("null"):
             p[0] += 1
@@ -796,26 +1195,24 @@ def _parse(text):
         if op("("):
             p[0] += 1
             e = or_()
-            need(lambda: op(")"), "«)»")
+            need(lambda: op(")"), say("want_close"))
             return e
         if kind == "id" and CELL.match(v) and not (ts[p[0] + 1][0] == "op" and ts[p[0] + 1][1] == "("):
-            raise ExpressionError("%s is the screen's - a sheet's cells (A1, B1:B9)" % v)
+            raise ExpressionError(say("screen_sheet", name=v))
         if kind == "id":
             return call()
-        raise ExpressionError("The expression ends too soon" if kind == "end"
-                              else "«%s» %s is not expected" % (snippet(), where()))
+        raise ExpressionError(say("ends_soon") if kind == "end" else say("unexpected", snippet=snippet(), where=where()))
 
     def call():
         word = tk()[1]
         p[0] += 1
         lw = word.lower()
-        if lw in SCREEN_ONLY:
-            raise ExpressionError("%s is the screen's - it reads the page's markings" % SCREEN_ONLY[lw])
+        if lw in _SCREEN_BY_NAME:
+            raise ExpressionError(say("screen_marks", name=_SCREEN_BY_NAME[lw]))
         name = _BY_NAME.get(lw)
         if not name:
-            raise ExpressionError("%s is not in this edition" % word if lw in NOT_YET else
-                                  "%s is not a function here - node constructors (type(\"key\")) are the screen's" % word)
-        need(lambda: op("("), "«(» after %s" % name)
+            raise ExpressionError(say(NOT_YET.get(lw, "screen_constructor"), name=word))
+        need(lambda: op("("), say("want_open_after", name=name))
         distinct = kw("distinct")
         if distinct:
             p[0] += 1
@@ -825,7 +1222,7 @@ def _parse(text):
             while op(","):
                 p[0] += 1
                 args.append(or_())
-        need(lambda: op(")"), "«)» closing %s" % name)
+        need(lambda: op(")"), say("want_close_of", name=name))
         node = {"t": "call", "name": name, "fn": FUNCTIONS[name], "args": args, "distinct": distinct}
         _arity(node)
         return node
@@ -837,20 +1234,20 @@ def _parse(text):
         while kw("when"):
             p[0] += 1
             when = or_()
-            need(lambda: kw("then"), "«then»")
+            need(lambda: kw("then"), say("want_then"))
             whens.append({"when": when, "then": or_()})
         if not whens:
-            raise ExpressionError("«when» expected %s" % where())
+            raise ExpressionError(say("expected", what=say("want_when"), where=where()))
         otherwise = None
         if kw("else"):
             p[0] += 1
             otherwise = or_()
-        need(lambda: kw("end"), "«end»")
+        need(lambda: kw("end"), say("want_end"))
         return {"t": "case", "subject": subject, "whens": whens, "otherwise": otherwise}
 
     tree = or_()
     if tk()[0] != "end":
-        raise ExpressionError("«%s» %s is not expected" % (snippet(), where()))
+        raise ExpressionError(say("unexpected", snippet=snippet(), where=where()))
     return tree
 
 
@@ -860,7 +1257,8 @@ def _arity(node):
     if kind == "if":
         fits, want = n == 3, "3"
     elif kind == "row":
-        fits, want = n == fn["arity"], str(fn["arity"])
+        least = fn.get("least", fn["arity"])
+        fits, want = least <= n <= fn["arity"], " or ".join(str(k) for k in range(least, fn["arity"] + 1))
     elif fn.get("pair"):
         fits, want = n == 2, "2"
     elif fn.get("params"):
@@ -872,11 +1270,11 @@ def _arity(node):
     else:
         fits, want = n == 1, "1"
     if not fits:
-        raise ExpressionError("%s takes %s argument%s - got %d" % (name, want, "" if want == "1" else "s", n))
+        raise ExpressionError(say("takes", name=name, want=want, s="" if want == "1" else "s", n=n))
     if fn.get("check"):
         fn["check"](node["args"])
     if node["distinct"] and (kind != "fold" or fn.get("pair") or (fn.get("rowwise") and n > 1)):
-        raise ExpressionError("distinct goes in a one-column aggregation, not %s" % name)
+        raise ExpressionError(say("distinct", name=name))
 
 
 def _children(node):
@@ -890,8 +1288,8 @@ def _row_level(node):
     """Does `node` read a row's value outside any fold - then the answer is one per row."""
     if node["t"] == "ref":
         return True
-    if node["t"] == "call" and node["fn"]["kind"] == "fold":
-        return False
+    if node["t"] == "call" and node["fn"]["kind"] == "fold":       # several arguments fold within the row
+        return bool(node["fn"].get("rowwise")) and len(node["args"]) > 1 and any(map(_row_level, node["args"]))
     return any(_row_level(c) for c in _children(node))
 
 
@@ -1033,8 +1431,7 @@ def _value(node, ctx):
         return node["v"]
     if t == "ref":
         if ctx.row is None:
-            raise ExpressionError("[%s] is a row's value - fold it (Avg([%s])) or use it row by row"
-                                  % (node["name"], node["name"]))
+            raise ExpressionError(say("row_value", name=node["name"]))
         return _one_of(ctx.row.get(node["name"]), node["name"])
     if t == "neg":
         a = _value(node["a"], ctx)
@@ -1049,6 +1446,12 @@ def _value(node, ctx):
         return _finite(_arith(node["op"], a, b))
     if t == "cmp":
         return _compare(node["op"], _value(node["a"], ctx), _value(node["b"], ctx))
+    if t == "concat":
+        a, b = _value(node["a"], ctx), _value(node["b"], ctx)
+        return None if a is None or b is None else _text(a) + _text(b)
+    if t == "match":
+        a = _value(node["a"], ctx)
+        return None if a is None else _rx("«~=»", node["pattern"], "")[0].search(_text(a)) is not None
     if t == "not":
         a = _bool(_value(node["a"], ctx))
         return None if a is None else not a
@@ -1080,6 +1483,8 @@ def _fold_value(node, ctx):
     fn, args = node["fn"], node["args"]
     if fn.get("none") and not args:
         return len(ctx.rows)                    # Count(): the rows
+    if fn.get("rowwise") and len(args) > 1 and fn.get("within"):
+        return fn["within"]([_value(a, ctx) for a in args])
     if fn.get("rowwise") and len(args) > 1:
         return fn["fn"]([it for a in args for it in _items_of(_value(a, ctx), None)], [])["value"]
 
@@ -1155,7 +1560,7 @@ def run(compiled, rows, types=None, zone=None):
         try:
             zones[0] = ZoneInfo(str(zone))
         except (ValueError, KeyError, OSError):
-            return {"why": "«%s» is not a time zone" % zone}
+            return {"why": say("not_zone", zone=zone)}
     ctx = _Ctx(list(rows or []), types or {}, zones=zones)
     try:
         if not compiled["per_row"]:
@@ -1167,3 +1572,53 @@ def run(compiled, rows, types=None, zone=None):
         return {"several": str(exc)}
     except ExpressionError as exc:
         return {"why": str(exc)}
+
+
+# ── the catalogue: what the screen reads of this table (owner 11-09 «ㄴ») ──────────────────────────────────────────────
+#: A function's grammar - what the catalogue carries. The rest (fn · zoned · check · within) is how a calculator answers.
+GRAMMAR = ("kind", "args", "arity", "least", "none", "rowwise", "params", "pair")
+CATALOGUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "contracts", "expression",
+                              "catalogue.json")
+
+
+def _says(fn):
+    """The signature line's words (lead 11-07): a column that may be left out and an argument after `least` in [ ], a
+    fold of more columns ends in «...»."""
+    args = fn.get("args", [])
+    if fn.get("none"):
+        return ["[%s]" % a for a in args]
+    if fn.get("rowwise"):
+        return args + ["..."]
+    least = fn.get("least", len(args))
+    return args[:least] + ["[%s]" % a for a in args[least:]]
+
+
+def catalogue():
+    return {
+        "$comment": ["GENERATED from server/expression.py (python server/expression.py) - edit the table there.",
+                     "The function table's grammar, the names refused and every refusal sentence: the screen's",
+                     "calculator and formula inputs import this file (owner 11-09). A test holds it to the table."],
+        "joiner": JOINER,
+        "functions": {name: {**{k: fn[k] for k in GRAMMAR if k in fn}, "says": _says(fn)} for name, fn in FUNCTIONS.items()},
+        "screen_only": SCREEN_ONLY,
+        "not_yet": NOT_YET,
+        "sentences": SENTENCES,
+    }
+
+
+def catalogue_text():
+    """The file's text: one line an entry, so a change to the table is a change to its line."""
+    def one(v):
+        return json.dumps(v, ensure_ascii=False)
+
+    def section(v):
+        if not isinstance(v, dict):
+            return one(v)
+        return "{\n" + ",\n".join("  %s: %s" % (one(k), one(x)) for k, x in v.items()) + "\n }"
+    return "{\n" + ",\n".join(" %s: %s" % (one(k), section(v)) for k, v in catalogue().items()) + "\n}\n"
+
+
+if __name__ == "__main__":
+    with open(CATALOGUE_PATH, "w", encoding="utf-8", newline="\n") as out:
+        out.write(catalogue_text())
+    print("wrote", os.path.normpath(CATALOGUE_PATH))

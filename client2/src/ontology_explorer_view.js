@@ -1,4 +1,6 @@
 import { redoCostText } from './redo_cost.js';
+import { compile } from './expression.js';
+import { FormulaInput } from './formula_input.js';
 import { crossIcon } from './cross_icon.js';
 import { LOADING, unitText } from './ui_words.js';
 import { isDraftRevisionEditable, fieldOpensByDefault }
@@ -2649,6 +2651,7 @@ function renderSkeletonLeaf(context, node, path, value) {
       closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list }),
       h, { action: 'edit-shape', path, cls: 'oe-box' });
   }
+  if (node.hint === 'formula') return renderFormulaLeaf(context, node, path, text);
   const input = h('input', 'oe-field-input oe-box');
   // 🔴 A NUMBER FIELD SAYS SO, BECAUSE OTHERWISE IT CANNOT BE FILLED AT ALL. Typing 1 into a
   // text box stores "1", the validator refuses it (`invalid_version -- must be a positive
@@ -2679,6 +2682,23 @@ function renderSkeletonLeaf(context, node, path, value) {
   return column;
 }
 
+
+/** A `formula` leaf (owner 11-09 «ㄴ»): the one formula field - the functions, the words the cell takes beside a formula
+ *  (its `list`), the calculator's words as one types; a cell with a `mark` reads only what starts with it as a
+ *  formula, a word there is the server's to judge. It writes as a text box does (edit-shape). */
+function renderFormulaLeaf(context, node, path, text) {
+  const host = h('span', 'oe-formula');
+  const words = () => (Array.isArray((context.schema || {})[node.list]) ? context.schema[node.list] : []);
+  const refusal = (said) => {
+    const formula = node.mark ? (said.startsWith(node.mark) ? said.slice(node.mark.length) : null) : said;
+    return formula === null ? '' : compile(formula).why || '';
+  };
+  const columns = () => context.refOf(node, path).names;
+  const field = new FormulaInput(host, { doc: document, cls: 'oe-field-input oe-box', label: path, value: text, columns, words, refusal });
+  field.input.dataset.action = 'edit-shape';
+  field.input.dataset.value = path;
+  return host;
+}
 
 /** What the last save said about the declaration on screen - at the head of its form, or of its bar. */
 function saveNotices(state) {

@@ -7,14 +7,16 @@
  *   O  every `ours` row the same way (Latest, list values, numbers written as text)
  *   N  the one answer to «is this a number» (walk/reach_table numberOf): sign · digits · point · exponent (lead 10-13)
  *   C  the census: every scored row ran, none of `unsettled` did, and the file is not empty
- *   F  the functions (lead 11-07): FUNCTIONS' names and each one's args are the file's `functions`, and a call with that
- *      many arguments is not refused for its count - one more is, unless the fold takes more (rowwise)
+ *   F  the functions (lead 11-07, owner 11-09 «ㄴ»): FUNCTIONS' names and args are contracts/expression/catalogue.json's
+ *      (the server's table written out), a call with that many arguments is not refused for its count - one more is,
+ *      unless the fold takes more (rowwise); the calculator READS that file - a catalogue with one more name, one more
+ *      name refused and another sentence shows through (F4) - and answers every name it lists (F5)
  * The file is the server calculator's exam too (lead 0b7d84462): an answer here that differs from it is a defect here.
  *
  * IT IMPORTS ITS SUBJECTS. A mutant is a whole module copy (lib/probe.mjs loadWithProbe).
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -24,6 +26,18 @@ import { entitySeedId } from '../src/rnd_board/api.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
 const FILE = JSON.parse(readFileSync(join(HERE, '..', '..', 'contracts', 'expression', 'vectors.json'), 'utf8'));
+const CATALOGUE_TEXT = readFileSync(join(HERE, '..', '..', 'contracts', 'expression', 'catalogue.json'), 'utf8');
+const CATALOGUE = JSON.parse(CATALOGUE_TEXT);
+// F4: the catalogue with one more function, one more name refused and another sentence - a calculator that reads the
+// file shows all three; one that writes its own list shows none.
+const SPECIFIER = "'../../contracts/expression/catalogue.json'";
+const PERTURBED = join(HERE, '..', '.tmp', 'expression_catalogue_perturbed.json');
+mkdirSync(dirname(PERTURBED), { recursive: true });
+writeFileSync(PERTURBED, JSON.stringify({ ...CATALOGUE,
+  functions: { ...CATALOGUE.functions, ZzProbe: { kind: 'row', args: ['value'], arity: 1, says: ['value'] } },
+  not_yet: { ...CATALOGUE.not_yet, zzlater: 'not_in_edition' },
+  sentences: { ...CATALOGUE.sentences, not_in_edition: '{name} waits for the probe' } }));
+const perturbed = (text) => text.split(SPECIFIER).join("'../.tmp/expression_catalogue_perturbed.json'");
 const REAL = { expr: await import('../src/expression.js'), reach: await import('../src/walk/reach_table.js'), slot: await import('../src/testbed/slot.js'),
   api: await import('../src/rnd_board/api.js') };
 // The declaration answer a page reads, its zone another than Seoul's (E10).
@@ -32,7 +46,7 @@ const TOLD = await REAL.api.fetchDeclaration({ fetchImpl: async () => ({ ok: tru
 const near = (got, want) => (typeof want === 'number'
   ? typeof got === 'number' && Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want))
   : JSON.stringify(got) === JSON.stringify(want));
-const ascii = (v) => JSON.stringify(v).replace(/[^\x20-\x7e]/g, '?').slice(0, 90);
+const ascii = (v) => String(JSON.stringify(v)).replace(/[^\x20-\x7e]/g, '?').slice(0, 90);
 
 function suite(M, quiet = false) {
   let ran = 0;
@@ -63,7 +77,8 @@ function suite(M, quiet = false) {
     if (v.types) page.types = v.types;
     if (v.zone) page.zone = v.zone;
     if (v.cells) page.cell = (at) => v.cells[at];
-    const out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page);
+    let out;   // a mutant that throws fails this line, not the run
+    try { out = M.expr.run(c, index ? v.rows.map((id) => asCopy(M.slot.calcRow(index, new Set(index.nodes.keys()), id))) : v.rows, page); } catch (e) { out = { threw: String(e && e.message) }; }
     const rows = 'expect_rows' in v;
     const good = rows
       ? Array.isArray(out.values) && out.values.length === v.expect_rows.length && out.values.every((x, i) => near(x, v.expect_rows[i]))
@@ -133,24 +148,32 @@ function suite(M, quiet = false) {
   const met = M.expr.run(M.expr.compile('[x] * 2 + [x]'), [{ x: '29 mm' }, { x: '29.50' }, { x: null }, { x: 'a' }, { x: 3 }]);
   ok('E1 the rows an operator met a text that is not a number on: counted once each, an empty value not', met.notNumber === 2
     && JSON.stringify(met.values) === JSON.stringify([null, 88.5, null, null, 9]), ascii(met));
-  // The functions (lead 11-07): the file's names and args are this table's; the screen's Marked is the page's.
+  // The functions (lead 11-07, owner 11-09): the catalogue's names and args are this table's; the screen's Marked is the page's.
   const table = Object.entries(M.expr.FUNCTIONS).filter(([, fn]) => fn.kind !== 'mark');
-  const listed = new Map(FILE.functions.map((f) => [f.name, f.args]));
+  const listed = new Map(Object.entries(CATALOGUE.functions).map(([name, f]) => [name, f.args]));
   ok('F1 the table\'s names are the file\'s', table.length === listed.size && table.every(([name]) => listed.has(name)),
     ascii([...table.map(([n]) => n).filter((n) => !listed.has(n)), ...[...listed.keys()].filter((n) => !M.expr.FUNCTIONS[n])]));
   ok('F2 each function\'s args are the file\'s', table.every(([name, fn]) => JSON.stringify(fn.args) === JSON.stringify(listed.get(name))),
     ascii(table.filter(([name, fn]) => JSON.stringify(fn.args) !== JSON.stringify(listed.get(name))).map(([n]) => n)));
   const counted = (name, n) => String(M.expr.compile(`${name}(${Array(n).fill('1').join(', ')})`).why || '').startsWith(`${name} takes `)
     && / - got [0-9]+$/.test(String(M.expr.compile(`${name}(${Array(n).fill('1').join(', ')})`).why));
-  const miscounted = FILE.functions.filter(({ name, args }) => counted(name, args.length)
-    || (!(M.expr.FUNCTIONS[name] || {}).rowwise && !counted(name, args.length + 1)));
-  ok('F3 as many arguments as args is taken, one more is not (a rowwise fold takes more)', miscounted.length === 0,
-    ascii(miscounted.map((f) => f.name)));
+  const miscounted = Object.entries(CATALOGUE.functions).filter(([name, { args, least }]) => counted(name, args.length)
+    || (!(M.expr.FUNCTIONS[name] || {}).rowwise && !counted(name, args.length + 1))
+    || (least !== undefined && (counted(name, least) || !counted(name, least - 1))));
+  ok('F3 as many arguments as args is taken, one more is not (a rowwise fold takes more), one fewer than least is not',
+    miscounted.length === 0, ascii(miscounted.map(([name]) => name)));
+  const P = M.perturbed;
+  ok('F4 the calculator reads the catalogue: a name added there is signed, a name refused there is refused in its sentence',
+    P.SIGNATURES.some((s) => s.name === 'ZzProbe' && JSON.stringify(s.args) === '["value"]')
+    && P.compile('ZzLater(1)').why === 'ZzLater waits for the probe' && P.compile('Normdist(1)').why === 'Normdist waits for the probe',
+    ascii([P.SIGNATURES.length, P.compile('ZzLater(1)').why]));
+  const unanswered = Object.entries(CATALOGUE.functions).filter(([name, f]) => f.kind !== 'if' && typeof (M.expr.FUNCTIONS[name] || {}).fn !== 'function');
+  ok('F5 every function the catalogue lists is answered here', unanswered.length === 0, ascii(unanswered.map(([name]) => name)));
   return { ran, failures, names };
 }
 
 console.log('== baseline ==');
-const base = suite(REAL);
+const base = suite({ ...REAL, perturbed: (await loadWithProbe(join(SRC, 'expression.js'), { mutate: perturbed, tag: 'cat' })).module });
 if (base.failures.length) {
   console.log(`\n${base.ran - base.failures.length} passed, ${base.failures.length} failed`);
   console.log(`ASSERTIONS ${base.ran} ${base.failures.length}`);
@@ -238,12 +261,26 @@ const MUTANTS = [
     mutate: (t) => swap(t, '  if (onEdge && own) throw new ExpressionError(', '  if (false) throw new ExpressionError(') },
   { id: 'X26', what: 'a way read as one name - the code before (the row\'s own value named «in_container.size»)', catches: 'O[way.forward]', file: S,
     mutate: (t) => swap(t, '  const way = wayOf(name);\n  if (!way)', '  const way = null;\n  if (!way)') },
-  { id: 'X37', what: 'a function the file does not list', catches: 'F1', file: E,
-    mutate: (t) => swap(t, '  Abs: num1(Math.abs),', '  Abs: num1(Math.abs),\n  Twice: num1((x) => 2 * x),') },
-  { id: 'X38', what: 'an argument named otherwise than the file', catches: 'F2', file: E,
-    mutate: (t) => swap(t, "args: ['part', 'value'], zoned: true, fn: datePart", "args: ['value', 'part'], zoned: true, fn: datePart") },
-  { id: 'X39', what: 'a count the args do not say', catches: 'F3', file: E,
-    mutate: (t) => swap(t, '  PI: row(0, () => Math.PI, []),', '  PI: row(1, () => Math.PI, []),') },
+  { id: 'X37', what: 'the table written here - the catalogue copied in, not read', catches: 'F4', file: E,
+    mutate: (t) => swap(t, `import CATALOGUE from ${SPECIFIER} with { type: 'json' };`, `const CATALOGUE = ${CATALOGUE_TEXT.trim()};`) },
+  { id: 'X38', what: 'an argument named otherwise than the catalogue', catches: 'F2', file: E,
+    mutate: (t) => swap(t, '  DatePart: { zoned: true, fn: datePart },', "  DatePart: { zoned: true, fn: datePart, args: ['value', 'part'] },") },
+  { id: 'X39', what: 'a count the catalogue does not say', catches: 'F3', file: E,
+    mutate: (t) => swap(t, '  PI: row(() => Math.PI),', '  PI: { ...row(() => Math.PI), arity: 1 },') },
+  { id: 'X40', what: 'a function the catalogue lists answered by nothing here', catches: 'F5', file: E,
+    mutate: (t) => swap(t, '  Trim: textRow(trimmed),\n', '') },
+  { id: 'X41', what: 'a refusal worded here, not the catalogue\'s', catches: 'V[left.refuses.count]', file: E,
+    mutate: (t) => swap(t, "throw new ExpressionError(say('takes', { name, want, s: want === '1' ? '' : 's', n }));", 'throw new ExpressionError(`${name} needs ${want} arguments, got ${n}`);') },
+  { id: 'X42', what: 'Left takes a negative count as none', catches: 'V[left.negative]', file: E,
+    mutate: (t) => swap(t, 'c.slice(0, k) : c.slice(0, Math.max(c.length + k, 0))', 'c.slice(0, k) : []') },
+  { id: 'X43', what: 'a backslash in quotes read as itself', catches: 'V[text.escaped.quote]', file: E,
+    mutate: (t) => swap(t, "if (text[j] === '\\\\' && j + 1 < text.length && ESCAPED.includes(text[j + 1])) j += 1;", '') },
+  { id: 'X44', what: '& reads an empty side as an empty text', catches: 'V[ampersand.null]', file: E,
+    mutate: (t) => swap(t, 'return a === null || b === null ? null : String(a) + String(b);', "return String(a ?? '') + String(b ?? '');") },
+  { id: 'X45', what: '«$» is JavaScript\'s end, not .NET\'s', catches: 'V[match.end.newline]', file: E,
+    mutate: (t) => swap(t, "$: '(?=\\\\n?(?![\\\\s\\\\S]))'", "$: '$'") },
+  { id: 'X46', what: 'several arguments folded once, not within the row', catches: 'V[sum.args.columns]', file: E,
+    mutate: (t) => swap(t, "\n  || (node.t === 'call' && node.fn.kind === 'fold' && !!node.fn.rowwise && node.args.length > 1 && node.args.some(rowLevel));", ';') },
   { id: 'X19', what: 'a numeral is whatever Number() reads (0x10 is 16)', catches: 'N2', file: R,
     mutate: (t) => swap(t, "  if (typeof value !== 'string' || !NUMERAL.test(value.trim())) return null;", "  if (typeof value !== 'string' || !value.trim()) return null;") },
 ];
@@ -254,8 +291,11 @@ const CONTROLS = [
 const KEY = { [E]: 'expr', [R]: 'reach', [S]: 'slot' };
 const run = async (m) => {
   const copy = (await loadWithProbe(join(SRC, m.file), { mutate: m.mutate })).module;
-  return suite({ ...REAL, [KEY[m.file]]: copy }, true);
+  // F4 reads the same copy with the perturbed catalogue - a mutant that writes its own table has no specifier to swap
+  const seen = m.file === E ? (await loadWithProbe(join(SRC, E), { mutate: (t) => perturbed(m.mutate(t)), tag: 'cat' })).module : REAL_PERTURBED;
+  return suite({ ...REAL, [KEY[m.file]]: copy, perturbed: seen }, true);
 };
+const REAL_PERTURBED = (await loadWithProbe(join(SRC, E), { mutate: perturbed, tag: 'cat' })).module;
 const scored = await scoreMutants(MUTANTS, run, { baselineRan: base.ran, baselineNames: base.names, title: '\n== defect mutants (each caught by its named line) ==' });
 const controls = await scoreMutants(CONTROLS, run, { mustCatch: false, title: '\n== controls (each must wake nothing) ==' });
 const failed = scored.wrong + controls.wrong;

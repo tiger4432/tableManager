@@ -913,7 +913,7 @@ body.resizing-active .gallery-seat {
 .look-empty, .look-hist { color: var(--text-dim); font-size: var(--fs-meta); }
 .look-target { color: var(--text-dim); font-size: var(--fs-label); }
 .look-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
-.look-form > input, .look-form__cols { grid-column: 1 / -1; }
+.look-form__when, .look-form__cols { grid-column: 1 / -1; }
 .look-form__add { grid-column: 2; justify-self: end; }
 .look-form__cols { height: calc(var(--control-h-small) * 3); }
 .look-swatches { display: flex; gap: var(--space-2); }
@@ -3384,21 +3384,24 @@ body.resizing-active .gallery-seat {
 .formula-pop__hide { margin-left: auto; height: auto; min-height: 0; padding: 0 var(--space-1); line-height: 1.2; }
 /* its × as the toast's: a glyph its line's height, pressed by its letters (the screen gate's size rule) */
 .formula-pop__close { height: auto; min-height: 0; padding: 0 var(--space-1); font-size: var(--fs-h4); line-height: 1; color: var(--text-dim); }
-/* the field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
-.formula-pop__entry { position: relative; display: flex; flex-direction: column; gap: var(--space-3); }
-.formula-pop__field { position: relative; display: flex; flex-direction: column; gap: var(--space-1); }
+.formula-pop__entry { display: flex; flex-direction: column; gap: var(--space-1); }
 .formula-pop__label { font-size: var(--fs-label); font-weight: 600; color: var(--text-dim); }
-.formula-pop__input { font-family: var(--font-mono); }
-.formula-pop__input[aria-invalid="true"] { border-color: var(--danger); }
+/* A formula field (formula_input.js) - the column's formula, a colour rule's condition, the test bed's expression, a
+   chain rule's formula cell. The field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
+.formula-input { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.formula-input [hidden] { display: none; }
+.formula-input__field { position: relative; display: flex; flex-direction: column; }
+.formula-input__input { font-family: var(--font-mono); }
+.formula-input__input[aria-invalid="true"] { border-color: var(--danger); }
 /* what the caret stands in, over what follows (owner's mockup 11-07): the names offered under the field, or the call's
    arguments with the one being typed in bold under the field and its refusal */
-.formula-pop__complete, .formula-pop__signature { position: absolute; top: 100%; left: 0; z-index: 2; margin-top: var(--space-1);
+.formula-input__complete, .formula-input__signature { position: absolute; top: 100%; left: 0; z-index: 2; margin-top: var(--space-1);
   background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
-.formula-pop__complete { right: 0; }
-.formula-pop__signature { display: flex; align-items: center; min-height: var(--control-h-small); padding: 0 var(--space-3);
+.formula-input__complete { right: 0; min-width: calc(40 * var(--space-2)); }
+.formula-input__signature { display: flex; align-items: center; min-height: var(--control-h-small); padding: 0 var(--space-3);
   font-family: var(--font-mono); font-size: var(--fs-button); white-space: pre; color: var(--text-dim); }
-.formula-pop__signature b { color: var(--accent); }
-.formula-pop__why { padding: var(--space-2) var(--space-3); font-size: var(--fs-label); color: var(--decl-bad-ink); background: var(--danger-weak); overflow-wrap: anywhere; }
+.formula-input__signature b { color: var(--accent); }
+.formula-input__why { padding: var(--space-2) var(--space-3); font-size: var(--fs-label); color: var(--decl-bad-ink); background: var(--danger-weak); overflow-wrap: anywhere; }
 .formula-pop__insert { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .formula-pop__preview { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .formula-pop__section { font-size: var(--fs-h6); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }

@@ -141,9 +141,24 @@ const QUEUE = {
 const LEDGER_TABLE = 'ledger_events';
 const LEDGER_SOURCE = { source: 'fake_measure_events', relation: LEDGER_TABLE, emits: ['has_measurement', 'of_quantity'], world: 'default' };
 const bodyOf = (a) => (typeof a.body === 'string' ? JSON.parse(a.body) : a.body);
+// The chain rules were recorded before a take's fn was a formula field (owner 11-09 «ㄴ»): that node is today's, read from
+// the skeleton file the server generates (server/chain_skeleton.json, tested equal to the code).
+const isTakeFn = (f) => Boolean(f && f.key === 'fn' && f.node && f.node.list === 'aggregation_functions');
+const TAKE_FN_NODE = (function find(x) {
+  if (!x || typeof x !== 'object') return null;
+  if (isTakeFn(x)) return x.node;
+  for (const v of Object.values(x)) { const n = find(v); if (n) return n; }
+  return null;
+})(JSON.parse(readFileSync(path.join(CLIENT, '..', 'server', 'chain_skeleton.json'), 'utf8')));
+if (!TAKE_FN_NODE) throw new Error('server/chain_skeleton.json has no take fn');
+const withTodaysTakeFn = (x) => (Array.isArray(x) ? x.map(withTodaysTakeFn) : !x || typeof x !== 'object' ? x
+  : isTakeFn(x) ? { ...x, node: TAKE_FN_NODE } : Object.fromEntries(Object.entries(x).map(([k, v]) => [k, withTodaysTakeFn(v)])));
 for (const [key, a] of Object.entries(ANSWERS)) {
   if (!a || a.same_as || !a.body) continue;
-  if (key.startsWith('/api/ledger/declaration')) {
+  if (key.startsWith('/admin/chain/rules/raw?')) {
+    const b = bodyOf(a);
+    if (b.skeleton) a.body = { ...b, skeleton: withTodaysTakeFn(b.skeleton) };
+  } else if (key.startsWith('/api/ledger/declaration')) {
     const b = bodyOf(a);
     if (Array.isArray(b.sources)) a.body = { ...b, sources: [...b.sources, LEDGER_SOURCE] };
   } else if (key.startsWith(`/tables/${LEDGER_TABLE}/data?`)) {
@@ -1109,7 +1124,8 @@ CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at
 // The Retroactive tab's contents (owner 10-11 R): a chip a card, and a press brings that card to the tab's top - the last
 // ones as far as the tab scrolls; the header's own press (folding) not taken.
 // The chain form (lead after a2b7f6e14 · owner 10-21 「선언에 체인 칼럼 타겟 없는데」): target_columns stands on the first
-// screen, not under Advanced, in either grammar; a take record's fn picks from the four the rule answer carries.
+// screen, not under Advanced, in either grammar; a take record's fn is a formula field offering the four the rule answer
+// carries (owner 11-09 «ㄴ»).
 const TARGET_COLUMNS_FIRST = `(() => {
   const box = document.querySelector('.chain-rule-form [data-path="target_columns"]');
   if (!box) return 'target_columns is not drawn';
@@ -1128,12 +1144,13 @@ CELLS.push({ entry: 'admin.html', after: 'Overview, the last stall', rule: 'head
   return (${HEADER_ONE_ROW}) ? null : 'the header runs to ' + Math.round(document.querySelector('header.admin-bar').getBoundingClientRect().height) + ' px with the last stall shown';
 })()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rule: 'contents', at: 'derive.join.take', expr: `(() => {
-  const words = (at) => { const s = document.querySelector('select[data-value="' + at + '"]');
-    return s ? [...s.options].map((o) => o.value).filter(Boolean).join(',') : 'no picker'; };
-  const want = 'count,min,max,unique_concat';
-  for (const at of ['derive.join.take[1].fn', 'derive.join.take[2].fn']) if (words(at) !== want) return at + ' offers ' + words(at);
-  const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
-  return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
+  const field = (at) => { const i = document.querySelector('input[data-value="' + at + '"]'); return i && i.closest('.formula-input'); };
+  for (const at of ['derive.join.take[1].fn', 'derive.join.take[2].fn']) if (!field(at)) return at + ' is not a formula field';
+  const held = field('derive.join.take[1].fn').querySelector('input').value;
+  if (held !== 'unique_concat') return 'take[1].fn holds ' + held;
+  const words = [...field('derive.join.take[2].fn').querySelectorAll('.formula-input__complete:not([hidden]) .option-list__row')]
+    .map((r) => r.textContent.trim()).sort().join(',');
+  return words === 'count,max,min,unique_concat' ? null : 'the empty fn offers ' + (words || 'nothing');
 })()` });
 // From the chips (owner 10-23, lead ㄴ): «+ record» opens a take entry as a record - the list then rows, its picker record.
 CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', rule: 'contents', at: 'derive.join.take', expr: `(() => {
@@ -1144,6 +1161,21 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', 
   const p = document.querySelector('select[data-action="edit-shape-branch"][data-value="derive.join.take[1]"]');
   return p && p.value === 'record' ? null : 'the row picker says ' + (p ? p.value : 'nothing');
 })()` });
+// The four formula inputs (owner 11-09 «ㄴ»): its list open under it, then its refusal line - one field, four places.
+const FIELD_OPEN = (field) => `(() => { const f = document.querySelector(${JSON.stringify(field)});
+  if (!f) return 'no formula field'; const rows = f.querySelectorAll('.formula-input__complete:not([hidden]) .option-list__row');
+  return rows.length ? null : 'its list is not open'; })()`;
+const FIELD_REFUSED = (field) => `(() => { const f = document.querySelector(${JSON.stringify(field)});
+  if (!f) return 'no formula field'; const why = f.querySelector('.formula-input__why:not([hidden])');
+  return why && why.textContent.trim() ? null : 'no refusal line'; })()`;
+for (const [entry, open, refused, field] of [
+  ['index.html', 'Formula, names offered', 'Formula, refused', '.formula-pop .formula-input'],
+  ['index.html', 'Colours, a condition offered', 'Colours, a condition refused', '.look-form__when .formula-input'],
+  ['testbed.html', 'Custom expression, names offered', 'Custom expression, refused', '.sf-pop-host .formula-input'],
+  ['admin.html', 'Chain, + then record on the take', 'Chain, a take fn refused', '.formula-input:has(input[data-value="derive.join.take[2].fn"])']]) {
+  CELLS.push({ entry, after: open, rule: 'formula list open', at: 'formula-input', expr: FIELD_OPEN(field) });
+  CELLS.push({ entry, after: refused, rule: 'formula refused', at: 'formula-input', expr: FIELD_REFUSED(field) });
+}
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
@@ -1433,7 +1465,8 @@ CELLS.push({ entry: 'index.html', after: 'Value suggestions, at the foot of the 
 })()` });
 // A call's arguments under the formula and the server's refusal both read (owner 11-07): the line hangs under the refusal.
 CELLS.push({ entry: 'index.html', after: 'Formula, its arguments', rule: 'arguments under the refusal', at: 'formula', expr: `(() => {
-  const s = document.querySelector('.formula-pop__signature'); const w = document.querySelector('.formula-pop__why');
+  // the popover's own field: the page holds another (the Colours tab's condition)
+  const s = document.querySelector('.formula-pop .formula-input__signature'); const w = document.querySelector('.formula-pop .formula-input__why');
   if (!s || s.hidden) return 'no arguments line';
   if (!w || w.hidden) return 'no refusal drawn';
   const a = s.getBoundingClientRect(); const b = w.getBoundingClientRect();
@@ -2931,6 +2964,25 @@ const DRIVE = {
       }
       await evaluate(c, `window.__pickPlaced = ${JSON.stringify(out)}; true`);
     }],
+    ...[['Custom expression, names offered', 'Ab', '.sf-pop-host .formula-input__complete:not([hidden]) .option-list__row'],
+      ['Custom expression, refused', 'Abs(', '.sf-pop-host .formula-input__why:not([hidden])']].map(([name, text, drawn], k) => [name, async (c) => {
+      if (k === 0) {
+        await evaluate(c, `(() => { const pill = document.querySelector('[data-panel="cross-1"] .sf-frame__left .sf-pill'); if (pill) pill.click();
+          return Boolean(pill); })()`);
+        await until(c, "[...document.querySelectorAll('.sf-pop-host button')].some((b) => b.textContent.trim() === 'Custom expression…')");
+        await evaluate(c, `(() => { const b = [...document.querySelectorAll('.sf-pop-host button')].find((x) => x.textContent.trim() === 'Custom expression…');
+          if (b) b.click(); return Boolean(b); })()`);
+        await until(c, "Boolean(document.querySelector('.sf-pop-host .formula-input input'))");
+      }
+      await evaluate(c, `(() => { const i = document.querySelector('.sf-pop-host .formula-input input'); if (!i) return false; i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)});
+        i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await until(c, `Boolean(document.querySelector(${JSON.stringify(drawn)}))`);
+    }]),
+    ['Custom expression closed', async (c) => {
+      await evaluate(c, "(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return true; })()");
+      await sleep(200);
+    }],
     // A part's title dropped on another's middle - the two swap (owner 10-14, Spotfire's); dragged there and Escape - nothing
     // moves; while over the middle the drop mark covers the whole part.
     ['parts swapped by a drop', async (c) => {
@@ -3328,6 +3380,16 @@ const DRIVE = {
       const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell');
       if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
       return true; })()`).then(() => sleep(600))],
+    ...[['Colours, a condition offered', '[', '.look-form__when .formula-input__complete:not([hidden]) .option-list__row'],
+      ['Colours, a condition refused', '[value] >', '.look-form__when .formula-input__why:not([hidden])']].map(([name, text, drawn]) => [name, async (c) => {
+      await evaluate(c, `(() => { const i = document.querySelector('.look-form__when input'); if (!i) return false; i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)});
+        i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await until(c, `Boolean(document.querySelector(${JSON.stringify(drawn)}))`);
+    }]),
+    ['Colours, the condition cleared', (c) => evaluate(c, `(() => { const i = document.querySelector('.look-form__when input'); if (!i) return false;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '');
+      i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`).then(() => sleep(200))],
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],
@@ -3531,13 +3593,13 @@ const DRIVE = {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '=[dt_x]+[dt_z]*3');
         i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
       await settle(c, log);
-      await until(c, "Boolean(document.querySelector('.formula-pop .formula-pop__why:not([hidden])'))");
+      await until(c, "Boolean(document.querySelector('.formula-pop .formula-input__why:not([hidden])'))");
     }],
     // As one types (owner's mockup 11-07): the function names offered under the formula, a call's arguments, the columns
     // after «[» - each over what stands under the field.
-    ...[['Formula, names offered', '=Da', '.formula-pop__complete:not([hidden]) .option-list__row'],
-      ['Formula, its arguments', '=DatePart(', '.formula-pop__why:not([hidden]) ~ .formula-pop__signature:not([hidden]) b'],
-      ['Formula, columns offered', '=Sum([dt_', '.formula-pop__complete:not([hidden]) .option-list__row']].map(([name, text, drawn]) => [name, async (c) => {
+    ...[['Formula, names offered', '=Da', '.formula-input__complete:not([hidden]) .option-list__row'],
+      ['Formula, its arguments', '=DatePart(', '.formula-input__why:not([hidden]) ~ .formula-input__signature:not([hidden]) b'],
+      ['Formula, columns offered', '=Sum([dt_', '.formula-input__complete:not([hidden]) .option-list__row']].map(([name, text, drawn]) => [name, async (c) => {
       await evaluate(c, `(() => { const i = document.querySelector('.formula-pop input'); if (!i) return false; i.focus();
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)});
         i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
@@ -3858,6 +3920,15 @@ const DRIVE = {
       await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+      // the empty fn focused: what it offers
+      await evaluate(c, `(() => { const i = document.querySelector('input[data-value="derive.join.take[2].fn"]'); if (i) i.focus(); return Boolean(i); })()`);
+      await until(c, "Boolean(document.querySelector('.formula-input:has(input[data-value=\"derive.join.take[2].fn\"]) .formula-input__complete:not([hidden]) .option-list__row'))");
+    }],
+    ['Chain, a take fn refused', async (c) => {
+      await evaluate(c, `(() => { const i = document.querySelector('input[data-value="derive.join.take[2].fn"]'); if (!i) return false; i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '=Left(');
+        i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await until(c, "Boolean(document.querySelector('.formula-input:has(input[data-value=\"derive.join.take[2].fn\"]) .formula-input__why:not([hidden])'))");
     }],
     // From the chips (owner 10-23, lead ㄴ): the rule open (a unified join) given a take of one name in its text - a chip
     // list; then «+ record». A new rule is not used: its recorded answer is an older server's, with no unified grammar;

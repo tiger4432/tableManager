@@ -400,8 +400,9 @@ async function parts(M) {
   const pickHost = xp.doc.createElement('div');
   new M.picker.SlotPicker(pickHost, { doc: xp.doc }).open({ part: xp.part, key: 'color', anchor: null });
   walk(pickHost).find((n) => n.tagName === 'BUTTON' && n.textContent === 'Custom expression…').listeners.click[0]({});
-  const exprInput = () => walk(pickHost).find((n) => n.className === 'sf-pop__expr');
-  const exprWhy = () => (walk(pickHost).find((n) => n.className === 'sf-pop__why' && n.parentNode && n.parentNode.className === 'sf-pop__edit') || {}).textContent;
+  // the expression box is the one formula field (formula_input.js): its input carries sf-pop__expr, its refusal line is its own
+  const exprInput = () => walk(pickHost).find((n) => String(n.className).split(' ').includes('sf-pop__expr'));
+  const exprWhy = () => (walk(pickHost).find((n) => n.className === 'formula-input__why') || {}).textContent;
   const enter = (text) => { exprInput().value = text; exprInput().listeners.keydown[0]({ key: 'Enter' }); };
   enter('Avg(');
   const custom = [exprWhy(), JSON.stringify(xp.part.declaration().encode.color) === JSON.stringify(product)];
@@ -419,7 +420,7 @@ async function parts(M) {
     new M.picker.SlotPicker(host, { doc: wp.doc }).open({ part: wp.part, key, anchor: null });
     const custom = walk(host).find((n) => n.tagName === 'BUTTON' && n.textContent === 'Custom expression…');
     for (const fn of (custom || { listeners: {} }).listeners.click || []) fn({});
-    const input = walk(host).find((n) => n.className === 'sf-pop__expr');
+    const input = walk(host).find((n) => String(n.className).split(' ').includes('sf-pop__expr'));
     return input ? input.value : null;
   };
   out.wayStart = [startOf('x'), startOf('y'), startOf('color'), M.picker.expressionRefusal(wp.part, '[in_lot.name]'),
@@ -1127,7 +1128,7 @@ MUTANTS.push(
   { id: 'M41', what: 'an expression reads a row\'s own value as its label', catches: 'T27', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  if (has(node.attributes)) return { on: 'node', name };", "  if (has(node.attributes)) return { on: 'label', name: 'name' };") },
   { id: 'M42', what: 'the picker sets an expression it refused', catches: 'T28', file: 'testbed/picker.js',
-    mutate: (t) => swap(t, '        if (said) { why.textContent = said; return; }', '        if (said) { why.textContent = said; }') },
+    mutate: (t) => swap(t, '        if (said) { formula.refuse(said); return; }', '        if (said) { formula.refuse(said); }') },
   { id: 'M44', what: 'the part counts no row an expression could not take as a number', catches: 'T30', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '      notNumber: rows.filter((r) => Object.values(r.reads).some((read) => read.notNumber)).length,', '      notNumber: 0,') },
   { id: 'M45', what: 'the bottom line does not say the rows that are not a number', catches: 'T30', file: 'testbed/status_part.js',

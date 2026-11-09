@@ -9,7 +9,7 @@ import { readsOf, recordsOf, waysOf, WAYS_A_CELL, valueWords, numberOf } from '.
 import { timeOf } from '../walk/trend.js';
 import { parseServerInstant, localStamp, NO_TIME } from '../server_time.js';
 import { isBlank } from '../absent.js';
-import { compile, run, Reads, ExpressionError, dayText } from '../expression.js';
+import { compile, run, Reads, ExpressionError, dayText, say } from '../expression.js';
 import { fold } from './aggregate.js';
 
 const spelling = (v) => JSON.stringify(v);
@@ -152,7 +152,7 @@ export const isExpression = (slot) => Boolean(slot) && typeof slot.expr === 'str
  *  attribute and a key is refused (the grammar's «two answers refuse», afcb79f14). None: the node says nothing. */
 export function ownValue(node, name) {
   const has = (o) => Object.prototype.hasOwnProperty.call(o || {}, name);
-  if (has(node.attributes) && has(node.keys)) throw new ExpressionError(`[${name}] is both a key and a value of ${node.type || 'this row'}`);
+  if (has(node.attributes) && has(node.keys)) throw new ExpressionError(say('key_and_value', { name, type: node.type || 'this row' }));
   if (has(node.attributes)) return { on: 'node', name };
   if (has(node.keys)) return { on: 'key', name };
   return name === 'name' ? { on: 'label', name } : null;
@@ -183,7 +183,7 @@ export function nameValue(index, inside, x, name) {
   const { ends } = waysOf(index, inside, [x], way.steps, WAYS_A_CELL);
   const onEdge = ends.some((e) => e.edge && Object.prototype.hasOwnProperty.call(e.edge.qualifiers || {}, way.name));
   const own = ends.map((e) => ownValue(index.nodes.get(e.node) || {}, way.name)).find(Boolean) || null;
-  if (onEdge && own) throw new ExpressionError(`[${name}] is both a value of the node it reaches and of its edge`);
+  if (onEdge && own) throw new ExpressionError(say('node_and_edge', { name }));
   return { steps: way.steps, value: onEdge ? { on: 'edge', name: way.name } : own };
 }
 

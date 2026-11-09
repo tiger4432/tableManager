@@ -678,7 +678,7 @@ DECIDE_CELL_SHAPES = {
     "fields": _listed("field", _value()),
     "list_columns": _listed("column", _NAME_OR_PAIR),
     "aggregations": _named("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
-        "expression": _value(),
+        "expression": {**_value("formula"), "table_from": list(chain_bindings.SOURCE_TABLE_AT)},
         "record": {"kind": "record", "fields": [
             {"key": key, "required": False, "node": _value()} for key in ("fn", "column", "separator")]}},
         "empty": {"expression": ""}}),

@@ -8,8 +8,9 @@
 //   D  a refusal stands word for word and Apply stays off; Apply and Remove send once, toast, and close
 //   E  Esc and a press outside close it, a press inside does not; a column chip lands at the caret; two instances
 //   F  the header's fx mark opens the formula and its press does not reach the header (no sort, no drag)
-//   G  as one types (owner's mockup 11-07): function names that start with it with their arguments, the columns after
-//      «[», the call's arguments with the one being typed in bold; ↑↓ Enter Tab take a row, Esc closes the list alone
+//   G  as one types (owner's mockup 11-07), through the popover's formula field (formula_input.js, scored on its own by
+//      formula_input_harness.mjs): names and columns offered, ↑↓ Enter Tab take a row, Esc closes the list alone, Enter
+//      with no list previews, the arguments under the server's refusal
 // Run: node client2/tests/formula_popover_harness.mjs
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -163,8 +164,8 @@ console.log('\n── B. OPENING ───────────────�
   const r = mount(X, { read: { ok: false, error: 'Admin token rejected (HTTP 401)' } });
   await r.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   await tick();
-  ok('B8 a refused read says why in the popover', find(r.pop.panel, 'formula-pop__why').textContent === 'Admin token rejected (HTTP 401)'
-    && find(r.pop.panel, 'formula-pop__why').hidden === false);
+  ok('B8 a refused read says why in the popover', find(r.pop.panel, 'formula-input__why').textContent === 'Admin token rejected (HTTP 401)'
+    && find(r.pop.panel, 'formula-input__why').hidden === false);
 }
 
 console.log('\n── C. THE PREVIEW ──────────────────────────────────────────────────');
@@ -231,7 +232,7 @@ console.log('\n── D. REFUSAL · APPLY · REMOVE ─────────�
   const m = mount(X, { preview: { ok: false, error: "'z' is not a column of fx" } });
   await m.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   await tick();
-  const why = find(m.pop.panel, 'formula-pop__why');
+  const why = find(m.pop.panel, 'formula-input__why');
   ok('D1 a refused preview says the server\'s sentence word for word', why.textContent === "'z' is not a column of fx" && why.hidden === false);
   ok('D2 ...the field is marked invalid, the preview hidden, Apply off',
     find(m.pop.panel, 'formula-pop__input').getAttribute('aria-invalid') === 'true'
@@ -261,7 +262,7 @@ console.log('\n── D. REFUSAL · APPLY · REMOVE ─────────�
   find(refused.pop.panel, 'formula-pop__apply').click();
   await tick();
   ok('D7 a refused save stays open with the server\'s sentence, nothing toasted',
-    refused.pop.isOpen && find(refused.pop.panel, 'formula-pop__why').textContent === loop && refused.said.length === 0
+    refused.pop.isOpen && find(refused.pop.panel, 'formula-input__why').textContent === loop && refused.said.length === 0
       && refused.saved.length === 0);
 
   const rm = mount(X);
@@ -343,32 +344,12 @@ console.log('\n── F. THE HEADER\'S fx MARK ───────────
 
 console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────────────────────');
 {
-  const da = X.offerAt('=Da', 3, []);
-  ok('G1 a name typed: the functions that start with it, by name, each with its arguments',
-    da.kind === 'function' && da.items[0].value === 'Date' && da.items[1].value === 'DatePart'
-    && da.items[1].side === 'DatePart(part, value)' && da.items[1].head === 'Da' && da.items[1].rest === 'tePart',
-    da.items.slice(0, 3));
-  const col = X.offerAt('=Sum([D', 7, ['dt_lot', 'b', 'dt_x']);
-  ok('G2 after «[» the table\'s columns that start with it, any case, in the table\'s order; «[» alone - all',
-    col.kind === 'column' && col.items.map((i) => i.value).join() === 'dt_lot,dt_x'
-    && X.offerAt('=Sum([', 6, ['a', 'b']).items.length === 2, col);
-  ok('G3 nothing in a text in quotes, after a digit, or for a name nothing starts with',
-    X.offerAt('="Da', 4, []) === null && X.offerAt('=1Da', 4, []) === null && X.offerAt('=Zzz', 4, []) === null);
-  ok('G4 the call the caret is in and which argument: commas at its own depth, a call inside it closed',
-    JSON.stringify(X.callAt('=DatePart("a,b", ', 17)) === '{"name":"DatePart","arg":1}'
-    && JSON.stringify(X.callAt('=Round(Sum([a], [b]), ', 22)) === '{"name":"Round","arg":1}'
-    && X.callAt('=[a]+1', 6) === null, [X.callAt('=DatePart("a,b", ', 17), X.callAt('=Round(Sum([a], [b]), ', 22)]);
-  const fn = X.acceptAt('=Datx+1', 4, X.offerAt('=Datx+1', 4, []) || { kind: 'function', from: 1 }, 'DatePart');
-  const cl = X.acceptAt('=Sum([dt_]+1', 9, X.offerAt('=Sum([dt_]+1', 9, ['dt_lot']), 'dt_lot');
-  ok('G5 taken: a function as «Name(» over the rest of the word, a column as «name]» over a «]» already there',
-    fn.text === '=DatePart(+1' && fn.caret === 10 && cl.text === '=Sum([dt_lot]+1' && cl.caret === 13, [fn, cl]);
-
   const m = mount(X);
   await m.pop.open({ table: 'fx', column: 'c', columns: ['a', 'b', 'c'] });
   await tick();
   const input = find(m.pop.panel, 'formula-pop__input');
-  const list = find(m.pop.panel, 'formula-pop__complete');
-  const sign = find(m.pop.panel, 'formula-pop__signature');
+  const list = find(m.pop.panel, 'formula-input__complete');
+  const sign = find(m.pop.panel, 'formula-input__signature');
   const typeIn = (text) => { input.value = text; input.setSelectionRange(text.length, text.length); input.fire('input'); };
   const lit = () => list.children.findIndex((r) => r.getAttribute('aria-selected') === 'true');
   typeIn('=Da');
@@ -418,7 +399,7 @@ console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────
 
   // The arguments line hangs under the block of the field and its refusal (owner 11-07): after the refusal when one
   // stands, both read; with none, right under the field.
-  const order = (p) => find(p.pop.panel, 'formula-pop__entry').children.filter((n) => !n.hidden).map((n) => n.className);
+  const order = (p) => find(p.pop.panel, 'formula-input').children.filter((n) => !n.hidden).map((n) => n.className);
   const refused = mount(X, { preview: { ok: false, error: 'The expression ends too soon' } });
   await refused.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   await tick();
@@ -436,8 +417,8 @@ console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────
   cin.setSelectionRange(10, 10);
   cin.fire('input');
   ok('G16 the arguments line comes after the refusal, both shown; with no refusal, right after the field',
-    order(refused).join() === 'formula-pop__field,formula-pop__why,formula-pop__signature'
-    && order(clean).join() === 'formula-pop__field,formula-pop__signature', [order(refused), order(clean)]);
+    order(refused).join() === 'formula-input__field,formula-input__why,formula-input__signature'
+    && order(clean).join() === 'formula-input__field,formula-input__signature', [order(refused), order(clean)]);
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
@@ -453,7 +434,7 @@ const DEFECTS = [
   ['M3 a save goes without the read\'s base',
     swap("body: { table, column, formula, base } };", "body: { table, column, formula } };")],
   ['M4 a refusal is drawn as a word of the screen\'s own',
-    swap("this.why.textContent = sentence || '';", "this.why.textContent = sentence ? 'Refused' : '';")],
+    swap('    this.formula.refuse(sentence);', "    this.formula.refuse(sentence ? 'Refused' : '');")],
   ['M5 the fx press reaches the header',
     swap("    this.mark.addEventListener('click', (e) => {\n      stop(e);", "    this.mark.addEventListener('click', (e) => {")],
   ['M6 the column is offered as its own operand',
@@ -464,16 +445,10 @@ const DEFECTS = [
     swap("if (c.total === null) return { text: COUNTING_ROWS, at: '' };", "if (c.total === null) return { text: '0 rows will be recomputed', at: '' };")],
   ['M9 a refused save closes as if saved',
     swap("    if (!said.ok) {\n      this.refuse(said.error);\n      setDisabledReason(this.applyBtn, REFUSED_FIRST);", "    if (false) {\n      this.refuse(said.error);\n      setDisabledReason(this.applyBtn, REFUSED_FIRST);")],
-  ['M10 the Enter that takes a row also asks a preview',
-    swap("    } else if (e.key === 'Enter') this.preview();", "    }\n    if (e.key === 'Enter') this.preview();")],
-  ['M11 the argument being typed does not move past a comma',
-    swap('    else if (ch === \',\' && calls.length) calls[calls.length - 1].arg += 1;\n', '')],
-  ['M12 Esc with the list open reaches the popover\'s watch',
-    swap('      if (e.stopPropagation) e.stopPropagation();\n      this.closeList();', '      this.closeList();')],
-  ['M14 the arguments line hangs under the field, over the refusal',
-    swap('    entry.appendChild(this.sign);\n', '    field.appendChild(this.sign);\n')],
-  ['M13 a column taken over a «]» already there doubles it',
-    swap(": (/^[^[\\](),]*\\]/.exec(after) || [''])[0];", ": '';")],
+  ['M10 the field offers every column, its own too',
+    swap('columns: () => this.columns,', 'columns: () => [...this.columns, this.target.column],')],
+  ['M11 Enter with no list open previews nothing',
+    swap('onEnter: () => this.preview() });', 'onEnter: () => {} });')],
 ];
 const CONTROLS = [
   ['a local rename', (src) => src.replace(/\bpreviewed\b/g, 'shownFor')],
@@ -491,7 +466,7 @@ async function verdict(M) {
   await g.pop.open({ table: 'fx', column: 'c', columns: ['a', 'c'] });
   await tick();
   const gin = find(g.pop.panel, 'formula-pop__input');
-  const glist = find(g.pop.panel, 'formula-pop__complete');
+  const glist = find(g.pop.panel, 'formula-input__complete');
   const gtype = (text) => { gin.value = text; gin.setSelectionRange(text.length, text.length); gin.fire('input'); };
   gtype('=Da');
   const sentAt = g.sent.length;
@@ -499,12 +474,16 @@ async function verdict(M) {
   await tick();
   if (gin.value !== '=Date(' || g.sent.length !== sentAt) return true;
   gtype('=DatePart("year", ');
-  if (all(find(g.pop.panel, 'formula-pop__signature'), 'B').map((b) => b.textContent).join() !== 'value') return true;
+  if (all(find(g.pop.panel, 'formula-input__signature'), 'B').map((b) => b.textContent).join() !== 'value') return true;
   gtype('=Su');
   if (!gin.fire('keydown', { key: 'Escape' }).stopped || !glist.hidden) return true;
-  if (M.acceptAt('=[a]+1', 3, M.offerAt('=[a]+1', 3, ['ab']), 'ab').text !== '=[ab]+1') return true;
-  if (find(g.pop.panel, 'formula-pop__entry').children.map((n) => n.className).join()
-    !== 'formula-pop__field,formula-pop__why,formula-pop__signature') return true;
+  gtype('=Sum([');
+  if (find(g.pop.panel, 'formula-input__complete').children.map((r) => r.textContent).join() !== '[a]') return true;
+  gtype('=[a]+1');
+  const before = g.sent.length;
+  gin.fire('keydown', { key: 'Enter' });
+  await tick();
+  if (!posts(g.sent.slice(before)).some((r) => r.body.preview === true)) return true;
 
   const m = mount(M);
   await m.pop.open({ table: 'fx', column: 'c', columns: ['a', 'c'] });
@@ -534,7 +513,7 @@ async function verdict(M) {
   const r = mount(M, { preview: { ok: false, error: 'why exactly' } });
   await r.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   await tick();
-  if (find(r.pop.panel, 'formula-pop__why').textContent !== 'why exactly') return true;
+  if (find(r.pop.panel, 'formula-input__why').textContent !== 'why exactly') return true;
 
   const s = mount(M, { save: { ok: false, error: 'loop' } });
   await s.pop.open({ table: 'fx', column: 'c', columns: ['a', 'b'] });

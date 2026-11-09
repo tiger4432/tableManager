@@ -137,7 +137,7 @@
 - **Binning 10**: AutoBinNumeric · BinByDateTime · BinByEvenDistance · BinByEvenDistribution · BinByEvenIntervals · BinBySpecificLimits · BinByStdDev · BinBySubstring · BinByTimeSpan · FiscalBinByDateTime
 - 지어진 것(이 목록이 «짓지 않는 범주»로 적은 뒤): Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart(fe2ba4b1f · 7bd0cb88f) · ParseDateTime(1d0b4f41f — 형식은 .NET 철자의 닫힌 토큰 yyyy yy MM dd HH mm ss fff, 소유자 11-07 «2»)
 - **Conversion 25**: Base64Decode · Base64Encode · Boolean · Currency · Date · DateTime · FirstValidAfter · FromEpochMilliseconds · FromEpochSeconds · Integer · LastValidBefore · LongInteger · ParseDate · ParseDateTime · ParseReal · ParseTime · ParseTimeSpan · Real · SingleReal · SN · String · Time · TimeSpan · ToEpochMilliseconds · ToEpochSeconds
-- **Text 20**: ~= · Concatenate · Find · Left · Len · Lower · Mid · MostCommon · NameDecode · NameEncode · Repeat · Right · RXExtract · RXReplace · Split · Substitute · Substring · Trim · UniqueConcatenate · Upper (MostCommon · UniqueConcatenate 는 1-a 에도 적음) · 그리고 Operators 의 & (글 이어 붙이기)
+- **Text 20** (지음 — 9 절, 소유자 11-09 «ㄴ»): ~= · Concatenate · Find · Left · Len · Lower · Mid · MostCommon · NameDecode · NameEncode · Repeat · Right · RXExtract · RXReplace · Split · Substitute · Substring · Trim · UniqueConcatenate · Upper (MostCommon · UniqueConcatenate 는 1-a 에도 적음) · 그리고 Operators 의 & (글 이어 붙이기)
 - **Date and Time 33**: DateAdd · DateDiff · DatePart · DateTimeNow · Day · DayOfMonth · DayOfWeek · DayOfYear · Days · FiscalMonth · FiscalQuarter · FiscalYear · Hour · Hours · ISOWeek · ISOYear · Millisecond · Milliseconds · Minute · Minutes · Month · Quarter · Second · Seconds · Today · TotalDays · TotalHours · TotalMilliseconds · TotalMinutes · TotalSeconds · Week · Year · YearAndWeek
 - **OVER 14**: All · AllNext · AllPrevious · FirstNode · Intersect · LastNode · LastPeriods · NavigatePeriod · Next · NextPeriod · ParallelPeriod · Parent · Previous · PreviousPeriod
 - **Property 8**: $csearch · $esc · $map · BaseRowId · ColumnProperty · DataTableProperty · DocumentProperty · RowId
@@ -154,3 +154,26 @@
 소유자 스팟파이어에서 재는 길은 닫혔습니다(총괄 10-13 — 웹 보기의 식 단추가 소유자 데스크톱 창을 엶. 웹 보기는 보기 · 간격 재기에만).
 - 스팟파이어 온라인 설명서(최신판 함수 쪽, 10-13 읽음 · 7.0.1 통계 정의)가 정하는 칸은 contracts/expression/vectors.json 의 vectors 에 근거(basis · cite)와 함께 있습니다.
 - 설명서도 정하지 않거나 두 쪽이 엇갈리는 칸은 같은 파일의 unsettled 에 «무엇이 열렸나 · 왜»로 있습니다 — 채점하지 않고, 정해지면 vectors 로 옮깁니다.
+
+## 9. 글자 — Text 20 + & (소유자 11-09 «ㄴ»)
+지은 것: ~= · & · Concatenate · Find · Left · Len · Lower · Mid · Repeat · Right · RXExtract · RXReplace · Split · Substitute · Substring · Trim · Upper (MostCommon · UniqueConcatenate 는 1-a). 근거 · 경우 · 거절 문장은 contracts/expression/vectors.json, 이름 · 인자 · 문장은 서버 표에서 짓는 contracts/expression/catalogue.json.
+- **NameEncode · NameDecode** 는 안 지음 — 설명서가 결과 줄도 인코딩 꼴도 안 적음(TERR 문서: 5.0 뒤로 쓰지 말 것). 이름 댄 거절(총괄 11-09 ③).
+- 설명서가 안 정해 우리가 정한 것(decided): 한 칸 Concatenate 는 «, » 로 잇기(UniqueConcatenate 와 같은 상수 하나) · Find 셋째 인자는 k 번째(앞 자리 한 칸 뒤부터 찾음, 겹침 허용) · Split 0 · 범위 밖 · 빈 구분자는 빈 값 · Substitute 빈 찾기는 그대로, 빈 바꿈은 지움 · Repeat 음수는 빈 값 · 숫자 인자는 정수 부분.
+- 글자 수와 자리는 코드 포인트로 셈(두 엔진 같음). 숫자는 화면 철자(21, 1.5, 1e+21)로 글이 됨.
+- **따옴표 안 역슬래시**(총괄 11-09 ①): `\\` `\"` `\'` 는 그 글자, 다른 `\x` 는 두 글자 그대로. 그 전에는 다음 따옴표까지 그대로 읽었음.
+
+### 패턴 — RXExtract · RXReplace · ~=
+패턴은 식과 함께 한 번 읽어 두 엔진이 «같은 글»을 컴파일함. 그래서 패턴 · 바꿈 · 옵션은 따옴표 글이어야 함(칸 값은 거절).
+.NET(스팟파이어)과 다른 점:
+
+| 무엇 | .NET | 여기 |
+|---|---|---|
+| `\d` `\w` `\b` `\B` | 유니코드 숫자 · 글자 | ASCII `[0-9]` `[A-Za-z0-9_]` |
+| `\s` | 유니코드 공백 | ASCII 여섯 `\t \n \v \f \r` 빈칸 |
+| `.` · `$` | 줄바꿈 아닌 것 · 끝 또는 마지막 줄바꿈 앞 | 같음 |
+| `(?<이름>` `(?<=` `(?<!` `(?i` `(?>` · `\A \Z \z \G \p \k \1 \x \u \0` | 읽음 | 이름 댄 거절 |
+| `[a-z-[aeiou]]` 클래스 빼기 | 읽음 | 거절 |
+| 바꿈 `$&` · `` $` `` · `$'` · `$+` · `$_` · `${이름}` | 읽음 | 거절. `$n ${n} $0 $$` 은 읽음, 없는 그룹 번호는 글자 그대로 |
+| `i` 옵션에서 İ(U+0130) · ı(U+0131) | i 와 안 맞음(불변 문화) | 화면 같음 · **서버는 i 와 맞음** |
+
+마지막 줄이 두 엔진 사이에 남은 차이 하나 — 66 글자 × BMP 전체 대소문자 대조에서 10 쌍, 전부 İ · ı.

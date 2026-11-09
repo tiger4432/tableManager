@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **수식의 함수 목록 · 인자 · 거절 문장이 한 파일(contracts/expression/catalogue.json) — Text 함수 20 · & · ~= , 수식 입력 칸 넷이 한 부품** — git pull · 런처 재기동(API · 체인 워커) · 브라우저 새로고침
+>
+> ```
+> 무엇     서버 계산기와 화면 계산기가 함수 목록 · 인자 · 거절 문장을 catalogue.json 하나에서 읽음
+>          Text 함수 20 (Left · Right · Mid · Len · Find · Upper · Concatenate · RXReplace …) 와 & (이어 붙이기) · ~= (패턴)
+>          수식 칸 · 색칠 조건 · 테스트 베드 식 · 체인 폼 take fn / decide 식 — 넷이 같은 입력 칸(자동 완성 · 인자 줄 · 거절 줄)
+> 말이 바뀜 따옴표 안 \\ \" \' 가 이스케이프로 읽힘 — 전에는 글자 그대로. 그 밖의 \x 는 그대로 두 글자
+>          Sum([a], [b]) 처럼 행 값 여럿을 한 함수에 넣는 식이 이제 행마다 계산됨 — 전에는 두 계산기 다 거절
+>          체인 폼 take fn 이 드롭다운에서 수식 칸으로 — 빈 칸을 누르면 함수 전부가 목록으로 뜸
+> 목록 고치기 server/expression.py 를 고친 뒤  python server/expression.py  — catalogue.json 을 다시 씀
+> 답의 뜻  git diff contracts/expression/catalogue.json 이 비어 있음 = 파일이 코드와 같음
+>          비어 있지 않음 = 코드만 고치고 파일을 안 다시 씀 — 서버 시험(표 = 파일)이 빨강, 화면은 옛 목록
+> 아직     i 옵션(대소문자 무시)의 İ / ı 는 서버와 화면이 다르게 맞춤 — task/SPOTFIRE_FUNCTIONS.md §9 의 표
+>          NameEncode · NameDecode 는 «정해지지 않음»으로 거절
+> 끄기     없음 — 되돌리기는 이 커밋 revert -> 런처 재기동 · 새로고침
+> ```
+>
+> ---
+>
 > ## [11-09] **제품이 거는 DDL(칸 추가 · 표 저장 옵션 · 칸 타입 바꾸기)이 읽기를 길게 세우지 않음 — 0.5 s 씩 30 s 동안 다시 물음** — git pull · 런처 재기동(전부)
 >
 > ```

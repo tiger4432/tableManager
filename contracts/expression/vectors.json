@@ -49,10 +49,8 @@
     "                an exponent (\"29.50\", \" 1 \", \"+2\", \"1e1\", \".5\"); anything else is text (\"29,50\", \"29 mm\", \"0x10\"),",
     "                which a numeric fold leaves out; an empty text is empty.",
     "  out_of_edition  names not built in this edition, and why.",
-    "  functions     every function both calculators build: its name and its arguments' names (`args`), as the formula's",
-    "                signature line says them (lead 11-07). Both tables are held to it - the same names, the same args, and",
-    "                the count of args is the count the calculator takes (a fold's «...» more or none is its own cell, not",
-    "                written here). The screen's Marked is not here.",
+    "  The functions themselves - names, args, counts, the names refused and every refusal sentence - are",
+    "                contracts/expression/catalogue.json, written from the server's table (owner 11-09 «ㄴ»).",
     "Grow this file before a calculator grows (lead: a function with no vector is not built).",
     "",
     "DATES (lead fe2ba4b1f): a vector with `zone` (an IANA name) is answered with the dates cut on that zone's wall clock -",
@@ -60,6 +58,9 @@
     "offset is moved into the zone; one without is that zone's wall clock. Date and DateTime answer a time text",
     "(«2026-10-14T00:00:00+09:00», «Z» at offset 0). `expect_not_time`: the rows a date function met a value that is not",
     "a time on (an empty value is not counted).",
+    "",
+    "TEXTS IN QUOTES (lead 11-09 ①): \\\\ \\\" \\' inside quotes are that character; any other \\x is itself. PATTERNS",
+    "(RXExtract · RXReplace · ~=): only what Python's re, JavaScript's RegExp and .NET read alike - task doc «Patterns».",
     "",
     "PARSEDATETIME (owner 11-07 «2»): ParseDateTime(text, format), the format in Spotfire's .NET spelling - a closed set:",
     "yyyy yy MM dd HH mm ss fff, quoted text ('...' or \"...\"), a backslash-escaped letter, any other character as itself.",
@@ -3936,6 +3937,971 @@
       "expect_refused": "ParseDateTime takes its format in quotes, e.g. \"yyMMdd_HHmmss\"",
       "basis": "decided",
       "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); the format is read with the expression, so a refusal is said before any row"
+    },
+    {
+      "id": "concatenate.args",
+      "expr": "Concatenate(\"April \", 20+1, \"st\")",
+      "rows": [],
+      "expect": "April 21st",
+      "basis": "doc-stated",
+      "cite": "Text Concatenate: Concatenate(\"April \", 20+1, \"st\") → \"April 21st\""
+    },
+    {
+      "id": "concatenate.args.null",
+      "expr": "Concatenate(null, \"Ape\")",
+      "rows": [],
+      "expect": "Ape",
+      "basis": "doc-stated",
+      "cite": "Text Concatenate: Concatenate(null, \"Ape\") → \"Ape\""
+    },
+    {
+      "id": "concatenate.args.all.null",
+      "expr": "Concatenate(null, null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Text Concatenate: Concatenate(null, null) → (Empty)"
+    },
+    {
+      "id": "concatenate.row",
+      "expr": "Concatenate([a], \" \", [b])",
+      "rows": [
+        {
+          "a": "x",
+          "b": "y"
+        },
+        {
+          "a": null,
+          "b": "z"
+        }
+      ],
+      "expect_rows": [
+        "x y",
+        " z"
+      ],
+      "basis": "doc-rule",
+      "cite": "Text Concatenate: several arguments are concatenated row by row, empty ones ignored"
+    },
+    {
+      "id": "concatenate.col",
+      "expr": "Concatenate([s])",
+      "rows": [
+        {
+          "s": "b"
+        },
+        {
+          "s": "a"
+        },
+        {
+          "s": null
+        },
+        {
+          "s": 2
+        }
+      ],
+      "expect": "b, a, 2",
+      "basis": "decided",
+      "cite": "Text Concatenate: one argument concatenates all rows; joined by \", \" as UniqueConcatenate (lead 11-09 ②), empty values left out"
+    },
+    {
+      "id": "find",
+      "expr": "Find(\"lo\", \"Hello\")",
+      "rows": [],
+      "expect": 4,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"lo\",\"Hello\") → 4"
+    },
+    {
+      "id": "find.none",
+      "expr": "Find(\"a\", \"Hello\")",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"a\",\"Hello\") → 0"
+    },
+    {
+      "id": "find.empty",
+      "expr": "Find(\"\", \"Hello\")",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"\",\"Hello\") → 0"
+    },
+    {
+      "id": "find.empty.null",
+      "expr": "Find(\"\", null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"\",null) → (Empty)"
+    },
+    {
+      "id": "find.first",
+      "expr": "Find(\"a\", \"ababab\")",
+      "rows": [],
+      "expect": 1,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"a\",\"ababab\") → 1"
+    },
+    {
+      "id": "find.second",
+      "expr": "Find(\"a\", \"ababab\", 2)",
+      "rows": [],
+      "expect": 3,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"a\",\"ababab\",2) → 3"
+    },
+    {
+      "id": "find.past",
+      "expr": "Find(\"a\", \"ababab\", 10)",
+      "rows": [],
+      "expect": 0,
+      "basis": "doc-stated",
+      "cite": "Text Find: Find(\"a\",\"ababab\",10) → 0"
+    },
+    {
+      "id": "find.overlapping",
+      "expr": "Find(\"aa\", \"aaaa\", 3)",
+      "rows": [],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "lead 11-09: each match looked for one character past the last one's start"
+    },
+    {
+      "id": "left",
+      "expr": "Left(\"Daddy\", 1)",
+      "rows": [],
+      "expect": "D",
+      "basis": "doc-stated",
+      "cite": "Text Left: Left(\"Daddy\",1) → \"D\""
+    },
+    {
+      "id": "left.fraction",
+      "expr": "Left(\"Daddy\", 3.99)",
+      "rows": [],
+      "expect": "Dad",
+      "basis": "doc-stated",
+      "cite": "Text Left: Left(\"Daddy\",3.99) → \"Dad\""
+    },
+    {
+      "id": "left.past",
+      "expr": "Left(\"Daddy\", 386)",
+      "rows": [],
+      "expect": "Daddy",
+      "basis": "doc-stated",
+      "cite": "Text Left: Left(\"Daddy\",386) → \"Daddy\""
+    },
+    {
+      "id": "left.negative",
+      "expr": "Left(\"Daddy\", -1)",
+      "rows": [],
+      "expect": "Dadd",
+      "basis": "doc-stated",
+      "cite": "Text Left: Left(\"Daddy\",-1) → \"Dadd\""
+    },
+    {
+      "id": "len",
+      "expr": "Len(\"Hello\")",
+      "rows": [],
+      "expect": 5,
+      "basis": "doc-stated",
+      "cite": "Text Len: Len(\"Hello\") → 5"
+    },
+    {
+      "id": "len.null",
+      "expr": "Len(null)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Text Len: Len(null) → (Empty)"
+    },
+    {
+      "id": "lower",
+      "expr": "Lower(\"Hello\")",
+      "rows": [],
+      "expect": "hello",
+      "basis": "doc-rule",
+      "cite": "Text Lower: all letters to lower case"
+    },
+    {
+      "id": "mid",
+      "expr": "Mid(\"Daddy\", 2, 3)",
+      "rows": [],
+      "expect": "add",
+      "basis": "doc-stated",
+      "cite": "Text Mid: Mid(\"Daddy\",2,3) → \"add\""
+    },
+    {
+      "id": "mid.start.past",
+      "expr": "Mid(\"Daddy\", 386, 4)",
+      "rows": [],
+      "expect": "",
+      "basis": "doc-stated",
+      "cite": "Text Mid: Mid(\"Daddy\",386,4) → \"\""
+    },
+    {
+      "id": "mid.count.past",
+      "expr": "Mid(\"Daddy\", 4, 386)",
+      "rows": [],
+      "expect": "dy",
+      "basis": "doc-stated",
+      "cite": "Text Mid: Mid(\"Daddy\",4,386) → \"dy\""
+    },
+    {
+      "id": "mid.start.negative",
+      "expr": "Mid(\"Daddy\", -1, 2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Text Mid: Mid(\"Daddy\",-1,2) → (Empty)"
+    },
+    {
+      "id": "mid.count.negative",
+      "expr": "Mid(\"Daddy\", 2, -1)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Text Mid: Mid(\"Daddy\",2,-1) → (Empty)"
+    },
+    {
+      "id": "mid.start.zero",
+      "expr": "Mid(\"Daddy\", 0, 2)",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-rule",
+      "cite": "Text Mid: Arg2 = 0 is an error → (Empty)"
+    },
+    {
+      "id": "substring",
+      "expr": "Substring(\"Daddy\", 2, 3)",
+      "rows": [],
+      "expect": "add",
+      "basis": "doc-rule",
+      "cite": "Text Substring: the same as Mid"
+    },
+    {
+      "id": "repeat",
+      "expr": "Repeat(\"Hello\", 2)",
+      "rows": [],
+      "expect": "HelloHello",
+      "basis": "doc-stated",
+      "cite": "Text Repeat: Repeat(\"Hello\",2) → \"HelloHello\""
+    },
+    {
+      "id": "right",
+      "expr": "Right(\"Daddy\", 1)",
+      "rows": [],
+      "expect": "y",
+      "basis": "doc-stated",
+      "cite": "Text Right: Right(\"Daddy\",1) → \"y\""
+    },
+    {
+      "id": "right.fraction",
+      "expr": "Right(\"Daddy\", 3.99)",
+      "rows": [],
+      "expect": "ddy",
+      "basis": "doc-stated",
+      "cite": "Text Right: Right(\"Daddy\",3.99) → \"ddy\""
+    },
+    {
+      "id": "right.past",
+      "expr": "Right(\"Daddy\", 386)",
+      "rows": [],
+      "expect": "Daddy",
+      "basis": "doc-stated",
+      "cite": "Text Right: Right(\"Daddy\",386) → \"Daddy\""
+    },
+    {
+      "id": "right.negative",
+      "expr": "Right(\"Daddy\", -1)",
+      "rows": [],
+      "expect": "addy",
+      "basis": "doc-stated",
+      "cite": "Text Right: Right(\"Daddy\",-1) → \"addy\""
+    },
+    {
+      "id": "rxextract",
+      "expr": "RXExtract(\"Parallel\", \"l+\", 1)",
+      "rows": [],
+      "expect": "ll",
+      "basis": "doc-stated",
+      "cite": "Text RXExtract: RXExtract(\"Parallel\",\"l+\",1) → \"ll\""
+    },
+    {
+      "id": "rxextract.second",
+      "expr": "RXExtract(\"Parallel\", \"l+\", 2)",
+      "rows": [],
+      "expect": "l",
+      "basis": "doc-stated",
+      "cite": "Text RXExtract: RXExtract(\"Parallel\",\"l+\",2) → \"l\""
+    },
+    {
+      "id": "rxextract.past",
+      "expr": "RXExtract(\"Parallel\", \"l+\", 3)",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 11-09: no such match - empty"
+    },
+    {
+      "id": "rxreplace.nocase",
+      "expr": "RXReplace(\"Hello\", \"L+\", \"LL\", \"i\")",
+      "rows": [],
+      "expect": "HeLLo",
+      "basis": "doc-stated",
+      "cite": "Text RXReplace: RXReplace(\"Hello\",\"L+\",\"LL\",\"i\") → \"HeLLo\""
+    },
+    {
+      "id": "rxreplace.group",
+      "expr": "RXReplace(\"3 Minor\", \"(\\\\d).*\", \"$1\", \"\")",
+      "rows": [],
+      "expect": "3",
+      "basis": "doc-stated",
+      "cite": "Text RXReplace: RXReplace(\"3 Minor\",\"(\\\\d).*\",\"$1\",\"\") → 3"
+    },
+    {
+      "id": "rxreplace.backslash",
+      "expr": "RXReplace(\"change\\\\slashdirection\", \"\\\\\\\\\", \"/\", \"\")",
+      "rows": [],
+      "expect": "change/slashdirection",
+      "basis": "doc-stated",
+      "cite": "Text RXReplace: RXReplace(\"change\\\\slashdirection\",\"\\\\\\\\\",\"/\",\"\") → change/slashdirection (a backslash escaped for the text and again for the pattern)"
+    },
+    {
+      "id": "rxreplace.all",
+      "expr": "RXReplace(\"a1b22\", \"\\d+\", \"#\", \"g\")",
+      "rows": [],
+      "expect": "a#b#",
+      "basis": "doc-rule",
+      "cite": "Text RXReplace: \"g\" replaces every match"
+    },
+    {
+      "id": "rxreplace.first",
+      "expr": "RXReplace(\"a1b22\", \"\\d+\", \"#\", \"\")",
+      "rows": [],
+      "expect": "a#b22",
+      "basis": "doc-rule",
+      "cite": "Text RXReplace: without \"g\" the first match"
+    },
+    {
+      "id": "split",
+      "expr": "Split(\"a.b\", \".\", 1)",
+      "rows": [],
+      "expect": "a",
+      "basis": "doc-stated",
+      "cite": "Text Split: Split(\"a.b\", \".\", 1) → \"a\""
+    },
+    {
+      "id": "split.second",
+      "expr": "Split(\"a.b\", \".\", 2)",
+      "rows": [],
+      "expect": "b",
+      "basis": "doc-stated",
+      "cite": "Text Split: Split(\"a.b\", \".\", 2) → \"b\""
+    },
+    {
+      "id": "split.from.end",
+      "expr": "Split(\"a.b\", \".\", -1)",
+      "rows": [],
+      "expect": "b",
+      "basis": "doc-rule",
+      "cite": "Text Split: a negative token number counts from the end"
+    },
+    {
+      "id": "split.past",
+      "expr": "Split(\"a.b\", \".\", 3)",
+      "rows": [],
+      "expect": null,
+      "basis": "decided",
+      "cite": "lead 11-09: no such token - empty"
+    },
+    {
+      "id": "substitute",
+      "expr": "Substitute(\"Test\", \"t\", \"ting\")",
+      "rows": [],
+      "expect": "Testing",
+      "basis": "doc-stated",
+      "cite": "Text Substitute: Substitute(\"Test\",\"t\",\"ting\") → \"Testing\""
+    },
+    {
+      "id": "substitute.remove",
+      "expr": "Substitute(\"a-b-c\", \"-\", \"\")",
+      "rows": [],
+      "expect": "abc",
+      "basis": "decided",
+      "cite": "lead 11-09: an empty replacement removes"
+    },
+    {
+      "id": "trim",
+      "expr": "Trim(\" Example \")",
+      "rows": [],
+      "expect": "Example",
+      "basis": "doc-stated",
+      "cite": "Text Trim: Trim(\" Example \") → \"Example\""
+    },
+    {
+      "id": "upper",
+      "expr": "Upper(\"hello\")",
+      "rows": [],
+      "expect": "HELLO",
+      "basis": "doc-stated",
+      "cite": "Text Upper: Upper(\"hello\") → \"HELLO\""
+    },
+    {
+      "id": "upper.number",
+      "expr": "Upper([a])",
+      "rows": [
+        {
+          "a": "x"
+        },
+        {
+          "a": 3
+        }
+      ],
+      "expect_rows": [
+        "X",
+        "3"
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: a number is read as its text"
+    },
+    {
+      "id": "match",
+      "expr": "\"aab\" ~= \"a+\"",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "Ops ~=: If(\"aab\" ~= \"a+\", \"true\", \"false\") → true"
+    },
+    {
+      "id": "match.end",
+      "expr": "\"aba\" ~= \".a+$\"",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-stated",
+      "cite": "Ops ~=: Case when \"aba\" ~= \".a+$\" → true"
+    },
+    {
+      "id": "match.not",
+      "expr": "\"abc\" ~= \"^b\"",
+      "rows": [],
+      "expect": false,
+      "basis": "doc-rule",
+      "cite": "Ops ~=: true when Arg2 matches Arg1"
+    },
+    {
+      "id": "match.null",
+      "expr": "[a] ~= \"a\"",
+      "rows": [
+        {
+          "a": "ab"
+        },
+        {
+          "a": null
+        }
+      ],
+      "expect_rows": [
+        true,
+        null
+      ],
+      "basis": "doc-rule",
+      "cite": "Lang: an operation on null is null"
+    },
+    {
+      "id": "match.end.newline",
+      "expr": "[a] ~= \"b$\"",
+      "rows": [
+        {
+          "a": "ab\n"
+        },
+        {
+          "a": "ab\nc"
+        }
+      ],
+      "expect_rows": [
+        true,
+        false
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): «$» the end or before a last newline, as .NET"
+    },
+    {
+      "id": "ampersand",
+      "expr": "\"April \" & (20+1) & \"st\"",
+      "rows": [],
+      "expect": "April 21st",
+      "basis": "doc-stated",
+      "cite": "Ops &: \"April \" & (20+1) & \"st\" → \"April 21st\""
+    },
+    {
+      "id": "ampersand.null",
+      "expr": "null & \"Ape\"",
+      "rows": [],
+      "expect": null,
+      "basis": "doc-stated",
+      "cite": "Ops &: null & \"Ape\" → (Empty)"
+    },
+    {
+      "id": "ampersand.rows",
+      "expr": "[a] & \"-\" & [b]",
+      "rows": [
+        {
+          "a": "x",
+          "b": 2.5
+        },
+        {
+          "a": null,
+          "b": "z"
+        }
+      ],
+      "expect_rows": [
+        "x-2.5",
+        null
+      ],
+      "basis": "doc-rule",
+      "cite": "Ops &: any type converted to text; null is null"
+    },
+    {
+      "id": "precedence.ampersand.after.plus",
+      "expr": "1 + 2 & 3",
+      "rows": [],
+      "expect": "33",
+      "basis": "doc-rule",
+      "cite": "Prec: + - before &"
+    },
+    {
+      "id": "precedence.ampersand.before.equal",
+      "expr": "\"a\" & 1 = \"a1\"",
+      "rows": [],
+      "expect": true,
+      "basis": "doc-rule",
+      "cite": "Prec: & before = <>"
+    },
+    {
+      "id": "sum.args.columns",
+      "expr": "Sum([a], [b])",
+      "rows": [
+        {
+          "a": 1,
+          "b": 2
+        },
+        {
+          "a": 3,
+          "b": null
+        }
+      ],
+      "expect_rows": [
+        3,
+        3
+      ],
+      "basis": "doc-rule",
+      "cite": "Math Sum: several arguments sum within the row, empty ones left out (Sum(1, null, 3) → 4)"
+    },
+    {
+      "id": "text.escaped.quote",
+      "expr": "\"a\\\"b\"",
+      "rows": [],
+      "expect": "a\"b",
+      "basis": "decided",
+      "cite": "11-09 ①: \\\\ \\\" \\' inside quotes are the character (Text RXReplace: a backslash is escaped in a text)"
+    },
+    {
+      "id": "text.escaped.single",
+      "expr": "'it\\'s'",
+      "rows": [],
+      "expect": "it's",
+      "basis": "decided",
+      "cite": "11-09 ①: \\\\ \\\" \\' inside quotes are the character"
+    },
+    {
+      "id": "text.escaped.backslash",
+      "expr": "Len(\"a\\\\b\")",
+      "rows": [],
+      "expect": 3,
+      "basis": "decided",
+      "cite": "11-09 ①: \\\\ is one backslash"
+    },
+    {
+      "id": "text.other.backslash",
+      "expr": "Len(\"\\d\")",
+      "rows": [],
+      "expect": 2,
+      "basis": "decided",
+      "cite": "11-09 ①: any other \\x is itself"
+    },
+    {
+      "id": "pattern.digit.ascii",
+      "expr": "RXReplace([a], \"\\d\", \"#\", \"g\")",
+      "rows": [
+        {
+          "a": "1b"
+        },
+        {
+          "a": "a٣b"
+        }
+      ],
+      "expect_rows": [
+        "#b",
+        "a٣b"
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): \\d is [0-9]"
+    },
+    {
+      "id": "pattern.dot.newline",
+      "expr": "RXReplace([a], \".\", \"_\", \"g\")",
+      "rows": [
+        {
+          "a": "a\nb"
+        }
+      ],
+      "expect_rows": [
+        "_\n_"
+      ],
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): «.» is not a newline"
+    },
+    {
+      "id": "pattern.dot.s",
+      "expr": "RXReplace([a], \".\", \"_\", \"gs\")",
+      "rows": [
+        {
+          "a": "a\nb"
+        }
+      ],
+      "expect_rows": [
+        "___"
+      ],
+      "basis": "doc-rule",
+      "cite": "Text RXReplace: \"s\" - «.» takes a newline too"
+    },
+    {
+      "id": "pattern.empty.matches",
+      "expr": "RXReplace(\"axb\", \"x*\", \"-\", \"g\")",
+      "rows": [],
+      "expect": "-a--b-",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): an empty match stepped past by one character"
+    },
+    {
+      "id": "replacement.unmatched.group",
+      "expr": "RXReplace(\"abc\", \"(a)(x)?\", \"[$2]\", \"\")",
+      "rows": [],
+      "expect": "[]bc",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): a group that took no part is empty"
+    },
+    {
+      "id": "replacement.past.groups",
+      "expr": "RXReplace(\"abc\", \"(a)\", \"$3\", \"\")",
+      "rows": [],
+      "expect": "$3bc",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): $n past the groups is its own text"
+    },
+    {
+      "id": "replacement.dollar",
+      "expr": "RXReplace(\"abc\", \"(a)\", \"$$\", \"\")",
+      "rows": [],
+      "expect": "$bc",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): $$ is one $"
+    },
+    {
+      "id": "replacement.braced",
+      "expr": "RXReplace(\"abc\", \"(a)\", \"${1}x\", \"\")",
+      "rows": [],
+      "expect": "axbc",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): ${n} is group n"
+    },
+    {
+      "id": "replacement.whole",
+      "expr": "RXReplace(\"abc\", \"b\", \"$0$0\", \"\")",
+      "rows": [],
+      "expect": "abbc",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): $0 is the match"
+    },
+    {
+      "id": "concatenate.refuses.count",
+      "expr": "Concatenate()",
+      "rows": [],
+      "expect_refused": "Concatenate takes 1 or more arguments - got 0",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "find.refuses.count",
+      "expr": "Find(\"a\")",
+      "rows": [],
+      "expect_refused": "Find takes 2 or 3 arguments - got 1",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "left.refuses.count",
+      "expr": "Left(\"a\")",
+      "rows": [],
+      "expect_refused": "Left takes 2 arguments - got 1",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "len.refuses.count",
+      "expr": "Len()",
+      "rows": [],
+      "expect_refused": "Len takes 1 argument - got 0",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "lower.refuses.count",
+      "expr": "Lower()",
+      "rows": [],
+      "expect_refused": "Lower takes 1 argument - got 0",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "mid.refuses.count",
+      "expr": "Mid(\"a\", 1)",
+      "rows": [],
+      "expect_refused": "Mid takes 3 arguments - got 2",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "repeat.refuses.count",
+      "expr": "Repeat(\"a\")",
+      "rows": [],
+      "expect_refused": "Repeat takes 2 arguments - got 1",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "right.refuses.count",
+      "expr": "Right(\"a\")",
+      "rows": [],
+      "expect_refused": "Right takes 2 arguments - got 1",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "rxextract.refuses.count",
+      "expr": "RXExtract(\"a\", \"b\")",
+      "rows": [],
+      "expect_refused": "RXExtract takes 3 arguments - got 2",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "rxreplace.refuses.count",
+      "expr": "RXReplace(\"a\", \"b\", \"c\")",
+      "rows": [],
+      "expect_refused": "RXReplace takes 4 arguments - got 3",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "split.refuses.count",
+      "expr": "Split(\"a\", \"b\")",
+      "rows": [],
+      "expect_refused": "Split takes 3 arguments - got 2",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "substitute.refuses.count",
+      "expr": "Substitute(\"a\", \"b\")",
+      "rows": [],
+      "expect_refused": "Substitute takes 3 arguments - got 2",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "substring.refuses.count",
+      "expr": "Substring(\"a\", 1)",
+      "rows": [],
+      "expect_refused": "Substring takes 3 arguments - got 2",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "trim.refuses.count",
+      "expr": "Trim()",
+      "rows": [],
+      "expect_refused": "Trim takes 1 argument - got 0",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "upper.refuses.count",
+      "expr": "Upper()",
+      "rows": [],
+      "expect_refused": "Upper takes 1 argument - got 0",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "find.refuses.four",
+      "expr": "Find(\"a\", \"b\", 1, 2)",
+      "rows": [],
+      "expect_refused": "Find takes 2 or 3 arguments - got 4",
+      "basis": "decided",
+      "cite": "lead 11-09: the count refused by name"
+    },
+    {
+      "id": "rxextract.refuses.unquoted",
+      "expr": "RXExtract(\"a\", [p], 1)",
+      "rows": [],
+      "expect_refused": "RXExtract takes its pattern in quotes",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is read once, with the expression"
+    },
+    {
+      "id": "rxreplace.refuses.unquoted.replacement",
+      "expr": "RXReplace(\"a\", \"a\", [r], \"\")",
+      "rows": [],
+      "expect_refused": "RXReplace takes its replacement in quotes",
+      "basis": "decided",
+      "cite": "lead 11-09: read once, with the expression"
+    },
+    {
+      "id": "rxreplace.refuses.unquoted.options",
+      "expr": "RXReplace(\"a\", \"a\", \"b\", [o])",
+      "rows": [],
+      "expect_refused": "RXReplace takes its options in quotes",
+      "basis": "decided",
+      "cite": "lead 11-09: read once, with the expression"
+    },
+    {
+      "id": "rxreplace.refuses.option",
+      "expr": "RXReplace(\"a\", \"a\", \"b\", \"m\")",
+      "rows": [],
+      "expect_refused": "RXReplace takes its options from g i s - got «m»",
+      "basis": "decided",
+      "cite": "Text RXReplace: the options are g, i and s"
+    },
+    {
+      "id": "rxreplace.refuses.named.replacement",
+      "expr": "RXReplace(\"a\", \"a\", \"$&\", \"\")",
+      "rows": [],
+      "expect_refused": "RXReplace does not read «$&» in a replacement",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»): .NET's $& $` $' $+ $_ ${name} are not read"
+    },
+    {
+      "id": "match.refuses.unquoted",
+      "expr": "\"a\" ~= [p]",
+      "rows": [],
+      "expect_refused": "«~=» takes its pattern in quotes",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is read once, with the expression"
+    },
+    {
+      "id": "match.refuses.bad",
+      "expr": "\"a\" ~= \"(\"",
+      "rows": [],
+      "expect_refused": "«~=»: «(» is not a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.anchor",
+      "expr": "RXExtract(\"x\", \"\\\\Z\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «\\Z» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.property",
+      "expr": "RXExtract(\"x\", \"\\\\p{L}\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «\\p» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.named.group",
+      "expr": "RXExtract(\"x\", \"(?<n>x)\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «(?<» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.lookbehind",
+      "expr": "RXExtract(\"x\", \"(?<=a)x\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «(?<» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.inline.option",
+      "expr": "RXExtract(\"x\", \"(?i)x\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «(?i» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.possessive",
+      "expr": "RXExtract(\"x\", \"x*+\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «*+» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.nothing.to.repeat",
+      "expr": "RXExtract(\"x\", \"*x\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «*» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.subtraction",
+      "expr": "RXExtract(\"x\", \"[a-z-[aeiou]]\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «-[» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.backreference",
+      "expr": "RXExtract(\"x\", \"\\\\1\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract does not read «\\1» in a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "pattern.refuses.unclosed",
+      "expr": "RXExtract(\"x\", \"[x\", 1)",
+      "rows": [],
+      "expect_refused": "RXExtract: «[x» is not a pattern",
+      "basis": "decided",
+      "cite": "lead 11-09: a pattern is what Python's re, JavaScript's RegExp and .NET read alike (task doc «Patterns»)"
+    },
+    {
+      "id": "nameencode.refuses",
+      "expr": "NameEncode(\"Column £\")",
+      "rows": [],
+      "expect_refused": "NameEncode is not settled - Spotfire's pages give no result to build it by",
+      "basis": "decided",
+      "cite": "lead 11-09 ③: no page prints a result or the encoding's form (6.5 · 10.10 · TERR SpotfireUtils: obsolete since 5.0)"
+    },
+    {
+      "id": "namedecode.refuses",
+      "expr": "NameDecode(\"Column %02D\")",
+      "rows": [],
+      "expect_refused": "NameDecode is not settled - Spotfire's pages give no result to build it by",
+      "basis": "decided",
+      "cite": "lead 11-09 ③: no page prints a result or the encoding's form (6.5 · 10.10 · TERR SpotfireUtils: obsolete since 5.0)"
     }
   ],
   "ours": [
@@ -5027,6 +5993,13 @@
   "out_of_edition": [
     {
       "names": [
+        "NameEncode",
+        "NameDecode"
+      ],
+      "why": "lead 11-09 ③: no page prints a result or the encoding's form - refused by name (vectors *.refuses)"
+    },
+    {
+      "names": [
         "NormDist",
         "NormInv",
         "TDist",
@@ -5065,9 +6038,6 @@
     },
     {
       "names": [
-        "&",
-        "Concatenate",
-        "text",
         "date and time",
         "conversion",
         "binning",
@@ -5090,494 +6060,6 @@
         "\"\""
       ],
       "why": "an empty text is NULL at our write boundary - contracts/blank_predicate owns «is this cell empty»"
-    }
-  ],
-  "functions": [
-    {
-      "name": "Count",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "CountBig",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "UniqueCount",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Sum",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Avg",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Min",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Max",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Median",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Product",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "MeanDeviation",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "MedianAbsoluteDeviation",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "First",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Last",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Latest",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "MostCommon",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "UniqueConcatenate",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "StdDev",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Var",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "StdErr",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Range",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Q1",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Q3",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "IQR",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "P10",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "P90",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Percentile",
-      "args": [
-        "column",
-        "percent"
-      ]
-    },
-    {
-      "name": "Percent",
-      "args": [
-        "column",
-        "percent"
-      ]
-    },
-    {
-      "name": "LIF",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "UIF",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "LOF",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "UOF",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "LAV",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "UAV",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "Outliers",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "PctOutliers",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "GeometricMean",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "TrimmedMean",
-      "args": [
-        "column",
-        "percent"
-      ]
-    },
-    {
-      "name": "NthLargest",
-      "args": [
-        "column",
-        "n"
-      ]
-    },
-    {
-      "name": "NthSmallest",
-      "args": [
-        "column",
-        "n"
-      ]
-    },
-    {
-      "name": "L95",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "U95",
-      "args": [
-        "column"
-      ]
-    },
-    {
-      "name": "WeightedAverage",
-      "args": [
-        "weight",
-        "value"
-      ]
-    },
-    {
-      "name": "Covariance",
-      "args": [
-        "x",
-        "y"
-      ]
-    },
-    {
-      "name": "ValueForMax",
-      "args": [
-        "by",
-        "value"
-      ]
-    },
-    {
-      "name": "ValueForMin",
-      "args": [
-        "by",
-        "value"
-      ]
-    },
-    {
-      "name": "LastValueForMax",
-      "args": [
-        "by",
-        "value"
-      ]
-    },
-    {
-      "name": "LastValueForMin",
-      "args": [
-        "by",
-        "value"
-      ]
-    },
-    {
-      "name": "Abs",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Ceiling",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Floor",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Round",
-      "args": [
-        "value",
-        "digits"
-      ]
-    },
-    {
-      "name": "Sqrt",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Exp",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Ln",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Log10",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Log",
-      "args": [
-        "value",
-        "base"
-      ]
-    },
-    {
-      "name": "Mod",
-      "args": [
-        "dividend",
-        "divisor"
-      ]
-    },
-    {
-      "name": "Power",
-      "args": [
-        "base",
-        "exponent"
-      ]
-    },
-    {
-      "name": "PI",
-      "args": []
-    },
-    {
-      "name": "Sin",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Cos",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Tan",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "ASin",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "ACos",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "ATan",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "ATan2",
-      "args": [
-        "y",
-        "x"
-      ]
-    },
-    {
-      "name": "If",
-      "args": [
-        "condition",
-        "then",
-        "else"
-      ]
-    },
-    {
-      "name": "Date",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "DateTime",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Year",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Quarter",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Month",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Day",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Hour",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "Week",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "DayOfWeek",
-      "args": [
-        "value"
-      ]
-    },
-    {
-      "name": "DatePart",
-      "args": [
-        "part",
-        "value"
-      ]
-    },
-    {
-      "name": "ParseDateTime",
-      "args": [
-        "text",
-        "format"
-      ]
     }
   ]
 }

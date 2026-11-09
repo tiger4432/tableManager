@@ -404,8 +404,10 @@ SKELETON_PATH = Path(__file__).parent / "ledger_skeleton.json"
 #: a name, or `{kind: column}`) rather than by a branch key (총괄 068c904a6 ②).
 SKELETON_NODE_KINDS = ("record", "map", "leaf", "oneOf")
 #: A leaf's hints, declared for the same reason as the kinds - `html` (lead 10-23): a cell the form fills by pasting
-#: the clipboard's HTML (derive.report.template), so the form keys on the hint, never on a domain path.
-SKELETON_LEAF_HINTS = ("free", "ref", "choice", "flag", "number", "role", "html")
+#: the clipboard's HTML (derive.report.template), so the form keys on the hint, never on a domain path. `formula`
+#: (owner 11-09 «ㄴ»): a cell holding the shared calculator's text, drawn as the one formula field - its `list` the
+#: words it takes beside a formula, its `mark` what starts a formula there.
+SKELETON_LEAF_HINTS = ("free", "ref", "choice", "flag", "number", "role", "html", "formula")
 
 
 @lru_cache(maxsize=1)

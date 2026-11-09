@@ -108,6 +108,8 @@ BLANK_WORDS = (BLANK_SKIP,)
 #: b 테이블로 집계해서 조인」 · 「uniqueconcat 해서 붙이는 게 필요」). The words and the calculation are the gap fill's
 #: (`enrichment.config.AGGREGATION_FUNCTIONS` · `aggregation_record`); a take without it is one row a key, as before.
 TAKE_FN = "fn"
+#: A take's `fn` that starts with this is a formula - the rest is the shared calculator's text (owner 10-28).
+FORMULA_MARK = "="
 #: The closed list a take's `fn` picks from - its members ride the chain rule answer (`ledger.admin`) under this name.
 TAKE_FN_LIST = "aggregation_functions"
 #: A function take's other two inputs (owner 10-23 S/O): `ref` the tables it is handed whole, `row` the target row's
@@ -252,7 +254,7 @@ walked.refusal = _walk_refusal
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
 #: of {left, right}) and `_takes` (`take`: a list of names, or of records {from, into, fn, separator}).
 #: A take item is picked by shape, as a gap fill's aggregation is (`rule_shape.DECIDE_CELL_SHAPES`, 총괄 bce8d755a):
-#: a name, or a record whose `fn` is one of `TAKE_FN_LIST`. A cell missing here is a value.
+#: a name, or a record whose `fn` is one of `TAKE_FN_LIST` or a formula «=…». A cell missing here is a value.
 JOIN_CELL_SHAPES = {
     "on": chain_bindings.list_node("pair", {"kind": "record", "fields": [
         {"key": "left", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
@@ -265,7 +267,9 @@ JOIN_CELL_SHAPES = {
                 "list": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT))},
                 "empty": {"name": "", "list": []}}},
             {"key": "into", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
-            {"key": TAKE_FN, "required": False, "node": {"kind": "leaf", "hint": "choice", "list": TAKE_FN_LIST}},
+            {"key": TAKE_FN, "required": False, "node": {"kind": "leaf", "hint": "formula", "list": TAKE_FN_LIST,
+                                                       "mark": FORMULA_MARK,
+                                                       "table_from": list(chain_bindings.SOURCE_TABLE_AT)}},
             {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}},
             {"key": TAKE_REF, "required": False, "node": chain_bindings.list_node("table", chain_bindings.table_ref())},
             {"key": TAKE_ROW, "required": False,
@@ -333,9 +337,6 @@ def right_key(rule: dict) -> tuple:
             [right for _left, right, _fold in on],
             [fold for _left, _right, fold in on])
 
-
-#: A take's `fn` that starts with this is a formula - the rest is the shared calculator's text (owner 10-28).
-FORMULA_MARK = "="
 
 
 def formula_of(fn):

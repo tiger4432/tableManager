@@ -70,7 +70,7 @@ export function isCount(v) {
 
 // The server's whitespace (Python str.isspace, contracts/blank_predicate `whitespace_class`, 29 codepoints) -
 // not JS trim, which keeps U+001C-U+001F and U+0085 and drops U+FEFF.
-const SPACE = new Set([9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197,
+export const SPACE = new Set([9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197,
   8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]);
 
 /**

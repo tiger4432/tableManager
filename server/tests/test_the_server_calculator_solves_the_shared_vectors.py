@@ -15,6 +15,7 @@ import expression  # noqa: E402
 
 FILE = json.load(open(os.path.join(SERVER_DIR, "..", "contracts", "expression", "vectors.json"), encoding="utf-8"))
 SCORED = FILE["vectors"] + FILE["ours"]
+CATALOGUE = os.path.join(SERVER_DIR, "..", "contracts", "expression", "catalogue.json")
 #: A vector the screen alone answers (`screen_only`: markings, a sheet's cells, node constructors) or that walks a graph.
 REFUSED = [v for v in SCORED if v.get("screen_only") or "graph" in v]
 ANSWERED = [v for v in SCORED if v not in REFUSED]
@@ -52,19 +53,29 @@ def test_a_vector(vector):
         assert "value" in out and _near(out["value"], vector["expect"]), (out, vector["expect"])
 
 
-def test_the_table_says_the_file_s_functions_and_their_args():
-    """Lead 11-07: FUNCTIONS' names and each one's args are the file's `functions` (the screen's table is held to the
-    same list); a call with that many arguments is not refused for its count, one more is unless the fold takes more."""
-    listed = {f["name"]: f["args"] for f in FILE["functions"]}
-    assert set(expression.FUNCTIONS) == set(listed), set(expression.FUNCTIONS) ^ set(listed)
-    assert {n: fn["args"] for n, fn in expression.FUNCTIONS.items()} == listed
+def test_the_catalogue_file_is_the_table():
+    """Owner 11-09 «ㄴ»: contracts/expression/catalogue.json - the names, their grammar, the names refused and every
+    refusal sentence the screen imports - is this table written out. A table changed and the file not written again
+    (`python server/expression.py`) is red here."""
+    with open(CATALOGUE, encoding="utf-8", newline="") as f:
+        text = f.read()
+    assert json.loads(text) == expression.catalogue()
+    assert text.replace("\r\n", "\n") == expression.catalogue_text()
+
+
+def test_a_call_with_as_many_arguments_as_its_args_is_not_refused_for_its_count():
+    """Lead 11-07: a call with that many arguments is not refused for its count, one more is unless the fold takes
+    more; one fewer than `least` is."""
+    listed = {name: fn["args"] for name, fn in expression.FUNCTIONS.items()}
 
     def counted(name, n):
         why = expression.compile("%s(%s)" % (name, ", ".join(["1"] * n))).get("why") or ""
         return why.startswith(name + " takes ") and re.search(r" - got [0-9]+$", why) is not None
 
     miscounted = [name for name, args in listed.items() if counted(name, len(args))
-                  or (not expression.FUNCTIONS[name].get("rowwise") and not counted(name, len(args) + 1))]
+                  or (not expression.FUNCTIONS[name].get("rowwise") and not counted(name, len(args) + 1))
+                  or ("least" in expression.FUNCTIONS[name] and (counted(name, expression.FUNCTIONS[name]["least"])
+                                                               or not counted(name, expression.FUNCTIONS[name]["least"] - 1)))]
     assert not miscounted, miscounted
 
 

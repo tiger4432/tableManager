@@ -7,6 +7,7 @@ import { routesFor } from './route.js';
 import { REDUCES } from './aggregate.js';
 import { readSlot, isExpression, nameValue, wayWords, columnsOf, slotWords, COLUMN_NAMES } from './slot.js';
 import { compile, ExpressionError } from '../expression.js';
+import { FormulaInput } from '../formula_input.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { fitUnder } from '../dropdown.js';
 
@@ -339,25 +340,22 @@ export class SlotPicker {
     const expressionRow = (text) => {
       const row = el('div', 'sf-pop__edit');
       const line = el('div', 'sf-pop__line');
-      const input = el('input', 'sf-pop__expr');
-      input.type = 'text';
-      input.value = text;
-      input.spellcheck = false;
-      input.setAttribute('aria-label', 'Expression');
-      const why = el('div', 'sf-pop__why');
+      let formula = null;
       const apply = () => {
-        const said = expressionRefusal(part, input.value);
-        if (said) { why.textContent = said; return; }
-        const next = { expr: input.value.trim(), words: [input.value.trim()] };
+        const said = expressionRefusal(part, formula.value);
+        if (said) { formula.refuse(said); return; }
+        const next = { expr: formula.value.trim(), words: [formula.value.trim()] };
         put(next);
         draw(next);
       };
-      input.addEventListener('keydown', (event) => { if (event.key === 'Enter') apply(); });
+      // the one formula field (formula_input.js): the calculator's words under it as one types
+      formula = new FormulaInput(line, { doc, cls: 'sf-pop__expr', label: 'Expression', value: text, onEnter: apply,
+        refusal: (said) => expressionRefusal(part, said) });
       const ok = el('button', 'sf-btn', 'OK');
       ok.type = 'button';
       ok.addEventListener('click', apply);
-      line.append(input, ok);
-      row.append(el('div', 'sf-pop__lab', 'Expression'), line, why);
+      line.append(ok);
+      row.append(el('div', 'sf-pop__lab', 'Expression'), line);
       return row;
     };
     this.host.style.display = '';

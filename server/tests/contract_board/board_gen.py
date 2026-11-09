@@ -64,7 +64,7 @@ def skeleton_axes():
                 axes.append((name, [None, True]))
             elif hint == "number":
                 axes.append((name, [None, NUMBER.get(name, 2)]))
-            elif hint == "choice" and node.get("list") == "aggregation_functions":
+            elif hint == "formula" and node.get("list") == "aggregation_functions":
                 axes.append((name, [None] + aggregation_functions()))
             elif hint == "choice" and name.endswith("mapper"):
                 axes.append((name, MAPPERS))

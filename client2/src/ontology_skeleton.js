@@ -136,13 +136,13 @@ export function shapeAt(node, steps, defs) {
 }
 
 /** The names a `ref` leaf is offered, and for a column the table they are columns of (form D, B 5d5b99fac). A ref
- *  naming `table_from` (paths from the declaration's root; the first that holds a value names the table) offers that
+ *  (or a formula - its columns) naming `table_from` (paths from the declaration's root; the first that holds a value names the table) offers that
  *  table's columns from `tables` (T -> {columns}); any other ref offers `sections[section]`. A `*` step in a path is
  *  the cell's own step there (lead 10-22: «picture_rows.*.table» is the table of the cell's own row).
  * @param {string} [at] the cell's address from the declaration's root, members as `[i]`
  * @returns {{table: string, names: string[]}} */
 export function refNames(sections, tables, node, document, at = '', elsewhere = null) {
-  if (!node || node.hint !== 'ref') return { table: '', names: [] };
+  if (!node || (node.hint !== 'ref' && !node.table_from)) return { table: '', names: [] };
   // `world_from: key` (B 10-27): the section as the world this declaration's key names declares it - `elsewhere` is
   // that world's names by section, read by the page.
   if (node.world_from) {

@@ -117,21 +117,26 @@ function suite(M) {
   t.click('toggle-field', 'derive.join.take');
   if (!t.inputAt('derive.join.take[1].from')) t.click('toggle-field', 'derive.join.take[1]');
   const from1 = t.inputAt('derive.join.take[1].from');
-  const fnSel = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[1].fn');
-  const fnWords = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION').map((k) => (k.attrs || {}).value ?? k.textContent)
-    .filter((v) => v !== '') : [];
+  // the take's fn is a formula cell (owner 11-09 «ㄴ»): the one formula field, the answer's list its words
+  const fnBox = t.inputAt('derive.join.take[1].fn');
   ok(from1 && from1.value === 'c4', `T1 the record's from is its own input [${from1 && from1.value}]`);
-  const fnHeld = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION' && (k.selected || (k.attrs || {}).selected != null))
-    .map((k) => (k.attrs || {}).value ?? k.textContent) : [];
-  ok(fnWords.join(',') === FNS.join(',') && fnHeld.join(',') === 'unique_concat',
-    `T2 its fn picks from the answer's list, held on unique_concat [${fnWords.join(',')} = ${fnHeld.join(',')}]`);
+  const fnHeld = fnBox ? fnBox.value : null;
+  const offered = () => {
+    const list = fnBox && walk(fnBox.parentNode).find((n) => cls(n).includes('formula-input__complete'));
+    return list && !list.hidden ? walk(list).filter((n) => cls(n).includes('option-list__row')).map((n) => n.textContent) : [];
+  };
+  if (fnBox) { fnBox.value = ''; fnBox.dispatch('focus'); }
+  const fnWords = offered();
+  if (fnBox) { fnBox.value = fnHeld; fnBox.dispatch('input'); }
+  ok(fnHeld === 'unique_concat' && [...fnWords].sort().join(',') === [...FNS].sort().join(','),
+    `T2 its fn is held on unique_concat and, emptied, offers the answer's list [${fnHeld} - ${fnWords.join(',')}]`);
   const take = () => (((t.raw() || {}).derive || {}).join || {}).take;
   t.click('form-append', 'derive.join.take');
   const picker = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-action'] === 'edit-shape-branch'
     && n.attrs['data-value'] === 'derive.join.take[2]');
   if (picker) { picker.value = 'record'; picker.dispatch('change'); }
-  const fnNew = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[2].fn');
-  if (fnNew) { fnNew.value = 'count'; fnNew.dispatch('change'); }
+  const fnNew = t.inputAt('derive.join.take[2].fn');
+  if (fnNew) { fnNew.value = 'count'; fnNew.dispatch('input'); fnNew.dispatch('change'); }
   const third = (take() || [])[2];
   ok(Boolean(picker) && third && typeof third === 'object' && third.fn === 'count'
      && (take() || [])[1].fn === 'unique_concat',
