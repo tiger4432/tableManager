@@ -218,7 +218,9 @@
     .runtime-table td[data-col="loop"] { font-weight: 600; }
     /* Indexes (총괄 d71f931c7) wear the runtime table's look; a number's head stands over its number. */
     .index-table th.num { text-align: right; }
-    .index-outside-title { margin: var(--space-4) 0 var(--space-2); }
+    /* The columns that take the room (Purpose, Serves, a storage State) wrap; nowrap pushed the table past its box at 1920. */
+    .index-table td:not(.cell-fit) { white-space: normal; }
+    .index-outside-title, .index-storage-title { margin: var(--space-4) 0 var(--space-2); }
     .index-table-head { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
     .index-table-head .index-refresh:disabled { color: var(--text-dim); cursor: default; }
 

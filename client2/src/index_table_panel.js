@@ -54,8 +54,9 @@ const DECLARED_COLUMNS = Object.freeze([['name', 'Name', 'cell-fit'], ['state', 
   ['scans', 'Scans', 'num cell-fit']]);
 const OUTSIDE_COLUMNS = Object.freeze([['name', 'Name'], ['valid', 'Valid', 'cell-fit'], ['table', 'Table'],
   ['size', 'Size', 'num cell-fit'], ['scans', 'Scans', 'num cell-fit']]);
+// The values beside the names; the state last takes the room - its tag, Apply declared, a refusal's sentence.
 const STORAGE_COLUMNS = Object.freeze([['table', 'Table', 'cell-fit'], ['parameter', 'Parameter', 'cell-fit'],
-  ['state', 'State'], ['declared', 'Declared', 'num cell-fit'], ['held', 'Set', 'num cell-fit'], ['source', 'From', 'cell-fit']]);
+  ['declared', 'Declared', 'num cell-fit'], ['held', 'Set', 'num cell-fit'], ['source', 'From', 'cell-fit'], ['state', 'State']]);
 
 export class IndexTablePanel {
   /** @param deps { doc, read: () => Promise<{body, refused}>, apply: (table) => Promise<{done, refused}>, now: () => Date }
