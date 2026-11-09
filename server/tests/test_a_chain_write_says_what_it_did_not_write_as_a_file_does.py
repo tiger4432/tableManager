@@ -10,6 +10,7 @@ import os
 import sys
 
 import pandas as pd
+import pytest
 from sqlalchemy import text
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -19,6 +20,14 @@ from chain import ingestion_worker as worker  # noqa: E402
 from database import crud  # noqa: E402
 
 TABLE = "inventory_master"
+
+
+@pytest.fixture(autouse=True)
+def _own_drop_counts(monkeypatch):
+    """The drops these writes count are this file's - the process-wide counts the heartbeat reads stay as they were
+    (test_chain_key_gate asserts a clean worker's beat after this file ran, 11-09)."""
+    for name in ("_undeclared_column_drops", "_undeclared_column_warned", "_undeclared_column_drops_over_budget"):
+        monkeypatch.setattr(crud, name, {})
 
 
 class Lines(logging.Handler):
