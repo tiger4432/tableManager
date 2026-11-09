@@ -157,16 +157,27 @@ def test_a_delete_door_judges_an_edit_by_row_on_the_table_it_names(grid, door):
     assert got == DELETES
 
 
+def _recent(client):
+    """The recent changes as the route lists them - it walks behind its read (owner 11-09): the first read starts
+    the walk, this waits for it and reads again."""
+    from admin.audit_cache import audit_cache
+
+    client.get("/audit_logs/recent")
+    if audit_cache._behind is not None:
+        audit_cache._behind.join(30)
+    return client.get("/audit_logs/recent").json()["groups"]
+
+
 def test_the_audit_lists_leave_out_an_unreadable_table(grid):
     client, who = grid
     who["name"] = "boss"
     for table in ("acc_allow", "acc_open"):
         assert _write(client, table, "audit").status_code == 200
     who["name"] = "lee"
-    tables = {group["logs"][0]["table_name"] for group in client.get("/audit_logs/recent").json()["groups"]}
+    tables = {group["logs"][0]["table_name"] for group in _recent(client)}
     assert "acc_open" in tables and "acc_allow" not in tables, tables          # canary: one table is seen
     who["name"] = "kim"
-    tables = {group["logs"][0]["table_name"] for group in client.get("/audit_logs/recent").json()["groups"]}
+    tables = {group["logs"][0]["table_name"] for group in _recent(client)}
     assert {"acc_open", "acc_allow"} <= tables, tables
 
 

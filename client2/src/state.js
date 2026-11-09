@@ -157,6 +157,9 @@ export const state = {
   // The held Global list may be missing logs: none read yet, logs came while another tab was shown, the socket was
   // away, or the server said read again. Global reads when this is set (or it holds nothing); else it redraws.
   globalHistoryStale: true,
+  // The held Global list is being read again, or the server said its walk or merge runs behind the answer (owner 11-09):
+  // the list stays drawn, said «Updating».
+  globalHistoryUpdating: false,
   // [History paging] The GLOBAL tab's half of the same envelope, and it exists because the
   // route that publishes `next_cursor` now ACCEPTS one (판정 473). Until then this tab could
   // only state 「일부만」 as a fact with nowhere to go.

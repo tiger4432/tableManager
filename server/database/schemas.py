@@ -140,6 +140,8 @@ class AuditLogGroupPage(BaseModel):
     those keeps working; see the route.
     """
     groups: list[AuditLogGroupResponse]
+    #: True == the walk or the merge runs behind this answer (owner 11-09) - with no groups: «reading», not «none».
+    updating: bool = False
     #: True == the bounded scan gave up before reaching `limit_groups`.
     truncated: bool = False
     #: Feed back as `?cursor=`.

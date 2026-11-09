@@ -438,6 +438,7 @@ function resetState() {
   state.globalHistoryStale = true;
   state.currentTransactionId = null;
   state.globalHistoryData = [];
+  state.globalHistoryUpdating = false;
 }
 
 const log = (i, row = 'ROW-A', col = 'COL-A') => ({
@@ -1330,6 +1331,16 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── U (owner 11-09): the Global list while it is read again ──
+  { name: 'a stale Global list is wiped to Loading again (the code before)', defect: true,
+    find: '    if (state.globalHistoryData.length) {\n      state.globalHistoryUpdating = true;',
+    repl: '    if (false) {\n      state.globalHistoryUpdating = true;' },
+  { name: "the server's updating is not read", defect: true,
+    find: '      state.globalHistoryUpdating = Boolean(body && body.updating === true);',
+    repl: '      state.globalHistoryUpdating = false;' },
+  { name: 'an updating answer is not read again', defect: true,
+    find: '      if (state.globalHistoryUpdating) {\n        clearTimeout(historyRereadTimer);',
+    repl: '      if (false) {\n        clearTimeout(historyRereadTimer);' },
   // ── K (lead 10-13): a person's change by the layer source ──
   { name: 'the row pane takes «not system» for a person again (the code before)', defect: true,
     find: '  const isUser = byPerson(log);',
@@ -1454,8 +1465,8 @@ const MUTANTS = [
     find: '    if (!state.globalHistoryStale && state.globalHistoryData.length) {',
     repl: '    if (false) {' },
   { name: 'Global is marked fresh when its read ends, not as it goes out', defect: true,
-    find: '      renderGlobalTimeline();\n      readWhole = true;',
-    repl: '      renderGlobalTimeline();\n      state.globalHistoryStale = false;\n      readWhole = true;' },
+    find: '      readWhole = true;\n    } catch (err) {',
+    repl: '      readWhole = (state.globalHistoryStale = false, true);\n    } catch (err) {' },
   { name: 'a Global body that lands after another question is drawn', defect: true,
     find: '      // superseded while the body came - the operator is looking at another list now\n      if (!read.current()) return;\n',
     repl: '' },
@@ -1547,6 +1558,54 @@ async function sectionL() {
   resetState();
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// U — the Global list while it is read again (owner 11-09 «쓰는 중에도 90 % 가 페치 중이거나 비어 있음»)
+//   held     a held list stays drawn while the read is out - not wiped to «Loading»
+//   reading  the server's `updating` with no groups is «Reading history…», never «No database history recorded»
+//   again    an `updating` answer is read again after HISTORY_REREAD_MS; one without it is not
+// The re-read's timer is caught here, never run: a real timer outliving the case would fetch into the next one.
+// ════════════════════════════════════════════════════════════════════════════════
+async function sectionU() {
+  const armed = [];
+  const realTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms) => { if (ms === 2000) armed.push(ms); return 0; };   // the re-read's alone
+  try {
+    let S = await buildSandbox();
+    resetState();
+    state.activeHistoryTab = 'global';
+    S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)]), group('TX-2', [log(2)])]) });
+    await S.ctx.loadHistory();
+    S.responses.push({ status: 200, body: recentPage([group('TX-3', [log(3)])]), hang: true });
+    const inFlight = parked(S, S.ctx.rereadHistory());
+    check('U1 a held list stays drawn while it is read again', items(S.timeline).length, 2);
+    check('U1b ... not wiped to Loading', S.timeline.innerHTML.includes('Loading global history'), false);
+    await releaseAndAwait(S, inFlight);
+    check('U1c ... and the answer replaces it', txIds(state.globalHistoryData), ['TX-3']);
+    check('U1d ... with no re-read armed when the server is not updating', armed.length, 0);
+
+    S = await buildSandbox();
+    resetState();
+    state.activeHistoryTab = 'global';
+    S.responses.push({ status: 200, body: { ...recentPage([]), updating: true } });
+    await S.ctx.loadHistory();
+    check('U2 no groups and updating: the panel says it is reading',
+      S.timeline.innerHTML.includes('Reading history'), true);
+    check('U2b ... not that there is no history', S.timeline.innerHTML.includes('No database history recorded'), false);
+    check('U2c ... and reads again once the server has had its time', armed, [2000]);
+
+    S = await buildSandbox();
+    resetState();
+    state.activeHistoryTab = 'global';
+    armed.length = 0;
+    S.responses.push({ status: 200, body: { ...recentPage([group('TX-1', [log(1)])]), updating: true } });
+    await S.ctx.loadHistory();
+    check('U3 groups and updating: drawn, and read again', [items(S.timeline).length, armed], [1, [2000]]);
+  } finally {
+    globalThis.setTimeout = realTimeout;
+    resetState();
+  }
+}
+
 async function sectionG() {
   for (const m of MUTANTS) {
     // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
@@ -1573,6 +1632,7 @@ async function sectionG() {
       await sectionJ();
       await sectionK();
       await sectionL();
+      await sectionU();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1608,6 +1668,7 @@ await sectionI();
 await sectionJ();
 await sectionK();
 await sectionL();
+await sectionU();
 const beforeG = { pass, fail };
 await sectionG();
 

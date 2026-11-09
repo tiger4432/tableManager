@@ -91,6 +91,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
+import error_said
 import event_constants
 from admin import audit_history
 from database import models
@@ -126,6 +127,11 @@ RECENT_DEFAULTS = {
     # a merge's rest is the next read's.
     "recent_walk_seconds": 10,
 }
+
+
+#: A read starts the walk or the merge behind it (`AuditLogCache.behind`) when none runs and the last one ended at
+#: least this long ago - a screen that reads again while `updating` does not start one after another.
+CATCH_UP_GAP_SECONDS = 2
 
 
 # Sort placeholder for a null `timestamp`. Never compared against a real value -
@@ -175,6 +181,8 @@ class AuditLogCache:
         self.truncated = False
         self.next_cursor: Optional[str] = None
         self.scanned_rows = 0
+        self._behind: Optional[threading.Thread] = None     # the walk or the merge running behind the reads
+        self._behind_ended = float("-inf")
 
     # ------------------------------------------------------------------
     # The scan
@@ -531,6 +539,45 @@ class AuditLogCache:
                   f"{len(order)}/{limit_groups} transaction groups "
                   f"(recent_max_scan_rows={settings['recent_max_scan_rows']:,}). "
                   f"The response is marked truncated.")
+
+    def behind(self, bind, limit_groups: int = 100) -> bool:
+        """The walk and the merge behind the read (owner 11-09 «읽기는 쓰기에 영향 안 받음»): the route answers the
+        projection it holds, and one thread at a time builds it (`load_initial`) or merges what other processes wrote
+        (`refresh_if_stale`) on a session of its own on `bind` - started when none runs and the last ended
+        `CATCH_UP_GAP_SECONDS` ago or more. -> whether one runs now, or none has built the projection yet (a walk
+        cut before naming a group) - the answer's `updating`: never «no history» for «not read yet»."""
+        from sqlalchemy.orm import sessionmaker
+
+        with self._lock:
+            if (self._behind is None or not self._behind.is_alive()) and (
+                    time.monotonic() - self._behind_ended >= CATCH_UP_GAP_SECONDS):
+                self._behind = threading.Thread(target=self._catch_up, args=(sessionmaker(bind=bind), limit_groups),
+                                                name="audit-recent", daemon=True)
+                self._behind.start()
+            return not self.is_loaded or (self._behind is not None and self._behind.is_alive())
+
+    def _catch_up(self, session_factory, limit_groups: int):
+        """The walk, then the merge, on a session of its own; over the slow-request budget it says where its time went
+        (owner 11-09 «로그 촘촘히») - the read no longer carries it on its own [Slow] line."""
+        from runtime import request_timing
+
+        db = session_factory()
+        try:
+            began = time.monotonic()
+            self.load_initial(db, limit_groups)
+            walked = time.monotonic()
+            self.refresh_if_stale(db, limit_groups)
+            ended, budget = time.monotonic(), request_timing.slow_request_ms()
+            if budget is not None and (ended - began) * 1000 > budget:
+                logger.warning("[Slow] recent history behind the reads - %.2f s (budget %d ms) · walk %.2f s · "
+                               "merge %.2f s", ended - began, budget, walked - began, ended - walked)
+        except Exception as exc:                                # noqa: BLE001 - the next read starts another
+            logger.warning("[Audit] recent history not caught up - the next read tries again: %s",
+                           error_said.told(exc))
+        finally:
+            db.close()
+            with self._lock:
+                self._behind_ended = time.monotonic()
 
     def refresh_if_stale(self, db: Session, limit_groups: int = 100) -> bool:
         """Merge audit rows committed by a separate process.

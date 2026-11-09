@@ -94,7 +94,8 @@ def test_the_statement_count_does_not_grow_with_the_number_of_logs(
     for n, tx in ((3, "tx-small"), (30, "tx-large")):
         _seed_deleted_rows(db_session, tx, n)
         if warm_cache:
-            client.get("/audit_logs/recent")
+            audit_cache.load_initial(db_session)          # the route walks behind its read (owner 11-09)
+            audit_cache.refresh_if_stale(db_session)
             # 🔴 `is_loaded` is NOT enough. The route only takes the cache branch if
             # THIS transaction is among the cached groups; otherwise it falls through
             # to the DB branch and this parametrization would silently be a duplicate

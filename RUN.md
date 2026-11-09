@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **Global 기록이 «안 뜸 · 늘 Loading» 대신 바로 뜬다 — 걷기 · 병합은 읽기 뒤에서** — git pull · API 재기동 · 화면 새로고침(dist 바뀜)
+>
+> ```
+> 볼 것    재기동 직후 Global 탭: 빈 «No database history recorded» 대신 «Reading history…» → 몇 초 안에 목록
+>          쓰는 중: 큰 변경(알림이 500 상한에 잘림)이 와도 목록이 안 지워지고 개수 칸에 «… · Updating» → 바뀐 목록
+> 볼 줄    server.log  [Slow] recent history behind the reads - <초> s (budget 1000 ms) · walk <초> s · merge <초> s
+>          — 뒤 일이 예산을 넘을 때만. walk 가 크면 재기동 뒤 첫 걷기(audit_logs 를 훑음), merge 가 크면 다른 프로세스가 쓴 것이 많았음
+>          [Audit] recent walk cut … / recent merge cut … — 문장 5 s · 걷기 10 s 상한에 잘림(이전과 같음). 화면은 «Reading/Updating» 을 계속 말하고 2 s 마다 다시 읽음
+>          [Audit] recent history not caught up - the next read tries again: … — 뒤 일이 터짐. 다음 읽기가 다시 띄움
+> 답의 뜻  «Reading history…» 가 오래 남음 = 뒤 걷기가 계속 잘림(위 cut 줄이 같이 뜸) — audit_logs 읽기가 느린 것(autovacuum · IO). 화면 · 서버는 안 굳음
+>          «No database history recorded» = 정말로 기록이 없음(이제 «아직 못 읽음»과 다른 글자)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동 · dist 새로고침)
+> ```
+>
+> ---
+>
 > ## [11-09] **표 저장 매개변수(fillfactor · vacuum_truncate · autovacuum_*)를 선언으로 — 손으로 건 값은 안 덮음** — git pull · 런처 재기동(전부)
 >
 > ```
@@ -64,7 +80,7 @@
 > 볼 줄    server.log  [Slow] GET /tables/<표>/data 200 - 응답이 …ms 걸렸습니다 (예산 1000ms) · db … ms · … queries
 >          · <읽은 행> rows · <보낸 바이트> bytes · count … s (…) · pool wait … s · pool start … s(새로 띄웠을 때만) · keys … s (SQL … s · … rows · Python … s)
 >          · data rows … s (…) · layers … s (SQL … s · <층 행> rows · Python … s) · ledger keys … s (…) · serialize … s
->          어드민 큰 읽기도 같은 줄 — /audit_logs/recent 는 load initial(재기동 뒤 첫 걷기) · refresh · shape 구간,
+>          어드민 큰 읽기도 같은 줄 — /audit_logs/recent 는 shape 구간(걷기 · 병합은 아래 오딧 블록의 뒤 일),
 >          다른 라우트는 db · queries · rows · bytes(dict 를 내는 라우트는 serialize 하나)
 > 답의 뜻  layers 의 SQL 이 크면 층 읽기(DB) · layers 의 Python 이 크면 층으로 칸 만들기(파이썬) · pool wait 가 크면 그리드 풀 자식이 다 바빴음
 >          (grid_processes 가 작거나 다른 큰 읽기가 앞에 있음) · pool start 가 크면 풀 자식을 새로 띄운 것(재기동 직후 첫 읽기 · 설정 다시 읽은 뒤)

@@ -27,6 +27,10 @@ export function loadHistory() {
   return state.historyReads.ask(question, readHistory);
 }
 
+/** How long after an `updating` answer the Global list is read again - the server's walk or merge has had its time. */
+const HISTORY_REREAD_MS = 2000;
+let historyRereadTimer = null;
+
 /** The server or the operator says read again: the held Global list is old, and the shown tab is read again. */
 export function rereadHistory() {
   state.globalHistoryStale = true;
@@ -50,7 +54,14 @@ async function readHistory(read) {
       renderGlobalTimeline();
       return;
     }
-    elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
+    // A held list stays drawn while the read is out, said «Updating» (owner 11-09 «쓰는 중에도 90 % 가 페치 중이거나 비어
+    // 있음»: every capped notification wiped it to Loading). Only an empty panel says Loading.
+    if (state.globalHistoryData.length) {
+      state.globalHistoryUpdating = true;
+      renderGlobalTimeline();
+    } else {
+      elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
+    }
     // Cleared as the read goes out: logs that come while it reads set it again, and the board's repeat reads them.
     state.globalHistoryStale = false;
     let readWhole = false;
@@ -90,10 +101,19 @@ async function readHistory(read) {
       // to prevent, arriving on the other tab.
       state.globalHistoryCursor = page.nextCursor;
       state.globalHistoryLoaded = page.logs.length;
+      // the server's walk or merge runs behind this answer: it is drawn, and read again once that has had its time
+      state.globalHistoryUpdating = Boolean(body && body.updating === true);
       renderGlobalTimeline();
+      if (state.globalHistoryUpdating) {
+        clearTimeout(historyRereadTimer);
+        historyRereadTimer = setTimeout(() => {
+          if (state.activeHistoryTab === 'global') rereadHistory();
+        }, HISTORY_REREAD_MS);
+      }
       readWhole = true;
     } catch (err) {
       if (!read.current()) return;
+      state.globalHistoryUpdating = false;
       console.error('Failed to load global history', err);
       elements.timeline.innerHTML = '<li class="timeline-empty" style="color:var(--color-danger)">Failed to load global history log</li>';
     } finally {
@@ -1132,9 +1152,12 @@ export function renderGlobalTimeline() {
   elements.timeline.innerHTML = '';
   const count = document.getElementById('audit-filter-count');
 
+  const updating = state.globalHistoryUpdating === true;
   if (!state.globalHistoryData || state.globalHistoryData.length === 0) {
-    elements.timeline.innerHTML = '<li class="timeline-empty">No database history recorded.</li>';
-    if (count) count.textContent = '';
+    // the server has not read it yet (its walk runs behind the answer) - not «none»
+    elements.timeline.innerHTML = updating ? '<li class="timeline-empty">Reading history…</li>'
+      : '<li class="timeline-empty">No database history recorded.</li>';
+    if (count) count.textContent = updating ? 'Updating' : '';
     return;
   }
 
@@ -1176,7 +1199,7 @@ export function renderGlobalTimeline() {
       elements.timeline.appendChild(li);
     }
   }
-  if (count) count.textContent = `${shown.length} of ${state.globalHistoryData.length}`;
+  if (count) count.textContent = `${shown.length} of ${state.globalHistoryData.length}${updating ? ' · Updating' : ''}`;
 }
 
 /** Re-render on a filter change. The selects are static markup, so this installs once. */

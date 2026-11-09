@@ -40,6 +40,18 @@ def seed(db, transactions):
     db.commit()
 
 
+def _recent(client, url):
+    """The route answers the projection it holds and walks behind the read (owner 11-09): the first read starts
+    the walk, this waits for it and reads what it built. A cursor page is read where it is asked, as before."""
+    if "cursor=" in url:
+        return client.get(url)
+    client.get(url)
+    behind = audit_cache.audit_cache._behind
+    if behind is not None:
+        behind.join(30)
+    return client.get(url)
+
+
 @pytest.fixture
 def knobs(monkeypatch):
     """Drive the shipped config path, not a private attribute.
@@ -164,7 +176,7 @@ def test_e_the_route_publishes_the_two_words(client, db_session, knobs):
     knobs(recent_max_scan_rows=10, recent_scan_chunk_rows=5)
     audit_cache.audit_cache.__init__()  # a fresh projection for this request
 
-    response = client.get("/audit_logs/recent?limit_groups=3")
+    response = _recent(client, "/audit_logs/recent?limit_groups=3")
 
     assert response.status_code == 200
     assert response.headers["x-audit-truncated"] == "true"
@@ -201,7 +213,7 @@ def test_e2_an_exhausted_projection_says_so_in_both_channels(client, db_session,
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=5)
     audit_cache.audit_cache.__init__()
 
-    body = client.get("/audit_logs/recent?limit_groups=50").json()
+    body = _recent(client, "/audit_logs/recent?limit_groups=50").json()
 
     assert [g["transaction_id"] for g in body["groups"]] == ["full-tx-a", "full-tx-b"]
     assert body["truncated"] is False
@@ -324,7 +336,7 @@ def test_h_the_route_that_publishes_a_cursor_accepts_one(client, db_session, kno
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=24)
     audit_cache.audit_cache.__init__()
 
-    first = client.get("/audit_logs/recent?limit_groups=2").json()
+    first = _recent(client, "/audit_logs/recent?limit_groups=2").json()
     assert first["truncated"] is True
     assert first["next_cursor"], "a truncated page must say where to resume"
 
@@ -367,7 +379,7 @@ def test_i_two_pages_are_a_partition_no_group_in_both_or_neither(client, db_sess
         url = "/audit_logs/recent?limit_groups=2"
         if cursor:
             url += f"&cursor={cursor}"
-        body = client.get(url).json()
+        body = _recent(client, url).json()
         ids = [g["transaction_id"] for g in body["groups"]]
         pages.append(ids)
         seen.extend(ids)
@@ -401,7 +413,7 @@ def test_j_a_group_straddling_the_boundary_is_named_once(client, db_session, kno
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
     audit_cache.audit_cache.__init__()
 
-    first = client.get("/audit_logs/recent?limit_groups=1").json()
+    first = _recent(client, "/audit_logs/recent?limit_groups=1").json()
     assert [g["transaction_id"] for g in first["groups"]] == ["straddler"], \
         "the newest group is the one with the newest ROW, wherever its others are"
     assert first["truncated"] is True
@@ -435,7 +447,7 @@ def test_n_a_replays_pages_are_one_line_per_run(client, db_session, knobs):
     seen, cursor = [], None
     for _ in range(10):                                 # bounded: never a live loop
         url = "/audit_logs/recent?limit_groups=5" + (f"&cursor={cursor}" if cursor else "")
-        body = client.get(url).json()
+        body = _recent(client, url).json()
         seen.extend(g["transaction_id"] for g in body["groups"])
         cursor = body["next_cursor"]
         if not cursor:
@@ -445,7 +457,7 @@ def test_n_a_replays_pages_are_one_line_per_run(client, db_session, knobs):
     # counts are the window's (`_discover_groups`), so they are asked of a window that holds every page
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=1_000)
     audit_cache.audit_cache.__init__()
-    body = client.get("/audit_logs/recent?limit_groups=100").json()
+    body = _recent(client, "/audit_logs/recent?limit_groups=100").json()
     assert sorted((g["transaction_id"], g["total_count"]) for g in body["groups"]) ==         sorted([(run, 6) for run in runs] + [("plain-tx", 2)])
     detail = client.get(f"/audit_logs/transaction/{runs[0]}").json()
     assert detail["total_count"] == 6 and len(detail["logs"]) == 6, "the line opens to every page's rows"
@@ -545,7 +557,7 @@ def test_m_a_group_names_the_worlds_its_receipts_were_written_into(
     monkeypatch.setattr(main, "check_rows_exist", lambda db, keys: asked.extend(keys) or set(keys))
 
     groups = {g["transaction_id"]: g
-              for g in client.get("/audit_logs/recent?limit_groups=5").json()["groups"]}
+              for g in _recent(client, "/audit_logs/recent?limit_groups=5").json()["groups"]}
     group = groups["edit-tx"]
     assert (len(group["logs"]), group["total_count"]) == (1, 5)    # canary: one representative
     (shown,) = group["logs"]
@@ -571,7 +583,7 @@ def test_l_a_ledger_receipt_is_not_a_deleted_row(client, db_session, knobs):
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
     audit_cache.audit_cache.__init__()
 
-    body = client.get("/audit_logs/recent?limit_groups=5").json()
+    body = _recent(client, "/audit_logs/recent?limit_groups=5").json()
     deleted = {g["transaction_id"]: g["logs"][0]["is_row_deleted"] for g in body["groups"]}
 
     assert deleted == {"receipt-tx": False, "plain-tx": True}, (

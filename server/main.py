@@ -1663,6 +1663,7 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
     caller that reads them keeps working. Removing them is a separate decision
     from flipping the body, and this is not it.
     """
+    updating = False
     if cursor:
         try:
             cache_groups, truncated, next_cursor, _scanned = \
@@ -1670,14 +1671,9 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
         except audit_history.CursorError as e:
             raise HTTPException(status_code=400, detail=f"Invalid recent cursor: {e}")
     else:
-        # 1. 인메모리 캐시 로드 (최초 1회만 DB 조회)
-        with request_timing.stage("load initial"):         # the slow line's stages (lead 11-09)
-            audit_cache.load_initial(db, limit_groups)
-        # Chain replay is written by a separate worker process. Its committed audit
-        # rows cannot mutate this process-local cache, so reconcile before Admin
-        # renders the recent transaction list.
-        with request_timing.stage("refresh"):
-            audit_cache.refresh_if_stale(db, limit_groups)
+        # the projection as it is: its walk (the first) and its merge of what other processes wrote (chain replay,
+        # ingestion) run behind this read, never in it (owner 11-09 «읽기는 쓰기에 영향 안 받음») - `updating` says one runs
+        updating = audit_cache.behind(db.get_bind(), limit_groups)
         cache_groups = audit_cache.groups
         truncated = audit_cache.truncated
         next_cursor = audit_cache.next_cursor
@@ -1688,7 +1684,8 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
 
     # 2. 캐시된 그룹을 경량화하여 반환
     with request_timing.stage("shape"):
-        return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
+        page = _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
+    return dict(page, updating=updating)
 
 
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
