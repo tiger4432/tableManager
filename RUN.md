@@ -13,6 +13,38 @@
 >
 > ---
 >
+> ## [11-10] **받은 릴리스 묶음은 설치 폴더의 release 폴더에 넣기만 — 런처가 켜질 때 알아서 반영** — 이 기능이 든 첫 묶음만 노트대로 손으로 한 번
+>
+> ```
+> 할 일    1. 받은 .bundle 파일(들)을 설치 폴더의 release\ 에 넣음(폴더가 없으면 만듦, 파일 이름 · 순서는 상관없음)
+>          2. 런처를 다시 켬(run_app.bat) — 또는 apply_release.bat 을 눌러 반영만 하고 런처를 다시 켬
+> 하는 일  묶음의 전제 커밋을 보고 순서를 스스로 찾음: 이미 들어간 것은 건너뜀 · 앞 묶음이 다 들어간 것을 얹고 다시 찾음
+>          (git bundle verify · fetch <묶음> release · merge --ff-only). 반영된 파일은 release\applied\ 로 옮김
+>          런처는 반영 뒤 «새 코드 전부»로 다시 떠서 자식들을 띄움
+> 창 닫기  다시 뜬 런처와 그 서버들은 처음 창에 묶여 있음 — 처음 창을 닫거나 그 프로세스가 죽으면 같이 내려감
+> 안 막음  추적 안 하는 파일(운영 config · 런처 옆에 둔 .bat 등)은 그대로 두고 반영함. 다만 묶음이 새로 가져오는
+>          파일과 같은 이름의 파일이 있으면 그 묶음에서 멈춤 — 줄에 그 파일 이름이 나옴
+> 볼 줄    launcher.log (apply_release.bat 은 화면)
+>          [Release] <파일>: <이전 커밋> -> <새 커밋> (back: git reset --hard <이전 커밋>)   = 반영됨, 되돌리려면 그 줄
+>          [Release] <파일>: already in (<커밋>)                                          = 이미 들어 있던 판, 옮기기만
+>          [Release] starting again on <커밋>                                             = 런처가 새 코드로 다시 뜸
+>          [Release] nothing to apply - …                                                = 넣은 묶음 없음
+> 답의 뜻  [Release] <파일> waits for <커밋>, which no bundle here brings        = 중간 판 묶음이 없음 — 그 앞 판 묶음을 받아 넣음
+>                                                                                  (거기까지는 반영됐고 런처는 그 판으로 뜸)
+>          [Release] not applied: N tracked file(s) changed in this copy (…)     = 설치 폴더의 추적 파일을 누가 고쳤음 —
+>                                                                                  아무것도 안 바뀜. 그 목록을 총괄에게
+>          [Release] <파일> left in the release folder: git cannot read it (…)   = 파일이 깨졌음 — 다시 받아 넣음
+>          [Release] <파일> not applied: N file(s) here outside git are files it brings (…) - move or delete them …
+>                                                                         = 묶음이 가져오는 파일과 같은 이름의 파일이 여기 있음 —
+>                                                                           그 파일들을 옮기거나 지우고 런처를 다시 켬
+>          [Release] <파일> not applied: … - this copy stays at <커밋>; send this line to the lead
+>                                                                         = 이 사본에 따로 커밋이 있어 앞으로 못 감 — 그 줄을 총괄에게
+>          [Release] the release step failed: …                                 = 반영 단계가 터짐 — 런처는 원래 코드로 그대로 뜸
+> 끄기     release\ 를 비워 두면 아무 일도 안 함
+> ```
+>
+> ---
+>
 > ## [11-09] **Global 기록이 «안 뜸 · 늘 Loading» 대신 바로 뜬다 — 걷기 · 병합은 읽기 뒤에서** — git pull · API 재기동 · 화면 새로고침(dist 바뀜)
 >
 > ```

@@ -14,6 +14,9 @@ server/assy_manager.db
 **/raws/*
 **/*.csv
 
+# Release bundles the company drops in to be applied (server/runtime/release_apply.py)
+/release/
+
 # IDE 설정
 .vscode/
 .idea/
