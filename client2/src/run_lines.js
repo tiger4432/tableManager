@@ -35,6 +35,7 @@ export function runLineView(row) {
     // × only where a cancel can reach, and never twice: a stopping run has already been asked.
     cancel: Boolean(r.cancel) && !r.stopping,
     summary: textOf(r.summary),
+    chain: textOf(r.chain),
     reason: textOf(r.reason),
     failure: (Array.isArray(r.failure) ? r.failure : [])
       .map((cell) => ({ label: textOf(cell && cell.label), value: textOf(cell && cell.value) })),
@@ -102,8 +103,9 @@ export class RunLines {
 
     // What it did — the server's words, on its own full-width line. A failure reason sits here too.
     const boxes = this.resultBoxes(v.extras) || [];
-    if (boxes.length || v.summary || v.reason || v.failure.length) {
+    if (boxes.length || v.chain || v.summary || v.reason || v.failure.length) {
       const result = this._el('div', 'run-line__result');
+      if (v.chain) result.appendChild(this._el('span', 'run-line__chain', v.chain));
       boxes.forEach((box) => result.appendChild(box));
       if (v.summary) result.appendChild(this._el('span', 'run-line__summary', v.summary));
       if (v.reason) result.appendChild(this._el('span', 'run-line__reason', v.reason));

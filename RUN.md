@@ -62,6 +62,24 @@
 >
 > ---
 >
+> ## [11-09] **체인 소급이 «도는 중»을 보임 — 소급 줄 «Chain K / N pages · R rows waiting · F failed», 그리드 Queue 탭은 소급 한 번 = 한 줄** — git pull · 런처 재기동(API) · 브라우저 새로고침(dist)
+>
+> ```
+> 무엇     소급이 쪽을 다 올리면 실행 줄은 done 인데 체인은 그 뒤에 쪽을 돎 — 그 쪽 진행을 세 화면이 한 함수(replay.pages_of)로 그림
+>          소급 화면 줄 (Overview 최근 실행): done 옆 줄에 «Chain K / N pages · R rows waiting · F failed»
+>            쪽이 아직 기다리면 10 분이 지나도 줄이 남고 목록이 3 s 박자로 다시 읽음
+>          어드민 큐 줄: pages 에 waiting · rows_waiting · failed 가 더해짐(같은 함수)
+>          그리드 오른쪽 Queue 탭: 소급의 쪽 사건은 «한 줄» — Event 칸 «Replay» 밑에 «run <id> · Chain K / N pages …»
+> 볼 것    소급 하나를 걸고 소급 화면 · 오른쪽 Queue 탭을 열어 둠 — K 가 쪽 커밋마다 오르고 R 이 줄어듦
+> 답의 뜻  K / N 이 멈췄는데 failed 가 있음 = 그 쪽이 실패해 체인이 더 안 돎 — 어드민 실패 목록에서 사유를 봄
+>          K / N 이 멈췄고 failed 0 · waiting 그대로 = 체인이 그 쪽을 아직 도는 중 — 한 쪽은 한 커밋이라 쪽 «안»은 아직 안 보임
+>            (쪽 안 진행은 다음 착지). × 를 누르기 전에 어드민 큐 줄의 단계 · 규칙 rows_in 을 봄
+>          × 를 눌렀다면: 끝난 쪽은 남고 나머지는 안 돈 채 멈춤 — 어드민 대기열 그 줄의 Resume 이 멈춘 곳부터 메움
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-09] **Global 기록이 «안 뜸 · 늘 Loading» 대신 바로 뜬다 — 걷기 · 병합은 읽기 뒤에서** — git pull · API 재기동 · 화면 새로고침(dist 바뀜)
 >
 > ```

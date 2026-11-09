@@ -409,6 +409,23 @@ const RUN_FINISHED = ['done', 'cancelled', 'failed'];
 // 세지 않고, × 도 안 답니다. 끝난 시각이 없는 줄은 잴 수 없어 남기지 않습니다(서버는 끝낼 때 늘 찍습니다).
 export const FINISHED_STAYS_MS = 10 * 60 * 1000;
 
+/** A replay's pages as the chain runs them (server `replay.pages_of`, lead 11-09): «Chain K / N pages · R rows waiting ·
+ *  F failed», '' when the server sends none. The one place these words are made - the runs list and the grid's Queue
+ *  tab read it. A failed count is said so a stopped K / N is not read as still running. */
+export function chainPagesLine(pages) {
+  const p = pages && typeof pages === 'object' ? pages : null;
+  const n = (v) => (Number.isInteger(v) && v >= 0 ? v : null);
+  if (!p || n(p.done) === null || n(p.staged) === null) return '';
+  return [
+    `Chain ${localeCountText(p.done)} / ${localeCountText(p.staged)} ${p.staged === 1 ? 'page' : 'pages'}`,
+    n(p.rows_waiting) ? `${localeCountText(p.rows_waiting)} ${p.rows_waiting === 1 ? 'row' : 'rows'} waiting` : '',
+    n(p.failed) ? `${localeCountText(p.failed)} failed` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** A done replay whose pages still wait in the chain - its line stays, and the list reads at the busy pace. */
+const chainWaits = (run) => Boolean(run && run.pages && Number(run.pages.waiting) > 0);
+
 /** 몇 분째인가. 시각이 없으면 «null» — 0 분으로 적으면 「방금 시작」으로 읽힙니다. */
 export function elapsedMinutes(startedAt, now) {
   if (!startedAt) return null;
@@ -487,6 +504,7 @@ export function buildRunsView(payload, now, cancellable, formParams) {
   const rows = [];
   const recent = [];
   const runRows = [];
+  let handed = 0;
 
   for (const run of Array.isArray(data.runs) ? data.runs : []) {
     if (!run) continue;
@@ -553,6 +571,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       //    판별식은 «연산 이름을 안 묻습니다»: 라벨이 있으면 칩, 없으면 문장. 오늘 여섯 연산 중
       //    라벨을 다는 것은 하나뿐이라 나머지 다섯의 요약은 그대로입니다.
       summary: extras.length ? null : text(run.result_sentence),
+      // its pages as the chain runs them, beside «done» (lead 11-09) - null on any other run
+      chain: chainPagesLine(run.pages) ? chrome(chainPagesLine(run.pages)) : null,
       cancel: !finished && canCancel[run.op] === true,
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
@@ -565,7 +585,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     };
     runRows.push(row);
     if (!finished) rows.push(row);
-    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);
+    else if (now - stopped < FINISHED_STAYS_MS || chainWaits(run)) recent.push(row);
+    if (finished && chainWaits(run)) handed += 1;
   }
 
   for (const job of Array.isArray(data.ingestions) ? data.ingestions : []) {
@@ -600,6 +621,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     // 🔴 「몇 개가 도나」는 «도는 것»만 셉니다. 끝난 줄을 같이 세면 접힌 줄 하나로
     //    판단하는 이 화면이 「지금 하나 돌고 있다」고 거짓을 말합니다.
     liveCount: rows.length,
+    // done replays whose pages still wait in the chain - not running here, so not in liveCount
+    handed,
     // «비었다»는 사실이고, 한 줄로 말합니다. 빈 표를 그리면 「못 읽었다」처럼 보입니다.
     empty: rows.length + recent.length === 0,
   };
@@ -610,7 +633,7 @@ export function buildRunsView(payload, now, cancellable, formParams) {
  * do not keep it busy - they kept it at the busy pace for as long as any finished run was among the last fifty.
  * Not read yet is busy: one more try soon.
  */
-export const runsPollBusy = (view) => !view || view.liveCount > 0;
+export const runsPollBusy = (view) => !view || view.liveCount > 0 || view.handed > 0;
 
 /** `POST /admin/retroactive/{op}/run` — the acknowledgement.
  *

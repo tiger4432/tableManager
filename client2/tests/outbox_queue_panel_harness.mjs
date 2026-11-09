@@ -448,6 +448,50 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
+// ═══ A replay is its run's one row (owner 11-09 «오른쪽 큐도 똑같은 거 잔뜩», lead ㄷ) ═══════════════════════════
+// The server sends a replay's waiting pages as one row with its run and pages; the row draws them on a line of its whole
+// width under its cells - «Replay · run <id> · Chain K / N pages · R rows waiting · F failed». Any other row: no line.
+{
+  const REPLAY = { ...WAITING, outbox_id: 21, run_id: 'rp-1', rule: 'dt_log_to_dt_map',
+                   pages: { done: 3, staged: 20, rows_done: 3000, waiting: 17, rows_waiting: 17000, failed: 2 } };
+  const replaySuite = (m, say) => {
+    const view = m.outboxQueueView(REPLY([WAITING, REPLAY]));
+    say('RP1 the replay row carries its run and its pages\' words; the other row none',
+      view.rows[1].replay && view.rows[1].replay.run === 'rp-1'
+        && view.rows[1].replay.pages === 'Chain 3 / 20 pages · 17,000 rows waiting · 2 failed' && view.rows[0].replay === null,
+      JSON.stringify(view.rows.map((r) => r.replay)));
+    const mount = doc.createElement('div');
+    new m.OutboxQueuePanel(mount, { doc }).render(REPLY([WAITING, REPLAY]));
+    const lines = byClass(mount, 'queue-replay');
+    say('RP2 one line, under the replay\'s row, in its words', lines.length === 1
+      && lines[0].textContent === 'Replay · run rp-1 · Chain 3 / 20 pages · 17,000 rows waiting · 2 failed'
+      && byClass(mount, 'queue-row')[1].children.includes(lines[0]), lines.map((l) => l.textContent).join(' | '));
+    say('RP3 the Event cell keeps the server\'s word', byClass(mount, 'queue-event').map((c) => c.textContent).join(',') === 'EDIT,EDIT',
+      byClass(mount, 'queue-event').map((c) => c.textContent).join(','));
+  };
+  const R_NAMES = [];
+  replaySuite(await import('../src/outbox_queue_panel.js'), (name, cond, shown) => { R_NAMES.push(name); ok(name, cond, shown); });
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 50)}`); return t.split(from).join(to); };
+  const SUBJECT = new URL('../src/outbox_queue_panel.js', import.meta.url);
+  const MUTANTS = [
+    { id: 'RPM1', what: 'a replay row is drawn like any other', catches: 'RP1',
+      mutate: swap('replay: row.run_id ? Object.freeze(', 'replay: false ? Object.freeze(') },
+    { id: 'RPM2', what: 'the line leaves its pages out', catches: 'RP2',
+      mutate: swap('`run ${row.replay.run}`, row.replay.pages]', '`run ${row.replay.run}`]') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
+    const got = [];
+    let ran = 0;
+    replaySuite(m, (name, cond) => { ran += 1; if (!cond) got.push(name); });
+    return { failures: got, ran };
+  }, { baselineRan: R_NAMES.length, baselineNames: R_NAMES, title: '\n  [mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

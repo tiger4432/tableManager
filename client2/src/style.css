@@ -2819,6 +2819,9 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 .queue-state { padding-block: 5px; }
 /* 규칙이 «없는» 행(제어 행). 사실만 적는 칸이라 사유 색(경고)을 안 쓴다. */
 .queue-rule-none { font-size: var(--fs-tag); color: var(--text-dim); }
+/* A replay's run and pages - the row's whole width under its cells (lead 11-09: the 54 px Event cell cut it). */
+.queue-replay { grid-column: 1 / -1; padding: 0 var(--space-3) var(--space-2); font-size: var(--fs-meta);
+                color: var(--text); overflow-wrap: anywhere; }
 .queue-rule { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
 .queue-rule-name { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text);
                    flex: none; white-space: nowrap; }

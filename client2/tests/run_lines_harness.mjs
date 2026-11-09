@@ -127,8 +127,8 @@ const MUTANTS = [
   { id: 'R5', what: 'the failure reason is dropped', catches: ['B3'],
     mutate: (s) => s.replace("      if (v.reason) result.appendChild(this._el('span', 'run-line__reason', v.reason));\n", '') },
   { id: 'R6', what: 'a failure record\'s cells are not drawn', catches: ['B5'],
-    mutate: (s) => s.replace('    if (boxes.length || v.summary || v.reason || v.failure.length) {',
-      '    if (boxes.length || v.summary || v.reason) {') },
+    mutate: (s) => s.replace('    if (boxes.length || v.chain || v.summary || v.reason || v.failure.length) {',
+      '    if (boxes.length || v.chain || v.summary || v.reason) {') },
   { id: 'R7', what: 'a cell loses its label', catches: ['B5'],
     mutate: (s) => s.replace("        pair.appendChild(this._el('span', 'run-line__label', cell.label));\n", '') },
 ];

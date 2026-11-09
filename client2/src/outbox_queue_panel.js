@@ -6,6 +6,7 @@
 // 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 경계는 모집단 문장이 말한다.
 import { chainStateCell, formatAge, line } from './chain_queue_panel.js';
 import { widestCell } from './cell_fit.js';
+import { chainPagesLine } from './retroactive_view.js';
 
 const str = (v) => (v == null ? '' : String(v));
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -67,6 +68,8 @@ export function outboxQueueView(payload, opts = {}) {
       slotPid: row.slot_pid ?? null,
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
+      // a replay is its run's one row (server, owner 11-09): the run and its pages - null on any other row
+      replay: row.run_id ? Object.freeze({ run: str(row.run_id), pages: chainPagesLine(row.pages) }) : null,
     });
   });
   return Object.freeze({
@@ -238,6 +241,13 @@ export class OutboxQueuePanel {
       line.appendChild(state);
 
       line.appendChild(this._rulesCell(row.rules));
+      // a replay's row says which run and its pages on a line of the row's whole width under it (lead 11-09)
+      if (row.replay) {
+        const said = this._line('queue-replay', ['Replay', `run ${row.replay.run}`, row.replay.pages].filter(Boolean)
+          .join(' · '));
+        said.setAttribute('data-wrap-ok', '');
+        line.appendChild(said);
+      }
       body.appendChild(line);
     }
     scroll.appendChild(body);

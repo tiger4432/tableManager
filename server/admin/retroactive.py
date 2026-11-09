@@ -3827,6 +3827,10 @@ def runs(db, limit: int = 50) -> list:
             .limit(max(1, min(int(limit or 50), 500))).all())
     now = datetime.now(timezone.utc)
     stages = _stages_of(db, [row.run_id for row in rows if row.state in IN_FLIGHT_STATES])
+    from chain import replay
+
+    # a replay's pages as the chain runs them, after its run is done staging (lead 11-09: «chain K / N» beside done)
+    pages = replay.pages_of(db, [row.run_id for row in rows if row.op in event_constants.CHAIN_OWNED_RETROACTIVE_OPS])
 
     def told(row):
         """A run in flight's stage and pace (`RunControl.tell`, `pace`) - null otherwise, and null where unknown."""
@@ -3862,6 +3866,7 @@ def runs(db, limit: int = 50) -> list:
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
         **told(row),
         "waiting": _waiting_of(row, stages),
+        "pages": pages.get(row.run_id),
     } for row in rows]
     # Where a run picks up next, from the operation that knows (총괄 3a1446982) - null for an
     # operation with no such idea, and for a run still going.

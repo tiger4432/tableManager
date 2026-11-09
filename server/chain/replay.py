@@ -1006,6 +1006,34 @@ def advance_cursors(db, events):
     return moved
 
 
+def pages_of(db, run_ids):
+    """A replay's pages as the chain runs them (lead 11-09 ㄷ) - ONE answer, read by the admin queue's line, the runs
+    list and the grid's Queue tab. -> `{run_id: {"done", "staged", "rows_done", "waiting", "rows_waiting", "failed"}}` for
+    the runs with a cursor (`_cursor_start`): pages committed and staged, rows through the last committed page, the run's
+    events still waiting and their rows (`idx_outbox_line`) and its events FAILED (`idx_outbox_failed`). A run without a
+    cursor is absent - null on the screens. Adds no column (a read-only door)."""
+    from sqlalchemy import bindparam, func
+    from database import models
+
+    ids = sorted({run for run in run_ids if run})
+    if not ids or not models.ensure_run_columns(db.get_bind(), add=False):
+        return {}
+    found = {run: {"done": done, "staged": staged, "rows_done": rows, "waiting": 0, "rows_waiting": 0, "failed": 0}
+             for run, done, staged, rows in db.execute(text(
+                 "SELECT run_id, cursor_page, staged_page, cursor_rows FROM retroactive_runs WHERE run_id IN :ids "
+                 "AND cursor_page IS NOT NULL").bindparams(bindparam("ids", expanding=True)), {"ids": ids})}
+    outbox = models.DatabaseOutbox
+    line = func.coalesce(outbox.run_id, outbox.transaction_id)
+    for cell, column, where in (("waiting", line, outbox.processed_chain == False),          # noqa: E712
+                                ("failed", outbox.run_id, outbox.status == "FAILED")):
+        for run, count, rows in (db.query(column, func.count(), func.sum(outbox.row_count)).filter(
+                where, column.in_(list(found))).group_by(column) if found else ()):
+            found[run][cell] = count
+            if cell == "waiting":
+                found[run]["rows_waiting"] = int(rows or 0)
+    return found
+
+
 def interrupted_runs(db, run_id=None, rule=None):
     """The replay runs cut short (총괄 fc1e1e385) - ONE JUDGEMENT, asked by the queue, Resume, × and the sweep: a run
     with a cursor, ended (done · cancelled · failed), not continued, and either cut while staging or with a page
