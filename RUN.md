@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **큰 표의 vacuum 끝자리 자르기를 끔 — cell_sources · audit_logs · 원장 파티션 전부** — git pull · 런처 재기동(스케줄러 · 원장 워커)
+>
+> ```
+> 무엇     vacuum 이 표 끝의 빈 페이지를 자를 때 ACCESS EXCLUSIVE 를 잡아, 그 뒤로 읽기·쓰기가 줄을 섰음(멈춤 줄마다 autovacuum)
+>          이제 그 세 곳은 vacuum_truncate=false — vacuum 은 그대로 돌고, 끝자리만 안 자름(그 빈 페이지는 다음 쓰기가 씀)
+> 볼 줄    auto_update.log  [Indexes] cell_sources storage set as declared  ·  [Indexes] audit_logs storage set as declared
+>          ledger.log       [Ledger] autovacuum_analyze_scale_factor 0.02, vacuum_truncate false set on N partition(s): …
+>          둘 다 처음 한 번만. 다음 기동부터는 안 뜸(이미 걸려 있으면 손대지 않음)
+> 답의 뜻  «[Indexes] <표> storage not set - its lock was busy past 500ms» -> 그 표를 지금 vacuum 이 쥐고 있음. 기다리지 않고
+>          다음 병합 때 다시 함(스케줄러가 저절로). 그 vacuum 이 길면 몇 번 뜰 수 있음 — 고장 아님
+>          «[Ledger] <파티션>: vacuum_truncate not set - …» -> 그 파티션을 다른 일이 20 s 넘게 쥐고 있었음. 다음 원장 워커 기동 때 다시
+> 끄기     필요 없음(설정을 되돌릴 일 없음). 굳이 되돌리려면 이 착지를 되돌린 뒤 재기동 — 이미 걸린 표에는 그대로 남음
+> ```
+>
+> ---
+>
 > ## [11-09] **운영이 계속 느리면 — Not adopted 센서스를 background 로** — 재기동 없음
 >
 > ```
