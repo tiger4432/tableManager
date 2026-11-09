@@ -383,8 +383,9 @@ def test_the_line_merges_no_partitioned_index_and_says_nothing_wrong(pg_engine):
 
 @pytest.mark.pg
 def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_later(pg_engine):
-    """Owner 10-20: pages kept 30 % free so an updated layer's old version is pruned without vacuum. An existing table
-    takes it by ALTER; a lock held elsewhere is not waited for past STORAGE_LOCK_TIMEOUT."""
+    """Owner 10-20: pages kept 30 % free so an updated layer's old version is pruned without vacuum. Owner 11-09: no end
+    truncation on cell_sources and audit_logs - its ACCESS EXCLUSIVE queued every read in ops. An existing table takes
+    it by ALTER; a lock held elsewhere (a running vacuum's) is not waited for past STORAGE_LOCK_TIMEOUT."""
     from sqlalchemy import text
     from sqlalchemy.orm import sessionmaker
 
@@ -392,21 +393,24 @@ def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_
 
     factory = sessionmaker(bind=pg_engine)
 
-    def fillfactor():
+    def options(table):
         with pg_engine.connect() as conn:
             return conn.execute(text("SELECT c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                                     " WHERE c.relname = 'cell_sources' AND n.nspname = current_schema()")).scalar()
+                                     " WHERE c.relname = :t AND n.nspname = current_schema()"), {"t": table}).scalar()
 
     with pg_engine.begin() as conn:
-        conn.execute(text("ALTER TABLE cell_sources RESET (fillfactor)"))
+        conn.execute(text("ALTER TABLE cell_sources RESET (fillfactor, vacuum_truncate)"))
+        conn.execute(text("ALTER TABLE audit_logs RESET (vacuum_truncate)"))
+    assert not options("cell_sources") and not options("audit_logs"), "canary: neither holds its storage"
     holder = pg_engine.connect()
     try:
         held = holder.begin()
         holder.execute(text("LOCK TABLE cell_sources IN SHARE UPDATE EXCLUSIVE MODE"))
-        assert maintenance_line.apply_table_storage(factory) == {"cell_sources": "busy"}
+        assert maintenance_line.apply_table_storage(factory) == {"cell_sources": "busy", "audit_logs": "set"}
         held.rollback()
     finally:
         holder.close()
     assert maintenance_line.apply_table_storage(factory) == {"cell_sources": "set"}
-    assert "fillfactor=70" in fillfactor()
+    assert {"fillfactor=70", "vacuum_truncate=false"} <= set(options("cell_sources"))
+    assert options("audit_logs") == ["vacuum_truncate=false"]
     assert maintenance_line.apply_table_storage(factory) == {}, "held already - nothing to do"

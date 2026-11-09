@@ -196,6 +196,9 @@ class AuditLog(Base):
               postgresql_include=["transaction_id"],
               info={"purpose": "newest audit rows first, without sorting the table",
                     "serves": "GET /audit_logs/recent"}),
+        # 🔴 NO END TRUNCATION (owner 11-09: an autovacuum in nearly every ops stall) - a vacuum cutting the table's
+        #    empty tail takes ACCESS EXCLUSIVE and every read queues behind it. Set as cell_sources' storage is.
+        {"info": {"storage": {"vacuum_truncate": "false"}}},
     )
 
 
@@ -1061,8 +1064,9 @@ class CellSource(Base):
         # 🔴 PAGES KEPT 30 % FREE (owner 10-20): a layer updated in place (its source says a new value) leaves
         #    its old version on the page; with room there the update is HOT and the old version is pruned without
         #    vacuum - measured at 100: 0 HOT; at 70: nearly all. Set at the scheduler's start, a new table's and an
-        #    existing one's alike (`maintenance_line.apply_table_storage`).
-        {"info": {"storage": {"fillfactor": 70}}},
+        #    existing one's alike (`maintenance_line.apply_table_storage`). No end truncation either (owner 11-09, as
+        #    audit_logs): a vacuum cutting the empty tail takes ACCESS EXCLUSIVE and every read queues behind it.
+        {"info": {"storage": {"fillfactor": 70, "vacuum_truncate": "false"}}},
     )
 
 

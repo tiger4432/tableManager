@@ -1078,8 +1078,20 @@ def create_partition_sql(when: datetime, names: WorldNames = _DEFAULT, scale_fac
     start, end, _ = month_bounds(when)
     name = partition_name(when, names)
     return (f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {names.ledger} "
-            f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}')"
-            + ("" if scale_factor is None else f" WITH (autovacuum_analyze_scale_factor = {scale_factor})"))
+            f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}') WITH ("
+            + ", ".join("%s = %s" % option for option in sorted(partition_storage(scale_factor).items())) + ")")
+
+
+#: Every ledger partition's, whatever the setting (owner 11-09: an autovacuum in nearly every ops stall) - a vacuum
+#: cutting a partition's empty tail takes ACCESS EXCLUSIVE and every read and write of it queues behind. On each
+#: partition: a partitioned parent holds no storage.
+PARTITION_STORAGE = {"vacuum_truncate": "false"}
+
+
+def partition_storage(scale_factor) -> dict:
+    """{option: value} a ledger partition is made with and given - PARTITION_STORAGE, and the autoanalyze scale factor
+    unless it is None (the partition's own left alone)."""
+    return dict(PARTITION_STORAGE, **({} if scale_factor is None else {"autovacuum_analyze_scale_factor": scale_factor}))
 
 
 #: ingestion_settings.json - the ledger partitions' `autovacuum_analyze_scale_factor` (총괄 53338e99b, 소유자 «ㅇㅇ»):
@@ -1105,9 +1117,9 @@ def autoanalyze_scale_factor():
 
 def set_partitions_autoanalyze(connection):
     """At the ledger process's start, on its index line: whether autovacuum runs at all (one line), and every world's
-    ledger partitions given `autoanalyze_scale_factor` where theirs differs - each in a transaction of its own, its
-    lock waited for at most DDL_LOCK_TIMEOUT, a failure one line; one that already has it is not touched (no lock).
-    -> the partitions set."""
+    ledger partitions given `partition_storage` (PARTITION_STORAGE and `autoanalyze_scale_factor`) where theirs
+    differs - each in a transaction of its own, its lock waited for at most DDL_LOCK_TIMEOUT, a failure one line and
+    the next start tries again; one that already has it is not touched (no lock). -> the partitions set."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT name, setting FROM pg_settings WHERE name IN ('autovacuum', 'track_counts')")
         running = dict(cursor.fetchall())
@@ -1119,8 +1131,7 @@ def set_partitions_autoanalyze(connection):
                        "every-page analysis keeps the ledger partitions' statistics",
                        running.get("autovacuum"), running.get("track_counts"))
     factor = autoanalyze_scale_factor()
-    if factor is None:
-        return []
+    wanted = partition_storage(factor)
     done = []
     # every world once, as the index work walks them (`partitioned_index_states`) - no name is the operating world,
     # not the default (총괄 127139997)
@@ -1132,23 +1143,26 @@ def set_partitions_autoanalyze(connection):
             partitions = cursor.fetchall()
         connection.commit()
         for name, options in partitions:
-            held = [float(option.split("=", 1)[1]) for option in options or ()
-                    if option.startswith("autovacuum_analyze_scale_factor=")]
-            if held == [factor]:
+            held = dict(option.split("=", 1) for option in options or ())
+            owed = {option: value for option, value in wanted.items()
+                    if option not in held or (float(held[option]) != value if isinstance(value, float)
+                                              else held[option] != value)}
+            if not owed:
                 continue
             try:
                 with connection.cursor() as cursor:
                     cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
-                    cursor.execute("ALTER TABLE %s SET (autovacuum_analyze_scale_factor = %s)" % (name, factor))
+                    cursor.execute("ALTER TABLE %s SET (%s)" % (
+                        name, ", ".join("%s = %s" % option for option in sorted(owed.items()))))
                 connection.commit()
                 done.append(name)
             except Exception as exc:                                    # noqa: BLE001 - said, the rest go on
                 connection.rollback()
-                logger.warning("[Ledger] %s: autovacuum_analyze_scale_factor not set - %s", name,
+                logger.warning("[Ledger] %s: %s not set - %s", name, ", ".join(sorted(owed)),
                                told(exc).strip().splitlines()[0])
     if done:
-        logger.info("[Ledger] autovacuum_analyze_scale_factor %s set on %d partition(s): %s", factor, len(done),
-                    ", ".join(done))
+        logger.info("[Ledger] %s set on %d partition(s): %s", ", ".join(
+            "%s %s" % option for option in sorted(wanted.items())), len(done), ", ".join(done))
     return done
 
 
