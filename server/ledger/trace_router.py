@@ -810,6 +810,11 @@ def _declared_entities(world=None):
 ENGINES = ("stored", "virtual")
 #: {world: ((declaration file, its stamp), (legs, left out))} - compiled once a declaration file's stamp
 _COMPILED = {}
+#: (table, column) an index serves (`models.auto_index_serves`) - kept for the process: the product builds indexes,
+#: it does not drop them, so a served key column is not asked of the catalogue again; cleared when a declaration
+#: compiles again (lead 11-09: the catalogue was 4 of a 2-hop walk's 10 statements, 7 of its 34 ms). An index dropped
+#: by hand reads as served until then.
+_SERVED = set()
 
 
 def _compiled(connection, names):
@@ -826,6 +831,7 @@ def _compiled(connection, names):
         except OSError:
             stamp = (each.declaration_path, None)
         if _COMPILED.get(each.name, (None,))[0] != stamp:
+            _SERVED.clear()
             _COMPILED[each.name] = (stamp, sql_translate.compile_world(
                 load_setup(each.declaration_root).snapshot,
                 lambda sql, params: trace._fetch(connection, sql, params), each.name))
@@ -839,7 +845,7 @@ def _engine_reading(connection, engine, names, leave_out=None):
     (None, None) for the stored ledger. A scan is a leg's end none of whose text key columns leads an index the
     database holds (`models.auto_index_serves`, the ask's own judgment - declared, automatic or by hand); each scan's
     first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자동», `index_wants.want`, once a
-    process). One catalogue query per table the legs read: 6-8 ms over the box's four (11-08)."""
+    process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`)."""
     if engine != "virtual":
         return None, None
     from database import models
@@ -847,11 +853,14 @@ def _engine_reading(connection, engine, names, leave_out=None):
 
     legs, left_out = _compiled(connection, names)
     legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world, ())]
+    ends = [(leg.relation, columns) for leg in legs for columns in leg.columns.values()]
+    served = lambda table, columns: any((table, column) in _SERVED for column in columns)       # noqa: E731
     raw = connection.connection.dbapi_connection
-    held = {table: models.catalogue_indexes(raw, table) for table in {leg.relation for leg in legs}}
-    scans = sorted({(leg.relation, (columns or [None])[0]) for leg in legs for columns in leg.columns.values()
-                    if not any(models.auto_index_serves(index, [column], models.AUTO_WALK_KEY)
-                               for column in columns for index in held[leg.relation])}, key=str)
+    for table in {table for table, columns in ends if columns and not served(table, columns)}:
+        held = models.catalogue_indexes(raw, table)
+        _SERVED.update((table, column) for each, columns in ends if each == table for column in columns
+                       if any(models.auto_index_serves(index, [column], models.AUTO_WALK_KEY) for index in held))
+    scans = sorted({(table, (columns or [None])[0]) for table, columns in ends if not served(table, columns)}, key=str)
     for table, column in scans:
         if column is not None:                          # an end keyed by no text column has none to index
             index_wants.want(table, [column], models.AUTO_WALK_KEY, None, connection.engine)
