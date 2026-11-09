@@ -17,6 +17,7 @@ from sqlalchemy import MetaData, text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import event_constants                                              # noqa: E402
+from admin.audit_cache import audit_cache                           # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import keyset_scan, replay, rule_run                     # noqa: E402
 from conftest import PG_TEST_SCHEMA, _declared_as_test_database, _resolve_pg_test_url   # noqa: E402
@@ -215,6 +216,24 @@ def copies(pg_engine):
                 out["B_door_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
             out["B_door"] = _state(db, seeded)
             db.close()
+            # the mark kept without history (`no_history_columns`, lead 11-09 ②) - by the decided cells and by the
+            # door; «loud» keeps it, the canary - and the recent changes' cache loaded all along
+            for name, quiet, forced in (("B_loud", False, True), ("B_quiet", True, True), ("B_quiet_door", True, False)):
+                with pg_engine.begin() as conn:
+                    conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
+                db = Session()
+                seeded = _seed(db)
+                with pytest.MonkeyPatch.context() as run:
+                    if quiet:
+                        run.setitem(crud.TABLE_CONFIG[LOG], "no_history_columns", [MARK])
+                    if not forced:
+                        run.setattr(replay, "_fold_units_forced", lambda *a, **k: None)
+                    run.setattr(audit_cache, "is_loaded", True)
+                    run.setattr(audit_cache, "groups", [])
+                    out[name + "_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
+                    out[name + "_cache"] = list(audit_cache.groups)
+                out[name] = _state(db, seeded)
+                db.close()
         finally:
             with pg_engine.begin() as conn:
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
@@ -293,3 +312,19 @@ def test_the_first_line_comes_once_one_group_is_asked(copies):
     first = min(w for _job, w, _t in JOBS if w)
     assert copies["B_dry_lines"][0] == ("rule", 1, sum(1 for _job, w, _t in JOBS if w == first)), (
         copies["B_dry_lines"][:3])
+
+
+def test_a_mark_kept_without_history_is_named_in_no_line_and_in_no_cache(copies):
+    """Lead 11-09 ②: the replay's row lines - the decided cells' and the door's - are made by `crud.row_update_line`,
+    which names no column its table keeps no history for: none stored, none in the recent changes' cache, none handed
+    back (the run hands back its counts). The marks themselves are written all the same."""
+    def named(state):
+        return [h for h in state["history"] if h[1] == "ROW_UPDATE" and MARK in h[3]]
+
+    assert named(copies["B_loud"]) and named(copies["B_door"]), "CANARY: both paths name the mark when it keeps history"
+    assert (named(copies["B_quiet"]), named(copies["B_quiet_door"])) == ([], [])
+    assert copies["B_quiet"]["shown"] == copies["B_quiet_door"]["shown"] == copies["B"]["shown"], "the marks are written"
+    for name in ("B_loud", "B_quiet", "B_quiet_door"):
+        assert copies[name + "_cache"] == [], name
+        assert not [v for v in copies[name + "_stats"].values()
+                    if isinstance(v, list) and any(isinstance(one, dict) and "column_name" in one for one in v)], name

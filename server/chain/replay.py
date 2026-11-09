@@ -2113,9 +2113,11 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
                 counts["rows_to_mark"] += 1
                 if crud.values_differ(old, clean, col_type):
                     moved.setdefault(frozenset((mark, "updated_at")), []).append([item.row_id, clean])
-                    history.append(crud.row_update_line(
+                    line = crud.row_update_line(
                         db, table_name, item.row_id, [mark], {mark: clean}, {mark: old}, False, item.source_name,
-                        item.updated_by, tx_id, business_key, add_to_cache=False))
+                        item.updated_by, tx_id, business_key, add_to_cache=False)
+                    if line is not None:
+                        history.append(line)
         if door:
             loaded = [getattr(model, name) for name in dict.fromkeys(
                 name for name in ("row_id", "business_key_val", mark, config.get("version_column"), key_column)
@@ -2693,9 +2695,11 @@ def _write_by_values(db, table_name, model, values, tx_id):
         shown.setdefault(frozenset(now), []).append([row_id] + [now[column] for column in sorted(now)])
         key = now.get("business_key_val", values["rows"][row_id].business_key_val)
         for column, (old, new) in cells.items():
-            history.append(crud.create_audit_log(
+            line = crud.create_audit_log(
                 db, table_name, row_id, column, old, new, NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
-                transaction_id=tx_id, business_key=key, add_to_cache=False))
+                transaction_id=tx_id, business_key=key, add_to_cache=False)
+            if line is not None:
+                history.append(line)
     for names, rows in shown.items():
         crud.update_by_arrays(db, model.__table__, sorted(names), rows, None)
     _insert_by_arrays(db, models.AuditLog.__table__, history)

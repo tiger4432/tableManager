@@ -90,10 +90,31 @@ def _drained(world):
         conn.execute(text('UPDATE "%s".database_outbox SET processed_chain = true' % PG_TEST_SCHEMA))
 
 
+def _naming_state(lines):
+    """The (table, column, new value) lines that name a state cell - its own line, or a row's line naming it - whatever
+    wrote them (a state cell blanked leaves «delete_source:system_runtime», not the layer's own name)."""
+    quiet = {table: set(crud.TABLE_CONFIG[table].get("no_history_columns") or ())
+             for table in ("sys_tables", "sys_chain_rules", "sys_ingestion", "sys_collectors")}
+    assert all(quiet.values()), "CANARY: the system tables list their state cells"
+    return [line for line in lines if line[0] in quiet and (line[1] in quiet[line[0]] or any(
+        "%s:" % column in str(line[2]) for column in quiet[line[0]]))]
+
+
 def _state_history(world):
     with world["engine"].connect() as conn:
-        return conn.execute(text('SELECT table_name, column_name FROM "%s".audit_logs WHERE source_name = :s'
-                                 % PG_TEST_SCHEMA), {"s": system_catalog.RUNTIME}).fetchall()
+        return _naming_state(conn.execute(text('SELECT table_name, column_name, new_value FROM "%s".audit_logs'
+                                               % PG_TEST_SCHEMA)).fetchall())
+
+
+def _cache_lines(monkeypatch):
+    """Every line handed to the recent changes' cache from here on."""
+    from admin.audit_cache import audit_cache
+
+    given = []
+    many, one = audit_cache.add_logs_batch, audit_cache.add_log
+    monkeypatch.setattr(audit_cache, "add_logs_batch", lambda logs, *a, **k: (given.extend(logs), many(logs, *a, **k)))
+    monkeypatch.setattr(audit_cache, "add_log", lambda log: (given.append(log), one(log)))
+    return given
 
 
 def _seed(world):
@@ -121,8 +142,11 @@ def _seed(world):
     _collectors(world, COLLECTOR)
 
 
-def test_each_parts_state_is_written_once_and_keeps_no_history(world):
+def test_each_parts_state_is_written_once_and_keeps_no_history(world, monkeypatch):
+    cached = _cache_lines(monkeypatch)
     _seed(world)
+    seeded = len(cached)
+    assert cached, "CANARY: the seed's own lines reached the cache"
     system_catalog.sync(world["db"])
     world["db"].commit()
     rule = _row(world, "sys_chain_rules", rule_name="grade_from_lot")
@@ -143,6 +167,12 @@ def test_each_parts_state_is_written_once_and_keeps_no_history(world):
     _drained(world)
     system_catalog.tick(world["db"])                       # the queue drained: the waiting counts move once
     world["db"].commit()
+    world["db"].expire_all()
+    wafers = _row(world, "sys_tables", table_name="wafers")
+    assert (wafers.events_waiting, wafers.oldest_waiting_at) == (0, None), "CANARY: the drained queue blanked a cell"
+    assert _state_history(world) == []                     # its layer withdrawn, no line (lead 11-09 ㅁ)
+    in_cache = [(line["table_name"], line["column_name"], line["new_value"]) for line in cached[seeded:]]
+    assert _naming_state(in_cache) == [], "nothing in the recent changes' cache either"
     _drained(world)
     again = system_catalog.tick(world["db"])
     assert all(not any(counts.values()) for counts in again.values()), again

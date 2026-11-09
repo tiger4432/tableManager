@@ -2335,10 +2335,13 @@ def loadable_columns(table_info: dict) -> tuple:
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None, add_to_cache: bool = True):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)
 
+    None - no line, no db.add, nothing cached - for a column its table keeps no history for (`keeps_history`).
     add_to_cache=False는 인메모리 캐시 추가뿐 아니라 DB persist(db.add)도 생략한다.
     이 경우 호출자가 반환된 log_dict를 모아 commit 전에 bulk_insert_audit_logs로
     직접 DB에 적재할 책임을 진다.
     """
+    if not keeps_history(table_name, col_name):     # owner 11-09 ㄴ · lead ㅁ''': whoever wrote it
+        return None
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
 
@@ -2426,14 +2429,15 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
 
 
 def keeps_history(table_name, column_name) -> bool:
-    """Whether a change of this cell writes a history line: not when the table's entry lists the column in
-    `no_history_columns` (owner 11-09 ㄴ: the system tables' state cells). Unsaid: every column keeps its history."""
+    """Whether a change of this cell leaves a history line - asked where a line is made: `create_audit_log` (a cell's
+    line, whoever wrote it) and `row_update_line` (the columns a row's line names). Not when the table's entry lists
+    the column in `no_history_columns` (owner 11-09 ㄴ: the system tables' state cells, a person's hand write too -
+    lead ㅁ'''). Unsaid: every column keeps its history."""
     return column_name not in ((TABLE_CONFIG.get(table_name) or {}).get("no_history_columns") or ())
 
 
 def bulk_insert_audit_logs(db: Session, logs: list[dict]):
-    """AuditLog를 Bulk Insert로 초고속 적재합니다 - a cell whose table keeps no history for it (`keeps_history`) is left out."""
-    logs = [l for l in logs or () if keeps_history(l["table_name"], l["column_name"])]
+    """AuditLog를 Bulk Insert로 초고속 적재합니다."""
     if not logs:
         return
     mappings = []
@@ -4313,7 +4317,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 transaction_id=transaction_id, business_key=row.business_key_val,
                 add_to_cache=(logs_to_cache is None)
             )
-            if logs_to_cache is not None:
+            if logs_to_cache is not None and log_dict is not None:
                 logs_to_cache.append(log_dict)
 
         # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
@@ -4939,7 +4943,7 @@ def apply_row_update_internal(
                     transaction_id=transaction_id, business_key=row.business_key_val,
                     add_to_cache=(logs_to_cache is None)
                 )
-                if logs_to_cache is not None:
+                if logs_to_cache is not None and log_dict is not None:
                     logs_to_cache.append(log_dict)
 
         # 총괄 5ee9d3bd1 ② · 3eb161a9c ①: a value the notation fold changed leaves one line per
@@ -4952,17 +4956,16 @@ def apply_row_update_internal(
                 update_item.source_name, (update_item.updated_by or "system"),
                 transaction_id=transaction_id, business_key=row.business_key_val,
                 add_to_cache=(logs_to_cache is None))
-            if logs_to_cache is not None:
+            if logs_to_cache is not None and log_dict is not None:
                 logs_to_cache.append(log_dict)
 
-    lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)
-             and keeps_history(table_name, col)]
+    lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)]
     if lined and update_item.source_name != "user":
         log_dict = row_update_line(
             db, table_name, row.row_id, lined, {col: getattr(row, col, None) for col in lined},
             old_values_snapshot, is_new, update_item.source_name, update_item.updated_by,
             transaction_id, row.business_key_val, add_to_cache=(logs_to_cache is None))
-        if logs_to_cache is not None:
+        if logs_to_cache is not None and log_dict is not None:
             logs_to_cache.append(log_dict)
 
     # ⚰️ [Notation normalization] REVERSED FOR `write` COLUMNS BY THE OWNER'S DECISION (총괄
@@ -5051,7 +5054,7 @@ def apply_row_update_internal(
                             transaction_id=transaction_id, business_key=row.business_key_val,
                             add_to_cache=(logs_to_cache is None)
                         )
-                        if logs_to_cache is not None:
+                        if logs_to_cache is not None and log_dict is not None:
                             logs_to_cache.append(log_dict)
 
     if changed_cols or is_new:
@@ -5084,7 +5087,11 @@ def apply_row_update_internal(
 def row_update_line(db, table_name, row_id, changed_cols, new_values, old_values, is_new, source_name, updated_by,
                     transaction_id, business_key, add_to_cache=True):
     """The `ROW_UPDATE` history line a machine write leaves on a row it changed - the write door's, and
-    `replay.fold_units`' for the cells whose answer is already decided (총괄 10-11)."""
+    `replay.fold_units`' for the cells whose answer is already decided (총괄 10-11). A column its table keeps no
+    history for (`keeps_history`) is not named; None - no line made - when none is left (lead 11-09 ②)."""
+    changed_cols = [col for col in changed_cols if keeps_history(table_name, col)]
+    if not changed_cols:
+        return None
     new_parts = ["%s: %s" % (col, "empty" if new_values.get(col) is None else new_values.get(col))
                  for col in changed_cols]
     if is_new:
@@ -7046,7 +7053,8 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 transaction_id=tx_id, business_key=row.business_key_val,
                 add_to_cache=False
             )
-            logs_to_cache.append(log_dict)
+            if log_dict is not None:
+                logs_to_cache.append(log_dict)
 
         if row not in changed_rows:
             changed_rows.append(row)
@@ -7206,7 +7214,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                 transaction_id=tx_id, business_key=row.business_key_val,
                 add_to_cache=False
             )
-            logs_to_cache.append(log_dict)
+            if log_dict is not None:
+                logs_to_cache.append(log_dict)
 
         # 복합 비즈니스 키 실시간 재계산 및 갱신 가드
         table_info = TABLE_CONFIG.get(table_name, {})
@@ -7259,7 +7268,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                         transaction_id=tx_id, business_key=new_bk_val,
                         add_to_cache=False
                     )
-                    logs_to_cache.append(log_dict)
+                    if log_dict is not None:
+                        logs_to_cache.append(log_dict)
             
         if row not in changed_rows:
             changed_rows.append(row)

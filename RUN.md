@@ -109,7 +109,8 @@
 >          sys_ingestion    last_file · last_file_at · last_error
 >          sys_collectors   (신설) Auto Update 수집기 하나에 한 행 — schedule · window · active · last_run_at · last_status · last_error
 >          쓰는 이: 체인 워커 안의 카탈로그 스레드, 층 system_runtime, 60 초마다 + 선언을 읽을 때마다, 바뀐 칸만
->          이 칸들은 이력을 안 남김 — 표 선언 칸 no_history_columns (빈 칸 = 모든 칸 이력 남김)
+>          이 칸들은 이력을 안 남김 — 표 선언 칸 no_history_columns (빈 칸 = 모든 칸 이력 남김) · 최근 변경 목록에도 안 뜸
+>          사람이 손으로 고쳐도 · 우선순위 · 층 지우기 · 병합도 줄 없음. 이력이 필요한 칸은 그 표 선언의 no_history_columns 에서 빼면 됨
 > 볼 줄     재기동 직후  «[SystemCatalog] synced - … state written …»
 >          그 뒤 무엇이 바뀐 틱만  «[SystemCatalog] state - <표> <n> state written …»
 >          첫 기동 뒤 «[Indexes] 2 declared index(es) the database lacks or holds invalid: ix_file_checklist_newest …,
