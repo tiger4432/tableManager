@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **표 저장 매개변수(fillfactor · vacuum_truncate · autovacuum_*)를 선언으로 — 손으로 건 값은 안 덮음** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     표 선언(table_config.json)에 "storage": {"fillfactor": 80, "vacuum_truncate": false} 처럼 적으면 스케줄러가
+>          기동 때와 120 초마다 건다. 제품이 건 값은 표 주석 한 줄 «assy storage set: {…}» 에 남고, 선언이 바뀌면 따라감.
+>          사람이 psql 로 다른 값을 걸었으면 덮지 않음. 원장 파티션 저장도 이제 이 줄이 건다(원장 일꾼은 안 함)
+> 볼 곳    ⚠️ 이번 착지는 서버만 — 어드민 Overview «Indexes» 의 storage 줄과 Apply declared 단추는 클라 착지 뒤에 보임.
+>          그때 줄: held · owed · follows · differs (declared X · held Y) · refused. 그 전에는 아래 로그 줄로 본다
+> 볼 줄    걸었을 때  [Indexes] <표> storage set as declared by product: fillfactor = 80 (held before: fillfactor unset)
+>          손 값      [Indexes] <표> storage differs - set by hand, not overwritten; Apply declared on the indexes screen sets it
+>          잠금 못 잡음 [Indexes] <표> storage not set - its lock was busy … (바로 위 [DDL] 줄이 누가 쥐었는지) — 다음 120 초에 다시
+>          PG 거절   [Indexes] <표> storage not set: <PG 문장> — 값의 범위가 틀림, 선언을 고친다
+> 답의 뜻  재기동 직후 모든 선언 표 · 원장 파티션에 «recorded» 가 한 번 돈다(주석만 씀, 표마다 짧은 잠금 한 번) — 고장 아님
+>          differs 가 계속 보이면 고장 아님 — 사람이 건 값을 지키는 것. 선언 값으로 맞추려면 Apply declared
+>          저장이 storage_refused 로 거절되면 PG 에 없는 이름이거나 숫자 · true/false 가 아닌 값
+> 끄기     표 선언에서 "storage" 칸을 지우면 그 표는 더 손대지 않음(이미 건 값은 그대로 남음)
+> ```
+>
+> ---
+>
 > ## [11-09] **수식의 함수 목록 · 인자 · 거절 문장이 한 파일(contracts/expression/catalogue.json) — Text 함수 20 · & · ~= , 수식 입력 칸 넷이 한 부품** — git pull · 런처 재기동(API · 체인 워커) · 브라우저 새로고침
 >
 > ```
