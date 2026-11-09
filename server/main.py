@@ -4633,8 +4633,35 @@ def get_declared_indexes(db: Session = Depends(get_db)):
     serves · state (present · missing · invalid · building) · size · scans · what a build waits on ·
     why the last build failed - and the indexes on the models' tables nothing declares (총괄 d71f931c7:
     the declaration is the index master). The one comparison the chain worker's index work names
-    and builds from (`models.index_states`). Read-only."""
-    return models.index_states(db.get_bind())
+    and builds from (`models.index_states`). And `storage`: each table's declared storage beside what it holds
+    (`maintenance_line.storage_states`, lead 11-09 ⓑ). Read-only."""
+    from runtime import maintenance_line
+    return dict(models.index_states(db.get_bind()), storage=maintenance_line.storage_states(db))
+
+
+class StorageApplyRequest(BaseModel):
+    table: str
+
+
+@app.post("/admin/indexes/storage/apply", dependencies=[Depends(require_admin_token)])
+def apply_declared_storage(body: StorageApplyRequest, request: Request, db: Session = Depends(get_db)):
+    """«Apply declared» on one table's storage row: its declared storage set even where a value was set by hand,
+    through the storage line's own path (`maintenance_line.apply_table_storage(take=)` - `short_ddl`, the record
+    on the table's comment with who). 409 when its lock was busy or the declaration is refused; 404 when no
+    declared storage names the table."""
+    from runtime import maintenance_line
+    if not any(row["table"] == body.table for row in maintenance_line.storage_states(db)):
+        raise HTTPException(status_code=404, detail="%s has no declared storage" % body.table)
+    db.close()
+    by = sso.who(request, request.headers.get("X-User") or "operator")
+    done = maintenance_line.apply_table_storage(SessionLocal, take=body.table, by=by)
+    how = done.get(body.table, "held")
+    if how in ("busy", "refused", "failed"):
+        raise HTTPException(status_code=409, detail={"busy": "%s is in use - try again in a minute",
+                                                     "refused": "%s's storage declaration is refused",
+                                                     "failed": "PostgreSQL refused %s's declared storage"}[how]
+                            % body.table)
+    return {"table": body.table, "done": how}
 
 
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])

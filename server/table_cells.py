@@ -50,6 +50,7 @@ TABLE_CELLS = (
         {"key": "unique", "required": False, "node": _leaf("flag")},
         {"key": "search", "required": False, "node": _leaf("flag")},
         {"key": "purpose", "required": False, "node": _leaf()}]})),
+    ("storage", _names("parameter", _leaf())),                  # PostgreSQL storage parameters (maintenance_line)
     ("kind", _leaf()),
     ("group", _leaf()),
     ("workspace_name", _leaf()),

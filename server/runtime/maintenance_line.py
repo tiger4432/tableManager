@@ -10,7 +10,7 @@ does all of it beside the scheduler's 5 s loop, on a thread of its own:
             chain rules read again, the declared work again
   ask       INDEX_WANTED rows (`index_wants.taken`) - the automatic index each names
   merge     every GIN_CLEAN_SECONDS the GIN indexes' pending lists (`clean_gin_pending`) - not a file's flush
-  storage   the tables' declared storage (`apply_table_storage`) - at the start, then each merge until it holds
+  storage   the tables' declared storage (`apply_table_storage`) - at the start, then each merge (a changed declaration)
   pictures  every IMAGE_SWEEP_SECONDS the received pictures no image cell holds (`image_sources.sweep`, owner 11-05)
 """
 import logging
@@ -90,58 +90,206 @@ def sweep_images(db_session_factory):
         db.close()
 
 
-def apply_table_storage(db_session_factory):
-    """Each model table's declared storage (`info["storage"]`, e.g. cell_sources' fillfactor - owner 10-20: an updated
-    layer's old version is pruned on its page only where the page has room) that the table does not hold yet, set by
-    ALTER TABLE ... SET through `db_safety.short_ddl` (lead 11-09 ⓐ). A table whose lock is not had is left for the
-    next try. -> {table: "set" | "busy"}. PostgreSQL only; elsewhere {}."""
-    from sqlalchemy import text
-    from sqlalchemy.exc import OperationalError
+#: PostgreSQL's table storage parameters (CREATE TABLE «Storage Parameters», PG 18; toast.* left out) - the one list a
+#: declared storage is checked against (lead 11-09 ⓑ): name -> "number", "flag" or the words it takes. Ranges are
+#: PostgreSQL's: an ALTER it refuses is said once ("failed") and the table tried again each merge.
+STORAGE_PARAMETERS = dict(
+    {name: "number" for name in (
+        "fillfactor", "toast_tuple_target", "parallel_workers", "autovacuum_vacuum_threshold",
+        "autovacuum_vacuum_max_threshold", "autovacuum_vacuum_scale_factor", "autovacuum_vacuum_insert_threshold",
+        "autovacuum_vacuum_insert_scale_factor", "autovacuum_analyze_threshold", "autovacuum_analyze_scale_factor",
+        "autovacuum_vacuum_cost_delay", "autovacuum_vacuum_cost_limit", "autovacuum_freeze_min_age",
+        "autovacuum_freeze_max_age", "autovacuum_freeze_table_age", "autovacuum_multixact_freeze_min_age",
+        "autovacuum_multixact_freeze_max_age", "autovacuum_multixact_freeze_table_age", "log_autovacuum_min_duration")},
+    **{name: "flag" for name in ("autovacuum_enabled", "vacuum_truncate", "user_catalog_table")},
+    vacuum_index_cleanup=("auto", "on", "off"))
+_FLAG_WORDS = {"true": True, "on": True, "yes": True, "1": True, "false": False, "off": False, "no": False, "0": False}
+#: The line of a table's comment that holds what the product set last (lead 11-09 ⓑ): a held value equal to it is the
+#: product's and follows the declaration; one that is not was set by hand and is not overwritten. Other lines are kept.
+STORAGE_RECORD = "assy storage set: "
 
-    import db_safety
+
+def _spelled(kind, value):
+    """A declared value as PostgreSQL writes it, or None when `kind` does not take it."""
+    if kind == "flag":
+        flag = value if isinstance(value, bool) else _FLAG_WORDS.get(value.lower()) if isinstance(value, str) else None
+        return None if flag is None else "true" if flag else "false"
+    if kind == "number":
+        return None if isinstance(value, bool) or not isinstance(value, (int, float)) else str(value)
+    return value.lower() if isinstance(value, str) and value.lower() in kind else None
+
+
+def _same(kind, held, said):
+    if kind == "flag":
+        return _FLAG_WORDS.get(held.lower()) == _FLAG_WORDS.get(said.lower())
+    if kind == "number":
+        try:
+            return float(held) == float(said)
+        except ValueError:
+            return False
+    return held.lower() == said.lower()
+
+
+def storage_refusal(table, entry):
+    """Why one table's "storage" cannot be held - (path, sentence) - or None. Asked on a save of table_config.json and
+    of every declared storage before it is set (a model's `info`, the ledger partitions')."""
+    storage = (entry or {}).get("storage")
+    if storage is None:
+        return None
+    path = "tables.%s.storage" % table
+    if not isinstance(storage, dict):
+        return path, 'storage must be an object of PostgreSQL storage parameters, e.g. {"fillfactor": 70}'
+    if storage and (entry or {}).get("kind") == "view":
+        return path, "%s is a view - a view has no storage" % table
+    for name, value in storage.items():
+        kind = STORAGE_PARAMETERS.get(name)
+        if kind is None:
+            return "%s.%s" % (path, name), "%s is not a PostgreSQL table storage parameter" % name
+        if _spelled(kind, value) is None:
+            return "%s.%s" % (path, name), "%s takes %s" % (
+                name, {"number": "a number", "flag": "true or false"}.get(kind) or " or ".join(kind))
+    return None
+
+
+_STORAGE_HELD = ("SELECT c.relname, c.reloptions, obj_description(c.oid, 'pg_class') FROM pg_class c"
+                 " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                 " WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relname = ANY(:names)")
+_PARTITIONS_HELD = ("SELECT c.oid::regclass::text, c.reloptions, obj_description(c.oid, 'pg_class') FROM pg_inherits i"
+                    " JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = to_regclass(:parent) ORDER BY 1")
+
+
+def _storage_tables(db):
+    """Every table with a declared storage, as it is now: [(table, how SQL names it, source, {parameter: (declared,
+    held or None, held | owed | follows | differs)}, the product's record, why refused or None)] - source model (a
+    model's `info["storage"]`), table (its table_config.json entry's) or ledger (each world's partitions,
+    `ledger.schema.partition_storage`)."""
+    import json
+
+    from sqlalchemy import text
+
+    from database import crud
     from database.database import Base
+    from ledger import schema
+
+    wanted = [(t.name, "model", t.info["storage"]) for t in Base.metadata.sorted_tables if t.info.get("storage")]
+    wanted += [(name, "table", entry["storage"]) for name, entry in sorted((crud.TABLE_CONFIG or {}).items())
+               if isinstance(entry, dict) and entry.get("storage") is not None]
+    held = {row[0]: row[1:] for row in db.execute(text(_STORAGE_HELD), {"names": [name for name, *_ in wanted]})}
+    found = [(name, '"%s"' % name.replace('"', '""'), source, storage) + tuple(held[name])
+             for name, source, storage in wanted if name in held]          # not made in this schema yet: none
+    partitions = schema.partition_storage(schema.autoanalyze_scale_factor())
+    for world in schema.world_listing()["worlds"]:
+        found += [(name, name, "ledger", partitions, options, comment) for name, options, comment in db.execute(
+            text(_PARTITIONS_HELD), {"parent": schema.world_names(world).ledger})]
+    db.commit()
+    tables = []
+    for name, sql, source, storage, options, comment in found:
+        refused = storage_refusal(name, {"storage": storage})
+        record = {}
+        for line in (comment or "").splitlines():
+            if line.startswith(STORAGE_RECORD):
+                try:
+                    record = json.loads(line[len(STORAGE_RECORD):]).get("set") or {}
+                except (ValueError, AttributeError):
+                    record = {}
+        options = dict(option.split("=", 1) for option in options or ())
+        states = {}
+        for parameter, value in ({} if refused else storage).items():
+            kind = STORAGE_PARAMETERS[parameter]
+            said, now, last = _spelled(kind, value), options.get(parameter), record.get(parameter)
+            states[parameter] = (said, now, "owed" if now is None else "held" if _same(kind, now, said)
+                                 else "follows" if isinstance(last, str) and _same(kind, now, last) else "differs")
+        tables.append((name, sql, source, states, record, comment, refused and refused[1]))
+    return tables
+
+
+def storage_states(db):
+    """The declared storage beside the database, one row per table and parameter: table · source (model | table |
+    ledger) · parameter · declared · held · state (held | owed | follows | differs | refused, with why). PostgreSQL
+    only; elsewhere []. Read-only."""
+    if db.get_bind().dialect.name != "postgresql":
+        return []
+    rows = []
+    for name, _sql, source, states, _record, _comment, refused in _storage_tables(db):
+        if refused:
+            rows.append({"table": name, "source": source, "parameter": None, "declared": None, "held": None,
+                         "state": "refused", "why": refused})
+        rows += [{"table": name, "source": source, "parameter": parameter, "declared": said, "held": now,
+                  "state": state} for parameter, (said, now, state) in sorted(states.items())]
+    return rows
+
+
+def apply_table_storage(db_session_factory, take=None, by="product"):
+    """Each table's declared storage (`_storage_tables`; owner 10-20 cell_sources' fillfactor, 11-09 no end truncation)
+    set where it is owed or the product's own value follows a changed declaration, by ALTER TABLE ... SET through
+    `db_safety.short_ddl`, and the values the product holds recorded on the table's comment (`STORAGE_RECORD`) in the
+    same transaction. A value set by hand is not overwritten (lead 11-09 ⓑ) - unless the table is `take`, the one
+    table «Apply declared» names, which alone is done then. -> {table: "set" | "recorded" | "differs" | "refused" |
+    "failed" | "busy"} for the tables not as declared. PostgreSQL only; elsewhere {}."""
+    import datetime
+    import json
+
+    from sqlalchemy import text
+    import db_safety
 
     db = db_session_factory()
     try:
         if db.get_bind().dialect.name != "postgresql":
             return {}
         done = {}
-        for table in Base.metadata.sorted_tables:
-            wanted = {str(k): str(v) for k, v in (table.info.get("storage") or {}).items()}
-            if not wanted:
+        for name, sql, _source, states, record, comment, refused in _storage_tables(db):
+            if take is not None and name != take:
                 continue
-            held = db.execute(text("SELECT c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
-                                   " WHERE c.relname = :t AND n.nspname = current_schema() AND c.relkind = 'r'"),
-                              {"t": table.name}).first()
-            db.commit()
-            if held is None:                                        # no such table in this schema
+            if refused:
+                done[name] = "refused"
                 continue
-            held = dict(option.split("=", 1) for option in (held[0] or []))
-            if all(held.get(k) == v for k, v in wanted.items()):
+            setting = {k: said for k, (said, _now, state) in states.items()
+                       if state in ("owed", "follows") or (state == "differs" and name == take)}
+            kept = dict(record, **{k: said for k, (said, _now, state) in states.items() if state == "held"}, **setting)
+            if not setting and kept == record:
+                if any(state == "differs" for _said, _now, state in states.values()):
+                    done[name] = "differs"
                 continue
-            statement = 'ALTER TABLE "%s" SET (%s)' % (
-                table.name, ", ".join("%s = %s" % (k, v) for k, v in sorted(wanted.items())))
+            said = "\n".join([line for line in (comment or "").splitlines() if not line.startswith(STORAGE_RECORD)]
+                             + [STORAGE_RECORD + json.dumps({"set": kept, "by": by, "at": datetime.datetime.now(
+                                 datetime.timezone.utc).isoformat(timespec="seconds")}, sort_keys=True)])
+
+            def work(conn, sql=sql, setting=setting, said=said):
+                if setting:
+                    conn.execute(text("ALTER TABLE %s SET (%s)" % (
+                        sql, ", ".join("%s = %s" % each for each in sorted(setting.items())))))
+                conn.execute(text("COMMENT ON TABLE %s IS :said" % sql), {"said": said})
             try:
-                db_safety.short_ddl(db.get_bind(), table.name, lambda conn, q=statement: conn.execute(text(q)),
-                                    "storage")
-                done[table.name] = "set"
-            except OperationalError:
-                done[table.name] = "busy"
+                db_safety.short_ddl(db.get_bind(), name, work, "storage")
+            except Exception as exc:                                # noqa: BLE001 - one table, the others go on
+                done[name] = "busy" if hasattr(exc, "ddl_holders") else "failed"
+                if done[name] == "failed" and (name, "failed") not in _SAID_STORAGE:
+                    _SAID_STORAGE.add((name, "failed"))
+                    logger.warning("[Indexes] %s storage not set: %s", name, told(exc).strip().splitlines()[0][:200])
+                continue
+            done[name] = "set" if setting else "recorded"
+            if setting:
+                logger.info("[Indexes] %s storage set as declared by %s: %s (held before: %s)", name, by,
+                            ", ".join("%s = %s" % each for each in sorted(setting.items())),
+                            ", ".join("%s %s" % (k, states[k][1] or "unset") for k in sorted(setting)))
         return done
     finally:
         db.close()
 
 
+#: (table, how) said already - a table set by hand or refused is said once a process, not every merge.
+_SAID_STORAGE = set()
+
+
 def _storage_and_say(db_session_factory):
-    """-> True once every declared storage holds."""
-    done = apply_table_storage(db_session_factory)
-    for table, how in sorted(done.items()):
-        if how == "set":
-            logger.info("[Indexes] %s storage set as declared", table)
-        else:
+    for table, how in sorted(apply_table_storage(db_session_factory).items()):
+        if how == "busy":
             logger.warning("[Indexes] %s storage not set - its lock was busy (the [DDL] line names who held it); "
                            "tried again at the next merge", table)
-    return "busy" not in done.values()
+        elif how in ("differs", "refused") and (table, how) not in _SAID_STORAGE:
+            _SAID_STORAGE.add((table, how))
+            logger.warning("[Indexes] %s storage %s - %s", table, how, "set by hand, not overwritten; Apply declared "
+                           "on the indexes screen sets it" if how == "differs" else "its declaration is refused")
 
 
 def _each(works):
@@ -375,8 +523,7 @@ def run(db_session_factory, stop=None):
     started = time.time()
     _start(db_session_factory)
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
-    stored = [False]
-    _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
+    _each([(_storage_and_say, db_session_factory)])
     cleaned, swept = time.monotonic(), None
     while not stop.wait(POLL_SECONDS):
         try:
@@ -386,8 +533,7 @@ def run(db_session_factory, stop=None):
         if time.monotonic() - cleaned >= GIN_CLEAN_SECONDS:
             cleaned = time.monotonic()
             _each([(_clean_and_say, db_session_factory)])
-            if not stored[0]:
-                _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
+            _each([(_storage_and_say, db_session_factory)])
             if swept is None or time.monotonic() - swept >= IMAGE_SWEEP_SECONDS:
                 swept = time.monotonic()
                 _each([(sweep_images, db_session_factory)])

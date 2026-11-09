@@ -265,6 +265,10 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     refused = grid_order.refusal(table, declaration)
     if refused:
         raise _table_config_refusal("order_refused", *refused)
+    from runtime import maintenance_line
+    refused = maintenance_line.storage_refusal(table, declaration)
+    if refused:
+        raise _table_config_refusal("storage_refused", *refused)
 
     path = table_config_path()
     current_base = file_fingerprint(path)

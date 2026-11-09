@@ -1115,11 +1115,10 @@ def autoanalyze_scale_factor():
     return float(value)
 
 
-def set_partitions_autoanalyze(connection):
-    """At the ledger process's start, on its index line: whether autovacuum runs at all (one line), and every world's
-    ledger partitions given `partition_storage` (PARTITION_STORAGE and `autoanalyze_scale_factor`) where theirs
-    differs - each in a transaction of its own, its lock waited for at most DDL_LOCK_TIMEOUT, a failure one line and
-    the next start tries again; one that already has it is not touched (no lock). -> the partitions set."""
+def say_autovacuum_runs(connection):
+    """At the ledger process's start: whether autovacuum runs at all, one line. The partitions' storage
+    (`partition_storage`) is set by the scheduler's storage line with every other table's (`maintenance_line.
+    apply_table_storage`, lead 11-09 ⓑ)."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT name, setting FROM pg_settings WHERE name IN ('autovacuum', 'track_counts')")
         running = dict(cursor.fetchall())
@@ -1130,40 +1129,6 @@ def set_partitions_autoanalyze(connection):
         logger.warning("[Ledger] autovacuum does NOT run (autovacuum=%s, track_counts=%s) - only the re-translate's "
                        "every-page analysis keeps the ledger partitions' statistics",
                        running.get("autovacuum"), running.get("track_counts"))
-    factor = autoanalyze_scale_factor()
-    wanted = partition_storage(factor)
-    done = []
-    # every world once, as the index work walks them (`partitioned_index_states`) - no name is the operating world,
-    # not the default (총괄 127139997)
-    for world in world_listing()["worlds"]:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT c.oid::regclass::text, c.reloptions FROM pg_inherits i "
-                           "JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = to_regclass(%s) ORDER BY 1",
-                           (world_names(world).ledger,))
-            partitions = cursor.fetchall()
-        connection.commit()
-        for name, options in partitions:
-            held = dict(option.split("=", 1) for option in options or ())
-            owed = {option: value for option, value in wanted.items()
-                    if option not in held or (float(held[option]) != value if isinstance(value, float)
-                                              else held[option] != value)}
-            if not owed:
-                continue
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
-                    cursor.execute("ALTER TABLE %s SET (%s)" % (
-                        name, ", ".join("%s = %s" % option for option in sorted(owed.items()))))
-                connection.commit()
-                done.append(name)
-            except Exception as exc:                                    # noqa: BLE001 - said, the rest go on
-                connection.rollback()
-                logger.warning("[Ledger] %s: %s not set - %s", name, ", ".join(sorted(owed)),
-                               told(exc).strip().splitlines()[0])
-    if done:
-        logger.info("[Ledger] %s set on %d partition(s): %s", ", ".join(
-            "%s %s" % option for option in sorted(wanted.items())), len(done), ", ".join(done))
-    return done
 
 
 #: pg_class relkind, in the words a line says it.

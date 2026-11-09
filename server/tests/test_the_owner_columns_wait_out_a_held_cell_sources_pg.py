@@ -67,6 +67,8 @@ def _columns(engine):
 
 def test_a_held_table_let_go_between_the_tries_gets_its_columns_on_the_next(held, monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda _seconds: held["holding"].commit())   # the holder lets go meanwhile
+    # the whole wait not 1.5 s here: a first try slower than 0.5 s under load left no second (red 1 in 3, 11-09)
+    monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (0.2, 30.0))
     models.ensure_owner_columns(held["engine"])
     assert {"owner_rule", "owner_key"} <= _columns(held["engine"])
     assert any("owner_rule and owner_key added" in line for line in held["said"]), held["said"]

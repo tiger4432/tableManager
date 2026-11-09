@@ -49,6 +49,7 @@
   },
   "dt_log": {
     "__comment": "[source_config.xlsx] Ontology Class: transfer.",
+    "__storage": "optional {parameter: value} - PostgreSQL table storage parameters, e.g. {\"fillfactor\": 80, \"vacuum_truncate\": false}. Set by the scheduler's storage line where the table holds nothing or holds what the product set last; a value set by hand is shown as differs on the Indexes screen and not overwritten until Apply declared. A name PostgreSQL does not have or a value of the wrong kind refuses the save.",
     "__search_columns": "optional string[] - which columns `?q=` searches. Absent = composite_key_source (here dt_job_id/b_wx/b_wy); `?cols=` overrides it per request. Naming every column made one search 31 ILIKE arms and 6 joins. dt_log's six virtual columns (dt_x_*/dt_y_*) come back if they are named here - and bring those six joins (~2 s) back with them, which is why this table declares none.",
     "composite_key_source": [
       "dt_job_id",

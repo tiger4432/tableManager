@@ -452,9 +452,8 @@ def _ensure_ledger_schema_sync(db_session_factory):
         db.close()
 
 
-def _set_partitions_autoanalyze_sync(db_session_factory):
-    """`schema.set_partitions_autoanalyze` on the ledger's database (총괄 53338e99b). Contained: a line, never a process
-    that will not start."""
+def _say_autovacuum_runs_sync(db_session_factory):
+    """`schema.say_autovacuum_runs` on the ledger's database. Contained: a line, never a process that will not start."""
     from ledger import schema
 
     try:
@@ -467,11 +466,11 @@ def _set_partitions_autoanalyze_sync(db_session_factory):
             return
         connection = engine.raw_connection()
         try:
-            schema.set_partitions_autoanalyze(connection)
+            schema.say_autovacuum_runs(connection)
         finally:
             connection.close()
     except Exception as exc:                                            # noqa: BLE001
-        logger.warning("[Ledger] the partitions' autoanalyze setting was not compared (this process goes on): %s: %s",
+        logger.warning("[Ledger] whether autovacuum runs was not read (this process goes on): %s: %s",
                        type(exc).__name__, told(exc), exc_info=exc)
 
 
@@ -604,10 +603,10 @@ async def start_ledger_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
                      "whose declaration did not change may still refuse to run: %s", told(exc), exc_info=exc)
-    # The partitions' build waits on the database's older transactions - beside the loops, on a thread. Their
-    # autoanalyze setting first, on the same line, so its ALTER and a CONCURRENTLY build never wait on each other.
+    # The partitions' build waits on the database's older transactions - beside the loops, on a thread. Their storage
+    # is the scheduler's storage line's (`maintenance_line.apply_table_storage`).
     async def index_line():
-        await asyncio.to_thread(_set_partitions_autoanalyze_sync, db_session_factory)
+        await asyncio.to_thread(_say_autovacuum_runs_sync, db_session_factory)
         await asyncio.to_thread(ledger_index_rounds, db_session_factory)
     asyncio.create_task(index_line())
     asyncio.create_task(run_ledger_followup(db_session_factory))

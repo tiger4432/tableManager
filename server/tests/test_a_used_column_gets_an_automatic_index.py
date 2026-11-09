@@ -389,10 +389,14 @@ def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_
     from sqlalchemy import text
     from sqlalchemy.orm import sessionmaker
 
+    from database import crud
+    from ledger import schema
     from parsers import directory_watcher
     from runtime import maintenance_line
 
     monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (0.2, None))   # one try of 0.2 s
+    monkeypatch.setattr(schema, "world_listing", lambda: {"worlds": [], "operating": schema.DEFAULT_WORLD})
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {})                  # the models' storage alone
 
     factory = sessionmaker(bind=pg_engine)
 
@@ -404,6 +408,8 @@ def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_
     with pg_engine.begin() as conn:
         conn.execute(text("ALTER TABLE cell_sources RESET (fillfactor, vacuum_truncate)"))
         conn.execute(text("ALTER TABLE audit_logs RESET (vacuum_truncate)"))
+        conn.execute(text("COMMENT ON TABLE cell_sources IS NULL"))
+        conn.execute(text("COMMENT ON TABLE audit_logs IS NULL"))
     assert not options("cell_sources") and not options("audit_logs"), "canary: neither holds its storage"
     holder = pg_engine.connect()
     try:

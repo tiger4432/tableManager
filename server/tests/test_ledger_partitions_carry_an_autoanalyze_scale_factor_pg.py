@@ -2,11 +2,12 @@
 `autovacuum_analyze_scale_factor` from one setting, `ledger_autoanalyze_scale_factor` (absent 0.02, null: hands off).
 
   a new one    made with it, where partitions are made (`ensure_partition`)
-  the ones there   given it at the ledger process's start where theirs differs; again: none touched
+  the ones there   given it by the scheduler's storage line where theirs differs (lead 11-09 ⓑ, with every table's
+               declared storage - `maintenance_line.apply_table_storage`); again: none touched
   null         the factor not written - a new partition and the ones there keep their own
-  the line     whether autovacuum runs, said at the start
+  the line     whether autovacuum runs, said at the ledger process's start (`say_autovacuum_runs`)
   owner 11-09  vacuum_truncate=false on every partition, whatever the setting (a vacuum's end truncation took ACCESS
-               EXCLUSIVE in ops); a partition busy past the lock timeout is said and taken at the next start
+               EXCLUSIVE in ops); a partition busy past `short_ddl`'s tries is said and taken at the next merge
 """
 import logging
 from datetime import datetime, timezone
@@ -65,11 +66,13 @@ def _truncates(engine):
 
 
 def _set(engine):
-    raw = engine.raw_connection()
-    try:
-        return schema.set_partitions_autoanalyze(raw)
-    finally:
-        raw.close()
+    """The storage line once -> the partitions it ALTERed (a model table's storage is not these tests')."""
+    from sqlalchemy.orm import sessionmaker
+    from runtime import maintenance_line
+
+    partitions = set(_options(engine))
+    return [name for name, how in maintenance_line.apply_table_storage(sessionmaker(bind=engine)).items()
+            if how == "set" and name in partitions]
 
 
 def _new(engine):
@@ -97,6 +100,11 @@ def test_the_ones_there_take_it_once_and_a_new_one_is_made_with_it(world, monkey
     assert set(_truncates(engine).values()) == {None}
     _settings(monkeypatch)                                            # absent: the default
     caplog.set_level(logging.INFO, logger=schema.logger.name)
+    raw = engine.raw_connection()
+    try:
+        schema.say_autovacuum_runs(raw)
+    finally:
+        raw.close()
     done = _set(engine)
     assert sorted(done) == sorted(before), done
     assert set(_options(engine).values()) == {schema.AUTOANALYZE_DEFAULT}
@@ -115,23 +123,11 @@ def test_every_world_once_when_a_branch_operates(monkeypatch):
     the operating branch twice and the default never. (No database: the parents asked are the claim.)"""
     asked = []
 
-    class Cursor:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
+    class Session:
         def execute(self, sql, params=None):
-            if "pg_inherits" in sql:
-                asked.append(params[0])
-
-        def fetchall(self):
+            if "pg_inherits" in str(sql):
+                asked.append(params["parent"])
             return []
-
-    class Connection:
-        def cursor(self):
-            return Cursor()
 
         def commit(self):
             pass
@@ -139,7 +135,9 @@ def test_every_world_once_when_a_branch_operates(monkeypatch):
     _settings(monkeypatch)
     monkeypatch.setattr(schema, "worlds", lambda: ["b1"])
     monkeypatch.setattr(schema, "operating_world", lambda: "b1")
-    assert schema.set_partitions_autoanalyze(Connection()) == []
+    from runtime import maintenance_line
+
+    assert maintenance_line._storage_tables(Session()) == []
     assert sorted(asked) == sorted([schema.world_names(schema.DEFAULT_WORLD).ledger,
                                     schema.world_names("b1").ledger]), asked
 
@@ -156,23 +154,23 @@ def test_null_leaves_the_factor_alone_and_still_stops_the_end_truncation(world, 
 
 
 def test_a_partition_busy_past_the_lock_timeout_is_said_and_the_rest_go_on(world, monkeypatch, caplog):
-    """A running vacuum holds SHARE UPDATE EXCLUSIVE; ALTER TABLE SET waits at most DDL_LOCK_TIMEOUT, says that
-    partition and goes on - the next start tries again."""
-    import db_safety
+    """A running vacuum holds SHARE UPDATE EXCLUSIVE; ALTER TABLE SET waits only `short_ddl`'s tries, its [DDL] line
+    names that partition and the line goes on - the next merge tries again."""
+    from parsers import directory_watcher
 
     engine = world["engine"]
     names = _made_before_this(engine)
-    monkeypatch.setattr(db_safety, "DDL_LOCK_TIMEOUT", "200ms")
+    monkeypatch.setattr(directory_watcher, "ddl_lock_wait", lambda: (0.2, None))   # one try of 0.2 s
     _settings(monkeypatch)
     holder = engine.connect()
     try:
         held = holder.begin()
         holder.execute(text("LOCK TABLE %s IN SHARE UPDATE EXCLUSIVE MODE" % names[0]))
-        caplog.set_level(logging.WARNING, logger=schema.logger.name)
+        caplog.set_level(logging.WARNING)
         assert sorted(_set(engine)) == sorted(names[1:])
         held.rollback()
     finally:
         holder.close()
-    assert any(names[0] in r.getMessage() and "vacuum_truncate" in r.getMessage() and "not set" in r.getMessage()
-               for r in caplog.records), [r.getMessage() for r in caplog.records]
-    assert _set(engine) == [names[0]], "the next start takes the one left"
+    assert any("[DDL] storage on %s - its lock not had" % names[0] in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records]
+    assert _set(engine) == [names[0]], "the next merge takes the one left"

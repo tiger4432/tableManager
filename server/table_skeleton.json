@@ -171,6 +171,19 @@
         }
       },
       {
+        "key": "storage",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "parameter",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
         "key": "kind",
         "required": false,
         "node": {
