@@ -34,7 +34,6 @@ export const elements = {
   get queueView() { return document.getElementById('queue-view'); },
   get tabColoursBtn() { return document.getElementById('tab-colours'); },
   get coloursView() { return document.getElementById('colours-view'); },
-  get lookLegend() { return document.getElementById('look-legend'); },
   get selectedCellInfo() { return document.getElementById('selected-cell-info'); },
   get timeline() { return document.getElementById('timeline'); },
   get timelineContainer() { return document.getElementById('timeline-container'); },

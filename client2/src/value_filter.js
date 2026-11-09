@@ -458,7 +458,8 @@ export class ValueFloatingFilter {
     const field = div('ag-input-field ag-text-field');
     const wrap = div('ag-wrapper ag-input-wrapper ag-text-field-input-wrapper');
     this.input = doc.createElement('input');
-    this.input.className = 'value-floating__input ag-input-field-input ag-text-field-input';
+    // base-in-grid: drawn as the base layer's input (owner 11-09 - the theme drew no line style, the browser's inset showed)
+    this.input.className = 'value-floating__input ag-input-field-input ag-text-field-input base-in-grid';
     this.input.setAttribute('aria-label', `${params.column.getColDef().headerName || params.column.getColId()} Filter Input`);
     wrap.appendChild(this.input);
     field.appendChild(wrap);

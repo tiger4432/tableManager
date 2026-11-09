@@ -892,18 +892,13 @@ body.resizing-active .gallery-seat {
 .pivot-carry { background-color: var(--bg-inset); }
 .pivot-carry-many { color: var(--text-dim); font-style: italic; }
 
-/* a cell's look (owner 11-06 mockup v3, lead L2 - grid_look.js): a role's tint; the hand's corner; a model's edge */
+/* a cell's look (owner 11-06 mockup v3, lead L2 - grid_look.js): a role's tint - a person's paint and a rule's alike
+   (owner 11-09: the hand's corner read as a shadow) */
 .look-ok { --look-tint: color-mix(in srgb, var(--success) 18%, transparent); }
 .look-warn { --look-tint: color-mix(in srgb, var(--warning) 22%, transparent); }
 .look-danger { --look-tint: color-mix(in srgb, var(--danger) 18%, transparent); }
 .look-accent { --look-tint: color-mix(in srgb, var(--accent) 16%, transparent); }
 .look-ok, .look-warn, .look-danger, .look-accent { background-color: var(--look-tint); }
-.look-hand { box-shadow: inset var(--space-1) var(--space-1) 0 -1px var(--text); }
-/* the footer's legend of the two marks - shown while the table has looks */
-.look-legend { display: inline-flex; align-items: center; gap: var(--space-3); padding-left: var(--space-3); color: var(--text-dim); font-size: var(--fs-meta); }
-.look-legend[hidden] { display: none; }
-.look-legend__it { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.look-mark { display: inline-block; width: var(--space-4); height: var(--space-4); border: 1px solid var(--border); }
 /* the Colours tab (look_panel.js) - base boxes; a rule one line: its text, its role, its × */
 .colours-view { flex: 1; min-height: 0; overflow-y: auto; }
 .look-panel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) 0; }
@@ -2451,8 +2446,6 @@ body.resizing-active .gallery-seat {
    8px inset. */
 #myGrid .ag-floating-filter-input .ag-input-field-input {
   padding: 3px;
-  border-width: 1px;
-  border-radius: 3px;
   font-family: var(--font-mono);
   font-size: var(--fs-tag);
   height: 22px;
@@ -3101,14 +3094,16 @@ body.resizing-active .gallery-seat {
 
 /* The Flow strip (owner 11-06, mockup 5X4wGr6QwEoa4bQ8D7BB47): comes from -> the table -> feeds, under the header */
 .flow-strip { display: grid; grid-template-columns: minmax(0, 1fr) var(--space-6) minmax(0, 28rem) var(--space-6) minmax(0, 1fr);
-  align-items: start; padding: var(--space-4) var(--space-5); background: var(--bg-surface);
-  border-bottom: 1px solid var(--border); font-size: var(--fs-button); color: var(--text);
-  max-height: 40vh; overflow-y: auto; }
+  align-items: stretch; padding: var(--space-4) var(--space-5); background: var(--bg-surface);
+  border-bottom: 1px solid var(--border); font-size: var(--fs-button); color: var(--text); }
 #flow-strip-host { flex: none; }
 .flow-strip:not(.is-ready) { display: block; padding: var(--space-2) var(--space-5); font-size: var(--fs-label); color: var(--text-dim); }
 .flow-strip.is-refused { color: var(--warning); }
-.flow-strip__side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.flow-strip__title { font-size: var(--fs-label); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+/* the three cells one height (owner 11-09): a list past the cap scrolls inside, its title held */
+.flow-strip__side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0;
+  max-height: calc(40vh - 2 * var(--space-4)); overflow-y: auto; }
+.flow-strip__title { font-size: var(--fs-label); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+  position: sticky; top: 0; z-index: 1; background: var(--bg-surface); }
 .flow-strip__item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
   padding: var(--space-2) var(--space-3); border: 1px solid var(--border); min-width: 0; }
 .flow-strip__item--rule { border-color: var(--accent); background: var(--accent-weak); }

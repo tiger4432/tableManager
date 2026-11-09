@@ -1236,7 +1236,7 @@ const DEFECTS = [
   ['timeline.js: the no_tid bucket is read as a transaction', 'timeline',
     s => s.replace('  if (!tx || tx === NO_TRANSACTION_BUCKET) {', '  if (!tx) {')],
   ['timeline.js: a receipt of another table stays on this one', 'timeline',
-    s => s.replace('    await switchTable(log.table_name);\n  }\n  // Only on screen', '  }\n  // Only on screen')],
+    s => s.replace('    if (!(await switchTable(log.table_name))) return;\n  }\n  // Only on screen', '  }\n  // Only on screen')],
   ['timeline.js: the line claims rows a refused read never showed', 'timeline',
     s => s.replace('  if (await setTransactionFilter(tx)) {', '  if (await setTransactionFilter(tx) || true) {')],
   // ── N (lead 10-29): every grid save says what its answer did not write ──────

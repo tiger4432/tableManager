@@ -28,6 +28,7 @@ import { UiStallWatch, markWork } from './ui_stall.js';
 import { stallOf } from './stall_line.js';
 import {
   switchTable,
+  editTableDescription,
   drawTableMenu,
   fetchData,
   addRows,
@@ -287,19 +288,6 @@ async function walkTableFlow(table) {
   const got = await fetchSubgraph({ apiBase: API_BASE, nodeId: entitySeedId('table', { table }), hops: FLOW_HOPS,
     follow: FLOW_FOLLOW, fetchImpl: withWorld((url, init) => fetch(url, init), () => SYSTEM_WORLD) });
   return got.ok ? { ok: true, body: got.body } : { ok: false, message: refusalSentence(got.detail, got.status) };
-}
-/** «Edit» on the strip: the table's sys_tables row in the grid, its description cell focused (owner 11-08). */
-async function editTableDescription(table) {
-  await switchTable('sys_tables');
-  const api = state.gridApi;
-  if (!api) return;
-  const focus = () => {
-    api.removeEventListener('rowDataUpdated', focus);
-    api.ensureColumnVisible('description');
-    api.setFocusedCell(0, 'description');
-  };
-  api.addEventListener('rowDataUpdated', focus);
-  filterGridTo([{ column: 'table_name', value: table }]);
 }
 function initFlowStrip() {
   const host = document.getElementById('flow-strip-host');
@@ -805,7 +793,6 @@ function setupEventListeners() {
     say: sayStopped,
   }) : null;
   const drawLooks = () => {
-    if (elements.lookLegend) elements.lookLegend.hidden = !state.looks;
     if (lookPanel && state.activeHistoryTab === 'colours') lookPanel.draw();
   };
   document.addEventListener(LOOKS_CHANGED, drawLooks);

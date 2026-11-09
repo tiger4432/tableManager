@@ -1115,7 +1115,6 @@ export function buildColumnDefs() {
         // by the rules every table has), the hand's mark
         ...Object.fromEntries(ROLES.map(([word]) => [`look-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.role === word])),
         ...Object.fromEntries(ROLES.map(([word]) => [`look-line-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.line === word])),
-        'look-hand': (params) => !isSystem && Boolean(cellLookOf(params.data, col)?.hand),
         // a carried cell reads as read-only; one whose long rows hold more than one value says «N values», dim (owner 11-06)
         'pivot-carry': () => isCarried,
         'pivot-carry-many': (params) => isCarried && Boolean(carryText(params.data && params.data.data && params.data.data[col])),

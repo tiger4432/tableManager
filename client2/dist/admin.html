@@ -1441,6 +1441,9 @@
        «인라인»으로 박으므로(admin.js switchTab) 시트의 `display:flex` 가 진다 — 그러면 gap 이
        조용히 0 이 된다. 이 규칙은 display 가 무엇이든 같은 값을 준다. */
     #overview-wrapper > * + * { margin-top: var(--space-5); }
+    /* the last stall's line: no stall shown, no room and no margin after it */
+    #overview-wrapper > #stall-mount:is(:empty, :has(> .stall-line[hidden])) { display: none; }
+    #overview-wrapper > #stall-mount:is(:empty, :has(> .stall-line[hidden])) + * { margin-top: 0; }
 
     /* 시안 A ② Status — [점][이름][사실][상태 낱말][Open ›] 5 칸. 점과 낱말은 같은 색, 붉은 줄만
        바탕이 --danger-weak. 판정은 overview_status 한 자리 — 여기는 색뿐이다. */
@@ -1863,7 +1866,6 @@
     <div class="header-actions">
       <span id="last-refreshed" class="admin-bar__refreshed"></span>
       <button id="refresh-btn" class="admin-btn" data-no-panel>🔄 Refresh</button>
-      <div id="stall-mount" class="stall-host"></div>
       <div id="account-badge" class="acct-host"></div>
       <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
       <a href="/" class="btn">🏠 Return to Main</a>
@@ -1882,6 +1884,9 @@
       <div class="panel-body" style="padding: 0; display: flex; flex-direction: column;">
         <!-- ═══ Overview 탭: 4 파이프라인 확장 카드 (첫 화면, 좌패널 전폭) ═══ -->
         <div id="overview-wrapper" style="flex: 1; overflow: auto;">
+          <!-- The last stall (owner 10-29 ㄴ: the server's line whole, to type from a phone) - its own line here, not in
+               the header, which it pushed to two lines (owner 11-09). -->
+          <div id="stall-mount" class="stall-host"></div>
           <!-- ═══ 시안 A (소유자 「A 로 해」) — Queue 절 · Status 절 둘. 부품은 각자 자기 div 를 만들고
                (조립식 상설) 배치는 부품 «밖»인 이 화면의 일이다. ═══ -->
           <!-- 시안 A ① Queue 절 (맨 위). 절 틀은 이 화면의 것이고, 안은 Chain 탭의 그 부품의

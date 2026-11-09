@@ -1350,7 +1350,7 @@ async function openLedgerReceipt(log) {
   }
   if (state.currentTable !== log.table_name) {
     elements.tableSelect.value = log.table_name;
-    await switchTable(log.table_name);
+    if (!(await switchTable(log.table_name))) return;
   }
   // Only on screen does the line say what is shown; a refused read keeps the server's sentence.
   // ⚠️ No count: the grid holds one page (pageLimit), so its displayed count lies past that page.
@@ -1392,7 +1392,8 @@ export async function navigateToLog(log) {
   // Step 1: Switch table/tab if different
   if (state.currentTable !== targetTable) {
     elements.tableSelect.value = targetTable;
-    await switchTable(targetTable);
+    // refused (staged edits): the sentence is said, the jump let go without a second one
+    if (!(await switchTable(targetTable))) { releaseNavigationGuard('', jump); return; }
   }
 
   // Set the transaction filter context automatically

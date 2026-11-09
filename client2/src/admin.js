@@ -1572,7 +1572,7 @@ function renderChainQueue(payload, opts) {
 // The emergency stop (lead 668fa004c) — like the queue: one read, both instances drawn from it.
 let chainPauseControls = null;
 let chainPauseLast = { requested: null, worker: null };
-// The header's last freeze (owner 10-29 «ㄴ») - from the same /health read, no request of its own.
+// The last freeze, at the top of Overview (owner 10-29 «ㄴ», 11-09) - from the same /health read, no request of its own.
 let stallLine = null;
 function renderChainPause(next) {
   if (next && 'stall' in next) {

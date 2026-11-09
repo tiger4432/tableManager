@@ -533,6 +533,22 @@ const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING waf
 // The whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page - a
 // line that does not fit goes down at a space, it is not cut or slid.
 const UI_STALL_SAID = "[...document.querySelectorAll('#status-panel .stall-line')].some((l) => !l.hidden && /Last UI stall/.test(l.textContent))";
+// The admin header in one row (owner 11-06): the name, the tabs and Help on one line at 1920; narrower it may wrap. Read with
+// no stall and with one shown (owner 11-09: the stall's line pushed it to two, and only the quiet header was read).
+const HEADER_ONE_ROW = `(() => { const bar = document.querySelector('header.admin-bar');
+  const tabs = bar && bar.querySelector('.admin-bar__tabs #tab-chain-btn'); const help = bar && bar.querySelector('#help-btn');
+  if (!tabs || !help) return false;
+  if (innerWidth < 1900) return true;
+  const t = tabs.getBoundingClientRect(), h = help.getBoundingClientRect(), n = bar.querySelector('.admin-bar__name').getBoundingClientRect();
+  return Math.abs(t.top - h.top) < 4 && Math.abs(t.top - n.top) < 12 && bar.getBoundingClientRect().height < 64; })()`;
+// The Flow strip's three cells one height (owner 11-09): Comes from, the table and Feeds within a pixel, the strip under
+// its cap - a list past it scrolls inside.
+const FLOW_ONE_HEIGHT = `(() => { const s = document.querySelector('.flow-strip.is-ready'); if (!s) return 'no Flow strip drawn';
+  const [l, r] = s.querySelectorAll('.flow-strip__side'); const c = s.querySelector('.flow-strip__centre');
+  const h = (e) => Math.round(e.getBoundingClientRect().height);
+  if (Math.abs(h(l) - h(c)) > 1 || Math.abs(h(r) - h(c)) > 1) return 'Comes from ' + h(l) + ' px, the table ' + h(c) + ' px, Feeds ' + h(r) + ' px';
+  const cap = innerHeight * 0.4;
+  return s.getBoundingClientRect().height <= cap + 1 ? null : 'the strip is ' + h(s) + ' px, its cap ' + Math.round(cap) + ' px'; })()`;
 const STALL_WHOLE = `(() => { const box = document.querySelector('.stall-line:not([hidden])'); if (!box) return false;
   const t = box.querySelector('.stall-line__text');
   if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
@@ -1103,6 +1119,14 @@ const TARGET_COLUMNS_FIRST = `(() => {
 for (const after of ['Chain, a join whose take holds a record', 'Chain, a flat rule']) {
   CELLS.push({ entry: 'admin.html', after, rule: 'contents', at: 'target_columns', expr: TARGET_COLUMNS_FIRST });
 }
+for (const step of ['Flow strip on dt_log', 'Flow strip on dt_map, no rule', 'Flow strip on dt_inventory, a rule reading itself']) {
+  CELLS.push({ entry: 'index.html', after: step, rule: 'flow heights', at: 'flow-strip', expr: FLOW_ONE_HEIGHT });
+}
+// The last stall shown: its line at the top of Overview, the header still one row (owner 11-09).
+CELLS.push({ entry: 'admin.html', after: 'Overview, the last stall', rule: 'header one row', at: 'admin-bar', expr: `(() => {
+  if (!document.querySelector('#overview-wrapper > #stall-mount .stall-line:not([hidden])')) return 'the last stall is not on its line at the top of Overview';
+  return (${HEADER_ONE_ROW}) ? null : 'the header runs to ' + Math.round(document.querySelector('header.admin-bar').getBoundingClientRect().height) + ' px with the last stall shown';
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rule: 'contents', at: 'derive.join.take', expr: `(() => {
   const words = (at) => { const s = document.querySelector('select[data-value="' + at + '"]');
     return s ? [...s.options].map((o) => o.value).filter(Boolean).join(',') : 'no picker'; };
@@ -3613,9 +3637,9 @@ const DRIVE = {
     // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
     ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
       .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
-    // The header's last stall (owner 10-29 «ㄴ»): the Overview's /health read says a freeze - the line as written, its time;
-    // then a restart's null hides it.
-    ['Header, the last stall', async (c) => {
+    // The last stall (owner 10-29 «ㄴ»), its own line at the top of Overview (owner 11-09): the Overview's /health read says a
+    // freeze - the line as written, its time; then a restart's null hides it.
+    ['Overview, the last stall', async (c) => {
       STALL.on = true;
       STALL.next = STALL_LINE;
       await evaluate(c, "location.hash = '#overview'; true");
@@ -3623,7 +3647,7 @@ const DRIVE = {
       await until(c, "Boolean(document.querySelector('.stall-line:not([hidden])'))");
       await until(c, STALL_WHOLE);
     }],
-    ['Header, no stall since a restart', async (c) => {
+    ['Overview, no stall since a restart', async (c) => {
       STALL.next = null;
       await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
       await until(c, "Boolean(document.querySelector('.stall-line[hidden]'))");
@@ -3713,12 +3737,7 @@ const DRIVE = {
       ];
     })(),
     // The header in one row (owner 11-06): the name, the tabs and Help on one line at 1920; narrower it may wrap.
-    ['Header, one row', (c) => until(c, `(() => { const bar = document.querySelector('header.admin-bar');
-      const tabs = bar && bar.querySelector('.admin-bar__tabs #tab-chain-btn'); const help = bar && bar.querySelector('#help-btn');
-      if (!tabs || !help) return false;
-      if (innerWidth < 1900) return true;
-      const t = tabs.getBoundingClientRect(), h = help.getBoundingClientRect(), n = bar.querySelector('.admin-bar__name').getBoundingClientRect();
-      return Math.abs(t.top - h.top) < 4 && Math.abs(t.top - n.top) < 12 && bar.getBoundingClientRect().height < 64; })()`)],
+    ['Header, one row', (c) => until(c, HEADER_ONE_ROW)],
     // The Help panel's Guide (owner 11-06): the Chain tab's guides, a section picked, Find over the guide, the next section;
     // then each declaration window's «?» opens it on that window's guide.
     ...(() => {
@@ -4083,7 +4102,7 @@ const MUTANTS = [
   { name: 'a hidden button drawn again, [hidden] beaten by the base button', entry: 'index.html', rule: 'pivot only where declared',
     at: 'pivot', file: 'src/base.css', edits: [[':where([hidden]) { display: none !important; }', '']] },
   { name: 'Pivot refused while Tx is merely on (it is on by default)', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
-    file: 'src/api.js', edits: [["  if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard", "  if (refuseWrite(state.txModeActive ? 'Apply or discard"]] },
+    file: 'src/api.js', edits: [["  return refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard", "  return refuseWrite(state.txModeActive ? 'Apply or discard"]] },
   { name: 'Apply reads a pivot group id again', entry: 'index.html', rule: 'pivot apply writes', at: 'pivot',
     file: 'src/grid_pivot.js', edits: [['  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];\n', '  return [...new Set(edits.map((edit) => edit.rowId))];\n']] },
   { name: 'Apply drops a blank pivot cell', entry: 'index.html', rule: 'pivot blank writes', at: 'pivot',
@@ -4170,6 +4189,14 @@ const MUTANTS = [
   // sideways at 1920 (release-2026-11-09 has it; owner 11-09).
   { name: 'the side panel tabs on one line', entry: 'index.html', rule: 'overflow', at: 'page',
     file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  gap: 0;\n  padding: 0;', '  gap: 0;\n  padding: 0;']] },
+  // The Flow strip's cells back on their own heights, the strip scrolled whole (owner 11-09).
+  { name: 'the Flow strip cells on their own heights', entry: 'index.html', rule: 'flow heights', at: 'flow-strip',
+    file: 'src/style.css', edits: [['  align-items: stretch; padding: var(--space-4) var(--space-5); background: var(--bg-surface);',
+      '  align-items: start; padding: var(--space-4) var(--space-5); background: var(--bg-surface);']] },
+  // The last stall seated in the admin header again - the header went to two lines (owner 11-09).
+  { name: 'the last stall in the header again', entry: 'admin.html', rule: 'header one row', at: 'admin-bar', file: 'admin.html',
+    edits: [['      <div id="account-badge"', '      <div id="stall-mount" class="stall-host"></div>\n      <div id="account-badge"'],
+      ['          <div id="stall-mount" class="stall-host"></div>\n', '']] },
   // The defs' width laid again on every defs refresh, undoing the fit (measured on the box, 11-05).
   { name: 'the defs say a width again', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
     file: 'src/grid.js', edits: [['      initialWidth: 150,\n', '      width: 150,\n']] },

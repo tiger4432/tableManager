@@ -11,7 +11,7 @@ import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, buildColumnDefs, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
+import { renderGrid, buildColumnDefs, dropGridFilters, filterGridTo, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
 import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
 import { pageLooks, saidLooksChanged } from './grid_look.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
@@ -184,8 +184,7 @@ async function loadTablesOnce() {
         worlds: data.worlds, operating: data.operating };
       // The address's table, else the first (switchTable draws the dropdown); the address's tx narrows it after
       const asked = gridAddress(window.location.search, data.tables);
-      await switchTable(asked.table || data.tables[0]);
-      if (asked.tx) await setTransactionFilter(asked.tx);
+      if (await switchTable(asked.table || data.tables[0]) && asked.tx) await setTransactionFilter(asked.tx);
     } else {
       elements.tableSelect.innerHTML = '<option value="">No tables found</option>';
     }
@@ -232,8 +231,13 @@ export function seatTableFollower(follow) {
   tableFollower = follow;
 }
 
-// Switch current working table
+/** The open table switched: false and nothing moved while staged edits stand (the dropdown back on the open table),
+ *  true once the table is drawn. Every way in - boot, the dropdown, the Flow strip, a history jump - comes here. */
 export async function switchTable(tableName) {
+  if (refuseOverStaged()) {
+    drawTableMenu(state.currentTable);
+    return false;
+  }
   // Every way in (the dropdown, a history jump) leaves the opened table in the list, search or not.
   drawTableMenu(tableName);
   const leaving = state.currentTable;
@@ -246,8 +250,6 @@ export async function switchTable(tableName) {
   clearRangeSelection();
   updateSelectedCellUI();
 
-  // Discard pending edits on table switch
-  state.pendingTxEdits = {};
   closeQuestion();
   keepTxOn();
 
@@ -292,7 +294,21 @@ export async function switchTable(tableName) {
   // The headers get their ①② here, not in `renderGrid` above: the rule is still in flight
   // at that point. The pairing and its `.catch` live in `syncReferenceRule`.
   syncReferenceRule();
+  return true;
+}
 
+/** «Edit» on the Flow strip: the table's sys_tables row in the grid, its description cell focused (owner 11-08). */
+export async function editTableDescription(table) {
+  if (!(await switchTable('sys_tables'))) return;
+  const api = state.gridApi;
+  if (!api) return;
+  const focus = () => {
+    api.removeEventListener('rowDataUpdated', focus);
+    api.ensureColumnVisible('description');
+    api.setFocusedCell(0, 'description');
+  };
+  api.addEventListener('rowDataUpdated', focus);
+  filterGridTo([{ column: 'table_name', value: table }]);
 }
 
 // Load table column schema
@@ -317,12 +333,18 @@ export function drawPivot() {
   }
 }
 
+/** Staged edits are keyed by the rows of the view they were made in: a move that would lose them - a table switched,
+ *  the same table drawn again, the pivot turned - is refused until they are applied or discarded (owner 11-05 ㄱ2; the
+ *  table switch dropped them unsaid till 11-09). True when refused. */
+export function refuseOverStaged() {
+  return refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard the staged edits first' : '');
+}
+
 /** «Pivot» pressed (owner 10-22): the table read again from the top the other way - its sort dropped, its key and item
  *  column filters kept and the rest dropped and named (owner 11-05 ㄴ · ㄱ), the choice kept for this table. */
 export async function setGridPivot(on) {
   if (!state.currentPivot || !state.currentTable) return;
-  // staged edits are keyed by the rows of the view they were made in (Tx itself is on by default and works in both)
-  if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard the staged edits first' : '')) return;
+  if (refuseOverStaged()) return;
   const { keep, dropped } = carriedFilters(state.gridApi ? state.gridApi.getFilterModel() : {}, state.currentPivot,
     state.currentCompositeKeySources);
   state.pivotOn = on;
