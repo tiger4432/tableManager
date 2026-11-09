@@ -4668,16 +4668,14 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     #    so only the listed lines come back. Both scan the waiting rows only (`idx_outbox_unprocessed`).
     # 🔴 이 표를 비우는 것은 «둘»이다 — 깊이와 나이를 «소유자별로» 가른다(2026-09-04, 소급 실행 «한 건»이
     #    나이만 먹는 동안 화면이 사람을 체인으로 보냈다). 줄의 신원과 상한은 `chain.queue_lines` 가 말한다.
-    kinds =(db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at),
-                      _f.count().filter(outbox.retry_count > 0))
-             .filter(waiting_only).group_by(outbox.event_type).order_by(outbox.event_type).all())
+    from chain import queue_lines
+    kinds = queue_lines.waiting_by(db, outbox.event_type)
     waiting = sum(count for _kind, count, _oldest, _retried in kinds)
     retried = sum(retried_of_kind for _kind, _count, _oldest, retried_of_kind in kinds)
     by_type = [(kind, count, oldest) for kind, count, oldest, _retried in kinds]
 
     line_key = event_constants.queue_line_key(outbox)
     # the lines - the one grouping the slot dispatcher gives lines from (총괄 19f6a9277)
-    from chain import queue_lines
     lines = queue_lines.waiting_lines(db, _QUEUE_LIST_CAP)
     # 가장 오래 기다린 줄이 머리다(`id` 는 단조) — 그 줄의 가장 이른 시각이 큐 전체의 것
     oldest = lines[0].created_at if lines else None
@@ -7643,30 +7641,13 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
 @app.get("/admin/auto-update/status", dependencies=[Depends(require_admin_token)])
 async def get_auto_update_status():
     """실시간 auto_update 스케줄러의 기동 현황(JSON)을 조회합니다. 각 항목에 active(제어 파일 기준) 필드를 부가합니다."""
-    import os
-    import json
-    from utils import auto_update_control as auc
-
-    # auc.SERVER_DIR is the relocatable data root (see server/paths.py) and is the
-    # symbol tests monkeypatch — resolve through it, not through paths directly.
-    status_path = os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
-
-    if not os.path.exists(status_path):
-        return absent_listing(status_path, last_updated=None)
+    from runtime import running as running_seat
 
     try:
-        with open(status_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        collectors = data.get("collectors", [])
-        # [핫 반영] active는 항상 제어 파일(auto_update_control.json)을 실시간으로 읽어 계산 —
-        # 스케줄러가 다음 사이클에 status 파일을 재기록하기 전에도 toggle 결과가 즉시 일치한다.
-        disabled_set = auc.read_disabled_scripts()
-        from runtime import running as running_seat
-        for col in collectors:
-            key = f"{col.get('table_name')}/{col.get('script_name')}"
-            col["active"] = key not in disabled_set
-            # A RUNNING whose scheduler is gone reads as the one judgment says (총괄 c44a7d2e4).
-            col["last_status"] = running_seat.collector_last_status(col)
+        data = running_seat.scheduler_status()
+        if data is None:
+            return absent_listing(running_seat.scheduler_status_path(), last_updated=None)
+        collectors = running_seat.collectors_shown(data.get("collectors", []))
         return {
             "status": "success",
             "data": collectors,

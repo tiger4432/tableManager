@@ -2402,8 +2402,15 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
     return lines
 
 
+def keeps_history(table_name, column_name) -> bool:
+    """Whether a change of this cell writes a history line: not when the table's entry lists the column in
+    `no_history_columns` (owner 11-09 ㄴ: the system tables' state cells). Unsaid: every column keeps its history."""
+    return column_name not in ((TABLE_CONFIG.get(table_name) or {}).get("no_history_columns") or ())
+
+
 def bulk_insert_audit_logs(db: Session, logs: list[dict]):
-    """AuditLog를 Bulk Insert로 초고속 적재합니다."""
+    """AuditLog를 Bulk Insert로 초고속 적재합니다 - a cell whose table keeps no history for it (`keeps_history`) is left out."""
+    logs = [l for l in logs or () if keeps_history(l["table_name"], l["column_name"])]
     if not logs:
         return
     mappings = []
@@ -4925,7 +4932,8 @@ def apply_row_update_internal(
             if logs_to_cache is not None:
                 logs_to_cache.append(log_dict)
 
-    lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)]
+    lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)
+             and keeps_history(table_name, col)]
     if lined and update_item.source_name != "user":
         log_dict = row_update_line(
             db, table_name, row.row_id, lined, {col: getattr(row, col, None) for col in lined},

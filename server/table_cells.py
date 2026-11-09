@@ -62,6 +62,7 @@ TABLE_CELLS = (
         {"key": "value", "required": True, "node": _leaf()},
         {"key": "carry", "required": False, "node": _columns()}]}),
     ("order", _leaf()),
+    ("no_history_columns", _columns()),                          # a change of these writes no history (owner 11-09)
     ("access", {"kind": "record", "fields": [                   # who may read or edit it (admin/access, owner 11-06)
         {"key": "read", "required": False, "node": _who()},
         {"key": "edit", "required": False, "node": _who()},

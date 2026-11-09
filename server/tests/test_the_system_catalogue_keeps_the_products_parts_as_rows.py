@@ -49,6 +49,9 @@ def catalogue(db_session, monkeypatch, tmp_path):
     monkeypatch.setattr(schema, "world_listing", lambda: {"worlds": ["system"], "operating": "default"})
     monkeypatch.setattr(setup, "live_physical_catalog",
                         lambda: setup_bundle._adapt_physical_catalog(crud.TABLE_CONFIG))
+    # the parts' state writes datetime cells, which SQLite refuses through the write door - its own test is PostgreSQL's
+    # (test_the_system_catalogue_keeps_each_parts_state_pg)
+    monkeypatch.setattr(system_catalog, "runtime", lambda db: {})
     return rules
 
 

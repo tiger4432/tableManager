@@ -278,6 +278,19 @@
         }
       },
       {
+        "key": "no_history_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
         "key": "access",
         "required": false,
         "node": {

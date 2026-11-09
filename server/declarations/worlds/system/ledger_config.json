@@ -8,7 +8,8 @@
         "column",
         "chain_rule",
         "ingestion",
-        "ledger_source"
+        "ledger_source",
+        "collector"
       ],
       "object": {
         "kind": "none",
@@ -187,7 +188,8 @@
       "subjects": [
         "ingestion",
         "template",
-        "collect_run"
+        "collect_run",
+        "collector"
       ],
       "object": {
         "kind": "entity_ref",
@@ -277,6 +279,9 @@
       "attributes": [
         "group",
         "key_columns",
+        "row_estimate",
+        "events_waiting",
+        "oldest_waiting_at",
         "description"
       ]
     },
@@ -304,6 +309,12 @@
         "when",
         "function",
         "formula",
+        "switched_off_at",
+        "switched_off_cause",
+        "failures_in_a_row",
+        "last_outcome",
+        "last_outcome_at",
+        "last_reason",
         "description"
       ]
     },
@@ -317,6 +328,9 @@
         "pattern",
         "parser",
         "enabled",
+        "last_file",
+        "last_file_at",
+        "last_error",
         "description"
       ]
     },
@@ -413,6 +427,22 @@
         "detail",
         "cells"
       ]
+    },
+    "collector": {
+      "keys": [
+        "collector"
+      ],
+      "class": "static",
+      "attributes": [
+        "script_name",
+        "schedule",
+        "window",
+        "active",
+        "last_run_at",
+        "last_status",
+        "last_error",
+        "description"
+      ]
     }
   },
   "sources": {
@@ -436,6 +466,18 @@
               "key_columns": {
                 "kind": "column",
                 "column": "key_columns"
+              },
+              "row_estimate": {
+                "kind": "column",
+                "column": "row_estimate"
+              },
+              "events_waiting": {
+                "kind": "column",
+                "column": "events_waiting"
+              },
+              "oldest_waiting_at": {
+                "kind": "column",
+                "column": "oldest_waiting_at"
               },
               "description": {
                 "kind": "column",
@@ -624,6 +666,30 @@
               "formula": {
                 "kind": "column",
                 "column": "formula"
+              },
+              "switched_off_at": {
+                "kind": "column",
+                "column": "switched_off_at"
+              },
+              "switched_off_cause": {
+                "kind": "column",
+                "column": "switched_off_cause"
+              },
+              "failures_in_a_row": {
+                "kind": "column",
+                "column": "failures_in_a_row"
+              },
+              "last_outcome": {
+                "kind": "column",
+                "column": "last_outcome"
+              },
+              "last_outcome_at": {
+                "kind": "column",
+                "column": "last_outcome_at"
+              },
+              "last_reason": {
+                "kind": "column",
+                "column": "last_reason"
               },
               "description": {
                 "kind": "column",
@@ -960,6 +1026,18 @@
                 "kind": "column",
                 "column": "enabled"
               },
+              "last_file": {
+                "kind": "column",
+                "column": "last_file"
+              },
+              "last_file_at": {
+                "kind": "column",
+                "column": "last_file_at"
+              },
+              "last_error": {
+                "kind": "column",
+                "column": "last_error"
+              },
               "description": {
                 "kind": "column",
                 "column": "description"
@@ -996,6 +1074,104 @@
                   "ingestion": {
                     "kind": "column",
                     "column": "ingestion_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_collectors": {
+      "relation": "sys_collectors",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "collector": {
+            "attributes": {
+              "script_name": {
+                "kind": "column",
+                "column": "script_name"
+              },
+              "schedule": {
+                "kind": "column",
+                "column": "schedule"
+              },
+              "window": {
+                "kind": "column",
+                "column": "window"
+              },
+              "active": {
+                "kind": "column",
+                "column": "active"
+              },
+              "last_run_at": {
+                "kind": "column",
+                "column": "last_run_at"
+              },
+              "last_status": {
+                "kind": "column",
+                "column": "last_status"
+              },
+              "last_error": {
+                "kind": "column",
+                "column": "last_error"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "collector_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "collector",
+                "keys": {
+                  "collector": {
+                    "kind": "column",
+                    "column": "collector"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "fills": {
+            "predicate": "fills",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "collector",
+                "keys": {
+                  "collector": {
+                    "kind": "column",
+                    "column": "collector"
                   }
                 }
               },

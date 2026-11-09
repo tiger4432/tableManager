@@ -439,6 +439,26 @@ def read_progress(db) -> list:
     return sorted(out.values(), key=lambda e: (str(e["table_name"]), str(e["source"])))
 
 
+def last_files(db, sources) -> dict:
+    """Per (table, source) asked: the file the checklist touched last and when - its newest row - and the error its last
+    failed file's read left (`file_ingestion_logs.error_message`) - its newest FAILED row: one index lookup each
+    (`ix_file_checklist_newest`, `ix_file_checklist_newest_failed`). The system catalogue's ingestion state.
+    -> {(table_name, source): {"file", "at", "error"}} - a source with no row is left out."""
+    from database.models import FileChecklist as Row
+    from database.models import FileIngestionLog as Log
+
+    out = {}
+    for table, source in dict.fromkeys(sources):
+        held = (Row.table_name == table, Row.source.is_(None) if source is None else Row.source == source)
+        found = db.query(Row.filename, Row.updated_at).filter(*held).order_by(Row.updated_at.desc()).first()
+        if found is None:
+            continue
+        failed = (db.query(Log.error_message).select_from(Row).outerjoin(Log, Log.id == Row.log_id)
+                  .filter(*held, Row.status == STATUS_FAILED).order_by(Row.updated_at.desc()).first())
+        out[(table, source)] = {"file": found[0], "at": found[1], "error": failed[0] if failed else None}
+    return out
+
+
 def stamp_read_files(db, table_name: str, entries) -> dict:
     """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a row from before it carries no
     stamp, so every file a sweep looks at would be read again. For the `(filepath, file_stat)` entries a sweep has just

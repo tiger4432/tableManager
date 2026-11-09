@@ -501,6 +501,12 @@ class FileIngestionLog(Base):
     )
 
 
+def _checklist_failed():
+    from ingestion.checkpoint import STATUS_FAILED
+
+    return STATUS_FAILED
+
+
 class FileChecklist(Base):
     """The checklist (소유자 10-21 · 10-23 「파일당 한 행」, 총괄 64b264610 ②): ONE row per (table, file) - its state
     now (the last read's SUCCESS / FAILED, or the retry door's PENDING_RETRY / PENDING), its stamp (the file's (mtime,
@@ -541,6 +547,17 @@ class FileChecklist(Base):
               postgresql_where=text("status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL"),
               info={"purpose": "a source's rows a re-read has left (waiting or unchecked)",
                     "serves": "the re-read stop's settle, each poller turn"}),
+        # 3,000,000 rows (A 11-09, a throwaway DB): the newest row of 50 sources 7.3 s without it, 0.024 s with it;
+        # built 9 s
+        Index("ix_file_checklist_newest", "table_name", "source", "updated_at",
+              info={"purpose": "a source's newest checklist row",
+                    "serves": "the system catalogue's ingestion state (checkpoint.last_files), each state pass"}),
+        # its failed files only: the newest FAILED row of 100 sources 0.081 s (a window over 30,927 FAILED rows
+        # 0.417 s); built 1.4 s
+        Index("ix_file_checklist_newest_failed", "table_name", "source", "updated_at",
+              postgresql_where=text("status = '%s'" % _checklist_failed()),
+              info={"purpose": "a source's newest failed checklist row",
+                    "serves": "the system catalogue's ingestion state (checkpoint.last_files), each state pass"}),
     )
 
 

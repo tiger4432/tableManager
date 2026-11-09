@@ -1,11 +1,14 @@
 {
   "sys_tables": {
-    "__comment": "One row per declared table. The product writes every cell but description from the declarations (system_catalog); a person writes description.",
+    "__comment": "One row per declared table. The product writes every cell but description from the declarations (system_catalog); a person writes description. State: row_estimate (the planner's estimate, PostgreSQL), events_waiting and oldest_waiting_at (the chain's queue for the table). Its state cells are the system_runtime layer's, written every system_runtime pace (pacing.json), no history.",
     "group": "System",
     "business_key": "table_name",
     "column_types": {"table_name": "string", "group": "string", "key_columns": "string", "column_count": "number",
+                     "row_estimate": "number", "events_waiting": "number", "oldest_waiting_at": "datetime",
                      "declared": "string", "description": "string"},
-    "display_columns": ["table_name", "group", "key_columns", "column_count", "declared", "description"]
+    "display_columns": ["table_name", "group", "key_columns", "column_count", "row_estimate", "events_waiting",
+                        "oldest_waiting_at", "declared", "description"],
+    "no_history_columns": ["row_estimate", "events_waiting", "oldest_waiting_at"]
   },
   "sys_columns": {
     "__comment": "One row per declared column of a table. key_of names the table when the column is one of its key columns, blank otherwise.",
@@ -17,14 +20,20 @@
     "display_columns": ["table_name", "column_name", "column_type", "key_position", "declared", "description"]
   },
   "sys_chain_rules": {
-    "__comment": "One row per chain rule the chain runs. kind is the declaration's own word (join · decide · mapper ...).",
+    "__comment": "One row per chain rule the chain runs. kind is the declaration's own word (join · decide · mapper ...). State: switched_off_at and switched_off_cause (the chain switched it off after failures_in_a_row failures), last_outcome, last_outcome_at and last_reason (its last evaluation). Its state cells are the system_runtime layer's, written every system_runtime pace (pacing.json), no history.",
     "group": "System",
     "business_key": "rule_name",
     "column_types": {"rule_name": "string", "kind": "string", "declaration": "string", "enabled": "string",
                      "runs_on": "string", "when": "string", "trigger_table": "string", "target_table": "string",
-                     "function": "string", "formula": "string", "declared": "string", "description": "string"},
+                     "function": "string", "formula": "string", "switched_off_at": "datetime",
+                     "switched_off_cause": "string", "failures_in_a_row": "number", "last_outcome": "string",
+                     "last_outcome_at": "datetime", "last_reason": "string", "declared": "string",
+                     "description": "string"},
     "display_columns": ["rule_name", "kind", "enabled", "runs_on", "when", "trigger_table", "target_table", "function",
-                        "formula", "declared", "description"]
+                        "formula", "switched_off_at", "switched_off_cause", "failures_in_a_row", "last_outcome",
+                        "last_outcome_at", "last_reason", "declared", "description"],
+    "no_history_columns": ["switched_off_at", "switched_off_cause", "failures_in_a_row", "last_outcome",
+                           "last_outcome_at", "last_reason"]
   },
   "sys_rule_columns": {
     "__comment": "One row per (rule, column, role): what a rule is woken by, writes, joins or decides on. from_table / from_column: where a written column's value comes from.",
@@ -38,12 +47,26 @@
                         "declared"]
   },
   "sys_ingestion": {
-    "__comment": "One row per folder files are read from into a table: a table's own folder under the workspace, or an external source.",
+    "__comment": "One row per folder files are read from into a table: a table's own folder under the workspace, or an external source. State: last_file and last_file_at (the file its checklist touched last), last_error (its last failed file's error). Its state cells are the system_runtime layer's, written every system_runtime pace (pacing.json), no history.",
     "group": "System",
     "business_key": "ingestion_id",
     "column_types": {"ingestion_id": "string", "table_name": "string", "folder": "string", "pattern": "string",
-                     "parser": "string", "enabled": "string", "declared": "string", "description": "string"},
-    "display_columns": ["ingestion_id", "table_name", "folder", "pattern", "parser", "enabled", "declared", "description"]
+                     "parser": "string", "enabled": "string", "last_file": "string", "last_file_at": "datetime",
+                     "last_error": "string", "declared": "string", "description": "string"},
+    "display_columns": ["ingestion_id", "table_name", "folder", "pattern", "parser", "enabled", "last_file",
+                        "last_file_at", "last_error", "declared", "description"],
+    "no_history_columns": ["last_file", "last_file_at", "last_error"]
+  },
+  "sys_collectors": {
+    "__comment": "One row per Auto Update collector the scheduler loaded (collector: <table>/<script>): the table it fills, its cron schedule (blank: run by hand only), its window. State: active (the Auto Update switch), last_run_at, last_status, last_error. Its state cells are the system_runtime layer's, written every system_runtime pace (pacing.json), no history. A person writes description.",
+    "group": "System",
+    "business_key": "collector",
+    "column_types": {"collector": "string", "table_name": "string", "script_name": "string", "schedule": "string",
+                     "window": "string", "active": "string", "last_run_at": "datetime", "last_status": "string",
+                     "last_error": "string", "declared": "string", "description": "string"},
+    "display_columns": ["collector", "table_name", "script_name", "schedule", "window", "active", "last_run_at",
+                        "last_status", "last_error", "declared", "description"],
+    "no_history_columns": ["active", "last_run_at", "last_status", "last_error"]
   },
   "sys_ledger_sources": {
     "__comment": "One row per ledger source of each world, and the table it reads.",

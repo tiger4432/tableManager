@@ -62,3 +62,15 @@ def waiting_lines(db, cap, chain_only=False):
         line["retrying"] = line["retrying"] or bool(pair.retrying)
         line["pairs"].append((pair.table_name, pair.event_type))
     return [SimpleNamespace(**line) for line in folded.values()]
+
+
+def waiting_by(db, column):
+    """-> [(value, events, oldest created_at, retried)] of the waiting rows grouped by one outbox column - the queue's
+    kinds (`event_type`) and the system catalogue's tables (`table_name`). Waiting rows only (`idx_outbox_unprocessed`)."""
+    from sqlalchemy import func as _f
+    from database import models
+
+    outbox = models.DatabaseOutbox
+    return (db.query(column, _f.count(), _f.min(outbox.created_at), _f.count().filter(outbox.retry_count > 0))
+            .filter(outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
+            .group_by(column).order_by(column).all())

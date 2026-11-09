@@ -205,14 +205,42 @@ def _retroactive(db, now):
                   waiting=run.get("waiting"))]
 
 
-def _collectors(scheduler_pid):
+def scheduler_status_path():
     from utils import auto_update_control as auc
+
+    # auc.SERVER_DIR is the relocatable data root (paths.py) and the symbol tests monkeypatch
+    return os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
+
+
+def scheduler_status():
+    """The scheduler's status file as it wrote it - `{"last_updated", "collectors": [entry]}` - or None when it has
+    written none yet. A file that does not parse raises. The one reader: the Auto Update tab, the running list and the
+    system catalogue (`collectors_shown`)."""
     import json
 
-    path = os.path.join(auc.SERVER_DIR, "config", "scheduler_status.json")
     try:
-        with open(path, encoding="utf-8") as fh:
-            entries = json.load(fh).get("collectors") or []
+        with open(scheduler_status_path(), encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+
+
+def collectors_shown(entries):
+    """The status file's entries as the Auto Update tab shows them: `active` read off the control file now (a toggle
+    reaches them before the scheduler writes its file again), `last_status` the one judgment's (a RUNNING whose
+    scheduler is gone, 총괄 c44a7d2e4). -> the same entries."""
+    from utils import auto_update_control as auc
+
+    disabled = auc.read_disabled_scripts()
+    for entry in entries:
+        entry["active"] = "%s/%s" % (entry.get("table_name"), entry.get("script_name")) not in disabled
+        entry["last_status"] = collector_last_status(entry)
+    return entries
+
+
+def _collectors(scheduler_pid):
+    try:
+        entries = (scheduler_status() or {}).get("collectors") or []
     except (OSError, ValueError):
         return []
     out = []
