@@ -3795,11 +3795,12 @@ def _stages_of(db, run_ids):
         return {}
     from sqlalchemy import bindparam, text
 
+    from session_contract import in_savepoint
+
     try:
-        with db.begin_nested():
-            found = db.execute(text("SELECT run_id, phase, phase_at, waiting FROM retroactive_runs "
-                                      "WHERE run_id IN :ids")
-                                 .bindparams(bindparam("ids", expanding=True)), {"ids": list(run_ids)}).all()
+        found = in_savepoint(db, "run stages", lambda: db.execute(
+            text("SELECT run_id, phase, phase_at, waiting FROM retroactive_runs WHERE run_id IN :ids")
+            .bindparams(bindparam("ids", expanding=True)), {"ids": list(run_ids)}).all())
     except Exception as exc:                                            # noqa: BLE001 - the list goes on, stageless
         logger.debug("[Retroactive] run stages not read: %s", told(exc), exc_info=exc)
         return {}
