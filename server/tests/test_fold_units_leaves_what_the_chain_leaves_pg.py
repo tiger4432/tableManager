@@ -224,6 +224,7 @@ def copies(pg_engine):
                 db = Session()
                 seeded = _seed(db)
                 with pytest.MonkeyPatch.context() as run:
+                    run.setattr(rule_run, "run_rule", real_run)          # «answers» stays the four runs' above
                     if quiet:
                         run.setitem(crud.TABLE_CONFIG[LOG], "no_history_columns", [MARK])
                     if not forced:
@@ -235,6 +236,7 @@ def copies(pg_engine):
                 out[name] = _state(db, seeded)
                 db.close()
         finally:
+            db.close()                      # a failed run's session holds locks the TRUNCATE below would wait on
             with pg_engine.begin() as conn:
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
             scratch.drop_all(pg_engine)
@@ -324,7 +326,8 @@ def test_a_mark_kept_without_history_is_named_in_no_line_and_in_no_cache(copies)
     assert named(copies["B_loud"]) and named(copies["B_door"]), "CANARY: both paths name the mark when it keeps history"
     assert (named(copies["B_quiet"]), named(copies["B_quiet_door"])) == ([], [])
     assert copies["B_quiet"]["shown"] == copies["B_quiet_door"]["shown"] == copies["B"]["shown"], "the marks are written"
+    assert [g["summary"]["columns"] for g in copies["B_loud_cache"]] == [{MARK}], "CANARY: the cache was recording"
+    assert (copies["B_quiet_cache"], copies["B_quiet_door_cache"]) == ([], [])
     for name in ("B_loud", "B_quiet", "B_quiet_door"):
-        assert copies[name + "_cache"] == [], name
         assert not [v for v in copies[name + "_stats"].values()
                     if isinstance(v, list) and any(isinstance(one, dict) and "column_name" in one for one in v)], name

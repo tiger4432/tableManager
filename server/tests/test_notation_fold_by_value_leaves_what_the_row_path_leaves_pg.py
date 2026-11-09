@@ -245,17 +245,23 @@ def copies(pg_engine, tmp_path_factory):
         mp.setattr(keyset_scan, "FIRST_PAGE", 10 ** 9)
         mp.setattr(replay, "_write_by_values", write)
         scratch.create_all(pg_engine)
+        db = None
         try:
-            for copy, dialects in (("A", ()), ("B", replay.FOLD_BY_VALUE_DIALECTS)):
+            # B_quiet: B with every column kept without history (`no_history_columns`, lead 11-09 ②)
+            for copy, dialects in (("A", ()), ("B", replay.FOLD_BY_VALUE_DIALECTS),
+                                   ("B_quiet", replay.FOLD_BY_VALUE_DIALECTS)):
                 with pg_engine.begin() as conn:
                     conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
                 mp.setattr(replay, "FOLD_BY_VALUE_DIALECTS", dialects)
+                for t in (PLAIN, COMP, AGAIN):
+                    mp.setitem(crud.TABLE_CONFIG[t], "no_history_columns",
+                               list(TABLES[t]["column_types"]) if copy == "B_quiet" else [])
                 db = Session()
                 out["schema"] = db.execute(text("SELECT current_schema()")).scalar()
                 names, after = _seed(db, rules_path)
                 out[copy + "_names"] = names
                 out[copy + "_seed"] = _state(db, names, after)
-                start = len(out["by_value"])
+                start, kept = len(out["by_value"]), len(out["keys_by_value"])
                 for table in (PLAIN, COMP, AGAIN):
                     out[copy, table, "dry"] = _counts(run(db, table), names)
                 out[copy + "_after_dry"] = _state(db, names, after)
@@ -265,8 +271,11 @@ def copies(pg_engine, tmp_path_factory):
                 for table in (PLAIN, COMP):
                     out[copy, table, "again"] = _counts(run(db, table), names)
                 out[copy + "_by_value"] = out["by_value"][start:]
+                out[copy + "_keys_by_value"] = out["keys_by_value"][kept:]
                 db.close()
         finally:
+            if db is not None:
+                db.close()                  # a failed run's session holds locks the TRUNCATE below would wait on
             with pg_engine.begin() as conn:
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
             scratch.drop_all(pg_engine, tables=[scratch.tables["%s.%s" % (PG_TEST_SCHEMA, t)]
@@ -295,7 +304,7 @@ def test_b_folds_by_value_and_a_does_not(copies):
         one[0], one[1], one[2] = one[0] + hard, one[1] + cells, one[2] + layers
     assert by_table[PLAIN][0] == 0 and by_table[PLAIN][1] > 10, "every PLAIN row by value"
     assert by_table[COMP][0] >= 6 and by_table[COMP][1] >= 1, "the key rows judged by the row path"
-    written = [(keys, hard) for table, keys, hard in copies["keys_by_value"] if table == COMP]
+    written = [(keys, hard) for table, keys, hard in copies["B_keys_by_value"] if table == COMP]
     assert sum(keys for keys, _hard in written) == 2, "the keys that move onto nothing are written by value"
     assert sum(hard for _keys, hard in written) >= 3, "and so are the hard rows whose cells move"
 
@@ -347,6 +356,16 @@ def test_a_rerun_folds_nothing(copies):
         assert copies["B", table, "apply"]["cells_folded"] > 0, "CANARY: the first run folded"
         assert (again["cells_folded"], again["layers_folded"], again["keys_changed"], again["rows_merged"]) == \
             (0, 0, 0, 0), table
+
+
+def test_a_column_kept_without_history_is_folded_and_named_in_no_line(copies):
+    """Lead 11-09 ②: the fold by value writes a history line per shown cell (`replay._write_by_values`) through
+    `crud.create_audit_log`, which makes none for a column its table keeps no history for."""
+    quiet = {column for t in (PLAIN, COMP, AGAIN) for column in TABLES[t]["column_types"]}
+    assert [h for h in copies["B"]["history"] if h[2] in quiet], "CANARY: B names its columns"
+    assert sum(cells for _t, _hard, cells, _layers in copies["B_quiet_by_value"]) > 10, "CANARY: by value"
+    assert [h for h in copies["B_quiet"]["history"] if h[2] in quiet] == []
+    assert copies["B_quiet"]["rows"] == copies["B"]["rows"], "the cells are folded all the same"
 
 
 def test_a_value_that_moves_again_stops_both_before_its_page(copies):

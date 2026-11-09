@@ -36,7 +36,7 @@ pytestmark = pytest.mark.pg
 
 from conftest import PG_TEST_SCHEMA, _resolve_pg_test_url
 from tests.support.isolated_pg import scratch_connect_args
-from database import crud, schemas
+from database import crud, models, schemas
 
 
 TABLE = "pgqa_bk_table"
@@ -167,9 +167,11 @@ def test_the_accepted_branch_is_the_branch_under_test(pg_session):
     assert not executemany, (
         "this is the defect the path was repaired for: `executemany` is a "
         "Python loop over `cursor.execute`, i.e. one round trip per row")
-    # 3 rows x 7 columns, one flat tuple - not 3 parameter sets.
-    assert isinstance(params, tuple) and len(params) == 21
-    assert sql.count("(%s,%s,%s,%s,%s,%s,%s)") == 3
+    # 3 rows x (the mapping's 7 columns + the owner columns every layer row names, step 2 83de1715e), one flat
+    # tuple - not 3 parameter sets.
+    per_row = len(_mapping(0)) + len(models.OWNER_COLUMNS)
+    assert isinstance(params, tuple) and len(params) == 3 * per_row == 27
+    assert sql.count("(" + ",".join(["%s"] * per_row) + ")") == 3
     assert "ON CONFLICT (table_name, row_id, column_name, source_name)" in sql
     assert "DO UPDATE SET value = EXCLUDED.value" in sql
 
