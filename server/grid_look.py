@@ -78,7 +78,7 @@ def fold(*layers) -> list:
 def read(db, table_name, rows):
     """The looks of a page of `rows` (dicts with row_id and data, `fetch_and_merge_metadata`'s): {"rules": [in order],
     "paints": {paint_key: {"role", "row_id"}}} - None when the table has neither. A rule that asks who wrote a cell has
-    each cell of its columns given `written_by` (`crud.writer_kind`, `_writers`)."""
+    each cell of its columns that one of the asked writers wrote given `written_by` (`crud.writer_kind`, `_writers`)."""
     look = _looks()
     if look is None:
         return None
@@ -104,29 +104,51 @@ def read(db, table_name, rows):
 
 
 def _writers(db, table_name, rows, columns, kinds):
-    """Each cell of `columns` (None = all) gets `written_by` - its winning layer's writer. The page read's
-    `priority_source` names it when set (a person's or a merge's layer, a pinned one; every winner when the sources
-    were read); a cell it leaves unnamed is ranked from the layers' names and times (`crud.compute_priority_value`) -
-    read only when `kinds`, the writers the rules ask, holds one beyond `NAMED_WRITERS` (owner 11-08 1ㄱ: the rules
-    every table has ask a person and a merge, and read no layer for them)."""
+    """A cell of `columns` (None = all) whose winning layer's writer is one of `kinds`, the writers the rules ask,
+    says it in `written_by`; any other cell says none - no rule's writer is its (lead 11-09). The page read's
+    `priority_source` names the winner when set (a person's or a merge's layer, a pinned one; every winner when the
+    sources were read). A cell it leaves unnamed is ranked from the layers' names and times
+    (`crud.compute_priority_value`) when `kinds` asks a writer beyond `NAMED_WRITERS`, and then only the cells holding
+    a layer of a writer `kinds` asks - the winner is one of its layers (lead 11-09: the rules every table has ask a
+    model, and every page read every layer of its cells - 0.22 s -> 0.99 s on a 1,000-row page of the box's dt_log)."""
     from database import crud, models
 
-    cells = [(row.get("row_id"), column, cell) for row in rows for column, cell in (row.get("data") or {}).items()
-             if (columns is None or column in columns) and isinstance(cell, dict) and "priority_source" in cell]
-    unnamed = [(row_id, column, cell) for row_id, column, cell in cells if cell.get("priority_source") is None]
+    ids = set()     # the rows of the cells the page read left unnamed
+    for row in rows:
+        for column, cell in (row.get("data") or {}).items():
+            if (columns is None or column in columns) and isinstance(cell, dict) and "priority_source" in cell:
+                if cell["priority_source"] is not None:
+                    _said(cell, crud.writer_kind(cell["priority_source"]), kinds)
+                elif row.get("row_id") is not None:
+                    ids.add(row.get("row_id"))
+    asked = set(kinds) - NAMED_WRITERS
+    if not ids or not asked:
+        return
+    S = models.CellSource
+    query = db.query(S.row_id, S.column_name).filter(S.table_name == table_name, S.row_id.in_(sorted(ids)),
+                                                     crud.writer_kind_clause(S.source_name, kinds))
+    if columns is not None:
+        query = query.filter(S.column_name.in_(sorted(columns)))
+    held = set(query.distinct().all())
+    if not held:
+        return
     layers, ranks = {}, {}   # ranks: the declared rank of each name, asked once for the page
-    ids = sorted({row_id for row_id, _c, _cell in unnamed if row_id is not None})
-    if ids and set(kinds) - NAMED_WRITERS:
-        query = db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.source_name,
-                         models.CellSource.ingested_at).filter(models.CellSource.table_name == table_name,
-                                                               models.CellSource.row_id.in_(ids))
-        if columns is not None:
-            query = query.filter(models.CellSource.column_name.in_(sorted(columns)))
-        for row_id, column, name, at in query.all():
+    for row_id, column, name, at in db.query(S.row_id, S.column_name, S.source_name, S.ingested_at).filter(
+            S.table_name == table_name, S.row_id.in_(sorted({row for row, _c in held})),
+            S.column_name.in_(sorted({column for _r, column in held}))):
+        if (row_id, column) in held:
             layers.setdefault((row_id, column), {})[name] = at
-    for row_id, column, cell in cells:
-        source, said = cell.get("priority_source"), layers.get((row_id, column))
-        if source is None and said:
-            _, source = crud.compute_priority_value({name: {} for name in said}, cell.get("manual_priority_source"),
-                                                    table_name, ingested_at_by_source=said, ranks=ranks)
-        cell["written_by"] = crud.writer_kind(source)
+    by_id = {row.get("row_id"): row for row in rows}
+    for (row_id, column), said in layers.items():
+        cell = (by_id[row_id].get("data") or {}).get(column)
+        if not isinstance(cell, dict) or "priority_source" not in cell or cell["priority_source"] is not None:
+            continue
+        _, source = crud.compute_priority_value({name: {} for name in said}, cell.get("manual_priority_source"),
+                                                table_name, ingested_at_by_source=said, ranks=ranks)
+        _said(cell, crud.writer_kind(source), kinds)
+
+
+def _said(cell, writer, kinds):
+    """`written_by` on `cell` when `writer` is one the rules ask."""
+    if writer in kinds:
+        cell["written_by"] = writer

@@ -5,7 +5,7 @@ change learns it from batch_row_upsert - so every sender's item carries the cell
 
   senders   PUT data/updates · DELETE <row>/<col>/sources/<source> · PUT <row>/<col>/priority ·
             PUT cells/priority/batch · POST cells/sources/delete/batch · the chain worker's group
-  rule      a written_by rule on «note» -> each item's note cell says what the page read says for that cell
+  rule      written_by rules on «note» -> each item's note cell says what the page read says for that cell
   no rule   (the look table declaring none every table has) no cell says written_by, and the layers' writers are
             never read
 """
@@ -36,7 +36,10 @@ def fixture_sent(monkeypatch):
 
 
 def _rule(client):
-    _look(client, "rule", "r-who", position="1", role="accent", written_by="person", rule_columns='["note"]')
+    """Rules on «note» asking each writer the senders leave there - a cell says only a writer a rule asks (lead 11-09)."""
+    for n, writer in enumerate(("person", "file", "chain")):
+        _look(client, "rule", "r-who-%s" % writer, position=str(n + 1), role="accent", written_by=writer,
+              rule_columns='["note"]')
 
 
 def note_mapper(db, payload):
