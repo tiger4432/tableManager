@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **월드를 전부 멈춰 두면 원장 프로세스가 정말 쉰다 — 후속 번역 매 초 실패 끝 · 행 셈 멈춤** — git pull · 런처 재기동(원장 워커)
+>
+> ```
+> 무엇     월드 Live 가 전부 꺼져 있으면 후속 번역이 대기 이벤트를 집어 매 바퀴 실패하던 것 -> 아무것도 안 집음
+>          운영 월드가 꺼져 있으면 행 셈(census)이 표를 훑던 것 -> 안 훑음
+> 볼 줄    ledger.log 에 [LedgerFollowUp] batch failed: 'NoneType' object has no attribute 'snapshot' 이 더는 안 뜸
+>          [LedgerCensus] lap: 줄도 안 뜸 (운영 월드 꺼진 동안)
+> 답의 뜻  멈춘 동안 온 변경은 표시 없이 기다림 = 정상. 월드 Live 를 다시 켜면 그 대기분부터 따라감
+>          켠 뒤 ledger.log  [LedgerFollowUp] lap: N item(s) in …, M left in the queue  — M 이 줄면 따라가는 중
+>          켰는데 M 이 안 줄거나 batch failed 가 뜨면 고장 — 그 줄 끝이 사유
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-09] **큰 표의 vacuum 끝자리 자르기를 끔 — cell_sources · audit_logs · 원장 파티션 전부** — git pull · 런처 재기동(스케줄러 · 원장 워커)
 >
 > ```
