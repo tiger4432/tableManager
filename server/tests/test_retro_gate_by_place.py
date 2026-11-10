@@ -159,3 +159,11 @@ def test_the_gate_is_closed_on_the_newest_run_it_meets(op, params, closed_on):
     said = retroactive.gate_refusal(db, op, params) if closed_on else None
     if closed_on:
         assert ("run_id=%s" % closed_on) in said and "both write" in said
+
+
+def test_the_pace_help_says_runs_wait_by_place_not_one_at_a_time():
+    """The operations list carries the pace help the admin Help quotes (lead 11-11): the gate's rule, not «one at a
+    time»."""
+    helps = [p["help"] for s in retroactive.inventory() for p in s["params"] if p["name"] == "pace"]
+    assert len(helps) > 1, "canary: pace-taking operations are listed"
+    assert all("same places" in h and "one at a time" not in h.lower() for h in helps)

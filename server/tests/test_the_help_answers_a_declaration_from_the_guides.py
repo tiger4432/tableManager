@@ -100,6 +100,15 @@ def test_the_owners_question_finds_the_pair_and_every_prompt_stays_under_its_cap
     assert worst <= 5000, worst
 
 
+def test_the_operators_guides_are_read_and_a_collector_search_finds_how_to_make_one(guides):
+    """Lead 11-11: the guides an operator works from are in the list - 19 (chain_ingestion_guide and BACKFILL out
+    until their stale sentences are fixed); a collector search picks the collector guide's «make one» section first."""
+    assert len(help_guides.GUIDES) == 19
+    picked, how = help_guides.nearest("수집기 하나 만들기")
+    assert how == "bm25" and picked[0]["file"] == "AUTO_UPDATE_GUIDE.md"
+    assert "수집기 하나 만들기" in picked[0]["name"]
+
+
 def test_the_first_ask_grows_by_the_declaration_entry_only():
     prompt = admin_help.prompt_of("q")
     mine = [line for line in prompt.split("\n") if line.startswith("- declaration:") or "디사이드 키" in line]
