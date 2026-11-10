@@ -70,6 +70,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
      "audit": [{"transaction_id", "table_name", "changed_rows", "kind", "written_by"}] one an audit row - `kind` its work
      kind, `changed_rows` the distinct row_ids it wrote lines for in this write} - `old` is the current line step 1
     locked, `new` the one step 5 wrote (None: deleted), what the broadcast and the outbox read (one author)."""
+    _open(db)
     cfg = crud.TABLE_CONFIG[table]
     shape = lines.shape(db, table, cfg)
     now, ln, bits, chunks = shape["now"], shape["lines"], shape["bits"], shape["chunks"]
@@ -101,6 +102,17 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
     return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit}
+
+
+def _open(db):
+    """sqlite has one write lock and no row locks: open the transaction IMMEDIATE, so a second writer waits for the lock
+    before step 1 reads, not at its first insert with what it read gone stale. A transaction already open has the lock
+    or will take it on its own. PostgreSQL locks rows in step 1."""
+    if db.get_bind().dialect.name != "sqlite":
+        return
+    connection = db.connection()
+    if not connection.connection.dbapi_connection.in_transaction:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _claim(db, table, cfg, now, items):

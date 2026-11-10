@@ -3,6 +3,9 @@
 same write again is none, a later line of one source takes the head, a withdraw takes a cell back (a NULL head too), a
 deleted line keeps the key and the current line goes, one new key twice in a batch is one row, and the line's batch
 and the audit row's transaction id are the transaction id as given (D 11-10). sqlite."""
+import threading
+import time
+
 import pytest
 from sqlalchemy import bindparam, create_engine, select, text
 from sqlalchemy.orm import sessionmaker
@@ -156,3 +159,41 @@ def test_a_write_the_database_gives_no_time_for_is_refused(db, monkeypatch):
     with pytest.raises(RuntimeError, match="gave no time"):
         _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})
     assert _lines(db) == [] and _now(db) == {}
+
+
+def test_two_sqlite_writers_of_one_row_wait_for_the_write_lock_before_they_read(tmp_path, monkeypatch):
+    engine = create_engine("sqlite:///" + str(tmp_path / "wl.db"), connect_args={"check_same_thread": False})
+    lines.LineColumn.__table__.create(engine)
+    lines.AuditBatch.__table__.create(engine)
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
+    make = sessionmaker(bind=engine)
+    setup = make()
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(setup, TABLE, CFG)), raising=False)
+    [row_id] = _write(setup, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "0"}, "source_name": "f0"})["changed"]
+    setup.commit()
+    setup.close()
+    first, second, got = make(), make(), {}
+
+    def run():
+        try:
+            got["answer"] = _write(second, {"row_id": row_id, "values": {"a": "2"}, "source_name": "f2"}, tx="tx3")
+            second.commit()
+        except Exception as exc:                  # noqa: BLE001 - the test says what the second writer met
+            got["error"] = exc
+            second.rollback()
+
+    try:
+        _write(first, {"row_id": row_id, "values": {"a": "1"}, "source_name": "f1"}, tx="tx2")
+        thread = threading.Thread(target=run)
+        thread.start()
+        time.sleep(1.0)
+        still = thread.is_alive()
+        first.commit()
+        thread.join(30)
+    finally:
+        first.rollback()
+        first.close()
+        second.close()
+        engine.dispose()
+    assert still and "error" not in got, got.get("error")
+    assert got["answer"]["changed"][row_id]["old"]["a"] == "1", "the second read the row before the first let it go"
