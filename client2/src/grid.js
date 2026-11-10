@@ -4,7 +4,7 @@ import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
 import { ENTERED, ROW, GROUP, ITEM, dropPlace } from './grid_order.js';
-import { PERSON, ROLES, lookOf, isColour, lookStyle, hasPickedColour } from './grid_look.js';
+import { PERSON, ROLES, lookOf, isColour, lookStyle, hasPickedColour, looksPrint, writersPrint } from './grid_look.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
@@ -1434,6 +1434,38 @@ const cellLookOf = (rowData, col) => {
   return at && lookOf(state.looks, at.rowId, at.column, at.cell);
 };
 
+// What the looks were drawn with last: their print, and each drawn row's writers while a colour is picked.
+let drawnLooks = looksPrint(null);
+let drawnWriters = new Map();
+
+/** The looks drawn again - the one seat (lead 11-10 ㄱ). A picked colour is a cell's inline style and AG Grid sets it
+ *  again only on a forced refresh (a row of the same id read again reruns the class rules, not the style - measured
+ *  11-09). Forced: every drawn row when the looks changed since the last draw; else `rows` (a writers answer's); else,
+ *  while a colour is picked, the rows whose writers changed. */
+export function redrawLooks(rows = null) {
+  const api = state.gridApi;
+  if (!api) return;
+  const before = drawnWriters;
+  const moved = [];
+  drawnWriters = new Map();
+  if (hasPickedColour(state.looks)) {
+    api.forEachNode((node) => {
+      if (!node.data) return;
+      const writers = writersPrint(node.data);
+      drawnWriters.set(node.id, writers);
+      if (before.has(node.id) && before.get(node.id) !== writers) moved.push(node);
+    });
+  }
+  const print = looksPrint(state.looks);
+  if (print !== drawnLooks) {
+    drawnLooks = print;
+    api.refreshCells({ force: true, suppressFlash: true });
+    return;
+  }
+  const again = rows || moved;
+  if (again.length) api.refreshCells({ rowNodes: again, force: true, suppressFlash: true });
+}
+
 /** The columns' widths from the rows drawn, when renderGrid owes them - asked by the grid's own row events only. */
 export function fitColumnWidths() {
   const api = state.gridApi;
@@ -1623,14 +1655,11 @@ export function renderGrid(initialRows) {
       fitColumnWidths();
       renderFilterBar();
     },
-    // every later row set (a read, a page, a table opened): the fit renderGrid owes is paid here, once (lead 11-08 ㄱ)
-    // A row of the same id takes its new data as an update: AG Grid reruns a cell's class rules, but its cellStyle (a
-    // picked colour, grid_look.lookStyle) only when its value changed - a look changed on a cell that did not (a rule's
-    // colour, a colour back to a role) kept the colour drawn before (measured 11-09). A forced refresh draws it again -
-    // only while a picked colour is asked or still drawn (a table without one reads as before, lead 11-09).
-    onRowDataUpdated: (e) => {
+    // every later row set (a read, a page, a table opened): the fit renderGrid owes is paid here, once (lead 11-08 ㄱ),
+    // and the looks the rows came with drawn (redrawLooks)
+    onRowDataUpdated: () => {
       fitColumnWidths();
-      if (hasPickedColour(state.looks) || gridDiv.querySelector('.ag-cell[style*="--look-"]')) e.api.refreshCells({ force: true, suppressFlash: true });
+      redrawLooks();
     },
     onGridSizeChanged: () => {
       // The strip's right edge moved, so how many chips fit moved with it.

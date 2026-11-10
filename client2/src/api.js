@@ -11,9 +11,9 @@ import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, buildColumnDefs, dropGridFilters, filterGridTo, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
+import { renderGrid, buildColumnDefs, dropGridFilters, filterGridTo, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder, redrawLooks } from './grid.js';
 import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
-import { pageLooks, saidLooksChanged } from './grid_look.js';
+import { pageLooks, saidLooksChanged, takeWriters } from './grid_look.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -591,6 +591,35 @@ async function fillMatchCount(params, table, since = Date.now()) {
   }
 }
 
+/** A page's writers, read after it is drawn when its looks say `updating` (D 11-10, owner ㄱ: the page first, who wrote
+ *  it after): the page's own read at its skip with part=writers - no row to place it by, no count - on `ticket`'s board,
+ *  so a newer read (a page, a sort, a filter, a table) cuts it. Taken into the rows drawn and the page cached; those
+ *  rows' looks drawn again. */
+export async function fillWriters(pageUrl, skip, ticket, table = state.currentTable) {
+  const url = new URL(pageUrl, window.location.href);
+  url.searchParams.delete('target_row_id');
+  url.searchParams.delete('defer_total');
+  url.searchParams.set('skip', String(skip));
+  url.searchParams.set('part', 'writers');
+  const cut = () => !ticket.current() || table !== state.currentTable;
+  try {
+    const res = await gridFetch(url.toString(), { signal: ticket.signal });
+    if (!res.ok) { if (!cut()) console.error('Writers not read', await refusalText(res, `HTTP ${res.status}`)); return; }
+    const body = await res.json();
+    if (cut()) return;
+    const api = state.gridApi;
+    const moved = takeWriters(body.written_by, (id) => (api.getRowNode(id) || {}).data || null);
+    const page = state.pageCache.get(skip);
+    if (page) {
+      const rows = new Map(page.data.map((row) => [row.row_id, row]));
+      takeWriters(body.written_by, (id) => rows.get(id) || null);
+    }
+    redrawLooks([...moved].map((id) => api.getRowNode(id)).filter(Boolean));
+  } catch (e) {
+    if (!cut()) console.error('Failed to fetch writers', e);
+  }
+}
+
 /** 지금 그리드의 질문으로 미룬 수를 묻습니다 — 행 점프(timeline.js)처럼 수 없이 쪽을 그린 자리가 부릅니다. */
 export function askMatchCount() {
   return fillMatchCount(narrowingParams(), state.currentTable);
@@ -599,12 +628,18 @@ export function askMatchCount() {
 /** Load All (main.js): every row of the grid's question, chunk by chunk. The end is a chunk shorter than `chunkLimit` -
  *  a count is «as of» a time, 10,000+ past the cap or still counting (구현자 A 67e5e9ccd ㄱ-1), so it is not the end.
  *  Only the first chunk is counted; the rest ask none (`defer_total`). `onProgress(rows so far, the exact count or
- *  null)`. -> { rows, count } */
+ *  null)`. -> { rows, count, looks: the chunks' looks (the first's rules, every chunk's paints), writers: the skips of
+ *  the chunks whose looks said `updating` (fillWriters asks them) } */
 export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress) {
+  const writers = [];
+  let looks = null;
   const read = async (skip, deferTotal) => {
     const res = await gridFetch(`${baseUrl}?skip=${skip}&limit=${chunkLimit}&${queryParams}${deferTotal ? '&defer_total=true' : ''}`);
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-    return res.json();
+    const answer = await res.json();
+    looks = pageLooks(looks, answer.looks, skip > 0);
+    if (answer.looks && answer.looks.updating) writers.push(skip);
+    return answer;
   };
   // a pivot answer's key groups as grid rows, as a page's are (owner 10-22)
   const rowsOf = (answer) => (answer.pivot ? (answer === first ? takePivot(answer) : pivotRows(answer)) : answer.data || []);
@@ -623,15 +658,17 @@ export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress)
     last = chunk.length;
     onProgress(rows.length, exact);
   }
-  return { rows, count };
+  return { rows, count, looks, writers };
 }
 
 /** Load All's rows on the grid - every row from the first, so the place is the first row and «Loaded: 1 - N» says
  *  what is drawn (lead ba39f4ef7: from page 5 it said «4001 - 8578»); the bottom line their count. */
-export function showAllRows(rows) {
+export function showAllRows(rows, looks = null) {
   state.allDataLoaded = true;
   state.hasMoreData = false;
   state.currentSkip = 0;
+  state.looks = looks;   // every chunk's paints, as a later page of the infinite view keeps them (pageLooks)
+  saidLooksChanged();
   state.gridApi.setGridOption('rowData', overlayStagedEdits(rows));
   updateGridSortState();
   updateLoadedCount(rows.length);
@@ -778,6 +815,8 @@ export async function fetchData(resetSkip = true, key = null) {
 
     // 행은 그려졌습니다. 이제 개수를 가지러 갑니다 -- «기다리지 않고» 돌려줍니다.
     if (count.total === null) fillMatchCount(narrowing, table);
+    // and who wrote its cells, when the page came without them (D 11-10)
+    if (result.looks && result.looks.updating) fillWriters(url, result.skip ?? state.currentSkip, read, table);
 
     // Save to Cache
     if (state.viewMode !== 'infinite') {

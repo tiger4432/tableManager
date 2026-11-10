@@ -42,6 +42,7 @@ import {
   applyPendingEdits,
   txToggled,
   fetchAllRows,
+  fillWriters,
   showAllRows,
   nextPage,
   prevPage,
@@ -1218,7 +1219,7 @@ function setupEventListeners() {
         elements.performanceLog.textContent = '⚡ 1/3. Fetching initial row chunk...';
 
         // The end is a short chunk (api.js fetchAllRows); the percent only against an exact count.
-        const { rows: accumulatedData } = await fetchAllRows(baseApiUrl, queryParams, chunkLimit, (n, known) => {
+        const { rows: accumulatedData, looks, writers } = await fetchAllRows(baseApiUrl, queryParams, chunkLimit, (n, known) => {
           elements.performanceLog.textContent = known === null
             ? `⏳ 2/3. Fetching rows: ${unitText(n, 'row')} so far`
             : `⏳ 2/3. Fetching rows: ${known > 0 ? Math.min(100, Math.floor((n / known) * 100)) : 100}% (${n} / ${known})`;
@@ -1232,8 +1233,15 @@ function setupEventListeners() {
 
         const renderStartTime = performance.now();
 
-        showAllRows(accumulatedData);
+        showAllRows(accumulatedData, looks);
         updateViewModeUI();
+        // who wrote the cells of the chunks that came without them (D 11-10), one after another on the grid's board
+        if (writers.length) {
+          const ticket = state.gridReads.begin();
+          (async () => {
+            for (const skip of writers) await fillWriters(`${baseApiUrl}?limit=${chunkLimit}&${queryParams}`, skip, ticket);
+          })();
+        }
 
         const renderEndTime = performance.now();
         const renderTime = (renderEndTime - renderStartTime).toFixed(0);

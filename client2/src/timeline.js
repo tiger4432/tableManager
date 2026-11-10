@@ -10,7 +10,8 @@ import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
-import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText, askMatchCount } from './api.js';
+import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText, askMatchCount, fillWriters } from './api.js';
+import { pageLooks, saidLooksChanged } from './grid_look.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
 import { countOf, setMatchCount } from './match_count.js';
@@ -1473,6 +1474,8 @@ export function navigatorStep2(log, jump = null) {
       const found = cached.data.some(r => (r.row_id || r.id) === log.row_id);
       if (found) {
         state.currentSkip = skip;
+        state.looks = cached.looks || null;   // the page's looks, as the page read's cache hit (api.js fetchData)
+        saidLooksChanged();
         state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
         updateGridSortState();
         updateLoadedCount(cached.data.length);
@@ -1542,7 +1545,9 @@ export async function navigatorStep3(log, jump = null) {
       return;
     }
 
-    // Load returned chunk page to local grid
+    // Load returned chunk page to local grid - with its looks, as the page read takes them
+    state.looks = pageLooks(state.looks, result.looks);
+    saidLooksChanged();
     state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
     updateGridSortState();
 
@@ -1560,7 +1565,9 @@ export async function navigatorStep3(log, jump = null) {
     if (count.total === null) askMatchCount();
 
     // Save to Cache
-    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count });
+    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count, looks: state.looks });
+    // who wrote its cells, when the page came without them (D 11-10)
+    if (result.looks && result.looks.updating) fillWriters(url, state.currentSkip, read);
 
     // Check if target node loaded successfully
     setTimeout(() => {
