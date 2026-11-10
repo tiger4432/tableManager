@@ -105,7 +105,7 @@ def _ingestion_rows(config) -> list:
 
 
 def _ledger_rows() -> dict:
-    from ledger import schema
+    from ledger import schema, setup_bundle
     from ledger.setup import load_setup
 
     sources, builds = [], []
@@ -119,9 +119,17 @@ def _ledger_rows() -> dict:
         for source_id, plan in sorted(setup.snapshot.source_plans.items()):
             sources.append(_row(world=world, source_id=source_id, relation=plan.relation,
                                 status=plan.status))
-            types = {binding.get("entity_type") for mapping in plan.profile.mappings.values()
-                     for binding in (mapping.bindings or {}).values()
-                     if isinstance(binding, Mapping) and binding.get("entity_type")} if plan.profile else set()
+            # a type named in the binding, and every type a binding reading its type from a column can carry - what its
+            # predicate admits there (`setup_bundle.column_typed_entity_types`, the list the ledger checks rows against)
+            types = set()
+            for mapping in plan.profile.mappings.values() if plan.profile else ():
+                bindings = mapping.bindings or {}
+                types.update(binding["entity_type"] for binding in bindings.values()
+                             if isinstance(binding, Mapping) and isinstance(binding.get("entity_type"), str)
+                             and binding["entity_type"])
+                for typed in setup_bundle.column_typed_entity_types(
+                        {"predicate": mapping.predicate_id, "bind": bindings}, setup.snapshot.vocabulary).values():
+                    types.update(typed)
             for entity_type in sorted(types):
                 builds.append(_row(world=world, source_id=source_id, entity_type=entity_type))
     return {"sys_ledger_sources": sources, "sys_source_builds": builds}

@@ -163,3 +163,39 @@ def test_the_processes_that_write_or_read_the_shipped_tables_build_their_models_
         assert len(built) == 1, entry
         argument = built[0].args[0]
         assert isinstance(argument, ast.Call) and getattr(argument.func, "attr", None) == "load_table_config_or_raise", entry
+
+def test_a_binding_that_reads_its_type_from_a_column_builds_every_type_it_can_carry(db_session, catalogue, tmp_path,
+                                                                                     monkeypatch, caplog):
+    """owner 11-10 «시스템 카탈로그 원장에 dict 타입 에러»: a binding whose `entity_type` is read from a column
+    ({kind: column, column}) put that dict in a set, so one world's binding left every world's ledger rows unread. Its
+    types are what its predicate admits there (`setup_bundle.column_typed_entity_types`), the other world is read too."""
+    import dataclasses
+    import json
+    import logging
+    import os
+
+    from ledger import schema, setup, setup_bundle
+    from tests.test_an_entity_type_can_be_read_from_a_column import CANDIDATES, COLUMNS, SAMPLE, SOURCE, document
+
+    shipped_ledger = json.load(open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8"))
+    said = document(shipped_ledger, SOURCE)
+    said["sources"] = {CANDIDATES: said["sources"][CANDIDATES]}
+    root = tmp_path / "candidates_world"
+    root.mkdir()
+    (root / setup_bundle.CONFIG_FILENAME).write_text(json.dumps(said), encoding="utf-8")
+    physical = dict(setup_bundle.load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample")))
+    physical[CANDIDATES] = {"columns": {**{name: "string" for name in COLUMNS}, "created_at": "datetime"},
+                            "business_key": "cand_id"}
+    monkeypatch.setattr(setup, "live_physical_catalog",
+                        lambda: {**physical, **setup_bundle._adapt_physical_catalog(crud.TABLE_CONFIG)})
+    monkeypatch.setattr(schema, "world_listing", lambda: {"worlds": ["system", "candidates"], "operating": "default"})
+    names = schema.world_names
+    monkeypatch.setattr(schema, "world_names", lambda world=None: dataclasses.replace(
+        names("system"), world="candidates", declaration_root=str(root)) if world == "candidates" else names(world))
+    caplog.set_level(logging.WARNING)
+    system_catalog.sync(db_session)
+    db_session.commit()
+    assert "were not read" not in caplog.text
+    built = {(r.world, r.source_id, r.entity_type) for r in _rows(db_session, "sys_source_builds")}
+    assert {"quantity", "defect_kind"} <= {t for w, s, t in built if (w, s) == ("candidates", CANDIDATES)}, built
+    assert ("system", "sys_columns", "column") in built, "the other world's rows are read too"
