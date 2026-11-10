@@ -25,12 +25,43 @@ ENTRY = {"business_key": "k", "composite_key_source": ["k"],
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(params=["sqlite", pytest.param("postgresql", marks=pytest.mark.pg)])
+def dialect_client(request):
+    """(client, engine) - the in-memory sqlite suite's, or one on the PG test schema: the same statements both."""
+    if request.param == "sqlite":
+        return request.getfixturevalue("client"), request.getfixturevalue("db_session").get_bind()
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import sessionmaker
+
+    import main
+    from database.database import get_db
+
+    engine = request.getfixturevalue("pg_engine")
+    made = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def per_request():
+        session = made()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    main.app.dependency_overrides[get_db] = per_request
+    request.addfinalizer(lambda: main.app.dependency_overrides.pop(get_db, None))
+    client = TestClient(main.app)
+    return client, engine
+
+
+def _line_table_fixture(dialect_client, monkeypatch, name, entry):
+    client, engine = dialect_client
+    models.init_dynamic_models({name: entry})
+    monkeypatch.setitem(crud.TABLE_CONFIG, name, entry)
+    return client, engine, line_tables.build(engine, name)
+
+
 @pytest.fixture
-def history(client, db_session, monkeypatch):
-    models.init_dynamic_models({TABLE: ENTRY})
-    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
-    engine = db_session.get_bind()
-    bits = line_tables.build(engine, TABLE)
+def history(dialect_client, monkeypatch):
+    client, engine, bits = _line_table_fixture(dialect_client, monkeypatch, TABLE, ENTRY)
     try:
         yield client, engine, bits
     finally:
@@ -115,14 +146,11 @@ def test_lines_of_one_instant_page_without_a_repeat_or_a_gap(history):
 
 
 @pytest.fixture
-def wide(client, db_session, monkeypatch):
+def wide(dialect_client, monkeypatch):
     name = "lines_wide_probe"
     entry = {"business_key": "k", "composite_key_source": ["k"],
              "column_types": dict({"k": "string"}, **{"c%02d" % i: "string" for i in range(70)})}
-    models.init_dynamic_models({name: entry})
-    monkeypatch.setitem(crud.TABLE_CONFIG, name, entry)
-    engine = db_session.get_bind()
-    bits = line_tables.build(engine, name)
+    client, engine, bits = _line_table_fixture(dialect_client, monkeypatch, name, entry)
     try:
         yield client, engine, bits, name
     finally:
