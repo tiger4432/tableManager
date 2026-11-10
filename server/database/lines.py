@@ -286,7 +286,11 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
-    return {"lines": lines, "bits": bits, "chunks": chunks}
+    # t itself on its own MetaData (ensure creates the lines only): declared columns typed as stored, plus won_by
+    table = Table(table_name, MetaData(), *_data_columns(table_cfg, sql_type_of, row_id_key=True),
+                  Column(WON_BY, won_by_type()))
+    columns = [c.name for c in table.columns if c.name != WON_BY]
+    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
 
 
 def won_by_type():

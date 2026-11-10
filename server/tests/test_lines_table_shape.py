@@ -64,6 +64,16 @@ def test_t_stays_a_table_with_won_by_and_its_lines_beside_it(db):
     assert db.execute(text("SELECT lot, won_by FROM t WHERE row_id = 'r0'")).one() == ("kept", None)
 
 
+def test_shape_binds_t_as_built_with_won_by(db):
+    make_table(db, "t", CFG)
+    s = ensure(db, "t", CFG)
+    built = [c["name"] for c in inspect(db.connection()).get_columns("t")]
+    assert [c.name for c in s["table"].columns] == built
+    assert s["columns"] == [n for n in built if n != "won_by"]
+    db.execute(s["table"].insert().values(row_id="r1", lot="x", won_by={"lot": 1}))
+    assert db.execute(text("SELECT lot FROM t WHERE row_id = 'r1'")).scalar() == "x"
+
+
 def test_a_column_added_lands_on_t_and_its_lines(db):
     ensure(db, "t", CFG)
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
