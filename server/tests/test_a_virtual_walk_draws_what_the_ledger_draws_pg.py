@@ -191,9 +191,11 @@ def test_a_role_with_attributes_registers_its_node_once_a_row_and_only_with_a_va
     assert said[CHANGED]["atoms"]["stored"] == 3, "canary: W1 twice (P1, P2) and W2 once (P3) - P4 has no step"
 
 
-def test_a_value_object_sentence_leaves_only_itself_out(world):
-    """Lead 11-10 value objects stage 1: a sentence whose object is a value (macro's series-observed shape) is left out
-    alone - its source's edge sentences are read and walked, and the answer names the sentence."""
+def test_a_value_object_is_read_as_the_ledger_holds_it(world):
+    """Lead 11-10 value objects stage 2: a sentence whose object is a value - a string one here, which the stored
+    translator refused row by row until its value role stopped being read as a required qualifier (the claim's own
+    qualifier names, `setup_registry`) - is read whole: nothing left out, walk-shadow finds every atom of the source
+    (the values included), the walk draws what the stored walk draws - a row whose value is missing drawing none."""
     document = _only(CHANGED, KEPT, one=True)
     document["vocabulary"]["has_netdie@1"]["subjects"] = ["wafer@1"]              # a value predicate the sample has
     document["vocabulary"]["has_netdie@1"]["object"]["value_type"] = "string"
@@ -209,13 +211,13 @@ def test_a_value_object_sentence_leaves_only_itself_out(world):
     finally:
         raw.rollback()
         raw.close()
-    assert [(item["source"], item["why"]) for item in left_out] == [
-        (CHANGED, "wafer-step-value: a value object not read")]
-    assert {leg.sentence for leg in legs if leg.source == CHANGED} >= {"wafer-processed-with-recipe"}
-    # the source's edges are walked - the stored translator refuses this board's value sentence row by row (its
-    # rows' facts are not in the ledger), so the edges are counted on the virtual walk itself
-    virtual = _walk(board, "virtual")
-    assert len([e for e in virtual["edges"] if e["predicate"] == "processed_with"]) >= 2, virtual["edges"]
+    assert left_out == []
+    [valued] = [leg for leg in legs if leg.sentence == "wafer-step-value"]
+    said = _shadow_finds_no_difference(board, follow=[valued.predicate])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "canary: the stored ledger holds the values (P1-P3; P4 has no step)"
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual) == _drawn(stored)
+    assert len(stored["edges"]) == 2, "P4's edges leave with its row - a missing value refuses the whole molecule"
 
 
 def _shadow_finds_no_difference(board, follow=None):
