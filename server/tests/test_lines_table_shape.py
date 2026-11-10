@@ -59,6 +59,7 @@ def test_t_stays_a_table_with_won_by_and_its_lines_beside_it(db):
     ensure(db, "t", CFG)
     insp = inspect(db.connection())
     assert {"t", "t__lines"} <= set(insp.get_table_names()) and "t" not in insp.get_view_names()
+    assert {"v_lot", "v_qty", "v_seen"} <= {c["name"] for c in insp.get_columns("t__lines")}
     assert "won_by" in {c["name"] for c in insp.get_columns("t")}
     assert {"written_0", "head_0", "withdrawn_0"} <= {c["name"] for c in insp.get_columns("t__lines")}
     assert db.execute(text("SELECT lot, won_by FROM t WHERE row_id = 'r0'")).one() == ("kept", None)
@@ -105,8 +106,8 @@ def test_a_column_added_lands_on_t_and_its_lines(db):
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
     lines.alter_columns(db, "t", cfg2, add=["grade"])
     insp = inspect(db.connection())
-    for rel in ("t", "t__lines"):
-        assert "grade" in {c["name"] for c in insp.get_columns(rel)}, rel
+    assert "grade" in {c["name"] for c in insp.get_columns("t")}
+    assert "v_grade" in {c["name"] for c in insp.get_columns("t__lines")}
 
 
 def test_a_65th_column_adds_a_second_chunk(db):
@@ -145,7 +146,7 @@ def test_chunks_follow_the_built_table_not_the_slot_map(db):
     lines.shape(db, "t", wider)                         # slots grow, the built table does not
     lines.alter_columns(db, "t", wider, add=["c64"])
     cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
-    assert {"c64", "written_1", "head_1", "withdrawn_1"} <= cols
+    assert {"v_c64", "written_1", "head_1", "withdrawn_1"} <= cols
     head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h'")).scalar()
     assert "head_1" in head_sql
     said = lines.alter_columns(db, "t", {"column_types": {**wider["column_types"], **{f"d{i}": "string" for i in range(64)}}},
@@ -177,7 +178,7 @@ def test_line_values_are_text_and_one_text_means_one_value(db):
 
     ensure(db, "t", CFG)
     types = {c["name"]: str(c["type"]) for c in inspect(db.connection()).get_columns("t__lines")}
-    assert all(types[c].startswith("VARCHAR") for c in ("lot", "qty", "seen"))
+    assert all(types[c].startswith("VARCHAR") for c in ("v_lot", "v_qty", "v_seen"))
     pairs = [("9", 9.0, "number"), ("9", "9.5", "number"), (" x ", "x", "string"), ("", None, "string"),
              ("abc", "abc ", "number"), ("2026-11-10 10:00", "2026-11-10T10:00:00", "datetime"),
              ("2026-11-10 10:00", "2026-11-10 10:01", "datetime"), ("0", "-0.000", "number"),
@@ -249,3 +250,23 @@ def test_note_sources_keeps_one_row_per_name(db):
     rows = dict(db.execute(text("SELECT source_name, ranks_as FROM line_sources")).all())
     assert set(rows) == {"user", "user (old_exist_x)", "fileA"}
     assert all(rows[n] == crud.layer_ranks_as(n) for n in rows)
+
+
+def test_the_unknown_state_names_the_doors_that_exist():
+    said = lines.key_index_next([("big", (lines.KEY_UNKNOWN, 0))])
+    assert "auto_update.log" in said and "Fold duplicate rows on big" in said
+    assert "add_business_key_unique_index" not in said
+
+
+def test_a_column_named_like_a_line_column_keeps_lines(db):
+    """rq_memory declares «at»: the line's own «at» and the value cell «v_at» stand side by side (A 11-11)."""
+    cfg = {"column_types": {"at": "string", "source_name": "string", "head_0": "number"}}
+    ensure(db, "t", cfg)
+    cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
+    assert {"at", "source_name", "head_0", "v_at", "v_source_name", "v_head_0"} <= cols
+
+
+def test_a_column_name_too_long_for_its_line_cell_is_refused():
+    assert lines.value_column("x" * 61) == "v_" + "x" * 61
+    with pytest.raises(ValueError, match="63 bytes"):
+        lines.value_column("x" * 62)

@@ -48,7 +48,7 @@ def test_a_column_t_was_given_reaches_its_lines(engine, monkeypatch):
         conn.execute(text('ALTER TABLE "t" ADD COLUMN "grade" VARCHAR'))          # what the schema sync does to t
     monkeypatch.setattr(crud, "TABLE_CONFIG", {"t": wider})
     assert lines.ensure_declared(engine) == {}
-    assert "grade" in {c["name"] for c in inspect(engine).get_columns("t__lines")}
+    assert "v_grade" in {c["name"] for c in inspect(engine).get_columns("t__lines")}
 
 
 def test_only_the_named_tables(engine):

@@ -17,6 +17,9 @@ from .database import Base
 
 MAX_NAME_BYTES = 63                                  # PostgreSQL's identifier limit
 LINES_SUFFIX = "__lines"
+#: a declared column's value cell in t__lines is v_<column>: the line's own columns (at, source_name, batch,
+#: head_0 ...) are the line table's names, and an operator's column may carry any of them (A 11-11, rq_memory.at)
+VALUE_PREFIX = "v_"
 WON_BY = "won_by"
 LINE_KINDS = ("write", "withdraw", "deleted", "mark")
 BIT_FAMILIES = ("written", "head", "withdrawn")
@@ -280,7 +283,7 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
                       for name in bit_columns(family, chunks)]
     # a line's value cells are text whatever the declared type (crud.line_text) - retyping touches t only
     framework = {n for n, _ in FRAMEWORK}
-    data = [c if c.name in framework else Column(c.name, String)
+    data = [c if c.name in framework else Column(value_column(c.name), String)
             for c in _data_columns(table_cfg, sql_type_of, row_id_key=False) if c.name != "row_id"]
     lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
     head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
@@ -313,6 +316,15 @@ def current_table(db, table_name: str, table_cfg: dict, won_by=None):
         won_by = has_lines(db, table_name)
     cols = _data_columns(_as_stored(db, table_name, table_cfg), sql_type_of, row_id_key=True)
     return Table(table_name, MetaData(), *cols, *([Column(WON_BY, won_by_type())] if won_by else []))
+
+
+def value_column(name: str) -> str:
+    """t's column `name` -> its value cell in t__lines. THE spelling - every read and write of a line's value asks
+    it. A name that would pass PostgreSQL's 63 bytes with the prefix is refused."""
+    out = VALUE_PREFIX + name
+    if len(out.encode("utf-8")) > 63:
+        raise ValueError(f"column {name!r}: its line cell {out!r} would pass 63 bytes - shorten the column name")
+    return out
 
 
 def won_by_type():
@@ -400,6 +412,8 @@ def key_index_missing(conn, table_name: str):
 
 
 KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
+#: not read: a screen that asks on every open asks key_index_standing only - the census reads the whole table (A 11-11)
+KEY_UNKNOWN = "unknown"
 
 
 def key_index_next(missing) -> str:
@@ -411,6 +425,10 @@ def key_index_next(missing) -> str:
         if kind == KEY_FOLD:
             said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
                         f"rows on {t}; it builds the index after the merge")
+        elif kind == KEY_UNKNOWN:
+            said.append(f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; "
+                        f"if it cannot, auto_update.log says why (keys held by more than one row: in the Retroactive "
+                        f"tab run Fold duplicate rows on {t})")
         elif kind == KEY_INVALID:
             said.append(f"{t} (an INVALID index holds the name) - drop it with python "
                         f"server/migrations/add_business_key_unique_index.py, an operator watching")
@@ -468,14 +486,15 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
 
     for rel in (_checked(table_name), lines_relation(table_name)):
         present = {c["name"] for c in inspect(conn).get_columns(rel)} if add else set()
+        cell = (lambda n: n) if rel == table_name else value_column
         for name in add:
-            if name in present:                  # t already has it (the schema sync added it first)
+            if cell(name) in present:            # t already has it (the schema sync added it first)
                 continue
             type_sql = (sql_type_of(types[name]) if rel == table_name else String()).compile(
                 dialect=conn.dialect)
-            statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
+            statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{cell(name)}" {type_sql}')
         for name in drop:
-            statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{name}"')
+            statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{cell(name)}"')
         for name, using in (retype or {}).items():
             if dialect == "postgresql" and rel == table_name:
                 type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
@@ -568,7 +587,7 @@ def winners_sql(s: dict, table_name: str, column: str):
     cols = SimpleNamespace(ranks_as=src.c.ranks_as, owner_rule=lt.c.owner_rule, at=lt.c.at,
                            source_name=lt.c.source_name)
     order = [sql(cols, unowned) for _, sql in crud.rank_terms(table_name)]
-    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[column].label("value"), pin.isnot(None).label("pinned"),
+    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[value_column(column)].label("value"), pin.isnot(None).label("pinned"),
                      func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
               .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
               .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
@@ -636,7 +655,7 @@ def ensure_declared(engine, tables=None) -> dict:
                 continue
             built = has_lines(db, name)
             have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
-            missing = [c for c in (cfg.get("column_types") or {}) if c not in have] if built else []
+            missing = [c for c in (cfg.get("column_types") or {}) if value_column(c) not in have] if built else []
         if built and not missing:
             continue
 
