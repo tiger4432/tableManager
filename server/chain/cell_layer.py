@@ -93,19 +93,10 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     here would silently put the resolution back on dict order. `columns` keeps both reads to those
     columns (None = every column).
     """
-    from database import models
+    from database import lines
 
-    cs = models.CellSource
-    in_columns = [cs.column_name.in_(list(columns))] if columns else []
-    sources = {}
-    for row_id, col, src, val, ing, origin in (
-            db.query(models.CellSource.row_id, models.CellSource.column_name,
-                     models.CellSource.source_name, models.CellSource.value,
-                     models.CellSource.ingested_at, models.CellSource.origin_row_id)
-            .filter(models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(chunk_row_ids), *in_columns)
-            .order_by(models.CellSource.source_name.asc()).all()):
-        sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing, "origin_row_id": origin}
+    sources = {cell: dict(sorted(named.items()))
+               for cell, named in lines.layers(db, table_name, chunk_row_ids, columns).items()}
 
     return sources, pins_of(db, table_name, chunk_row_ids, columns)
 
@@ -140,20 +131,10 @@ def person_cells(db, table_name: str, row_ids) -> dict:
     """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by"}}} - every layer of each cell a person
     wrote a layer on, blank or not (`crud.layer_writer`). THE ONE «did a person write here» judgement: a gone row
     (`person_rows`) and an AI rule's memory of a person's correction (`chain.ask_rule`, lead 10-28) both read it."""
-    from database import crud, models
+    from database import crud, lines
 
-    cs = models.CellSource
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = {}
-    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        layers = {}
-        for row_id, column, source, value, at, by in (
-                db.query(cs.row_id, cs.column_name, cs.source_name, cs.value, cs.ingested_at, cs.updated_by)
-                .filter(cs.table_name == table_name, cs.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
-            layers.setdefault((row_id, column), {})[source] = {"value": value, "ingested_at": at, "updated_by": by}
-        found.update({cell: named for cell, named in layers.items()
-                      if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named)})
-    return found
+    return {cell: named for cell, named in lines.layers(db, table_name, row_ids).items()
+            if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named)}
 
 
 def person_rows(db, table_name: str, row_ids, own=None) -> dict:
@@ -168,7 +149,9 @@ def person_rows(db, table_name: str, row_ids, own=None) -> dict:
     from chain.enrichment import backfill
     from database import crud, models
 
-    co, cs = models.CellOverwrite, models.CellSource
+    from database import lines
+
+    co = models.CellOverwrite
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
     found = {row_id: {crud.USER_SOURCE} for row_id, _column in person_cells(db, table_name, ids)}
     keys, mine, own = key_columns(table_name), rule_layer_names(), own or {}
@@ -178,9 +161,9 @@ def person_rows(db, table_name: str, row_ids, own=None) -> dict:
                                                      co.manual_priority_source.isnot(None)):
             found.setdefault(row_id, set()).add(crud.USER_SOURCE)
         layers = {}
-        for row_id, column, name, value, by in db.query(cs.row_id, cs.column_name, cs.source_name, cs.value,
-                                                        cs.updated_by).filter(cs.table_name == table_name,
-                                                                              cs.row_id.in_(chunk)):
+        for row_id, column, name, value, by in [(r, c, n, e["value"], e["updated_by"])
+                                                for (r, c), named in lines.layers(db, table_name, chunk).items()
+                                                for n, e in named.items()]:
             writer = crud.layer_writer(name)
             # by the writer the name folds to - a merge renames a layer «chain_ingestion (<key>)» (총괄 10-14 4)
             if writer == backfill.SOURCE_NAME or (writer in mine and by in own.get(row_id, ())):
