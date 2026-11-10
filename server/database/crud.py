@@ -6551,210 +6551,76 @@ def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str,
 
 def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user",
                                    deleted_edits: Optional[dict] = None):
-    """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
+    """A person pins the source cells show (Pin), or takes the pin off (`source_name` None, or the source already
+    pinned there - a toggle), and commit. The pin stays in cell_overwrites (outside the overhaul); a row whose pin
+    moved gets one «mark» line (`write_lines`), which merges it again - the shown value moves when the pin moves it.
+    A cell whose pinned source has no head line there is skipped. -> (the rows asked whose cells were not all
+    skipped, as ORM rows; one history entry a cell whose shown value moved - no before value; the rows a key merge
+    took away - none yet: a pin that moves a key part's shown value rebuilds no key here)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
+    from admin.audit_history import head_lines
+    from database.write_lines import write_lines
 
     if not updates:
-        return [], []
-
-    row_ids = list(set(u["row_id"] for u in updates))
+        return [], [], []
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
-        return [], []
-        
-    rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
-    row_map = {r.row_id: r for r in rows}
-
-    # 1. 인메모리 캐시 일괄 조회 및 적재
-    # [ORDER BY source_name] Same reason as `_load_metadata_row_cell`: this list feeds
-    # `compute_priority_value`, so its order is stated rather than inherited from the heap.
-    all_sources = db.query(
-        models.CellSource.table_name,
-        models.CellSource.row_id,
-        models.CellSource.column_name,
-        models.CellSource.source_name,
-        models.CellSource.value,
-        models.CellSource.updated_by,
-        models.CellSource.ingested_at,
-        models.CellSource.origin_row_id
-    ).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id.in_(row_ids)
-    ).order_by(models.CellSource.source_name.asc()).all()
-    
-    sources_cache = {}
-    for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
-        key = (r_id, col_name)
-        if key not in sources_cache:
-            sources_cache[key] = []
-        sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin))
-
-    all_overwrites = db.query(
-        models.CellOverwrite.table_name,
-        models.CellOverwrite.row_id,
-        models.CellOverwrite.column_name,
-        models.CellOverwrite.is_overwrite,
-        models.CellOverwrite.updated_by,
-        models.CellOverwrite.updated_at,
-        models.CellOverwrite.manual_priority_source
-    ).filter(
-        models.CellOverwrite.table_name == table_name,
-        models.CellOverwrite.row_id.in_(row_ids)
-    ).all()
-    
-    overwrites_cache = {}
-    for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
-        overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
-
-    # 2. 인메모리 연산 루프
-    changed_rows = []
-    tx_id = str(uuid6.uuid7())
-    logs_to_cache = ByRowLogs()
-    deleted_row_ids = []
-    
-    cell_overwrites_to_upsert = ByRow()
-    cell_overwrites_to_delete = ByRowSet()
-    cell_sources_to_upsert = ByRow()
-    
+        return [], [], []
+    by_row = {}
     for item in updates:
-        r_id = item["row_id"]
-        col_name = item["column_name"]
-        row = row_map.get(r_id)
-        if not row:
+        by_row.setdefault(item["row_id"], [])
+        if item["column_name"] not in by_row[item["row_id"]]:
+            by_row[item["row_id"]].append(item["column_name"])
+    rows = {r.row_id for r in db.query(table_model.row_id).filter(table_model.row_id.in_(list(by_row))).all()}
+    heads = head_lines(db, table_name, sorted(rows), sorted({c for cols in by_row.values() for c in cols}))
+    co = models.CellOverwrite
+    marks = {(m.row_id, m.column_name): m
+             for m in db.query(co).filter(co.table_name == table_name, co.row_id.in_(sorted(rows))).all()}
+    asked, pins, moved = {}, {}, {}                # row -> its cells not skipped · cell -> its pin · row -> pin moved
+    for row_id, cols in by_row.items():
+        if row_id not in rows:
             continue
-
-        key = (r_id, col_name)
-        col_srcs = sources_cache.get(key, [])
-        ow = overwrites_cache.get(key)
-
-        current_pin = ow.manual_priority_source if ow else None
-        effective_source = None if (current_pin == source_name) else source_name
-
-        if effective_source and not any(s.source_name == effective_source for s in col_srcs):
-            continue
-
-        sources_dict = {
-            s.source_name: {
-                "value": s.value,
-                "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
-                "updated_by": s.updated_by
-            }
-            for s in col_srcs
-        }
-
-        old_val = getattr(row, col_name, None)
-        new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name,
-                                                  cell=(table_name, col_name, row))
-        moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
-            "column_types") or {}).get(col_name, "string"))
-        if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
-            setattr(row, col_name, new_val)
-
-        is_overwrite = ("user" in sources_dict) or (effective_source is not None)
-        ow_key = (table_name, r_id, col_name)
-        if is_overwrite:
-            ow_updated_by = ow.updated_by if ow else "system"
-            ow_updated_at = ow.updated_at if ow else datetime.now()
-            cell_overwrites_to_upsert[ow_key] = {
-                "table_name": table_name,
-                "row_id": r_id,
-                "column_name": col_name,
-                "is_overwrite": True,
-                "updated_by": updated_by or ow_updated_by,
-                "updated_at": datetime.now(),
-                "manual_priority_source": effective_source
-            }
-            cell_overwrites_to_delete.discard(ow_key)
-        else:
-            if ow:
-                cell_overwrites_to_delete.add(ow_key)
-                cell_overwrites_to_upsert.pop(ow_key, None)
-
-        if moved:
-            log_dict = create_audit_log(
-                db, table_name, r_id, col_name, old_val, new_val,
-                f"set_priority:{effective_source}", updated_by,
-                transaction_id=tx_id, business_key=row.business_key_val,
-                add_to_cache=False
-            )
-            if log_dict is not None:
-                logs_to_cache.append(log_dict)
-
-        # 복합 비즈니스 키 실시간 재계산 및 갱신 가드
-        table_info = TABLE_CONFIG.get(table_name, {})
-        composite_src = table_info.get("composite_key_source")
-        key_col = table_info.get("business_key")
-
-        # 🔴 [총괄 a61d32f4f ㄱ] 위 «2.» 와 같은 문 · 같은 함수 — `business_key` 칸이 없는 표도
-        #   들어온다. 이 호출자의 정책은 「하나라도 비면 None」(위 «2.» 의 새 행 폴백 없음).
-        if composite_src and col_name in composite_src:
-            new_bk_val = rebuilt_business_key(table_name, row)
-
-            current_bk = getattr(row, "business_key_val", None)
-            if current_bk != new_bk_val:
-                if new_bk_val is not None:
-                    # 중복 충돌 검사
-                    conflict_row = db.query(table_model).filter(
-                        table_model.business_key_val == new_bk_val,
-                        table_model.row_id != row.row_id
-                    ).first()
-                    
-                    if conflict_row:
-                        # [대안 B] the write seat's merge, the one body (총괄 6e041f4cb ①). Its
-                        # own copy stood here and named a `changed_cols` this function never
-                        # had, so any merge that changed a cell raised (a65640ca8 .. 10-03).
-                        row_to_delete = row
-                        row = conflict_row
-                        _merge_into_key_holder(
-                            db, table_name, table_model, row_to_delete, row,
-                            explicit={u["column_name"]: getattr(row_to_delete, u["column_name"], None)
-                                      for u in updates},
-                            human_columns={u["column_name"] for u in updates},
-                            source_name=source_name, updated_by=updated_by, transaction_id=tx_id,
-                            changed_cols=[], overwrites_cache=overwrites_cache,
-                            cell_sources_to_upsert=cell_sources_to_upsert,
-                            cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                            cell_overwrites_to_delete=cell_overwrites_to_delete,
-                            logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids,
-                            deleted_edits=deleted_edits)
-
-                        # 3. 변경 대상 변경사항 캐시 스위칭
-                        if row not in changed_rows:
-                            changed_rows.append(row)
-
-                written_col, _ = put_business_key(table_name, row, new_bk_val)
-                if written_col:
-                    # 감사 로그 생성
-                    log_dict = create_audit_log(
-                        db, table_name, r_id, written_col, current_bk, new_bk_val,
-                        "set_priority_sync", updated_by,
-                        transaction_id=tx_id, business_key=new_bk_val,
-                        add_to_cache=False
-                    )
-                    if log_dict is not None:
-                        logs_to_cache.append(log_dict)
-            
-        if row not in changed_rows:
-            changed_rows.append(row)
-
-    # 3. 벌크 갱신 및 삭제 수행
-    if logs_to_cache:
-        bulk_insert_audit_logs(db, logs_to_cache)
-    bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
-    bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
-    bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
-
+        for col in cols:
+            mark = marks.get((row_id, col))
+            was = mark.manual_priority_source if mark else None
+            pin = None if was == source_name else source_name
+            said = heads.get((row_id, col)) or {}
+            if pin is not None and pin not in said:
+                continue                           # a pin on a source that says nothing there
+            asked.setdefault(row_id, []).append(col)
+            pins[(row_id, col)] = pin
+            if USER_SOURCE in said or pin is not None:
+                if mark is None:
+                    mark = marks[(row_id, col)] = co(table_name=table_name, row_id=row_id, column_name=col)
+                    db.add(mark)
+                mark.is_overwrite, mark.updated_by, mark.updated_at = True, updated_by, datetime.now()
+                mark.manual_priority_source = pin
+            elif mark is not None:
+                db.delete(mark)
+                del marks[(row_id, col)]
+            if pin != was:
+                moved.setdefault(row_id, []).append(col)
+    db.flush()                                     # the pins before the merge reads them
+    tx_id = str(uuid6.uuid7())
+    answer = write_lines(db, table_name, [{"row_id": r, "line_kind": "mark", "columns": cols,
+                                           "source_name": source_name, "written_by": updated_by}
+                                          for r, cols in moved.items()], kind="mark", transaction_id=tx_id)
+    at = (answer.get("at") or datetime.now(timezone.utc)).isoformat()
+    types = TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
+    logs = []
+    for row_id, change in answer["changed"].items():
+        was, now = change["old"] or {}, change["new"] or {}
+        for col in asked.get(row_id, ()):
+            if values_differ(was.get(col), now.get(col), types.get(col, "string")) and keeps_history(table_name, col):
+                logs.append({"id": 0, "table_name": table_name, "row_id": row_id, "column_name": col,
+                             "old_value": None, "new_value": event_constants.truncate_audit_value(now.get(col))[0],
+                             "source_name": "set_priority:%s" % pins[(row_id, col)], "updated_by": updated_by,
+                             "transaction_id": tx_id, "timestamp": at, "business_key": was.get("business_key_val")})
     db.commit()
-    
-    serialized_logs = []
-    for log in logs_to_cache:
-        log_copy = log.copy()
-        if isinstance(log_copy.get("timestamp"), datetime):
-            log_copy["timestamp"] = log_copy["timestamp"].isoformat()
-        serialized_logs.append(log_copy)
-        
-    return changed_rows, serialized_logs, deleted_row_ids
+    order = {row_id: n for n, row_id in enumerate(asked)}
+    changed_rows = db.query(table_model).filter(table_model.row_id.in_(list(asked))).all()
+    return sorted(changed_rows, key=lambda r: order[r.row_id]), logs, []
 
 def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user",
                              deleted_edits: Optional[dict] = None):
