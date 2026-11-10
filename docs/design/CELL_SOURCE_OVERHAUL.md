@@ -68,7 +68,7 @@
 2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 SQL 로 뺀다(머리 줄 값 vs 들어온 값).
    - 쓰기 항목에만 건다. 거두기는 «그 출처가 그 칸의 머리가 아님»일 때만 빠진다 — 값 견주기로 빠지지 않는다(NULL 머리 줄을 거둘 때 NULL = NULL 로 빠지면 거둔 줄이 계속 말한다). 지움은 1 에서만 빠진다.
    - 정답지: s4(착지 안 함, 소유자 11-10 ㄱ)의 crud.file_cell_verdict 판정과 시험 test_a_files_unchanged_rows_are_left_out_before_the_lock (C 작업 트리, 커밋 안 함). 까닭 — s4 판(박스 10 만 행 · 층 300 만 · 1,000 행 × 30 칸, wl/run_s4_board.sh): 같은 내용 묶음 2.962 → 2.732 s, 그중 파이썬 칸마다 판정 2.66 s(DB 읽기 0.07 s).
-   - «보인 값이 바뀜» 판정은 오늘의 crud.values_differ 와 같은 답이어야 한다. 정렬 키처럼 생성기 한 곳에서 SQL · 파이썬을 짓고 같은 픽스처로 견준다.
+   - «같나»는 따로 생성기를 두지 않는다 (A 11-10): 쓰기가 어차피 하는 cast_value_by_type 뒤의 «저장 꼴»을 그 칸의 물리 타입(number → Float · datetime → timestamptz · 나머지 → text)으로 `IS NOT DISTINCT FROM`(빈 값 = NULL) 견주는 한 문장이다. 오늘의 crud.values_differ(캐스트한 값끼리)와 같은 답인지는 A 의 철자 표(number 23 · datetime 11 · string 14 가지, 짝 447 — 어긋남 0, 파이썬만 · DB 없이 잼)를 시험으로 고정해 지킨다. 남은 하나: 시간대 없는 datetime 글자를 PG 는 세션 시간대로, value_key 는 선언 시간대(expression.time_zone())로 읽는다 — write_lines 게이트의 PG 시험 «시간대 없는 글자 둘 → 같나»로 재고, 갈리면 캐스트가 선언 시간대를 단 값을 넘기는 쪽으로 맞춘다.
 3. 줄: 남은 항목마다 `t__lines` 에 줄 하나 INSERT(written_bits · withdrawn_bits · 값 · 출처 · 언제 · 누가 · 묶음 · 입력 행 · 주인).
 4. 머리 비트(«write» · «withdraw» 줄만): 같은 (개체, 원천)의 앞선 줄들 — 그리고 folded 판정이 가리킨 앞선 파일 원천의 줄들 — 의 head_bits 에서 새 줄의 written_bits 를 내린다(UPDATE 한 문장).
 5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
