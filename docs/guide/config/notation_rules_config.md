@@ -190,16 +190,15 @@ curl -H "X-Admin-Token: <토큰>" \
 **읽는 법은 하나입니다** — 숫자가 아니라 `variants` 목록을 읽고 **「이것들이 정말 같은 물리 로트인가」**에 답하십시오. 서버가 만들어 주는 문장이 이미 그렇게 묻습니다:
 
 ```
-dt_log.core_lot: 원본 표기 30종이 15종으로 접힙니다. 서로 다른 원본 표기가 한 값으로
-합쳐진 그룹이 15개입니다. 가장 큰 그룹은 'CL-2601-001'이고 원본 2종
-(CL-2601-001 | CL_2601_001)이 여기로 모입니다. 이 목록을 읽고 「이것들이 정말 같은
-것인가」를 확인하세요 — 하나라도 아니라면 notation_rules.json의 규칙을 고치면
-됩니다(저장된 값은 원본 그대로라 되돌릴 것이 없습니다).
+dt_log.core_lot: 30 raw spellings fold into 15. 15 groups merge different raw spellings into one
+value. The largest is 'CL-2601-001', gathering 2 spellings (CL-2601-001 | CL_2601_001). Read the list
+and check that they really are the same - if one is not, fix the rule in notation_rules.json (stored
+values stay raw, so there is nothing to undo).
 ```
 
 - 전부 같은 것이면 규칙이 옳습니다.
 - **한 그룹이라도 아니면** 이 파일의 규칙을 고치십시오. **끝입니다** — 되돌릴 데이터가 없습니다.
-- 병합군 0개면 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아니고, 서버 문장이 *「조인 반대편이 지저분하다면 그쪽에서 효과가 납니다」*라고 덧붙입니다.
+- 병합군 0개면 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아니고, 서버 문장이 *«if the other side of a join is messy, the effect shows there»* 라고 덧붙입니다.
 
 > ⚠️ **알려진 무해한 모양**: `variants`가 `-` · `_` · `.` · `--`처럼 **구분자만으로 된 값들**뿐인 그룹이 나올 수 있습니다(그런 값은 전부 `-` 하나로 접힙니다). 실제 로트가 아니라 원본 데이터의 쓰레기 값이 한자리에 모인 것이니 그것만 보고 규칙이 틀렸다고 판단하지 마십시오.
 
@@ -280,20 +279,19 @@ folds '01' and '1' into one value
 **A. 선언이 유효할 때** — `detail`이 그대로 화면에 렌더되는 문장입니다:
 
 ```
-dt_log.core_lot의 표기가 정규화된 것으로 선언됐습니다. 적용 중인 규칙: separator, case.
-이 컬럼이 조인 키로 쓰이면 **비교의 양쪽이 모두** 접힌 값으로 비교됩니다 — 반대편
-컬럼에 선언이 없어도 그렇습니다(한쪽만 접으면 이미 맞고 있던 매치를 조용히 잃기
-때문입니다). 저장되는 값은 없습니다: 원본은 원본 그대로 남고, 규칙을 고치면 다음
-조회부터 바로 반영됩니다. 무엇이 무엇으로 합쳐지는지는
-GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으로
-답합니다 — 규칙을 켠 다음 그것부터 보세요.
+dt_log.core_lot is declared with normalised notation. Rules on: separator, case. When this column is
+a join key, both sides of the comparison use the folded value - even if the other column declares
+nothing (folding one side only would silently lose matches that already held). Nothing is stored:
+raw values stay raw, and a rule change applies from the next lookup. What merges into what is
+answered as merge groups by GET /admin/config/notation/preview?table=dt_log&column=core_lot - look
+there first after switching a rule on.
 ```
 
 `fields`에 `{table, column, rules}`가 들어 있어 **어느 규칙 집합이 이 컬럼에 적용 중인지**를 눈으로 확인할 수 있습니다.
 
-**B. 규칙이 하나도 안 켜져 있을 때**: 선언은 `effective`에 남되 *「적용할 규칙이 하나도 켜져 있지 않아 아무것도 접지 않습니다 — 선언은 유효하지만 비교는 원본 그대로입니다」*라고 말합니다.
+**B. 규칙이 하나도 안 켜져 있을 때**: 선언은 `effective`에 남되 *«No rule is switched on, so nothing folds - the declaration is valid but comparisons stay raw.»* 라고 말합니다.
 
-**C. 아무것도 선언 안 했을 때**: `sources[0].detail`이 *「선언 0건이 유효합니다.」*, 파일이 없으면 *「선언 파일이 없습니다 — 표기 정규화가 적용되는 컬럼이 하나도 없습니다.」*, 읽지 못했으면 *「선언 파일을 읽지 못했습니다 — 어떤 컬럼도 정규화되지 않습니다.」*
+**C. 아무것도 선언 안 했을 때**: `sources[0].detail`이 *«0 declarations are valid.»*, 파일이 없으면 *«No declaration file - no column has its notation normalised.»*, 읽지 못했으면 *«The declaration file could not be read - no column is normalised.»*
 
 > ⚠️ **`effective`는 「이 컬럼이 정규화됐다고 선언됐다」까지입니다.** 「무엇이 합쳐졌나」도 「그 조인이 실제로 도나」도 답하지 않습니다 — 위 표의 나머지 두 줄이 그 자리입니다.
 
