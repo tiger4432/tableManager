@@ -145,7 +145,9 @@ def test_line_values_are_text_and_one_text_means_one_value(db):
     assert all(types[c].startswith("VARCHAR") for c in ("lot", "qty", "seen"))
     pairs = [("9", 9.0, "number"), ("9", "9.5", "number"), (" x ", "x", "string"), ("", None, "string"),
              ("abc", "abc ", "number"), ("2026-11-10 10:00", "2026-11-10T10:00:00", "datetime"),
-             ("2026-11-10 10:00", "2026-11-10 10:01", "datetime")]
+             ("2026-11-10 10:00", "2026-11-10 10:01", "datetime"), ("0", "-0.000", "number"),
+             ("nan", "NaN", "number"), ("nan", "nan", "number")]
     for a, b, kind in pairs:
         assert (crud.line_text(a, kind) != crud.line_text(b, kind)) == crud.values_differ(a, b, kind), (a, b, kind)
     assert crud.line_value(crud.line_text("9", "number"), "number") == 9.0
+    assert crud.line_value(crud.line_text("nan", "number"), "number") == "nan"

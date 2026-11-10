@@ -970,9 +970,11 @@ def value_key(value, col_type: str):
         return None
     if col_type == "number":
         try:
-            return ("n", float(value))
+            number = float(value)
         except (ValueError, TypeError):
-            pass
+            number = None
+        if number is not None and number == number:          # a «nan» text compares as its text, not as NaN
+            return ("n", number + 0.0)                          # + 0.0 folds -0.0 into 0.0
     if col_type == "datetime":
         import expression
 
@@ -1002,9 +1004,10 @@ def line_value(text, col_type: str):
         return None
     if col_type == "number":
         try:
-            return float(text)
+            number = float(text)
         except ValueError:
             return text
+        return number if number == number else text
     if col_type == "datetime":
         from datetime import datetime
 
