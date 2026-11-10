@@ -92,6 +92,15 @@
 - 목적은 네비게이션이다: 패널 클릭 → 그 트랜잭션의 줄(`t__lines` (묶음) 인덱스) → row_id → 행. 오늘의 행 점프(timeline.js navigator)가 끊기지 않는 것이 게이트다.
 - 순위 선언 바뀜의 다시 합치기와 고정 걸기/풀기도 쓰기다 — 감사 행이 남고(종류 = 소급 · 핀), «mark» 줄 하나씩을 써서 점프가 닿는다 — 고정은 고정이 걸리거나 풀린 행마다(보이는 값이 안 바뀌어도), 순위 다시 합치기는 지금 줄이 바뀐 행마다. 고정 자체는 이 착지 밖이라 cell_overwrites 에 있다 — «mark» 줄은 합치기 후보가 아니다.
 - 인덱스: 감사 로그 (표, 언제) · (트랜잭션).
+- 감사 표는 착지 날 하나다 (총괄 11-10 조건): 새 표 `audit_batches` 가 감사 로그이고, audit_logs 는 그날 은퇴한다 — 쓰기 0, 읽기는 전부 audit_batches + 줄. 걸리는 것 하나(물음): «이 착지 밖» 첫 줄의 소유자 ㄴ(데이터 아닌 기록은 그동안 audit_logs 에 씀)과 «쓰기 0»이 같이 설 수 없다 — ㄱ 데이터 아닌 기록도 착지 날 audit_batches 로(작업 종류 낱말을 그만큼 더함) / ㄴ audit_logs 를 그 기록만의 표로 남김(감사 표 둘).
+- 옛 audit_logs 행: 이주가 (transaction_id, table_name, 누가, 작업) 묶음마다 audit_batches 한 행으로 접는다 — 네비는 줄 표의 (묶음) 인덱스로 닿는다(이주 3 단계의 옛 줄이 같은 transaction_id 를 든다). 옛 표는 이름을 `audit_logs__old` 로 바꿔 되돌리기 창 동안 두고, 아무도 읽지 않는다.
+- audit_logs 를 묻는 자리 (origin/main 2b09c2bdf 의 server/, 시험 밖 함수, AST — AuditLog 이름 또는 «audit_logs» 문자열. 카나리아 `def create_audit_log` 1. 셈 명령: C 의 scratchpad wl/census_audit_logs.py — 저장소에 없음): 44 함수. 읽기/쓰기 갈래는 본문 낱말로 가른 짐작이다.
+  - 쓰기 (10): crud.create_audit_log · crud.bulk_insert_audit_logs · crud._merge_into_key_holder · ledger/store._insert_audit_row · chain/replay._write_by_values · admin/audit_cache._merge · scripts/migrate_to_postgres.migrate · scripts/probe_ingestion_stages.run · .report · setup/seed_data.clear_db
+  - 감사 패널 · 이력 탭 · 행 이력: main.get_transaction_logs · get_recent_audit_logs · get_row_history · get_cell_history · _history_page · grid_read.transaction_rows · admin/audit_cache 의 여덟(load_initial · refresh_if_stale · _ordered_rows · _resolve · _tally · _count_by_transaction · _chunk_edge · _groups_seen_at_or_above)
+  - 지운 행 · 업무 키: crud.deleted_rows · main.get_deleted_row_business_key · get_deleted_rows_business_keys_bulk · resolve_missing_business_keys · create_row · delete_rows_batch_endpoint · _create_and_collect · _delete_and_collect — «deleted» 줄(업무 키를 든다)로 옮긴다
+  - Overview 재교정 · 공수: crud.get_recorrection_stats · get_effort_stats — 감사 행이 아니라 줄(written_by · 작업 종류)에서 센다
+  - 소급 · 체인: chain/replay._fold_units_page · chain/ingestion_worker._report_layer_table_health
+  - 이름만 드는 자리(인덱스 · 통계 · 진단 · 정적): admin/schema_drift._declared_kind · migrations/drop_redundant_layering_indexes.stats_are_trustworthy · scripts/ops_setup_db_performance.setup_performance · scripts/check_missing_business_key._report · scripts/diagnose_slow_after_ingest 의 둘 · setup/init_db.setup_database · main.serve_static_or_index
 - 깊이 판에서 잴 것: 뜨거운 행의 행 이력 한 쪽 초 · «트랜잭션 → 줄» 읽기 초(큰 적재 한 트랜잭션) · 하루에 몇 줄 · 몇 MB.
 
 ## 업무 키가 바뀔 때 (소유자 11-10 «비즈니스키는 어케 처리됨») — 오늘 동작을 옮긴다
