@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from database import crud, lines, models
 from database.context import outbox_mode
 from database.write_lines import write_lines
-from test_write_lines_writes_a_line_a_change_and_its_current_line import stand_in_winners
+from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines, stand_in_spoken, stand_in_winners
 
 TABLE = "ob_rows"
 CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "n": "string", "m": "number"}}
@@ -27,7 +27,8 @@ def fixture_db(monkeypatch):
         model.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(db, TABLE, CFG)), raising=False)
+    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(db, TABLE, CFG)), raising=False)
     db.commit()
     try:
         yield db
@@ -111,14 +112,15 @@ def test_a_line_that_changes_no_shown_value_stages_nothing(db):
 
 def test_a_time_column_stored_as_text_carries_its_text_as_written(db, monkeypatch):
     """Box shape (lot_event.event_time): declared datetime, stored as text - the text a write kept is what its events
-    carry, as today, and a mapper's key built from it stays one key (lead 11-11). t__now's physical type answers
+    carry, as today, and a mapper's key built from it stays one key (lead 11-11). t's physical type answers
     (lines.value_types), not the declaration."""
     table, written = "ob_text_time", "2026-01-01T13:00:00"
     cfg = {"composite_key_source": ["k"], "column_types": {"k": "string", "n": "string", "t": "string"}}
     monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
     first = lines.winners_sql
     monkeypatch.delattr(lines, "winners_sql")
-    second = stand_in_winners(lines.ensure_line_table(db, table, cfg))
+    second = stand_in_winners(keep_lines(db, table, cfg))
+    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
     monkeypatch.setattr(lines, "winners_sql", lambda t, c, column, param: (second if t == table else first)(
         t, c, column, param), raising=False)
     db.commit()
@@ -130,5 +132,5 @@ def test_a_time_column_stored_as_text_carries_its_text_as_written(db, monkeypatc
     create, edit = (row.payload["data"]["t"]["value"] for row in db.execute(
         select(models.DatabaseOutbox).order_by(models.DatabaseOutbox.id)).scalars())
     assert (create, edit) == (written, written), (create, edit)
-    held = db.execute(text("SELECT t FROM ob_text_time__now")).scalar_one()
-    assert held == written, "t__now holds the text as written, not a time spelled again"
+    held = db.execute(text("SELECT t FROM ob_text_time")).scalar_one()
+    assert held == written, "t holds the text as written, not a time spelled again"

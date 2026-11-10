@@ -32,6 +32,36 @@ def stand_in_winners(shape):
     return winners
 
 
+def stand_in_spoken(db, table, row_ids):
+    """Stand-in for C's lines.spoken until it lands: {row_id: the columns a write line of it names} - its written
+    bits OR-ed."""
+    shape = lines.shape(db, table, crud.TABLE_CONFIG[table])
+    ln, out = shape["lines"], {}
+    names = lines.bit_columns("written", shape["chunks"])
+    for row in db.execute(select(ln.c.row_id, *[ln.c[n] for n in names]).where(
+            ln.c.row_id.in_(list(row_ids)), ln.c.line_kind == "write")):
+        for c, bit in shape["bits"].items():
+            if (row[1 + bit // 64] & 0xFFFFFFFFFFFFFFFF) >> (bit % 64) & 1:
+                out.setdefault(row[0], set()).add(c)
+    return out
+
+
+assert not hasattr(lines, "spoken"), "C's lines.spoken landed - drop stand_in_spoken, gate the real one"
+
+
+def keep_lines(db, table, cfg):
+    """t as a declared table is today - framework and declared columns, its business_key_val unique (the index
+    write_lines' claim stands on: the runtime builds it, `index_wants`) - given its lines. -> the shape. The
+    write_lines test files share it."""
+    from sqlalchemy import Index, MetaData, Table, inspect
+
+    if not inspect(db.connection()).has_table(table):
+        t = Table(table, MetaData(), *lines._data_columns(cfg, models.sql_type_of, row_id_key=True))
+        Index("uq_%s_bk" % table, t.c.business_key_val, unique=True)
+        t.create(db.connection())
+    return lines.ensure_line_table(db, table, cfg)
+
+
 @pytest.fixture(name="db")
 def fixture_db(monkeypatch):
     engine = create_engine("sqlite://")
@@ -40,7 +70,8 @@ def fixture_db(monkeypatch):
     models.DatabaseOutbox.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(db, TABLE, CFG)), raising=False)
+    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(db, TABLE, CFG)), raising=False)
     try:
         yield db
     finally:
@@ -53,7 +84,7 @@ def _lines(db):
 
 
 def _now(db):
-    now = lines.shape(db, TABLE, CFG)["now"]
+    now = lines.shape(db, TABLE, CFG)["table"]
     return {r["row_id"]: dict(r) for r in db.execute(select(now)).mappings()}
 
 
@@ -190,7 +221,8 @@ def test_two_sqlite_writers_of_one_row_wait_for_the_write_lock_before_they_read(
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     make = sessionmaker(bind=engine)
     setup = make()
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(setup, TABLE, CFG)), raising=False)
+    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(setup, TABLE, CFG)), raising=False)
     [row_id] = _write(setup, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "0"}, "source_name": "f0"})["changed"]
     setup.commit()
     setup.close()
@@ -248,3 +280,27 @@ def test_the_answer_says_each_item_s_row_work_and_columns_in_the_items_order(db,
                             {"row_id": a, "work": "gated", "columns": ["a", "n"]},
                             {"row_id": None, "work": None, "columns": ["a"]},
                             {"row_id": a, "work": "edit", "columns": ["a", "n"]}], out["items"]
+
+
+def test_a_column_no_line_has_written_keeps_t_s_value_and_one_withdrawn_to_nothing_empties(db):
+    """t is what it was until written (owner 11-11 «옛날 거 끊어»): a row from before the landing written in one column
+    keeps its other columns as they were, with no won_by for them; a column whose every line is withdrawn empties."""
+    t = lines.shape(db, TABLE, CFG)["table"]
+    db.execute(t.insert().values(row_id="old", business_key_val="K0", k="K0", a="before", n=7.0))
+    out = _write(db, {"row_id": "old", "values": {"n": "8"}, "source_name": "f1"})
+    row = _now(db)["old"]
+    assert (out["changed"]["old"]["work"], row["a"], row["n"], set(row["won_by"])) == ("edit", "before", 8, {"n"}), row
+    _write(db, {"row_id": "old", "line_kind": "withdraw", "columns": ["n"], "source_name": "f1"}, tx="tx2")
+    row = _now(db)["old"]
+    assert (row["a"], row["n"], row["won_by"]) == ("before", None, {}), row
+
+
+def test_a_write_of_nothing_makes_no_row_and_names_one_that_is_there(db):
+    """The funnel's phantom-row guard: an item whose every cell was dropped writes nothing - a new key or id gets no
+    row (no row, no event), a row that is there is still its row (left out), so the funnel can say what it dropped."""
+    [row_id] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    out = _write(db, {"key": {"k": "K9"}, "values": {}, "source_name": "f1"},
+                 {"row_id": "never", "values": {}, "source_name": "f1"},
+                 {"key": {"k": "K1"}, "values": {}, "source_name": "f1"}, tx="tx2")
+    assert [(it["row_id"], it["work"]) for it in out["items"]] == [(None, None), (None, None), (row_id, "left_out")]
+    assert set(_now(db)) == {row_id} and out["changed"] == {}

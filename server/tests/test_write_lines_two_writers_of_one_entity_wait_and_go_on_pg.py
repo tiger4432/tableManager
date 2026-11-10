@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database import crud, lines, models
 from database.write_lines import write_lines
-from test_write_lines_writes_a_line_a_change_and_its_current_line import stand_in_winners
+from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines, stand_in_spoken, stand_in_winners
 
 pytestmark = pytest.mark.pg
 
@@ -31,7 +31,8 @@ def fixture_sessions(pg_engine, monkeypatch):
     faulthandler.dump_traceback_later(90, exit=True)      # a hung lock gate says where, then stops
     make = sessionmaker(bind=pg_engine, autoflush=False)
     setup = make()
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(setup, TABLE, CFG)),
+    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(setup, TABLE, CFG)),
                         raising=False)
     setup.commit()
     try:
@@ -39,6 +40,7 @@ def fixture_sessions(pg_engine, monkeypatch):
     finally:
         setup.rollback()
         lines.drop_line_table(setup, TABLE)
+        setup.execute(text('DROP TABLE IF EXISTS "%s"' % TABLE))           # t - keep_lines made it
         setup.execute(lines.LineColumn.__table__.delete().where(lines.LineColumn.table_name == TABLE))
         setup.execute(lines.AuditBatch.__table__.delete().where(lines.AuditBatch.table_name == TABLE))
         setup.commit()
@@ -82,7 +84,7 @@ def _second_waits(make, first_items, second_items):
 def _state(make):
     s = make()
     shape = lines.shape(s, TABLE, CFG)
-    ln, now = shape["lines"], shape["now"]
+    ln, now = shape["lines"], shape["table"]
     rows = s.execute(select(ln.c.row_id, ln.c.source_name, ln.c.head_0, ln.c.line_kind)).all()
     alive = {r[0] for r in s.execute(select(now.c.row_id))}
     s.close()
@@ -144,7 +146,7 @@ def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_sessio
         said.append((out["lines"], out["left_out"]))
     shape = lines.shape(s, TABLE, CFG)
     stored = s.execute(select(shape["lines"].c.d).where(shape["lines"].c.business_key_val == "K4")).scalars().all()
-    now = s.execute(select(shape["now"].c.d).where(shape["now"].c.business_key_val == "K4")).scalar()
+    now = s.execute(select(shape["table"].c.d).where(shape["table"].c.business_key_val == "K4")).scalar()
     s.close()
     instant = expression._wall("2026-03-05 09:00:00", expression.time_zone())
     assert said == [(1, 0), (0, 1), (0, 1)], said

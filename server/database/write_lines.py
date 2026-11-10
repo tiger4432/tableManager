@@ -79,7 +79,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     _open(db)
     cfg = crud.TABLE_CONFIG[table]
     shape = lines.shape(db, table, cfg)
-    now, ln, bits, chunks = shape["now"], shape["lines"], shape["bits"], shape["chunks"]
+    now, ln, bits, chunks = shape["table"], shape["lines"], shape["bits"], shape["chunks"]
     data = _data(bits)
     items = [dict(it, line_kind=it.get("line_kind") or WRITE) for it in items]
     for it in items:
@@ -95,7 +95,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     targets, old, keys = _claim(db, table, cfg, now, items)
     claimed = dict(targets)
     gated = _version_gate(table, cfg, items, targets, old)
-    held = lines.value_types(db, table)            # a line's text by what t__now holds, not the declaration (C)
+    held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in kept}
@@ -104,13 +104,13 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     gone = sorted({targets[i] for i in kept if items[i]["line_kind"] == DELETED})
     for page in _pages(gone, 1):
         db.execute(delete(now).where(now.c.row_id.in_(page)))
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in kept} - set(gone)), at, held)
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in kept} - set(gone)), at, held, old)
     changed = {}
     for i in sorted(kept):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
-    _stage(db, table, cfg, shape["view_columns"], changed, keys,
+    _stage(db, table, cfg, shape["columns"], changed, keys,
            {targets[i]: set(items[i].get("values") or ()) for i in kept if items[i]["line_kind"] == WRITE})
     said = [{"row_id": claimed.get(i), "work": work[i] if i in kept else "gated" if i in claimed and i not in targets
              else "left_out" if i in targets else None,
@@ -135,8 +135,8 @@ def _claim(db, table, cfg, now, items):
     """Step 1 - lock the entities' current lines in row_id order. A new key is put in its current line first (keys
     sorted, ON CONFLICT DO NOTHING) and read back under the same lock, so two writers of one new key end on one row_id
     and no line is orphaned. Returns ({item index: row_id}, {row_id: its current line before}, {row_id: its business
-    key}). An item naming no current line is left out unless it writes - a write to a gone row_id makes it again, as
-    today's `_get_or_create_row` does."""
+    key}). An item naming no current line is left out unless it writes a value - a write to a gone row_id makes it
+    again, as today's `_get_or_create_row` does."""
     targets, old = {}, {}
     named = sorted({it["row_id"] for it in items if it.get("row_id")})
     for page in _pages(named, 1):
@@ -144,7 +144,7 @@ def _claim(db, table, cfg, now, items):
                               .with_for_update()).mappings():
             old[row["row_id"]] = dict(row)
     keys_of = cfg.get("composite_key_source") or []
-    wanted, by_key, bare = {}, {}, []              # business key -> minted row_id · item -> key · rows of no key
+    wanted, by_key, bare, looked = {}, {}, [], {}  # key -> minted row_id · item -> key · rows of no key · found only
     for i, it in enumerate(items):
         if it.get("row_id") in old:
             targets[i] = it["row_id"]
@@ -154,6 +154,11 @@ def _claim(db, table, cfg, now, items):
         bk = it.get("business_key_val")
         if bk is None and it.get("key") and keys_of:
             bk = crud.compose_business_key(table, [it["key"].get(c) for c in keys_of], keys_of)
+        if not it.get("values"):
+            # a write of nothing makes no row (the funnel's phantom-row guard); naming a row's key it still finds it
+            if not crud.is_blank_value(bk):
+                looked[i] = bk
+            continue
         if crud.is_blank_value(bk):
             targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
             bare.append(targets[i])
@@ -161,15 +166,15 @@ def _claim(db, table, cfg, now, items):
             wanted.setdefault(bk, crud._engine_minted_row_id(it.get("row_id"), table))
             by_key[i] = bk
     keys = {row_id: row.get("business_key_val") for row_id, row in old.items()}
-    if wanted:
+    if wanted or looked:
         if db.get_bind().dialect.name == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as upsert
         else:
             from sqlalchemy.dialects.sqlite import insert as upsert
-        ordered = sorted(wanted)
-        for page in _pages(ordered, 2):
+        for page in _pages(sorted(wanted), 2):
             db.execute(upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"]),
                        [{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
+        ordered = sorted(set(wanted) | set(looked.values()))
         holder = {}
         for page in _pages(ordered, 1):
             for row in db.execute(select(now).where(now.c.business_key_val.in_(page)).order_by(now.c.row_id)
@@ -177,10 +182,13 @@ def _claim(db, table, cfg, now, items):
                 holder[row["business_key_val"]] = dict(row)
         for bk, row in holder.items():
             keys[row["row_id"]] = bk
-            if row["row_id"] != wanted[bk]:
+            if row["row_id"] != wanted.get(bk):
                 old.setdefault(row["row_id"], row)  # the key was someone's already: an edit of that row
         for i, bk in by_key.items():
             targets[i] = holder[bk]["row_id"]
+        for i, bk in looked.items():
+            if bk in holder:
+                targets[i] = holder[bk]["row_id"]
     for page in _pages(bare, 1):
         db.execute(insert(now), [{"row_id": row_id} for row_id in page])
     return targets, old, keys
@@ -325,15 +333,20 @@ def _heads(db, ln, chunks, written):
     db.execute(statement, params)
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, held):
+def _merge_now(db, table, cfg, shape, row_ids, at, held, old):
     """Step 5 - the touched current lines merged again from their head lines and pins, a column at a time by
     `lines.winners_sql` (the one query `lines.merge` reads too), and written with won_by. Returns {row_id: {column:
     value}} as written."""
-    now, data = shape["now"], _data(shape["bits"])
-    types = cfg.get("column_types") or {}
+    now, data = shape["table"], _data(shape["bits"])
     if not row_ids:
         return {}
-    merged = {row_id: {c: None for c in data} for row_id in row_ids}
+    # a column of no line keeps t's value and no won_by (owner 11-11 «옛날 거 끊어»: t is what it was until written);
+    # a column with lines is its winner's, or empty when none wins (all withdrawn)
+    merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
+    spoken = lines.spoken(db, table, row_ids)
+    for row_id in row_ids:
+        for c in spoken.get(row_id, ()):
+            merged[row_id][c] = None
     won_by = {row_id: {} for row_id in row_ids}
     for c in data:
         query = lines.winners_sql(table, cfg, c, "row_ids")
