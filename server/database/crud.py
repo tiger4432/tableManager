@@ -6288,6 +6288,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         from session_contract import end_step
         end_step(db)                # a commit, or a held group's step (총괄 09f58844f)
+        from admin.audit_cache import audit_cache
+        audit_cache.add_changed(answer["audit"])   # this process's history list at once (a worker's is not loaded)
 
         if batch.replace_map:
             if replace_report is not None:

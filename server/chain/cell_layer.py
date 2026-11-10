@@ -95,9 +95,8 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     """
     from database import models
 
-    cs, co = models.CellSource, models.CellOverwrite
+    cs = models.CellSource
     in_columns = [cs.column_name.in_(list(columns))] if columns else []
-    pinned_columns = [co.column_name.in_(list(columns))] if columns else []
     sources = {}
     for row_id, col, src, val, ing, origin in (
             db.query(models.CellSource.row_id, models.CellSource.column_name,
@@ -108,15 +107,18 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
             .order_by(models.CellSource.source_name.asc()).all()):
         sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing, "origin_row_id": origin}
 
-    pins = {}
-    for row_id, col, pin in (
-            db.query(models.CellOverwrite.row_id, models.CellOverwrite.column_name,
-                     models.CellOverwrite.manual_priority_source)
-            .filter(models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(chunk_row_ids), *pinned_columns).all()):
-        pins[(row_id, col)] = pin
+    return sources, pins_of(db, table_name, chunk_row_ids, columns)
 
-    return sources, pins
+
+def pins_of(db, table_name: str, row_ids, columns=None) -> dict:
+    """{(row_id, column): the source a person pinned there, or None} of these rows - one read of `cell_overwrites`."""
+    from database import models
+
+    co = models.CellOverwrite
+    in_columns = [co.column_name.in_(list(columns))] if columns else []
+    return {(row_id, col): pin for row_id, col, pin in (
+        db.query(co.row_id, co.column_name, co.manual_priority_source)
+        .filter(co.table_name == table_name, co.row_id.in_(list(row_ids)), *in_columns).all())}
 
 #: Who deleted a shell row - the history line's name, the chain's write seat and the sweep alike (5eee501eb).
 SHELL_DELETER = "chain_shell_rows"
@@ -549,12 +551,13 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
     {(row_id, column): [source_name, ...]})` of at most `size` rows, none in it on a page that holds none, None at
     the end. `page_done(row ids)`, applied: what else that page's step writes, before it ends.
 
-    A cell claimed by several sources withdraws them in that order, each seeing what the one
-    before it left on apply - what one `withdraw_source` call per source did, in one pass."""
-    from sqlalchemy import tuple_
-    from database import crud, models
+    A page is ONE `write_lines` call (cell-source overhaul, lead 11-11): a withdraw line a (row, source) naming the
+    columns that source takes back - the merge then shows what the lines left, the audit row and the collapsed event
+    are write_lines'. A cell a person pinned to that source is skipped and counted. A dry run writes the same page
+    and rolls it back - the preview is the write's own answer, not a second resolver."""
+    from database import crud
+    from database.write_lines import write_lines
 
-    model, col_types = target
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "cells_matched": 0, "cells_withdrawn": 0,
              "revealed": 0, "emptied": 0, "pinned_skipped": 0,
@@ -562,41 +565,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
     log(f"[withdraw] {label} in '{table_name}' - counting as it goes")
 
     tx_id = f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
-
-    # 🔴 THE OUTBOX LABEL. Same defect, same shape, same fix as R3 - see
-    # `recompute_display_values` for why the label is separable from the layer.
-    # R2 reveals a cell by `setattr`, so the global `before_flush` staged its
-    # events under the context DEFAULTS: `source_name="user"`, `updated_by="system"`
-    # and a fresh uuid4 per event. Measured on assy_qa: withdrawing 4 cells staged
-    # 4 events with 4 distinct transaction ids, the live rule set accepted every
-    # one, and a connected client received 4 `batch_row_upsert` messages for
-    # `dt_job_attribution` - a table nobody withdrew anything from.
-    #
-    # ⚠️ WHY THIS IS SAFE HERE EVEN THOUGH R2 DELETES A LAYER - the question R3 did
-    # not have to answer. The deletion predicate is built from the `source_name`
-    # PARAMETER (`_claimed_filter`, and the (source_name, row_id) pairs the claims
-    # carry into the delete below), never from `request_source`. So do the two
-    # refusals: `source_name in PROTECTED_SOURCES` and `pins.get(cell) ==
-    # source_name`. The context var and the parameter share a concept and nothing
-    # else - there is no path from one to the other. Verified by measurement rather
-    # than by this paragraph: the SAME fixture run with and without this block
-    # deletes the same 4 layers, skips the same human-pinned cell, and leaves a
-    # survivor set with an identical sha256
-    # (`test_withdraw_deletes_the_same_layers_whatever_the_outbox_label`).
-    #
-    # ⚠️ AND IT TAKES NOTHING AWAY FROM THE OPERATOR. A withdrawal CHANGES THE
-    # DISPLAYED VALUE, so "does the client still hear about it" is a real question -
-    # and the measured answer is that the client never heard about the withdrawn
-    # cells in the first place. The chain worker broadcasts what the chain WROTE
-    # (target tables), never the table the events came from, so before this change
-    # the only messages a client got named `dt_job_attribution`. Those were the
-    # spurious cascade, not the withdrawal. What an operator reads to understand a
-    # withdrawal is the AuditLog rows below, and they still carry
-    # `source_name=R2_AUDIT_SOURCE` - the outbox `source_name` is the loop-filter
-    # CHANNEL, not the provenance record.
-    # 🔴 [총괄 eddf9e38e] COLLAPSED, CHOSEN HERE: a withdrawal is the fourth path that carries
-    #    volume - in per-row mode each revealed row was one event, and a 1,000-row delete fed
-    #    1,000 of them to the chain and the ledger follow-up (ca0d23b08: drain 1,003).
+    # 🔴 THE OUTBOX LABEL (`recompute_display_values` says why it is separable from the layer) and COLLAPSED: a
+    #    1,000-row delete fed 1,000 per-row events to the chain and the ledger follow-up (총괄 eddf9e38e).
     import event_constants
     from database.context import outbox_mode
     with crud.transaction_context(R2_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME), \
@@ -620,29 +590,11 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                 continue
             i += len(chunk)
             stats["cells_matched"] += sum(len(names) for names in claims.values())
-            by_row = {}
-            for row_id, col in claims:
-                by_row.setdefault(row_id, set()).add(col)
-            # locked as read when it withdraws - its remaining layers decide each cell (총괄 09f58844f ②); a dry
-            # pass reads them as they are, holding nothing
-            read_rows = db.query(model).filter(model.row_id.in_(chunk)).order_by(model.row_id)
-            rows = {r.row_id: r for r in (read_rows.with_for_update() if apply else read_rows).all()}
-
-            # Remaining sources + pins for the whole chunk: two batched queries, not
-            # two per cell. Shared with R3 so the two operations cannot assemble the
-            # resolver's input differently.
-            remaining, pins = _load_cell_state(db, table_name, chunk)
-
-            delete_keys = []
-            carried = {}
-            for row_id in chunk:
-                row = rows.get(row_id)
-                if row is None:
-                    continue
-                for col, source_name in ((c, s) for c in sorted(by_row.get(row_id, ()))
-                                         for s in claims[(row_id, c)]):
-                    cell = (row_id, col)
-                    if pins.get(cell) == source_name:
+            pins = pins_of(db, table_name, chunk)
+            taken = {}                                  # (row_id, source) -> its columns, in claim order
+            for (row_id, col), names in sorted(claims.items()):
+                for source_name in names:
+                    if pins.get((row_id, col)) == source_name:
                         stats["pinned_skipped"] += 1
                         if len(stats["samples"]) < SAMPLE_LIMIT:
                             stats["samples"].append({
@@ -651,70 +603,31 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                                        f"(manual_priority_source); withdrawing it would "
                                        f"override that choice"})
                         continue
-
-                    decision = _resolve_cell(table_name, col_types, row, col,
-                                             carried.get(cell, remaining.get(cell)), pins.get(cell),
-                                             exclude_source=source_name)
-                    survivors = decision["survivors"]
-                    old_val = decision["old_value"]
-                    new_val = decision["new_value"]
-                    top_src = decision["top_source"]
-                    changed = decision["changed"]
-
+                    taken.setdefault((row_id, source_name), []).append(col)
+            items = [{"row_id": row_id, "line_kind": "withdraw", "columns": cols, "source_name": source_name,
+                      "written_by": R2_AUDIT_SOURCE} for (row_id, source_name), cols in taken.items()]
+            answer = write_lines(db, table_name, items, kind="withdraw", transaction_id=tx_id) if items else None
+            for it, said in zip(items, (answer or {}).get("items") or ()):
+                if said["work"] != "withdraw":          # the source spoke in none of these columns any more
+                    continue
+                change = answer["changed"].get(said["row_id"]) or {}
+                was, now = change.get("old") or {}, change.get("new") or {}
+                for col in said["columns"]:
                     stats["cells_withdrawn"] += 1
-                    if survivors:
-                        stats["revealed"] += 1
-                    else:
-                        stats["emptied"] += 1
-                    if not changed:
-                        stats["value_unchanged"] += 1
+                    stats["revealed" if not crud.is_blank_value(now.get(col)) else "emptied"] += 1
+                    moved = was.get(col) != now.get(col)
+                    stats["value_unchanged"] += not moved
                     if len(stats["samples"]) < SAMPLE_LIMIT:
-                        stats["samples"].append({
-                            "row_id": row_id, "column": col, "action": "withdraw",
-                            "old_value": old_val, "new_value": new_val,
-                            # 🔴 ONE SPELLING FOR THE LAYER WINNER. This said `revealed_source` and the block
-                            #    below said `winning_source`, for the SAME value from the same
-                            #    helper -- the name was restating what the container already
-                            #    says. A dict sitting next to `row_id`/`column` is that cell's
-                            #    answer; the preview's return dict is the preview's. Subject in
-                            #    the name means one more name per container, which is how this
-                            #    got to three (ruling 40).
-                            "top_source": top_src,
-                            "remaining_sources": sorted(survivors)})
-
-                    if apply:
-                        carried[cell] = survivors  # the next source on this cell sees this one gone
-                        delete_keys.append((source_name, row_id, col))
-                        if changed:
-                            setattr(row, col, new_val)
-                            # Make the withdrawal legible in the place the client
-                            # already looks to answer "why does this cell say this".
-                            crud.create_audit_log(
-                                db, table_name, row_id, col, old_val, new_val,
-                                R2_AUDIT_SOURCE, f"withdraw:{source_name}",
-                                transaction_id=tx_id,
-                                business_key=getattr(row, "business_key_val", None))
-
-            if apply and delete_keys:
-                # Grouped by column so the delete is a handful of bounded IN lists
-                # (one per column) instead of one OR clause per cell - a chunk of
-                # 1000 rows x N columns would otherwise build a several-thousand-term
-                # predicate that no planner handles well.
-                by_col = {}
-                for s, r, c in delete_keys:
-                    by_col.setdefault(c, []).append((s, r))
-                for col, pairs in by_col.items():
-                    for j in range(0, len(pairs), chunk_size):
-                        db.query(models.CellSource).filter(
-                            models.CellSource.table_name == table_name,
-                            models.CellSource.column_name == col,
-                            tuple_(models.CellSource.source_name, models.CellSource.row_id)
-                            .in_(pairs[j:j + chunk_size]),
-                        ).delete(synchronize_session=False)
-                if page_done is not None:
-                    page_done(chunk)
-                from session_contract import end_step
-                end_step(db)
+                        stats["samples"].append({"row_id": said["row_id"], "column": col, "action": "withdraw",
+                                                 "old_value": was.get(col), "new_value": now.get(col),
+                                                 "top_source": None, "source": it["source_name"]})
+            if not apply:
+                db.rollback()                           # the preview's page, unwritten - its locks let go
+                continue
+            if page_done is not None:
+                page_done(chunk)
+            from session_contract import end_step
+            end_step(db)
 
     if not apply:
         db.rollback()
