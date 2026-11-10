@@ -502,7 +502,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                  if not ((objectless or valued) and role == "object")}
         ends = {role: _entity(plan.relation, kinds, binding, f"{sentence}.{role}") for role, binding in named.items()}
         ends.setdefault("object", NO_OBJECT)
-        qualifiers, from_attributes = {}, set()
+        qualifiers, from_attributes, needed = {}, set(), []
         subject_attributes = named["subject"].get("attributes") or {}
         for name, reference in emission.qualifiers.items():
             binding = mapping.bindings.get(reference.role_id)
@@ -511,7 +511,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
             if binding is None:
                 continue
             role = emission_plan.claim.roles.get(reference.role_id)
-            if role is None or role.required:
+            if role is None or (role.required and attribute):
                 raise NotCompiled(f"{sentence}: a required qualifier {name!r}")
             try:
                 qualifiers[name] = _qualifier(kinds, binding, f"{sentence}.{name}")
@@ -522,12 +522,15 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                 continue
             if attribute:
                 from_attributes.add(name)
+            if role.required and "column" in qualifiers[name]:     # blank, it unsays this sentence alone
+                needed.append(f"NOT {_missing(qualifiers[name])}")
         event = any(is_event_time_role(role) for role in mapping.bindings)
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
         first = {"object": [], **{role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
         if value and "column" in value:         # a blank value unsays this sentence alone (`event_frame._blank_cells`)
-            kept_here = [*kept_here, f"NOT {_missing(value)}"]
+            needed.append(f"NOT {_missing(value)}")
+        kept_here = [*kept_here, *needed]
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,

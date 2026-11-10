@@ -220,6 +220,37 @@ def test_a_value_object_is_read_as_the_ledger_holds_it(world):
     assert len(stored["edges"]) >= 3, "P4's edges stay - a blank value unsays its own sentence alone (lead 11-10)"
 
 
+def test_a_blank_required_qualifier_unsays_its_sentence_alone(world):
+    """Lead 11-10 (ㄱ, the owner's «빈 거는 무시» 10-12 and «빈키행은 무시» 11-01): a required qualifier left blank on
+    a row unsays that sentence there - not the row - in both engines; the row's edges stay. It refused the whole row
+    (`missing_binding_value`) and the virtual walk left the source out."""
+    document = _only(CHANGED, KEPT, one=True)
+    vocabulary = document["vocabulary"]["has_netdie@1"]
+    vocabulary["subjects"] = ["wafer@1"]
+    vocabulary["object"]["value_type"] = "string"
+    vocabulary["object"]["qualifiers"] = {"required": ["step"], "optional": []}
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-recipe-value"] = {"predicate": "has_netdie@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "value": {"kind": "column", "column": "recipe_id"},
+        "step": {"kind": "column", "column": "step"}}}
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [qualified] = [leg for leg in legs if leg.sentence == "wafer-recipe-value"]
+    said = _shadow_finds_no_difference(board, follow=[qualified.predicate])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "P1-P3 say it with their step; P4 (no step) does not"
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual) == _drawn(stored)
+    assert len(stored["edges"]) >= 3, "P4's edges stay - its blank step unsays only the qualified sentence"
+
+
 def _shadow_finds_no_difference(board, follow=None):
     """walk-shadow over each source: the same atoms both ways, no bin - {source: what it said}."""
     out = {}
