@@ -188,7 +188,7 @@ async function suite(M, loud) {
   const mark = (x) => marked(x).filter((n) => has(n, 'formula-mark'));
   say('F1 the field wears the formula mark once, before the box, in each field on the page',
     mark(a).length === 1 && mark(b).length === 1 && marked(a)[0] === mark(a)[0] && mark(a)[0].textContent === M.FORMULA_MARK
-    && M.FORMULA_MARK === 'ƒ', marked(a).map((n) => n.className));
+    && M.FORMULA_MARK === 'fx', marked(a).map((n) => n.className));
   const own = M.formulaMark(makeDoc());
   say('F2 the mark a folded line wears is the same one (one place)', has(own, 'formula-mark') && own.textContent === M.FORMULA_MARK
     && own.getAttribute('aria-hidden') === 'true', own.className);

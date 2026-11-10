@@ -2237,24 +2237,24 @@ console.log('\n[16] a folded line marks its formulas');
     };
     const agg = fold(M.renderAuthoringRow, M.formulaUnder, AGGREGATIONS, { stack_height: 'UniqueCount([stack_height])', n: 'Count()' });
     say('F1 a decide\'s aggregations, folded: each formula wears the mark, after its column\'s name',
-      marks(agg) === 2 && agg.textContent === 'stack_height ƒUniqueCount([stack_height]) · n ƒCount()', agg?.textContent);
+      marks(agg) === 2 && agg.textContent === 'stack_height fxUniqueCount([stack_height]) · n fxCount()', agg?.textContent);
     const take = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { fn: 'Min([t])', separator: ', ' });
     say('F2 a record: its formula field wears it, a plain word beside it none',
-      marks(take) === 1 && take.textContent === 'fn ƒMin([t]) · separator , ', take?.textContent);
+      marks(take) === 1 && take.textContent === 'fn fxMin([t]) · separator , ', take?.textContent);
     const plain = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { separator: ', ' });
     const none = fold(M.renderAuthoringRow, () => () => false, AGGREGATIONS, { n: 'Count()' });
     say('F3 no formula, or a row the tree hands no skeleton: the line as before, no mark',
       marks(plain) === 0 && plain.textContent === 'separator , ' && marks(none) === 0 && none.textContent === 'n Count()',
       `${plain?.textContent} | ${none?.textContent}`);
     const leaf = fold(M.renderAuthoringRow, M.formulaUnder, FORMULA_LEAF, 'Max([t])');
-    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'ƒMax([t])', leaf?.textContent);
+    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'fxMax([t])', leaf?.textContent);
     // the read-only tree (the explorer's read mode): its leaves are values, and a formula wears the same mark (lead 11-10 ㄱ)
     const tree = M.renderSkeletonForm(M.readContext({}, {}), TAKE, '', { fn: 'Min([t])', separator: ', ' });
     const read = walkAll(tree).filter((n) => n._classes?.includes('oe-value'));
     const readFn = read.find((n) => n.textContent.includes('Min'));
     const readSep = read.find((n) => n.textContent.includes(','));
     say('F5 read, a formula wears the mark and a plain word beside it none',
-      marks(readFn) === 1 && readFn.textContent === 'ƒMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
+      marks(readFn) === 1 && readFn.textContent === 'fxMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
       read.map((n) => n.textContent).join(' | '));
     return { ran: names.length, names, failures };
   };
