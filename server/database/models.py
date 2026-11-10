@@ -1864,6 +1864,12 @@ def sync_dynamic_tables_schema(engine):
                         "[Schema Sync] could not add column '%s' to '%s': %s",
                         col_name, table_name, told(err))
 
+    # the declared tables' lines (t__lines + won_by) after their columns - the same door, so a new column reaches
+    # t__lines too (C 11-11)
+    from database import lines
+
+    lines.ensure_declared(engine)
+
 
 # [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
 # /admin/reload-configs 요청 스레드가 동시에 진입할 수 있으므로 in-process 직렬화 락 사용.
@@ -3165,3 +3171,8 @@ def refresh_dynamic_models(engine=None):
         # the chain worker builds nothing) - built at its start and at a Reload, not in every process that reloads
         return created
     return []
+
+
+# the overhaul's system tables (line_columns, audit_batches, line_sources) live in database.lines - imported here so
+# every Base.metadata.create_all (boot, the test fixtures) builds them
+from . import lines as _lines  # noqa: E402,F401

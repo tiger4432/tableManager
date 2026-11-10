@@ -81,6 +81,14 @@ def test_slots_assigned_before_building_are_not_lines(db):
     assert not lines.has_lines(db, "x" * 60)
 
 
+def test_current_table_of_a_table_without_lines_has_no_won_by_and_takes_no_slots(db):
+    make_table(db, "t", CFG)
+    plain = lines.current_table(db, "t", CFG)
+    assert "won_by" not in plain.c and "lot" in plain.c and lines.bit_map(db, "t") == {}
+    ensure(db, "t", CFG)
+    assert "won_by" in lines.current_table(db, "t", CFG).c
+
+
 def test_a_column_added_lands_on_t_and_its_lines(db):
     ensure(db, "t", CFG)
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
