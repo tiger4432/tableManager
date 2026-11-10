@@ -36,8 +36,8 @@ from chain import slots as chain_slots                                # noqa: E4
 from database import crud, models, schemas                            # noqa: E402
 from database.context import channel, outbox_mode                     # noqa: E402
 from database.database import Base                                    # noqa: E402
-from maps import alignment_batch_counts                               # noqa: E402
 from runtime.health import compute_health                             # noqa: E402
+from runtime.stages import stage                                      # noqa: E402
 from utils import heartbeat                                           # noqa: E402
 from utils import logger as process_logging                           # noqa: E402
 from utils.payload_helper import get_payload_dict                     # noqa: E402
@@ -190,7 +190,7 @@ def test_a_paused_group_is_rewound_at_a_stage_and_not_charged(db, monkeypatch):
 
     def slow(tx_id, evs, session, rules):
         for step in range(30):                              # 3 s if nothing stops it
-            with alignment_batch_counts.stage("write:t%d" % step):
+            with stage("write:t%d" % step):
                 time.sleep(0.1)
         return True, None, []
 
@@ -459,7 +459,7 @@ def test_a_pause_cancels_the_query_a_group_is_waiting_on(pg_engine, monkeypatch)
         before = len(_pending(db))
 
         def sleeps(tx_id, evs, session, rules):
-            with alignment_batch_counts.stage("mapper"):
+            with stage("mapper"):
                 session.execute(text("SELECT pg_sleep(30)"))
             return True, None, []
 

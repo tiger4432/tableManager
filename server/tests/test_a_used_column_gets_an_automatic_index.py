@@ -298,13 +298,14 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
 def test_a_read_cancelled_at_its_limit_asks_too(monkeypatch):
     """소유자 10-15: a read past grid_read_timeout_seconds was cancelled before the ask - it asks, and its text-pattern
     filter column asks for a search index."""
+    import db_waits
     import main
     from parsers import directory_watcher
     from runtime import index_wants
     from sqlalchemy.exc import OperationalError
 
     class _Orig:
-        pgcode = main.QUERY_CANCELED
+        pgcode = db_waits.QUERY_CANCELED
 
     class _Db:
         def get_bind(self):

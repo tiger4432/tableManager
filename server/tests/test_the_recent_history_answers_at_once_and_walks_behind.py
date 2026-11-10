@@ -25,14 +25,22 @@ URL = "/audit_logs/recent?limit_groups=100"
 
 def _settle():
     """The catch-up behind the last read has ended; a read now (within CATCH_UP_GAP_SECONDS) starts none."""
-    behind = audit_cache.audit_cache._behind
-    if behind is not None:
-        behind.join(30)
+    deadline = time.monotonic() + 30
+    while audit_cache.audit_cache._behind.busy(audit_cache.RECENT) and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+
+def _ended_ago(seconds):
+    """As if the last catch-up ended `seconds` ago."""
+    worker = audit_cache.audit_cache._behind
+    with worker._cond:
+        worker._kept[audit_cache.RECENT]["ended"] = time.monotonic() - seconds
+        worker._cond.notify_all()
 
 
 def _gap_passed():
     """As if CATCH_UP_GAP_SECONDS went by: the next read starts the next catch-up."""
-    audit_cache.audit_cache._behind_ended = float("-inf")
+    _ended_ago(float("inf"))
 
 
 def _mine(body):
@@ -75,7 +83,7 @@ def test_a_walk_cut_before_any_group_still_says_reading_not_none(client, db_sess
         return real(self, *a, **k)
     monkeypatch.setattr(AuditLogCache, "_discover_groups", walk)
     client.get(URL)
-    audit_cache.audit_cache._behind.join(30)
+    _settle()
     after_cut = client.get(URL).json()                         # within the gap: no walk runs, none has loaded
     assert (after_cut["groups"], after_cut["updating"]) == ([], True), after_cut
     cut["on"] = False
@@ -112,6 +120,6 @@ def test_the_screens_read_again_does_not_start_the_next_catch_up(client, db_sess
     audit_cache.audit_cache.__init__()
     assert client.get(URL).json()["updating"] is True
     _settle()
-    audit_cache.audit_cache._behind_ended -= 2.5               # the screen's read-again, a little late
+    _ended_ago(2.5)                                             # the screen's read-again, a little late
     again = client.get(URL).json()
     assert _mine(again) == ["aw-a"] and again["updating"] is False, again

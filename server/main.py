@@ -10,6 +10,8 @@ from database import models, schemas, crud
 from runtime import system_reload
 from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
 from runtime import index_wants  # a slow grid read's automatic index (총괄 ff7890892)
+from runtime import behind  # the work behind the reads - the grid's whole counts here
+from runtime import stages  # a named stage on every line open around it - the slow-request line here
 from runtime.offloop_json import OffLoopJSONRoute
 from listing_absence import absent_listing
 from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
@@ -1207,94 +1209,54 @@ COUNT_CAP = 10_000
 #: How long a request waits for a count due now (never counted, or changed and past its pacing) - a small table's then
 #: comes back counted; a large one's is said `counting`, or its last count with its time.
 COUNT_WAIT_SECONDS = 0.5
-_WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked", "failed"}
-_DUE = {}                       # whole key -> (count(db), bind) to count (again) - on the request's database
-_COUNT_COND = threading.Condition()
-_COUNTER = [None]
-_NOW = [None]                   # (whole key, asked) the worker is counting - a first count is not in _WHOLE yet
+
+
+def _whole_pacing():
+    from parsers import directory_watcher
+
+    return directory_watcher.count_recount_seconds()
+
+
+#: The one worker that counts them (`runtime.behind`) - a key's count kept as {"total", "capped", "at", "seconds", "failed"}.
+WHOLE_COUNTS = behind.Behind("whole-counter", _whole_pacing, "[Count] the whole count of %s was not counted")
+#: The auto-confirm rules' queue counts (`missing_counts`) - the same keys and pacing on a worker of their own: a long
+#: count of a derived table never holds a grid's whole count (lead 11-10).
+QUEUE_COUNTS = behind.Behind("queue-counter", _whole_pacing, "[Count] the queue count of %s was not counted")
 
 
 def _count_again(table_name):
     """Every whole count of `table_name` is due again (its pacing still holds) - the one being counted too: its
     snapshot may be from before the change."""
-    with _COUNT_COND:
-        for key, asked in [(key, held["asked"]) for key, held in _WHOLE.items()] + ([_NOW[0]] if _NOW[0] else []):
-            if count_cache_table_of(key) == table_name:
-                _DUE[key] = asked
-        _COUNT_COND.notify_all()
+    for counts in (WHOLE_COUNTS, QUEUE_COUNTS):
+        counts.again(lambda key: count_cache_table_of(key) == table_name)
 
 
-def _due_now(key, pacing, now):
-    held = _WHOLE.get(key)
-    return held is None or now - held["began"] >= pacing
-
-
-def _whole_counter():
-    """The one worker: the due count whose pacing allows, counted on its own session, then the next."""
-    from parsers import directory_watcher
-
-    while True:
-        with _COUNT_COND:
-            while True:
-                pacing, now = directory_watcher.count_recount_seconds(), time.monotonic()
-                ready = [key for key in _DUE if _due_now(key, pacing, now)]
-                if ready:
-                    key = ready[0]
-                    asked = _DUE.pop(key)
-                    _NOW[0] = (key, asked)
-                    break
-                waits = [pacing - (now - _WHOLE[key]["began"]) for key in _DUE if key in _WHOLE]
-                _COUNT_COND.wait(max(min(waits), 0.05) if waits else None)
-        began, counted, failed = time.monotonic(), None, None
-        count, bind = asked
-        db = Session(bind=bind)
-        try:
-            counted = count(db)
-        except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
-            logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, told(exc))
-            failed = {"reason": ("%s: %s" % (type(exc).__name__, told(exc).strip().split("\n")[0]))[:200],
-                      "at": datetime.now(timezone.utc).isoformat()}
-        finally:
-            db.close()
-        with _COUNT_COND:
-            # a failed count keeps the last one and is paced as a count (총괄 0fd18ae19 2) - asked again, it is due again
-            kept = _WHOLE.get(key) or {"total": None, "capped": False, "counted_at": None, "count_seconds": None}
-            if failed is None:
-                kept = dict(counted, count_seconds=round(time.monotonic() - began, 3),
-                            counted_at=datetime.now(timezone.utc).isoformat())
-            _WHOLE[key] = dict(kept, began=began, asked=asked, failed=failed)
-            _NOW[0] = None
-            _COUNT_COND.notify_all()
-
-
-def _table_rows(table_name, world, db):
-    """A table's whole count - what the whole counter counts for a table's key."""
+def _table_rows(table_name, world, db, **narrowing):
+    """A table's whole count, or its `narrowing`'s - what the whole counter counts for a key."""
     model = grid_model(table_name, world)
     # 🔴 STOPS PAST COUNT_CAP TOO (owner 10-16): a whole count of a bloated table held a connection for its whole read;
     #    the grid says «10,000+» past it, as it does a narrowed count
-    total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
+    total = (narrowed_table_query(db, table_name, model, **narrowing)[0].order_by(None).limit(COUNT_CAP + 1).count()
              if model is not None else 0)
     return {"total": min(total, COUNT_CAP), "capped": total > COUNT_CAP}
 
 
-def _kept_count(db, key, count, oldest):
-    """What the whole counter last counted for `key` - asked of it again when never counted, failed, or older than
-    `oldest` seconds; a request waits COUNT_WAIT_SECONDS for one due now. -> the kept entry, or None (counting)."""
-    from parsers import directory_watcher
+def _kept_count(db, key, count, oldest, wait=None, counts=WHOLE_COUNTS):
+    """What `counts` last counted for `key` - asked of it again when never counted, failed, or older than
+    `oldest` seconds; a request waits `wait` (COUNT_WAIT_SECONDS) seconds for one due now.
+    -> the kept count, or None (counting)."""
+    bind = db.get_bind()
 
-    now = time.monotonic()
-    with _COUNT_COND:
-        held = _WHOLE.get(key)
-        if held is None or held["failed"] or (oldest is not None and now - held["began"] >= oldest):
-            _DUE.setdefault(key, (count, db.get_bind()))
-        if _COUNTER[0] is None:
-            _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
-            _COUNTER[0].start()
-        _COUNT_COND.notify_all()
-        if key in _DUE and _due_now(key, directory_watcher.count_recount_seconds(), time.monotonic()):
-            began = (_WHOLE.get(key) or {}).get("began")
-            _COUNT_COND.wait_for(lambda: (_WHOLE.get(key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
-        return _WHOLE.get(key)
+    def counted():
+        own = Session(bind=bind)
+        try:
+            return count(own)
+        finally:
+            own.close()
+
+    return counts.ask(key, counted, again=lambda kept: bool(kept["failed"]) or (
+        oldest is not None and time.monotonic() - kept["began"] >= oldest),
+        wait=COUNT_WAIT_SECONDS if wait is None else wait)
 
 
 def table_total(db, table_name, world, model, query, cache_key, cap=None, here=False):
@@ -1326,7 +1288,7 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
                     total, seconds, at = cached_table_count(capped_query.with_session(own),
                                                             build_count_cache_key(cache_key, "cap:%d" % cap))
             except OperationalError as exc:
-                if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+                if not db_waits.cancelled(exc):
                     raise
                 return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": False,
                         "failed": {"reason": "count stopped after %g s" % limit if limit else
@@ -1342,8 +1304,8 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
     if held is None:
         return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
                 "failed": None}
-    return {"total": held["total"], "capped": held["capped"], "counted_at": held["counted_at"],
-            "count_seconds": held["count_seconds"], "counting": False, "failed": held["failed"]}
+    return {"total": held.get("total"), "capped": held.get("capped", False), "counted_at": held.get("at"),
+            "count_seconds": held.get("seconds"), "counting": False, "failed": held["failed"]}
 
 
 def invalidate_table_cache(table_name: str):
@@ -1685,7 +1647,7 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
         response.headers["X-Audit-Next-Cursor"] = next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
-    with request_timing.stage("shape"):
+    with stages.stage("shape"):
         page = _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
     return dict(page, updating=updating)
 
@@ -1785,19 +1747,29 @@ def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get
 # [재교정률] 대시보드 로드마다 감사 테이블을 집계하지 않기 위한 TTL 캐시.
 # 값은 7일 창 집계라 초 단위로 변하지 않는다 — 60초 캐시로 충분하고, 이 캐시가
 # "대시보드를 열 때마다 GROUP BY"를 구조적으로 막는 1차 방어선이다.
-RECORRECTION_CACHE = {"value": None, "at": 0.0}
 RECORRECTION_CACHE_TTL = 60.0
+#: The summary's two audit figures (re-correction, effort) on one worker of their own (`runtime.behind`, lead 11-10):
+#: a figure is worked out once at a time - two admins past its TTL wait on the same run, not two reads of audit_logs
+#: side by side. A request waits this long for a run due now (the statement limit is 1.5 s), then answers what was kept.
+FIGURES = behind.Behind("dashboard-figures", lambda: 0.0, "[Dashboard] the %s figure was not worked out")
+FIGURE_WAIT_SECONDS = 2.0
 
 
-def _held(cache, ttl):
-    """A dashboard figure's cached value while younger than `ttl` seconds, else None."""
-    return cache["value"] if cache["value"] is not None and time.time() - cache["at"] < ttl else None
+def _figure(db, name, ttl, work, unworked):
+    """The figure `name` as `work(session)` last made it - asked again past `ttl` seconds - on a session of its own; a
+    run not ended within FIGURE_WAIT_SECONDS answers `unworked(reason)` (never run) or the last one kept."""
+    bind = db.get_bind()
 
+    def worked():
+        own = Session(bind=bind)
+        try:
+            return {"value": work(own)}
+        finally:
+            own.close()
 
-def _hold(cache, value, at):
-    """Keep `value` as the figure computed at `at`. -> value"""
-    cache["value"], cache["at"] = value, at
-    return value
+    kept = FIGURES.ask(name, worked, again=lambda kept: time.monotonic() - kept["began"] >= ttl,
+                       wait=FIGURE_WAIT_SECONDS)
+    return kept["value"] if kept and "value" in kept else unworked("still being worked out")
 # 2차 방어선: 인덱스(idx_audit_user_recorrection)가 아직 없는 운영 DB에서도 대시보드가
 # 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
 # (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
@@ -1805,11 +1777,15 @@ RECORRECTION_TIMEOUT_MS = 1500
 
 
 def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
-    """재교정률을 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    """재교정률 (`_figure`)."""
+    return _figure(db, "recorrection", RECORRECTION_CACHE_TTL, _recorrection_stat, lambda reason: schemas.RecorrectionStat(
+        window_days=crud.RECORRECTION_WINDOW_DAYS, measured_cells=0, recorrected_cells=0, rate_pct=None,
+        unavailable_reason=reason))
+
+
+def _recorrection_stat(db: Session) -> schemas.RecorrectionStat:
+    """재교정률을 타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
     import sqlalchemy as sa
-    now = time.time()
-    if _held(RECORRECTION_CACHE, RECORRECTION_CACHE_TTL) is not None:
-        return RECORRECTION_CACHE["value"]
 
     try:
         # SET LOCAL은 현재 트랜잭션에서만 유효하고 세션 종료(get_db의 db.close())에서 되돌아간다.
@@ -1840,25 +1816,30 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
             measured_cells=0, recorrected_cells=0, rate_pct=None,
             unavailable_reason=reason,
         )
-
-    return _hold(RECORRECTION_CACHE, result, now)
+    return result
 
 
 # [V1 계기] 상호작용 점수도 재교정률과 **완전히 같은 방어**를 쓴다(캐시 + statement_timeout).
 # 두 계기가 같은 무거운 엔드포인트에 얹혀 있으므로, 방어가 하나라도 빠지면 대시보드가
 # 지표 때문에 느려진다 — 그건 지표가 자기 목적을 배신하는 것이다.
-EFFORT_CACHE = {"value": None, "at": 0.0}
 EFFORT_CACHE_TTL = 60.0
 EFFORT_TIMEOUT_MS = 1500
 
 
 def _get_effort_stat(db: Session) -> schemas.EffortStat:
-    """상호작용 점수를 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    """상호작용 점수 (`_figure`)."""
+    import effort_metric
+
+    return _figure(db, "effort", EFFORT_CACHE_TTL, _effort_stat, lambda reason: schemas.EffortStat(
+        window_days=crud.EFFORT_WINDOW_DAYS, avg_score=None, tx_count=0, session_count=0,
+        weights=effort_metric.resolve_weights(effort_metric.load_config()), measured_ratio=None,
+        unavailable_reason=reason))
+
+
+def _effort_stat(db: Session) -> schemas.EffortStat:
+    """상호작용 점수를 타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
     import sqlalchemy as sa
     import effort_metric
-    now = time.time()
-    if _held(EFFORT_CACHE, EFFORT_CACHE_TTL) is not None:
-        return EFFORT_CACHE["value"]
 
     # 배점은 캐시하지 않는다 — config 핫리로드가 다음 집계부터 반영되어야 하고,
     # 파일 읽기 1회는 60초에 한 번뿐이다.
@@ -1891,8 +1872,7 @@ def _get_effort_stat(db: Session) -> schemas.EffortStat:
             weights=weights, measured_ratio=None,
             unavailable_reason=reason,
         )
-
-    return _hold(EFFORT_CACHE, result, now)
+    return result
 
 
 @app.get("/api/effort/config")
@@ -2271,7 +2251,7 @@ def _table_data_response(payload, table_name: str):
     rediscover it from scratch.
     """
     try:
-        with request_timing.stage("serialize"):
+        with stages.stage("serialize"):
             return JSONResponse(content=payload)
     except (TypeError, ValueError) as exc:
         SLOW_JSON_FALLBACKS[table_name] = SLOW_JSON_FALLBACKS.get(table_name, 0) + 1
@@ -2324,7 +2304,7 @@ from grid_read import (  # noqa: E402 - the grid read path, importable without m
     search_scope_columns, total_order_keys, transaction_rows)
 
 
-from db_waits import QUERY_CANCELED  # noqa: E402 - the one spelling (audit_cache reads it too)
+import db_waits  # noqa: E402 - «was it cancelled» - the one judgement (audit_cache, column_stats read it too)
 
 
 def grid_read(route):
@@ -2357,7 +2337,7 @@ def grid_read(route):
             with read_limit(seconds), index_wants.reading() as kept:
                 answer = route(*args, **kwargs)
         except OperationalError as exc:
-            if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+            if not db_waits.cancelled(exc):
                 raise
             ask_read_indexes(asked, time.time() - started, kept)
             db = asked.get("db")
@@ -2676,7 +2656,7 @@ def grid_page(
     by_key = (after or before) and not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
     id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
     if id_results is None:
-        with request_timing.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
+        with stages.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
             keys_query = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit)
             index_wants.read_keys(keys_query, final_sort)                 # a slow page's plan is read from it
             id_results = keys_query.all()
@@ -2696,7 +2676,7 @@ def grid_page(
         from sqlalchemy import tuple_ as _tuple
 
         matches = _tuple(*page_keys).in_(id_list)
-    with request_timing.stage("data rows"):
+    with stages.stage("data rows"):
         raw_rows = db.query(table_model).filter(matches).all()
     id_to_idx = {rid: i for i, rid in enumerate(id_list)}
     # ⚠️ THE INSTANCE ATTRIBUTE NEEDS THE KEY'S NAME, not its column — this restores the
@@ -2717,10 +2697,10 @@ def grid_page(
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
     if part == grid_look.WRITERS:
-        with request_timing.stage("writers"):
+        with stages.stage("writers"):
             merged, _looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
         return {"table_name": table_name, "skip": skip, "written_by": grid_look.written_of(merged)}
-    with request_timing.stage("layers"):
+    with stages.stage("layers"):
         data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False, writers=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
@@ -2766,7 +2746,7 @@ def grid_page(
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}, key={'after' if after else 'before' if before else '-'}")
     
-    with request_timing.stage("ledger keys"):
+    with stages.stage("ledger keys"):
         unread = _attach_ledger_sources(db, table_name, data_list)
     looked = text_looked_columns(search_scope.get("columns") or () if q else (), filters)
     return _table_data_response({
@@ -2892,7 +2872,7 @@ def get_table_data(
             grid_pivot.order(db.query(table_model), table_model, grid_pivot.of(table_name), order_by, order_desc)
         else:
             resolve_sort(None, table_model, table_name, order_by, order_desc)
-        with request_timing.stage("count"):
+        with stages.stage("count"):
             counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
                                  transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                                  enrichment_queue_scope=enrichment_queue_scope)
@@ -5662,8 +5642,8 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     seen = {entry["table_name"] for entry in data}
     data += [{"table_name": table, "total": 0, "by_status": {}, "last_at": None, "sources": entries}
              for table, entries in sorted(sources.items(), key=lambda item: str(item[0])) if table not in seen]
-    progress = {"counting": held is None, "counted_at": (held or {}).get("counted_at"),
-                "count_seconds": (held or {}).get("count_seconds"), "failed": (held or {}).get("failed")}
+    progress = {"counting": held is None, "counted_at": (held or {}).get("at"),
+                "count_seconds": (held or {}).get("seconds"), "failed": (held or {}).get("failed")}
     return {"status": "success", "data": data, "progress": progress}
 
 
@@ -6760,8 +6740,38 @@ def get_mappers():
 # -----------------------------------------------------------------------------
 from chain import enrichment
 
+def missing_counts(db, rules):
+    """🔴 THE QUEUE COUNTS ARE HELD, NOT COUNTED PER READ (owner 11-10 «1 ㄱ»: every admin tab asked every rule's queue
+    count every 30 s): each rule's queue on its derived table is a key of QUEUE_COUNTS - counted behind, again
+    when that table changes (`invalidate_table_cache`) at most once per count_recount_seconds, to COUNT_CAP.
+    -> ({rule name: {"count", "capped", "counted_at", "failed"}}, the sum's {"total", "capped", "counted_at",
+    "updating", "unknown": [rule names not counted or failed]})"""
+    from parsers import directory_watcher
+
+    each, keys = {}, []
+    for rule in rules:
+        name, table = rule["name"], rule["derived_table"]
+        model = grid_model(table, None)
+        if model is None:
+            each[name] = {"count": None, "capped": False, "counted_at": None,
+                          "failed": {"reason": "table %s is not declared" % table, "at": None}}
+            continue
+        key = narrowed_table_query(db, table, model, enrichment_queue=name)[1]
+        keys.append(key)
+        held = _kept_count(db, key, functools.partial(_table_rows, table, None, enrichment_queue=name),
+                           directory_watcher.count_max_age_seconds(), wait=0, counts=QUEUE_COUNTS) or {}
+        each[name] = {"count": held.get("total"), "capped": held.get("capped", False),
+                      "counted_at": held.get("at"), "failed": held.get("failed")}
+    unknown = [name for name, one in each.items() if one["count"] is None or one["failed"]]
+    counted = [one for one in each.values() if one["count"] is not None]
+    return each, {"total": sum(one["count"] for one in counted) if counted else None,
+                  "capped": any(one["capped"] for one in counted),
+                  "counted_at": min((one["counted_at"] for one in counted), default=None),
+                  "updating": any(QUEUE_COUNTS.busy(key) for key in keys), "unknown": unknown}
+
+
 @app.get("/enrichment/rules")
-def get_enrichment_rules():
+def get_enrichment_rules(db: Session = Depends(get_db)):
     """활성 enrichment 규칙 메타를 반환합니다.
 
     응답 계약: {"rules": [{name, source_table, derived_table, decision_key[],
@@ -6779,8 +6789,10 @@ def get_enrichment_rules():
     #   route below walks the SAME list - the index in `/references/{index}` points into it.
     from chain import enrich_declarations
 
-    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
-    return {"rules": [enrichment.config.to_public_rule(r) for r in rules]}
+    rules = [enrichment.config.to_public_rule(r)
+             for r in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)]
+    each, missing = missing_counts(db, rules)
+    return {"rules": [dict(rule, missing=each[rule["name"]]) for rule in rules], "missing": missing}
 
 @app.get("/enrichment/rules/{rule_name}/references/{index}")
 def get_enrichment_reference(rule_name: str, index: int, params: str = None, db: Session = Depends(get_db)):

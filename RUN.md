@@ -1,5 +1,43 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **읽기 뒤에서 세는 일이 한 기제 — 컬럼 고르기는 바로 답하고, 어드민 결손 수는 서버가 쥔 수** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     그리드 전체 행 수 · 최근 이력 따라잡기 · 컬럼 고르기의 정확한 셈 · 자동 확정 결손 수 · Overview 재교정률 · 공수 점수가 한 기제(runtime.behind)
+>          일꾼은 다섯 따로: whole-counter · queue-counter · audit-recent · column-counts · dashboard-figures — 하나가 길어도 다른 것을 안 묶음
+>          Overview 의 두 수: 어드민 둘이 동시에 열어도 audit_logs 셈은 한 번(60 초마다 다시), 요청은 최대 2 초 기다림
+> 새로 보임 컬럼 고르기(/columns): 바로 추정치(exact false, updating true) → 셈이 끝나면 exact true · counted_at
+>          GET /enrichment/rules: 규칙마다 missing{count, capped, counted_at, failed} · 최상위 missing{total, capped, counted_at, updating, unknown}
+>          Running(지금 도는 일)에 «column-counts · <표>» · «queue-counter · <표…>» — where api
+> 볼 줄    [Columns] the exact counts of <표> were not counted: … · [Count] the queue count of … was not counted: …
+>          Overview 의 재교정률 · 공수 칸이 «still being worked out» → 셈이 2 초를 넘어 아직 도는 중(Running 의 dashboard-figures 줄), 다음 열기에 값
+>          — 셈 실패. 지난 수는 남고 답에 failed
+> 답의 뜻  컬럼 고르기가 계속 추정치 + count_cut → 그 표 셈이 column_count_seconds(기본 120)를 넘어 끊김.
+>            적재가 끝난 뒤 recount=true 로 다시, 또는 설정을 올림. 끊긴 셈은 «스스로» 다시 세지 않음
+>          결손 수 updating 이 안 끝남 → Running 의 queue-counter 줄 초. 그리드 개수는 그동안도 움직여야 정상
+>          그리드 개수가 오래 counting → Running 의 whole-counter 줄(결손 셈과 무관 — 일꾼이 다름)
+> 바뀐 것  다시 세기 쉼(count_recount_seconds · 이력 CATCH_UP_GAP_SECONDS)은 지난 셈이 «끝난» 때부터 셈(전엔 시작부터)
+> 설정     ingestion_settings.json  column_count_seconds(기본 120) · count_recount_seconds(결손 수도 이 간격)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
+> ## [11-10] **구간 기록이 한 함수 — 소급 비트 · 느린 요청 줄에 구간이 더 보인다** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     소급 실행 단계 줄 · 체인 그룹 줄 · 느린 요청 줄이 같은 구간 기록을 씀. 한 구간은 그때 열린 줄 «전부»에 감
+> 새로 보임 소급 비트 · 단계 줄(retroactive_debug 켜면): 규칙 다시 돌리기 · 재생 fold 안의 체인 구간 — «Page 1: mapper» · «Page 1: write:<표>»
+>          느린 요청 줄 [Slow] … · <구간> s (SQL s · 행 · Python s): 실패 파일 재시도 → parse · apply · commit,
+>          소급 count 미리보기 · 선언 Test run → withdrawal count · translate · sql translate · event frames · dry run · row refs,
+>          파일 다시 읽기 미리보기 → walk · sources · lookup · judge
+> 그대로   그룹 줄 · [Reread] 줄 · 요청 줄의 db 초 · 질의 수 · 바이트. 줄을 합하는 쪽(그룹 · 요청)은 바깥 구간만 셈 — 구간 초 합 ≤ 전체
+> 답의 뜻  소급 비트가 «Page N: write:<표>» 에 오래 머묾 = 그 표 쓰기가 느림(체인 워커의 같은 구간과 같은 뜻)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```

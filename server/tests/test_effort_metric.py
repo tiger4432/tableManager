@@ -598,7 +598,7 @@ def test_dashboard_summary_carries_score_weights_and_coverage(client, db_session
     db_session.commit()
 
     import main
-    main.EFFORT_CACHE["value"] = None      # TTL cache must not serve a stale run
+    main.FIGURES.forget()      # TTL cache must not serve a stale run
 
     res = client.get("/dashboard/summary")
     assert res.status_code == 200
@@ -610,7 +610,45 @@ def test_dashboard_summary_carries_score_weights_and_coverage(client, db_session
     assert body["weights"] == {"key": 1.0, "mouse": 3.0, "nav": 5.0,
                                "nav_preserved": 0.0}
     assert body["unavailable_reason"] is None
-    main.EFFORT_CACHE["value"] = None
+    main.FIGURES.forget()
+
+
+def test_two_summaries_at_once_work_a_figure_out_once(db_session, monkeypatch):
+    """lead 11-10: the summary's audit figures on one worker - two admins at once wait on the same run (one read of
+    audit_logs, not two side by side); within its TTL a figure is not worked out again, past it it is; a run longer than
+    the wait answers «still being worked out» and the next ask its value."""
+    import threading
+    import time
+
+    import main
+
+    runs, gate = [], threading.Event()
+
+    def slow(db):
+        runs.append(1)
+        gate.wait(5)
+        return {"window_days": 7, "measured_cells": 4, "recorrected_cells": 1, "rate_pct": 25.0}
+
+    monkeypatch.setattr(crud, "get_recorrection_stats", slow)
+    monkeypatch.setattr(main, "FIGURE_WAIT_SECONDS", 0.2)
+    answers = []
+    askers = [threading.Thread(target=lambda: answers.append(main._get_recorrection_stat(db_session)))
+              for _ in range(2)]
+    for asker in askers:
+        asker.start()
+    for asker in askers:
+        asker.join()
+    assert [a.unavailable_reason for a in answers] == ["still being worked out"] * 2
+    gate.set()
+    monkeypatch.setattr(main, "FIGURE_WAIT_SECONDS", 5.0)
+    for _ in range(100):
+        if not main.FIGURES.busy("recorrection"):
+            break
+        time.sleep(0.02)
+    assert main._get_recorrection_stat(db_session).rate_pct == 25.0 and len(runs) == 1, "one run for both"
+    assert main._get_recorrection_stat(db_session).rate_pct == 25.0 and len(runs) == 1, "within its TTL - kept"
+    monkeypatch.setattr(main, "RECORRECTION_CACHE_TTL", 0.0)
+    assert main._get_recorrection_stat(db_session).rate_pct == 25.0 and len(runs) == 2, "past its TTL - again"
 
 
 def test_dashboard_survives_a_failing_effort_query(client, db_session, monkeypatch):
@@ -625,8 +663,7 @@ def test_dashboard_survives_a_failing_effort_query(client, db_session, monkeypat
         raise RuntimeError("canceling statement due to statement timeout")
 
     monkeypatch.setattr(crud, "get_effort_stats", boom)
-    main.EFFORT_CACHE["value"] = None
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
     res = client.get("/dashboard/summary")
     assert res.status_code == 200
@@ -641,8 +678,7 @@ def test_dashboard_survives_a_failing_effort_query(client, db_session, monkeypat
         "coverage must go dark too - a ratio without a score is unreadable"
     assert body["effort"]["unavailable_reason"]
     assert body["effort"]["weights"], "the configured weights are still reported"
-    main.EFFORT_CACHE["value"] = None
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 def test_the_unavailable_reason_names_the_actual_cause_not_a_canned_timeout(
@@ -659,13 +695,13 @@ def test_the_unavailable_reason_names_the_actual_cause_not_a_canned_timeout(
         raise RuntimeError("column interaction_effort_logs.nav_preserved_count does not exist")
 
     monkeypatch.setattr(crud, "get_effort_stats", boom)
-    main.EFFORT_CACHE["value"] = None
+    main.FIGURES.forget()
 
     reason = client.get("/dashboard/summary").json()["effort"]["unavailable_reason"]
     assert "nav_preserved_count does not exist" in reason, "name the real failure"
     assert "RuntimeError" in reason
     assert "시간 초과" not in reason, "must not claim a timeout that did not happen"
-    main.EFFORT_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 def test_a_real_timeout_is_still_identified_as_one(client, db_session, monkeypatch):
@@ -675,12 +711,12 @@ def test_a_real_timeout_is_still_identified_as_one(client, db_session, monkeypat
         raise RuntimeError("canceling statement due to statement timeout")
 
     monkeypatch.setattr(crud, "get_effort_stats", boom)
-    main.EFFORT_CACHE["value"] = None
+    main.FIGURES.forget()
 
     reason = client.get("/dashboard/summary").json()["effort"]["unavailable_reason"]
     assert "시간 초과" in reason and "idx_effort_window" in reason, \
         "the timeout case must still point at the index that fixes it"
-    main.EFFORT_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 def test_a_failing_effort_query_does_not_take_the_recorrection_rate_with_it(
@@ -697,13 +733,11 @@ def test_a_failing_effort_query_does_not_take_the_recorrection_rate_with_it(
     db_session.commit()
 
     monkeypatch.setattr(crud, "get_effort_stats", boom)
-    main.EFFORT_CACHE["value"] = None
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
     body = client.get("/dashboard/summary").json()
     assert body["effort"]["avg_score"] is None
     assert body["recorrection"]["measured_cells"] == 1, \
         "the re-correction rate must still be computed"
     assert body["recorrection"]["unavailable_reason"] is None
-    main.EFFORT_CACHE["value"] = None
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()

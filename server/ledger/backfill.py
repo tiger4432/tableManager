@@ -95,6 +95,7 @@ from pathlib import Path
 import time
 from typing import Any
 from error_said import told
+from runtime.stages import stage
 from . import roleframe
 
 logger = logging.getLogger("Ledger.Backfill")
@@ -450,7 +451,7 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
         previewed.pop("preview")                 # the translation itself is not an answer
         result.update(previewed)
         # what the withdrawal would take - a preview's count; an apply's is its DELETE's (총괄 10-14)
-        with keyset_scan.stage("withdrawal count", len(result["refs"])) as said:
+        with stage("withdrawal count", len(result["refs"])) as said:
             result["withdraw"] = LedgerStore(engine, world=world).atoms_for_refs(source, result["refs"])
             if result["refs"] and keyset_scan.debugging():
                 said["note"] = "%d atoms %s" % (result["withdraw"],
@@ -462,7 +463,6 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     """The translation of rows already read - a whole scope, or one page of a paged `rescope` (총괄 8d8abfb5d): the
     atoms it remakes and their refs. What the withdrawal takes is counted by `preview_rescope` alone - a page's
     DELETE says it (총괄 10-14: the same search ran twice a page)."""
-    from chain import keyset_scan
     from .setup import preview_selected_cursor_batch
     from .runtime_v2 import _filtered_event_atoms, last_cursor
 
@@ -471,7 +471,7 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     # `()` - "nothing assumed already registered" - on every door: the preview counts what the
     # apply then writes, so the two ask on the same basis (the probe that could say otherwise
     # retired 10-07; nothing ever handed it a live set).
-    with keyset_scan.stage("translate", len(frame)):
+    with stage("translate", len(frame)):
         preview = preview_selected_cursor_batch(
             setup, source, frame, cursor_value, known_registrations=())
     atoms = [atom for group in _filtered_event_atoms(preview.event_results, ())
@@ -804,7 +804,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             with roleframe.times_read(readings):
                 previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["remake"] += previewed["remake"]
-            with keyset_scan.stage("index lines of the rows", len(scope_row_ids)) as said:
+            with stage("index lines of the rows", len(scope_row_ids)) as said:
                 indexed = {ref for who, ref
                            in store.row_refs_for(plan.relation, scope_row_ids)
                            if who == source}
@@ -817,7 +817,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
-            with keyset_scan.stage("write", len(frame)) as said, roleframe.times_read(readings):
+            with stage("write", len(frame)) as said, roleframe.times_read(readings):
                 try:
                     executed = execute_selected_scoped_batch(
                         setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
@@ -888,7 +888,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                 spoken = {str(row_id) for _relation, row_id, _ref in executed.preview.row_refs}
                 stale = [row_id for row_id in scope_row_ids if row_id not in spoken]
                 if stale:
-                    with keyset_scan.stage("forget index lines", len(stale)):
+                    with stage("forget index lines", len(stale)):
                         result["forgotten"] += store.forget_row_refs(
                             plan.relation, stale, source=source)
         # 🔴 what the page's read refused, by the gate's reason - a remake that refuses a row writes
@@ -1145,7 +1145,7 @@ def _scope_pages(engine, plan, scoped, page_rows, key_range=None):
         read = engine.raw_connection()
         try:
             limit = None if size is None else size.next()
-            with keyset_scan.stage("read", limit) as said:
+            with stage("read", limit) as said:
                 planned = {} if keyset_scan.debugging() else None
                 rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=limit,
                                               scope=scoped, planned=planned, upper=upper)
