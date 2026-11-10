@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import uuid6
 
+import grid_look
 import shipped
 from conftest import retire_dynamic_model
 from database import crud, models
@@ -68,9 +69,20 @@ def _layers(db_session, row_id, column, *names):
 
 
 def _read(client, **params):
+    """The page as the screen paints it (owner 11-10 ㄱ): the page, then - its looks `updating` - its cells' writers,
+    read by the page's own arguments and `part=writers`."""
     answer = client.get("/tables/%s/data" % TABLE, params=params)
     assert answer.status_code == 200, answer.text
-    return answer.json()
+    page = answer.json()
+    if (page.get("looks") or {}).get("updating"):
+        later = client.get("/tables/%s/data" % TABLE, params=dict(params, part=grid_look.WRITERS))
+        assert later.status_code == 200, later.text
+        written = later.json()["written_by"]
+        for row in page["data"]:
+            for column, cell in row["data"].items():
+                if grid_look.paint_key(row["row_id"], column) in written:
+                    cell["written_by"] = written[grid_look.paint_key(row["row_id"], column)]
+    return page
 
 
 def test_a_layer_is_written_by_a_person_the_chain_a_model_a_file_or_a_merge():
