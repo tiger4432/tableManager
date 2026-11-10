@@ -1,7 +1,8 @@
 """Owner 11-10 «AI 메모리 설정은 내가 해야하나?» - no: an ask or report rule whose `memory` names no table remembers in
 the shipped `sys_ai_memory` by its columns (`ask_rule.memory_of`), and a prompt reads it back as `prompts.memory`
 would with no scope, five rows, when that is not written. A `memory` naming a table goes as written; one writing only
-columns or only `comment` is the shipped table with those on top. The same correction makes the same memory row."""
+columns is the shipped table with those columns as written, only `comment` the shipped table and columns. The same
+correction makes the same memory row."""
 import json
 import os
 
@@ -30,8 +31,9 @@ REPORT = {
 BRANCHES = {                                   # memory block -> the table it remembers in
     "written": (WRITTEN, "am_memory"),
     "none": (None, ask_rule.MEMORY_TABLE),
-    "columns only": ({"columns": {"who": "who"}}, ask_rule.MEMORY_TABLE),
+    "columns only": ({"columns": dict(ask_rule.MEMORY_COLUMNS)}, ask_rule.MEMORY_TABLE),
     "comment only": ({"comment": "note_text"}, ask_rule.MEMORY_TABLE),
+    "table only": ({"table": "am_memory"}, "am_memory"),         # the columns the defaults' (A's NO-GO ②)
 }
 
 
@@ -94,7 +96,13 @@ def test_the_same_correction_makes_the_same_memory_row_in_every_branch(world, br
     spec = rule_shape.as_chain_rule(_declaration("report", memory))["params"]
     assert "prompts" not in spec, "canary: no prompts.memory written"
     said = ask_rule.memory_lines(world, spec, "eval_summary", {"wafer_id": "W1"})
-    assert "you said scratch led; correct: particle led" in said, said
+    if memory is None:              # no block: the rule's whole memory (owner 11-10)
+        assert "you said scratch led; correct: particle led" in said, said
+    else:                           # a block written, no prompts.memory: read nothing, as before (A's NO-GO ③)
+        assert said == "", said
+    read = dict(spec, prompts={"memory": {}})
+    assert "you said scratch led; correct: particle led" in ask_rule.memory_lines(
+        world, read, "eval_summary", {"wafer_id": "W1"}), "a written prompts.memory reads it in every branch"
 
 
 def test_a_written_prompts_memory_goes_as_written(world):
@@ -108,3 +116,30 @@ def test_a_written_prompts_memory_goes_as_written(world):
     assert ask_rule.memory_lines(world, spec, "another_rule", {"wafer_id": "W1"}) == ""
     assert ask_rule.memory_lines(world, REPORT, "another_rule", {"wafer_id": "W1"}) == "", \
         "one rule's memory is not another's - purpose is the rule's name"
+
+
+@pytest.mark.parametrize("memory,said", [
+    ({"columns": {"who": "editor"}}, "memory.columns: editor not in sys_ai_memory"),
+    ({"table": "am_memory", "columns": {"memo": "note"}}, "memory.columns: note not in am_memory"),
+    ({"table": "no_such_table"}, "memory.table 'no_such_table' is not a declared table"),
+])
+def test_a_memory_naming_what_its_table_does_not_hold_is_refused_at_save(world, memory, said):
+    rules, refusal, _notes = rule_shape.expand_declaration(_declaration("ask", memory))
+    assert rules == [] and said in refusal, refusal
+
+
+def test_a_rule_name_ending_in_the_halfs_tail_is_refused_at_save(world):
+    declaration = _declaration("ask", None)
+    declaration["name"] = "eval" + rule_shape.COMPANION_SUFFIX
+    rules, refusal, _notes = rule_shape.expand_declaration(declaration)
+    assert rules == [] and "may not end in ':target'" in refusal, refusal
+    assert rule_shape.expand_declaration(_declaration("ask", None))[1] is None, "canary: the same, named plainly"
+
+
+def test_a_memory_writing_some_columns_keeps_those_and_stands(world):
+    """A rule declared before the defaults: its columns go as written - no default role is added, so a memory table
+    without `memo` still stands (the reviewer-comment rule's shape)."""
+    columns = {key: column for key, column in ask_rule.MEMORY_COLUMNS.items() if key != "memo"}
+    rules, refusal, _notes = rule_shape.expand_declaration(_declaration("ask", {"table": "am_memory", "columns": columns}))
+    assert refusal is None and len(rules) == 2, refusal
+    assert ask_rule.memory_of({"memory": {"columns": columns}})["columns"] == columns

@@ -53,13 +53,32 @@ MEMORY_READING = {"limit": 5}
 
 
 def memory_of(spec) -> dict:
-    """`spec`'s memory - its `memory` as written when it names a table, else `MEMORY_TABLE` with `MEMORY_COLUMNS`, the
-    columns or `comment` it writes on top. The one reading of the block."""
+    """`spec`'s memory - what its `memory` writes over the defaults: `MEMORY_TABLE` unless it names a table,
+    `MEMORY_COLUMNS` unless it writes `columns` - written ones go as written, a role not named is not kept (a rule
+    declared before the defaults keeps what it wrote) - a `comment` as written. The one reading of the block."""
+    from database import crud
+
     memory = (spec or {}).get("memory")
     memory = memory if isinstance(memory, dict) else {}
-    if memory.get("table"):
-        return memory
-    return {**memory, "table": MEMORY_TABLE, "columns": {**MEMORY_COLUMNS, **(memory.get("columns") or {})}}
+    table = memory.get("table")
+    return {**memory, "table": MEMORY_TABLE if crud.is_blank_value(table) else str(table).strip(),
+            "columns": dict(memory.get("columns") or MEMORY_COLUMNS)}
+
+
+def memory_refusal(spec):
+    """A `memory` naming a column its memory table does not declare - refused by name at save, not left to fail on the
+    first correction. None when it holds (or there is no `memory`)."""
+    import chain_bindings
+
+    if not isinstance((spec or {}).get("memory"), dict):
+        return None
+    memory = memory_of(spec)
+    declared = set(chain_bindings.declared_columns(memory["table"]) or ())
+    if not declared:
+        return "memory.table %r is not a declared table" % memory["table"]
+    missing = sorted({column for column in memory["columns"].values() if column not in declared})
+    return ("memory.columns: %s not in %s (it has: %s)" % (", ".join(missing), memory["table"], ", ".join(sorted(declared)))
+            if missing else None)
 
 
 def comment_column(spec):
@@ -438,9 +457,14 @@ def memory_lines(db, spec, purpose, situation):
     """The «past corrections» lines of a prompt: this purpose's memory rows whose `prompts.memory.scope` values are
     this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it.
     A scope column the situation or the remembered key does not hold matches nothing (lead 10-28): a column held on
-    neither side is a declaration slip, and «all match» would carry another wafer's corrections."""
+    neither side is a declaration slip, and «all match» would carry another wafer's corrections. A rule with no `memory`
+    block reads `MEMORY_READING` - the rule's whole memory, no scope (owner 11-10 «설정 안 해도»); one that wrote the
+    block reads only by its `prompts.memory`, as before."""
     memory, reading = memory_of(spec), (spec.get("prompts") or {}).get("memory")
-    reading = reading if isinstance(reading, dict) else MEMORY_READING
+    if not isinstance(reading, dict):
+        if isinstance(spec.get("memory"), dict):
+            return ""
+        reading = MEMORY_READING
     named = memory.get("columns") or {}
     if not purpose:
         return ""

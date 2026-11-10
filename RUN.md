@@ -4,8 +4,10 @@
 >
 > ```
 > 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
->          prompts.memory 를 안 적었으면 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
->          운영에서 이미 memory 블록을 적은 규칙은 그대로, 안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
+>          memory 블록도 prompts.memory 도 안 적은 규칙은 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
+>          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼),
+>          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
+>          저장 거절 둘: 이름이 «:target» 으로 끝나는 규칙 · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐)
 >          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
 >          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
 >          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
