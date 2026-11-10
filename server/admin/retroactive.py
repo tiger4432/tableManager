@@ -1270,11 +1270,15 @@ def _send_broadcasts(messages):
 
 def _run_withdraw(db, params, log, control=None):
     from chain import replay
+    from database.context import cascade
 
     written_by, columns = replay.unwritten_scope(params.get("rule"), params["table"], params.get("columns"))
-    s = replay.withdraw_source(db, params["table"], params["source"],
-                                     columns=columns, apply=True, log=log,
-                                     checkpoint=_checkpoint(control), written_by=written_by)
+    # 🔴 [owner 11-10 «소급 ㄱ»] a withdrawal cascades as the live chain's does: the next chain takes back what the
+    #    withdrawn value fed. The one retroactive write that does - the others wake nothing (owner 09-26).
+    with cascade(True):
+        s = replay.withdraw_source(db, params["table"], params["source"],
+                                   columns=columns, apply=True, log=log,
+                                   checkpoint=_checkpoint(control), written_by=written_by)
     _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")), s)
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"], "rows_deleted": s["rows_deleted"]}
@@ -2268,6 +2272,8 @@ OPERATIONS = {
         "run": _run_withdraw,
         "judge": _judge_withdraw,
         "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
+        "downstream_note": ("The chain follows a withdrawal as it follows a live write - the rules that take chain "
+                            "events from this table take back what the withdrawn value fed"),
         # It deletes a source's CLAIM, not the cell: the revealed value is recomputed and
         # written, and every changed cell gets an AuditLog entry naming the withdrawn source.
         # A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
@@ -4009,7 +4015,8 @@ def operation(op: str) -> dict:
 
 #: What a run's writes do to the chain - true of every operation, because they all run through
 #: `_run_to_the_end`'s retroactive channel (소유자 09-26, 총괄 c2995cdd8). An operation whose
-#: writes happen somewhere else says its own sentence (`downstream_note` in its spec).
+#: writes happen somewhere else, or cascade (the withdrawal, owner 11-10), says its own sentence
+#: (`downstream_note` in its spec).
 DOWNSTREAM_NOTE = ("Downstream chain rules are not triggered by a retroactive run - run them "
                    "too if they read what this changed")
 

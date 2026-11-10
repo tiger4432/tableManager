@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **체인 거두기 — 값만 붙인 체인은 행을 안 붙든다 · 소급 탭 거두기는 다음 체인까지 · 사람 핀은 행을 붙든다 · 소급 쓰기 거절 문장** — git pull · 재기동 API · 체인 워커
+>
+> ```
+> 무엇     체인 1 이 만든 행에 체인 2 가 값만 붙인 모양(a official → master ← b official):
+>          체인 1 이 행을 거두면(agree 빠짐 · a 행 지움) master 행이 체인 2 의 값과 같이 지워지고, 체인 2 는 DELETE 를 받는다
+>          (전: «K1, 값 없음, b1» 행이 남음). 행을 붙드는 것은 사람 층 · 핀 · 파일 같은 체인 아닌 작성자 · 그 행을 만든 체인뿐
+>          소급 탭 Withdraw 가 cascade 를 실어, 거둔 값이 먹인 다음 체인의 값도 거둔다. 다른 소급 연산은 그대로 연쇄 없음
+>          소급 쓰기로 안 깨운 규칙의 대기열 사유: «a retroactive run's write; it wakes no rule - replay the next rule to carry it on»
+>          (전: 옵트인한 규칙에도 «this rule does not declare allow_chain_trigger»)
+> 볼 줄    chain_worker.log  [ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left
+> 답의 뜻  거둔 뒤에도 master 행이 남음 → 그 행 칸의 이력(층): user · 파일 이름 · 그 행을 만든 규칙의 층 중 하나가 붙든다
+>          Withdraw 뒤 다음 표 값이 그대로 → 다음 규칙이 allow_chain_trigger 를 안 적음(대기열 사유가 allow_chain_trigger 문장)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> 안 하는 것 이미 남아 있는 «키 + 붙인 값» 행은 소급 Remove rows with no source left 가 안 지운다(그 연산은 키 밖이 다 빈 행만 읽음)
+> ```
+>
+> ---
+>
 > ## [11-10] **소급끼리 «쓰는 곳»이 안 겹치면 같이 돈다 — 백필 · 원장 소급이 도는 동안 다른 표의 체인 소급이 시작** — git pull · 런처 재기동(스케줄러 · 체인 워커 · API)
 >
 > ```
@@ -5471,7 +5489,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 무엇     규칙이 더는 안 내는 행의 층을 거두면(편집 · 원천 행 지움 · 리플레이가 깨운 편집 · R2 withdraw),
 >          층이 하나도 안 남은 행은 그 자리에서 지워짐 — 지금까지는 키 칸이 빈 채(business_key_val 만 남음) 남았음
-> 보이는 것 chain_worker.log «[ChainShell] table=<표> rows_deleted=N - only the chain's keys were left»
+> 보이는 것 chain_worker.log «[ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left»
 >          바로 뒤 «[ChainRetract] … rows_told=… rows_deleted=N»
 >          R2 미리보기 «At most N row(s) are left with no layer and are deleted as shells.» · 결과 rows_deleted
 > 남는 것  사람 층 · 파일 층 · 다른 규칙 층이 있는 행은 안 지움 · 출신 행 없는 맵퍼(SELECT 로 다시 읽어 냄)는 거둘 것을 못 고름 (그대로)
@@ -8081,7 +8099,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 명령     git pull  ->  체인 워커 재기동 (바뀐 서버 파일은 chain/ingestion_worker.py 하나 — 서버 · 수집기 · 스케줄러는 그대로)
-> 볼 줄    chain_worker.log 의 [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+> 볼 줄    chain_worker.log 의 [ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left
 > 뜻      집계가 빈 decide 의 파생 행 표에 대해 이 줄이 더 안 뜨면 고쳐진 것 — 그 표의 행이 키 + 빈 집계로 남는다
 >          공식 표(복사 규칙)에 대해 이 줄이 뜨는 것은 설계대로다: 원본이 다 지워졌거나 접기 표시로 보류가 비워진 «기존» 행
 >          파생 표에 대해 계속 뜨면: 이미 있던 행의 집계가 값 -> 빈 값으로 바뀐 쓰기다(그 행은 지워지고 다음 트리거가 새로 만들면 남는다)
@@ -8185,7 +8203,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >    답      «N row(s) of '«공식 표»' show nothing outside their keys; M of them have only the chain's key layers left» — M 이 지울 수
 >    뜻      리허설: ① 직후 미리보기 M 82 · ⑥' 뒤 M 4 · 실행 «4 of 4 row(s) deleted»
 >            ⑥ 앞에서 쓸면 지운 행을 ⑥ 이 다시 만든다(앞 판 355ba2092 에서 잼: 82 행 · 공식 표 123 -> 205) — 그래서 ⑥ 뒤
->            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left» 와 함께 사라지고
+>            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - nothing but the chain's keys and values another chain attached was left» 와 함께 사라지고
 >            사람이 적은 칸이 있는 행은 남는다 · 소급 탭 «Remove rows with no source left» 의 count 가 이 미리보기와 같은 수
 >    멈춤    소급 탭 × — 쪽 사이(95cffa5af)
 > ⑦b 원장 ref 인덱스           python scripts/build_ledger_ref_index.py                       -> --apply          1.5 · 1.2 초
@@ -9199,7 +9217,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 껍데기란      키 칸 밖에 값 있는 층 0(체인이 쓴 빈 칸은 없는 것으로) · 키 칸 층은 체인 것뿐 · 사람 층 0(빈 값이어도)
 >              그리고 화면에 키 밖 값이 없음
 > 그 뒤로       회수와 다시 세기 뒤 그런 행이 되면 체인이 그 쓰기 바로 뒤 지운다
->              chain_worker.log  [ChainShell] table=<표> rows_deleted=N - only the chain's keys were left
+>              chain_worker.log  [ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left
 >              지운 행마다 이력 한 줄(updated_by chain_shell_rows) · 원장은 그 행의 원자를 거둔다 · 그 삭제는 어떤 규칙도 안 깨운다
 > 급할 때      git revert <이 커밋> -> 체인 워커 · 서버 재기동 (이미 지운 행은 원본을 다시 넣으면 다시 생긴다)
 > ```
@@ -12356,7 +12374,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇이 바뀌나   outbox 사건에 경로 칸 — chain · api · file · retroactive. 층 이름(source_name)은 그대로
 >               chain        체인이 쓴 것(자동 확정 포함) — 옵트인한 규칙만 깨움 · 깊이 상한이 셈
 >               api · file   사람 · 다른 클라이언트 · 파일 적재 — 오늘처럼 모든 규칙을 깨움
->               retroactive  소급 탭 · CLI 의 모든 소급 실행이 쓴 것 — 옵트인이어도 «아무 규칙도» 안 깨움. 하류는 하류를 따로 소급
+>               retroactive  소급 탭 · CLI 의 모든 소급 실행이 쓴 것 — 옵트인이어도 «아무 규칙도» 안 깨움. 하류는 하류를 따로 소급 (11-10 부터 거두기 withdraw 는 연쇄 — 맨 위 [11-10] 항목)
 >               그리드 클릭 리플레이만 연쇄(cascade) — 옵트인 규칙만 깨움. 클라는 d3659ec09 부터 cascade: true 를 보냄(빌드 포함 — 브라우저 새로고침 뒤)
 > 재기동 뒤      server\config\ingestion_settings.json 의 "enrichment_auto_confirm_enabled" 를 true 로 되돌려도 됨 — 자동 확정 쓰기가 이제 옵트인을 지남
 > 확인          chain 박동 note 에 "N event(s) read by source name (no channel)" — 착지 전에 쌓인 체인 사건을 옛 방식(source_name)으로 읽은 수

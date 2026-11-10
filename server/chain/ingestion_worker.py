@@ -1262,11 +1262,7 @@ def _rule_accepts_event(rule, event) -> bool:
     payload = get_payload_dict(event)
     channel = event_constants.channel_of(payload)
     if channel == event_constants.CHANNEL_RETROACTIVE:
-        # 🔴 A retroactive run's write wakes nothing, opt-in or not (소유자 09-26, 총괄
-        #   c2995cdd8 - chain_ingestion_guide §5.6 narrowed). Its downstream is run by running
-        #   it too; its own trigger events carry no channel and still wake their rule.
-        #   The grid's click replay asks to cascade, and cascades as the chain does (146b208cb).
-        if not event_constants.cascade_of(payload):
+        if _retroactive_held(payload):
             return False
         channel = event_constants.CHANNEL_CHAIN
     from database import crud
@@ -1289,6 +1285,15 @@ def _rule_accepts_event(rule, event) -> bool:
     if wrote and wrote == {rule_shape.declaration_of(rule)}:
         return False
     return bool(rule.get("allow_chain_trigger"))
+
+
+def _retroactive_held(payload) -> bool:
+    """🔴 A retroactive run's write wakes nothing, opt-in or not (소유자 09-26, 총괄 c2995cdd8 - chain_ingestion_guide
+    §5.6 narrowed). Its downstream is run by running it too; its own trigger events carry no channel and still wake
+    their rule. The grid's click replay asks to cascade, and cascades as the chain does (146b208cb); so does the
+    reprocessing screen's withdrawal (`retroactive._run_withdraw`, owner 11-10 «소급 ㄱ»). The one seat that asks it: `_rule_accepts_event` holds the event, `fire_refusal` says so (lead 11-10)."""
+    return (event_constants.channel_of(payload) == event_constants.CHANNEL_RETROACTIVE
+            and not event_constants.cascade_of(payload))
 
 
 #: Events `_rule_accepts_event` read by their source name because they carry no channel. Ids,
@@ -1357,13 +1362,17 @@ def fire_refusal(rule, event):
     if not rule_watches_changed_columns(rule, event):
         return FIRE_REFUSED_COLUMNS
     if not _rule_accepts_event(rule, event):
-        return FIRE_REFUSED_CHAIN
+        # the reason it holds: a retroactive run's write, else a chain write this rule does not opt into
+        return FIRE_REFUSED_RETROACTIVE if _retroactive_held(get_payload_dict(event)) else FIRE_REFUSED_CHAIN
     return None
 
 
 #: The two answers of `fire_refusal` the pre-run outcome tells apart.
 FIRE_REFUSED_COLUMNS = "none of its wake columns changed"
 FIRE_REFUSED_CHAIN = "chain-produced event; this rule does not declare allow_chain_trigger"
+#: A retroactive run's write (`_retroactive_held`) - said for what it is: before, it read as FIRE_REFUSED_CHAIN even
+#: for a rule that declares allow_chain_trigger (lead 11-10, owner's two-chain withdrawal).
+FIRE_REFUSED_RETROACTIVE = "a retroactive run's write; it wakes no rule - replay the next rule to carry it on"
 #: Why a deletion does not wake a rule (`_is_trigger_event`) - the queue screen's sentence.
 FIRE_REFUSED_DELETE = "a deletion; an ask or report rule is not run again by one"
 
@@ -1586,8 +1595,9 @@ def _rule_outcome_before_running(rule, events):
         if why is None:
             return None, None
         refused.add(why)
-    if FIRE_REFUSED_CHAIN in refused:
-        return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, FIRE_REFUSED_CHAIN
+    for why in (FIRE_REFUSED_CHAIN, FIRE_REFUSED_RETROACTIVE):
+        if why in refused:
+            return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, why
     if FIRE_REFUSED_COLUMNS in refused:
         # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게. 묶음마다 한 번, 실제로 안 돌 때만.
         logger.info("[Chain] rule %s skipped: none of %s changed",
@@ -2065,7 +2075,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     results = list(results) + _rows_not_in(db, target_table, withdrawn, results)
 
                 # 🔴 [총괄 5eee501eb · 판정 ㄱ] A ROW THIS WRITE EMPTIED, LEFT WITH ONLY THE CHAIN'S KEYS, GOES -
-                #    the grid's delete (its layers, a history line, one DELETE, which wakes no rule). Asked
+                #    the grid's delete (its layers, a history line, one DELETE on the chain's channel). Asked
                 #    here, after the write, and not at the withdrawal: the hold the write counts again is
                 #    not written there yet. A row the write only keyed is not asked, nor one it created - a new row was
                 #    never emptied (총괄 10-12: a decide's row whose aggregation is blank was deleted by the write
@@ -3907,11 +3917,10 @@ def _settle(db, table, settles, items, covers, rows_too=True, ask_shells=True, w
     if left:
         model = models.DYNAMIC_TABLES[table]
         kept = dict(db.query(model.row_id, model.business_key_val).filter(model.row_id.in_(sorted(left))))
-        others = cell_layer.rows_others_wrote(db, table, {row: left[row] for row in kept})
-        persons = cell_layer.person_rows(db, table, list(kept))
+        keepers = cell_layer.person_rows(db, table, list(kept), own={row: left[row] for row in kept})
         doomed = []
         for row_id, key in sorted(kept.items(), key=lambda kv: str(kv[1])):
-            writers = sorted(set(others.get(row_id, ())) | ({crud.USER_SOURCE} if row_id in persons else set()))
+            writers = keepers.get(row_id)
             if writers:
                 logger.warning("[ChainRetract] kept %s %s: no source rows, but %s wrote on it", table, key,
                                ", ".join(writers))

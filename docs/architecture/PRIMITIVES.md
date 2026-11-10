@@ -2395,7 +2395,7 @@
 ### **규칙이 이 사건에 «깨어나나»는 `chain.ingestion_worker.wakes(rule, event)` 한 자리** (2026-10-14 등록 · B `d3c143d45`, 총괄 옛 키 ㄱ)
 - **어디**: `wakes(rule, event)` = `_is_trigger_event(event, rule)`(종류 — CREATE · EDIT, 지움은 규칙이 허락할 때) 그리고 `fires(rule, event)`(쌍). 규칙을 고르는 자리(`_rows_cap` · `_group_triggered_rules` …)가 전부 이것을 묻고, 묶기(`group_id`)만 `fires` 하나를 묻는다.
 - **언제 재사용**: 사건에 따라 규칙을 고르는 새 자리 — 종류 · 쌍 판정을 옆에 다시 적지 않는다(이 셋은 아홉 자리에 사본으로 있었다).
-- **같이 서는 자리**(🆕 10-14 `4abf68886` 다시 착지): 판단 키의 한 철자 `enrichment.mapper._clean_key` · 남의 층이 있는 행은 안 지움 `cell_layer.rows_others_wrote` · 지우기 실패 = 그룹 실패(`retry_count`, 상한 1 이면 첫 실패에 FAILED) · 사건의 옛 값은 동적 표 칸의 `active_history`(`models._mapped`, 🆕 `0585513d7`) — 안 읽힌 채 고친 행에도 실린다.
+- **같이 서는 자리**(🆕 10-14 `4abf68886` 다시 착지): 판단 키의 한 철자 `enrichment.mapper._clean_key` · 붙드는 것이 있는 행은 안 지움 `cell_layer.person_rows(…, own=)`(🆕 11-10 값만 붙인 체인은 안 붙든다) · 지우기 실패 = 그룹 실패(`retry_count`, 상한 1 이면 첫 실패에 FAILED) · 사건의 옛 값은 동적 표 칸의 `active_history`(`models._mapped`, 🆕 `0585513d7`) — 안 읽힌 채 고친 행에도 실린다.
 - **함정**: decide 가 «행이 떠난 키»(편집으로 옮겨 감 · 지움)도 다시 세려면 그 사건에도 깨어나야 한다 — 종류 판정을 좁히면 옛 키의 수가 낡은 채 남는다.
 
 ### **표의 추정 행 수는 `ledger.column_stats.estimated_rows(db, relation)` 한 자리 — 이름이 아니라 `to_regclass` 로 찾는다** (2026-10-14 등록 · A `208d7cefc`)
