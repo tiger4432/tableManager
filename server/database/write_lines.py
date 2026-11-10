@@ -96,25 +96,34 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     claimed = dict(targets)
     gated = _version_gate(table, cfg, items, targets, old)
     held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
+    plain = _plain(table, cfg, items, targets, old, held)
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
+    moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
+    left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
-        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in kept}
+        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
     written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     _heads(db, ln, chunks, written)
     gone = sorted({targets[i] for i in kept if items[i]["line_kind"] == DELETED})
     for page in _pages(gone, 1):
         db.execute(delete(now).where(now.c.row_id.in_(page)))
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in kept} - set(gone)), at, held, old)
+    rows_plain = {}
+    for i in sorted(plain):
+        rows_plain.setdefault(targets[i], {}).update(plain[i])
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, held,
+                     old, rows_plain)
     changed = {}
-    for i in sorted(kept):
+    for i in sorted(list(kept) + moved):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
     _stage(db, table, cfg, shape["columns"], changed, keys,
-           {targets[i]: set(items[i].get("values") or ()) for i in kept if items[i]["line_kind"] == WRITE})
-    said = [{"row_id": claimed.get(i), "work": work[i] if i in kept else "gated" if i in claimed and i not in targets
+           {targets[i]: set(items[i].get("values") or ()) | set(plain.get(i) or ())
+            for i in list(kept) + moved if items[i]["line_kind"] == WRITE})
+    said = [{"row_id": claimed.get(i), "work": work[i] if i in work else "gated" if i in claimed and i not in targets
              else "left_out" if i in targets else None,
-             "columns": sorted(it.get("values") or ()) if it["line_kind"] == WRITE else list(it.get("columns") or ())}
+             "columns": sorted(set(it.get("values") or ()) | set(plain.get(i) or ())) if it["line_kind"] == WRITE
+             else list(it.get("columns") or ())}
             for i, it in enumerate(items)]
     return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated,
             "items": said}
@@ -129,6 +138,30 @@ def _open(db):
     connection = db.connection()
     if not connection.connection.dbapi_connection.in_transaction:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def _plain(table, cfg, items, targets, old, held) -> dict:
+    """A write's columns of no history (`crud.keeps_history`, `no_history_columns` - state cells written every few
+    seconds; lead 11-11 ㄴ) leave no line and no audit: their value goes to t as it is - the «a column of no line is t's
+    value» rule's case, no new mechanism. Taken out of the item's values here, after the claim and the version gate
+    saw them whole. -> {item index: {column: value as t holds it}} of the claimed items whose value moves."""
+    types = cfg.get("column_types") or {}
+    out = {}
+    for i, it in enumerate(items):
+        if it["line_kind"] != WRITE or i not in targets:
+            continue
+        free = {c: v for c, v in (it.get("values") or {}).items() if not crud.keeps_history(table, c)}
+        if not free:
+            continue
+        it["values"] = {c: v for c, v in it["values"].items() if c not in free}
+        was = old.get(targets[i]) or {}
+        said = {c: crud.line_value(crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
+                                                  held.get(c, "string")), held.get(c, "string"))
+                for c, v in free.items()}
+        said = {c: v for c, v in said.items() if targets[i] not in old or was.get(c) != v}
+        if said:
+            out[i] = said
+    return out
 
 
 def _claim(db, table, cfg, now, items):
@@ -333,7 +366,7 @@ def _heads(db, ln, chunks, written):
     db.execute(statement, params)
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, held, old):
+def _merge_now(db, table, cfg, shape, row_ids, at, held, old, plain):
     """Step 5 - the touched current lines merged again from their head lines and pins, a column at a time by
     `lines.winners_sql` (the one query `lines.merge` reads too), and written with won_by. Returns {row_id: {column:
     value}} as written."""
@@ -353,6 +386,9 @@ def _merge_now(db, table, cfg, shape, row_ids, at, held, old):
         for page in _pages(row_ids, 1):
             for row_id, value, line_id in db.execute(query, {"row_ids": page}):
                 merged[row_id][c], won_by[row_id][c] = crud.line_value(value, held.get(c, "string")), line_id
+    for row_id, values in plain.items():
+        if row_id in merged:
+            merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
     db.execute(update(now).where(now.c.row_id == bindparam("r")).values(
         {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])

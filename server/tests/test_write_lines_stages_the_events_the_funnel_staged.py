@@ -134,3 +134,28 @@ def test_a_time_column_stored_as_text_carries_its_text_as_written(db, monkeypatc
     assert (create, edit) == (written, written), (create, edit)
     held = db.execute(text("SELECT t FROM ob_text_time")).scalar_one()
     assert held == written, "t holds the text as written, not a time spelled again"
+
+
+def test_a_column_of_no_history_changes_t_and_its_event_with_no_line_and_no_audit(db, monkeypatch):
+    """no_history_columns (lead 11-11 ㄴ): a state cell written every few seconds leaves no line - t changes, the event
+    says it as today, the audit has no row for it; the same write's other column is a line as ever."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(CFG, no_history_columns=["n"]))
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    out = _write(db, "f1", k="A", n="busy")
+    _events(db)
+    [row_id] = out["changed"]
+    lined = db.execute(select(ln.c.n).where(ln.c.row_id == row_id)).scalars().all()
+    with crud.transaction_context("probe", "tx", "f1"):
+        again = _write(db, "f1", k="A", n="idle")
+    assert (again["items"][0]["work"], again["lines"], again["audit"]) == ("edit", 0, []), again
+    assert _text(_events(db)) == _text([("EDIT", {"row_id": row_id, "business_key": "A", "data": {
+        "k": dict(SAID, value="A"), "n": dict(SAID, value="idle"), "m": dict(SAID, value=None)},
+        "updated_by": "probe", "source_name": "f1", "old": {"n": "busy"}})])
+    same = _write(db, "f1", k="A", n="idle")
+    assert (same["items"][0]["work"], _events(db)) == ("left_out", []), "the same state again moves nothing"
+    both = _write(db, "f2", k="A", n="off", m="3")
+    t = lines.shape(db, TABLE, CFG)["table"]
+    now = db.execute(select(t.c.n, t.c.m, t.c.won_by)).one()
+    assert (both["lines"], now.n, now.m, set(now.won_by)) == (1, "off", 3, {"k", "m"}), (both, now)
+    assert lined == [None] and db.execute(select(ln.c.n).where(ln.c.n.is_not(None))).scalars().all() == [], \
+        "no line ever holds the column"

@@ -33,13 +33,13 @@ def stand_in_winners(shape):
 
 
 def stand_in_spoken(db, table, row_ids):
-    """Stand-in for C's lines.spoken until it lands: {row_id: the columns a write line of it names} - its written
-    bits OR-ed."""
+    """Stand-in for C's lines.spoken until it lands: {row_id: the columns any line of it names} - every line's written
+    bits OR-ed (a withdraw names the cells it takes back; a mark or a deleted line names none)."""
     shape = lines.shape(db, table, crud.TABLE_CONFIG[table])
     ln, out = shape["lines"], {}
     names = lines.bit_columns("written", shape["chunks"])
     for row in db.execute(select(ln.c.row_id, *[ln.c[n] for n in names]).where(
-            ln.c.row_id.in_(list(row_ids)), ln.c.line_kind == "write")):
+            ln.c.row_id.in_(list(row_ids)))):
         for c, bit in shape["bits"].items():
             if (row[1 + bit // 64] & 0xFFFFFFFFFFFFFFFF) >> (bit % 64) & 1:
                 out.setdefault(row[0], set()).add(c)
