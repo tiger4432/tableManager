@@ -231,9 +231,16 @@ def index_name(table_name: str, suffix: str) -> str:
 def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's two tables as Core Table objects on a private MetaData, with the names and the bit map they were built
     from. Assigns slots to new declared columns (the caller commits)."""
+    from sqlalchemy import inspect
+
     from .models import sql_type_of
 
-    declared = [name for name in (table_cfg.get("column_types") or {}) if name not in {n for n, _ in FRAMEWORK}]
+    stored = (physical_kinds(db, now_relation(table_name))
+              if inspect(db.connection()).has_table(now_relation(table_name)) else {})
+    types = dict(table_cfg.get("column_types") or {})
+    types.update(stored)                         # a built column is typed as it is STORED (as the migration keeps it)
+    table_cfg = {**table_cfg, "column_types": types}
+    declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
     bits = assign_bits(db, table_name, declared)
     chunks = chunk_count(db, table_name)
     meta = MetaData()
