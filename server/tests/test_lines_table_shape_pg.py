@@ -47,6 +47,8 @@ def test_the_pre_check_lists_tables_without_the_key_index_with_the_next_action(d
     make_table(db, "lt_nokey", CFG, unique_key=False)
     make_table(db, "lt_dups", CFG, unique_key=False)
     db.execute(text("INSERT INTO lt_dups (row_id, business_key_val) VALUES ('a', 'K'), ('b', 'K')"))
+    assert lines.key_index_standing(db.connection(), "lt")
+    assert not lines.key_index_standing(db.connection(), "lt_nokey")
     missing = line_migration.key_index_missing(db, ["lt", "lt_nokey", "lt_dups"])
     assert missing == [("lt_nokey", (lines.KEY_BUILD, 0)), ("lt_dups", (lines.KEY_FOLD, 1))]
     line = line_migration.key_index_line(missing)
