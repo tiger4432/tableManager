@@ -263,3 +263,117 @@ def count_row_history(query, cap: int = None):
     rows = query.with_entities(sa.literal(1)).limit(cap + 1).all()
     n = len(rows)
     return (cap, True) if n > cap else (n, False)
+
+
+# ---------------------------------------------------------------------------
+# Lines (cell-source overhaul, docs/design/CELL_SOURCE_OVERHAUL.md «읽기 — D 분야»)
+# ---------------------------------------------------------------------------
+
+#: The kinds a history shows: a write, a withdrawal, a row deleted. A «mark» line (a pin, a rank re-merge) says no
+#: column and stays out of the history pages - the audit navigation reaches it.
+HISTORY_KINDS = ("write", "withdraw", "deleted")
+LINE_BITS = 64
+
+
+def entry_id(line_id, column):
+    """One history entry's id - a line and the column it said. The broadcast builds its lines with this too, so one
+    record is the same id on both (client2 compares them with ===)."""
+    return "%d:%s" % (int(line_id), column)
+
+
+def line_bits(db, table_name) -> dict:
+    """{column: bit} of `table_name`'s lines (`line_columns`, a column not retired), in bit order."""
+    rows = db.execute(sa.text("SELECT column_name, bit FROM line_columns WHERE table_name = :t AND retired_at IS NULL "
+                              "ORDER BY bit"),
+                      {"t": table_name}).fetchall()
+    return {name: int(bit) for name, bit in rows}
+
+
+def _line_table(table_name, bits):
+    from database import lines, models
+
+    model = models.DYNAMIC_TABLES.get(table_name)
+    typed = {c.name: c.type for c in model.__table__.columns} if model is not None else {}
+    chunks = max(bits.values(), default=0) // LINE_BITS + 1
+    return sa.Table(lines.lines_relation(table_name), sa.MetaData(),
+                    sa.Column("line_id", sa.Integer), sa.Column("line_kind", sa.String),
+                    sa.Column("source_name", sa.String), sa.Column("at", sa.DateTime(timezone=True)),
+                    sa.Column("written_by", sa.String), sa.Column("batch", sa.String),
+                    sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
+                    *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
+                      for kind in ("written", "withdrawn")],
+                    *[sa.Column(name, typed.get(name, sa.String())) for name in bits])
+
+
+def _said(row, bit, kind="written"):
+    chunk, place = divmod(bit, LINE_BITS)
+    return bool((int(getattr(row, "%s_%d" % (kind, chunk)) or 0) >> place) & 1)
+
+
+def line_page(db, table_name, row_id, limit, cursor=None, column=None):
+    """One page of `row_id`'s lines, newest first by (at, line_id) - the (row_id, at) index - with `column`, the lines
+    that said it and the row's deletion. -> (rows, bits, truncated, next_cursor); a page counts lines, not entries."""
+    bits = line_bits(db, table_name)
+    t = _line_table(table_name, bits)
+    query = sa.select(t).where(t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS))
+    if column is not None:
+        if column not in bits:
+            return [], bits, False, None
+        chunk, place = divmod(bits[column], LINE_BITS)
+        mask = 1 << place
+        mask = mask - (1 << LINE_BITS) if mask >= 1 << (LINE_BITS - 1) else mask      # a signed bigint
+        query = query.where(sa.or_(t.c["written_%d" % chunk].op("&")(mask) != 0, t.c.line_kind == "deleted"))
+    if cursor:
+        at, line_id = decode_cursor(cursor)
+        query = query.where(sa.tuple_(t.c.at, t.c.line_id) < sa.tuple_(at, line_id))
+    rows = db.execute(query.order_by(t.c.at.desc(), t.c.line_id.desc()).limit(limit + 1)).fetchall()
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    return rows, bits, truncated, (encode_cursor(rows[-1].at, rows[-1].line_id) if truncated and rows else None)
+
+
+def line_entries(table_name, row, bits, column=None, business_key=None, row_deleted=False):
+    """A line as today's history entries (schemas.AuditLogResponse fields): one per column it said - withdrawn: no
+    value -, or the row-deletion entry (crud.ROW_DELETION_COLUMN, «row deleted», system)."""
+    from database import crud
+
+    base = {"table_name": table_name, "row_id": row.row_id, "updated_by": row.written_by,
+            "transaction_id": row.batch, "business_key": row.business_key_val or business_key,
+            "timestamp": row.at, "is_row_deleted": row_deleted}
+    if row.line_kind == "deleted":
+        return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
+                     new_value="row deleted", source_name="system")]
+    return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
+                 new_value=None if _said(row, bit, "withdrawn") else getattr(row, name))
+            for name, bit in bits.items() if (column is None or name == column) and _said(row, bit)]
+
+
+def count_row_lines(db, table_name, row_id, cap: int = None):
+    """How many history lines a row has, as `(count, is_floor)` - `count_row_history`'s bound, over the lines."""
+    cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    t = _line_table(table_name, {})
+    n = len(db.execute(sa.select(sa.literal(1)).select_from(t).where(
+        t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS)).limit(cap + 1)).fetchall())
+    return (cap, True) if n > cap else (n, False)
+
+
+def line_keys(db, table_name, row_ids) -> dict:
+    """{row_id: its business key} - the newest line of each row that names one: a deleted row's key, its history's."""
+    t = _line_table(table_name, {})
+    ids, out = list(dict.fromkeys(str(r) for r in row_ids or () if r)), {}
+    for i in range(0, len(ids), 1000):
+        for row_id, key in db.execute(sa.select(t.c.row_id, t.c.business_key_val).where(
+                t.c.row_id.in_(ids[i:i + 1000]), t.c.business_key_val.isnot(None))
+                .order_by(t.c.at.asc(), t.c.line_id.asc())).fetchall():
+            out[row_id] = str(key)
+    return out
+
+
+def deleted_line_rows(db, table_name, row_ids) -> set:
+    """The rows among `row_ids` with a «deleted» line - gone, not unreadable."""
+    t = _line_table(table_name, {})
+    ids, found = list(dict.fromkeys(str(r) for r in row_ids or () if r)), set()
+    for i in range(0, len(ids), 1000):
+        found.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
+            t.c.row_id.in_(ids[i:i + 1000]), t.c.line_kind == "deleted").distinct()).fetchall())
+    return found

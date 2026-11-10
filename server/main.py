@@ -1500,65 +1500,13 @@ def list_tables(request: Request = None):
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
-    # Try querying the business_key column directly from any AuditLog entry for this row
-    log = db.query(models.AuditLog.business_key).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id,
-        models.AuditLog.business_key.isnot(None)
-    ).order_by(models.AuditLog.timestamp.desc()).first()
-    if log and log[0]:
-        return str(log[0])
-
-    # Fallback: Query the AuditLog to find the value from past cell-level edits on key_col
-    config = crud.TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    if key_col:
-        fallback_log = db.query(models.AuditLog.new_value).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id == row_id,
-            models.AuditLog.column_name == key_col
-        ).order_by(models.AuditLog.timestamp.desc()).first()
-        if fallback_log and fallback_log[0]:
-            return str(fallback_log[0])
-    return None
+    """A row's business key from its lines - the newest that names one (`get_deleted_rows_business_keys_bulk`)."""
+    return get_deleted_rows_business_keys_bulk(db, table_name, [row_id]).get(row_id)
 
 def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: list) -> dict:
-    """[C-1 Fix] batch_delete용 business_key 일괄 유도 — 행별 N+1 쿼리를 청크당 IN 쿼리 2회로 대체.
-
-    get_deleted_row_business_key와 동일 의미론(최신 business_key 우선, 없으면 key_col 셀 편집
-    로그의 new_value fallback)을 유지하되 1000행 청킹으로 대량 삭제에서도 안전하다.
-    반환: {row_id: business_key(str)}
-    """
-    result = {}
-    if not row_ids:
-        return result
-    config = crud.TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    CHUNK = 1000
-    for i in range(0, len(row_ids), CHUNK):
-        chunk = row_ids[i:i + CHUNK]
-        # 1차: AuditLog.business_key를 직접 보유한 로그 (timestamp 오름차순 순회 → 최신값이 최종 반영)
-        rows = db.query(models.AuditLog.row_id, models.AuditLog.business_key).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id.in_(chunk),
-            models.AuditLog.business_key.isnot(None)
-        ).order_by(models.AuditLog.timestamp.asc()).all()
-        for r_id, bk in rows:
-            if bk:
-                result[r_id] = str(bk)
-        # 2차 fallback: business_key 미보유 행은 key_col 셀 편집 로그의 new_value에서 유도
-        if key_col:
-            missing = [r for r in chunk if r not in result]
-            if missing:
-                fb_rows = db.query(models.AuditLog.row_id, models.AuditLog.new_value).filter(
-                    models.AuditLog.table_name == table_name,
-                    models.AuditLog.row_id.in_(missing),
-                    models.AuditLog.column_name == key_col
-                ).order_by(models.AuditLog.timestamp.asc()).all()
-                for r_id, nv in fb_rows:
-                    if nv:
-                        result[r_id] = str(nv)
-    return result
+    """{row_id: business_key} of rows by their lines (cell-source overhaul): every line carries the row's key as it was
+    written, so the newest line that names one answers - one IN statement a 1,000 rows."""
+    return audit_history.line_keys(db, table_name, row_ids)
 
 def resolve_missing_business_keys(db: Session, log_models: list) -> None:
     """`business_key`가 빈 삭제 행 로그들을 **한 번에** 채운다. (in-place)
@@ -3498,7 +3446,7 @@ def get_row_data(table_name: str, row_id: str, world: str = None, db: Session = 
     }
 
 
-def _history_page(db: Session, table_name: str, row_id: str, base_query,
+def _history_page(db: Session, table_name: str, row_id: str, column,
                   limit, cursor, disclose_row_total: bool = False) -> schemas.AuditHistoryPage:
     """One keyset page of audit history + the row-level enrichment both tabs need.
 
@@ -3519,8 +3467,9 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
     settings = audit_history.resolve_settings(audit_history.load_config())
     page_size = audit_history.resolve_limit(limit, settings)
     try:
-        logs, truncated, next_cursor = audit_history.fetch_page(
-            base_query, models.AuditLog, page_size, cursor)
+        # the row's lines (cell-source overhaul «읽기 — D 분야»): a page counts lines, each said as its columns
+        lines_read, bits, truncated, next_cursor = audit_history.line_page(
+            db, table_name, row_id, page_size, cursor, column)
     except audit_history.CursorError as e:
         # 400, never a silent restart from page 1 - see CursorError.
         raise HTTPException(status_code=400, detail=f"Invalid history cursor: {e}")
@@ -3533,19 +3482,12 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
     row_exists = row_obj is not None
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
 
-    result = []
-    for log in logs:
-        log_res = schemas.AuditLogResponse.model_validate(log)
-        log_res.is_row_deleted = not row_exists
-        log_res.business_key = log.business_key or bk_val
-        result.append(log_res)
+    result = [schemas.AuditLogResponse.model_validate(entry) for line in lines_read
+              for entry in audit_history.line_entries(table_name, line, bits, column, bk_val, not row_exists)]
 
     row_total, row_total_capped = None, False
     if disclose_row_total:
-        row_total, row_total_capped = audit_history.count_row_history(
-            db.query(models.AuditLog).filter(
-                models.AuditLog.table_name == table_name,
-                models.AuditLog.row_id == row_id))
+        row_total, row_total_capped = audit_history.count_row_lines(db, table_name, row_id)
 
     return schemas.AuditHistoryPage(
         logs=result, truncated=truncated, next_cursor=next_cursor,
@@ -3564,11 +3506,7 @@ def get_row_history(table_name: str, row_id: str,
     입니다. 잘린 목록이 완전한 목록과 똑같이 생기면 그건 느린 응답이 아니라 **틀린
     응답**이므로, 절단은 언제나 응답 자신이 말합니다.
     """
-    q = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id
-    )
-    return _history_page(db, table_name, row_id, q, limit, cursor)
+    return _history_page(db, table_name, row_id, None, limit, cursor)
 
 @app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history", response_model=schemas.AuditHistoryPage)
 def get_cell_history(table_name: str, row_id: str, col_name: str,
@@ -3592,13 +3530,7 @@ def get_cell_history(table_name: str, row_id: str, col_name: str,
        ...}`를 ", "로 자르면 `"grid_rows"`라는 없는 컬럼이 생깁니다. 표현을 데이터로
        되돌리면 **자신 있게 틀린 이력**이 나옵니다. 고칠 곳은 쓰기 경로입니다.
     """
-    q = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id,
-        models.AuditLog.column_name == col_name
-    )
-    return _history_page(db, table_name, row_id, q, limit, cursor,
-                         disclose_row_total=True)
+    return _history_page(db, table_name, row_id, col_name, limit, cursor, disclose_row_total=True)
 
 @app.post("/tables/{table_name}/rows")
 async def create_row(table_name: str, request: Request, count: int = 1, user_name: str = "system",

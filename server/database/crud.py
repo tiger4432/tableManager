@@ -6791,14 +6791,10 @@ ROW_DELETION_COLUMN = "DELETE"
 def deleted_rows(db: Session, table_name: str, row_ids) -> set:
     """The rows among `row_ids` that have a deletion history line (`record_row_deletions` - the grid's
     delete, the map purge and the job retraction all write one): gone, not unreadable (총괄 10-09,
-    S-158 widened). Asked by (table_name, row_id), the history indexes' lead."""
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = set()
-    for i in range(0, len(ids), 1000):
-        found.update(r for (r,) in db.query(models.AuditLog.row_id).filter(
-            models.AuditLog.table_name == table_name, models.AuditLog.row_id.in_(ids[i:i + 1000]),
-            models.AuditLog.column_name == ROW_DELETION_COLUMN).distinct())
-    return found
+    S-158 widened) - a «deleted» line (cell-source overhaul), asked by the (row_id, at) index's lead."""
+    from admin import audit_history
+
+    return audit_history.deleted_line_rows(db, table_name, row_ids)
 
 
 def record_row_deletions(db: Session, table_name: str, rows, user_name: str,

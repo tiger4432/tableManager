@@ -1,6 +1,6 @@
 import event_constants
 from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime, timezone
 
 class CellData(BaseModel):
@@ -18,11 +18,10 @@ class CellUpdate(BaseModel):
     updated_by: Optional[str] = "user"
 
 class AuditLogResponse(BaseModel):
-    id: int
+    id: Union[int, str]                 # a line's entry: "<line_id>:<column>" (audit_history.entry_id)
     table_name: str
     row_id: str
     column_name: str
-    old_value: Any
     new_value: Any
     source_name: str
     updated_by: str
