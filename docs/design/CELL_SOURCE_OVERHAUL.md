@@ -147,7 +147,7 @@
 
 - PG 단순 보기는 쓰기가 되고 sqlite 보기는 안 된다 — 그대로 두면 직접 쓰기가 PG 에서는 줄 구조를 조용히 건너뛰고 sqlite 에서는 터진다.
 - 두 방언 모두 보기 t 에 INSTEAD OF 트리거를 두어 쓰기를 거절한다. 오류 문장: «write_lines 를 지나라». 트리거가 줄 쓰기를 대신하지 않는다.
-- t 에 직접 쓰는 자리 — A 셈(origin/main 9fb1d6907, AST, 카나리아 apply_row_update_internal 의 setattr · _get_or_create_row 의 db.add): 제품 25 자리(4 파일) · 시험 290 자리(114 파일) · 스크립트 8 자리. 제품은 write_lines 를 직접 부른다.
+- t 에 직접 쓰는 자리 — A 셈(origin/main 9fb1d6907, AST, 카나리아 apply_row_update_internal 의 setattr · _get_or_create_row 의 db.add): 제품 25 자리(4 파일) · 시험 290 자리(114 파일) · 스크립트 8 자리. 제품의 연결 (총괄 11-10 ㄱ — 항목 꼴의 저자는 하나): apply_batch_updates 깔때기의 칸 판정은 그대로 두고, 그 끝의 번역 함수 하나가 항목을 write_lines 항목으로 바꿔 표마다 write_lines 를 한 번 부른다. 깔때기 밖 자리(만들기 · 지우기 · 거두기 · 고정 · 병합 · 소급)는 write_lines 를 직접 부르고 종류 낱말만 다르다.
 - 시험: flush 훅(database.write_changed_rows_by_shape)이 «씨앗 문맥» 안에서만 동적 모델의 add · 속성 대입 · session.delete 를 write_lines 로 넘긴다(종류 «seed», 출처는 행의 source 칸). 문맥 밖이면 «write_lines 를 지나라»로 거절한다 — 제품의 놓친 직접 쓰기가 조용히 줄이 되지 않게 (총괄 11-10). query().update/.delete · 원문 SQL 은 손으로 옮긴다. 시험 본문(test_* 함수 자체가 직접 쓰는 것 118 개 · 73 파일 — A 셈, 같은 AST 셈의 갈래)의 심는 줄 감싸기는 A 의 레인 에이전트(시험 파일만).
 - PG 시험 44 파일(A 셈: 직접 쓰는 114 파일 중 mark.pg 가 붙은 파일, pg_engine 고정물 scope="session")은 한 DB 를 같이 쓰고 손으로 치운다 — 정리 자리는 «DROP TABLE t» 대신 `lines.drop_line_table` 을 부른다. 놓친 «DROP TABLE t» 는 보기라서 터진다.
 
