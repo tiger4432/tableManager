@@ -970,9 +970,11 @@ def value_key(value, col_type: str):
         return None
     if col_type == "number":
         try:
-            return ("n", float(value))
+            number = float(value)
         except (ValueError, TypeError):
-            pass
+            number = None
+        if number is not None and number == number:          # a «nan» text compares as its text, not as NaN
+            return ("n", number + 0.0)                          # + 0.0 folds -0.0 into 0.0
     if col_type == "datetime":
         import expression
 
@@ -984,6 +986,36 @@ def value_key(value, col_type: str):
 
 def values_differ(old, new, col_type: str) -> bool:
     return value_key(old, col_type) != value_key(new, col_type)
+
+
+def line_text(value, col_type: str):
+    """A value as a line stores it - text whatever the column's type, so retyping a column never touches history
+    (총괄 11-10 ㄱ). Built from `value_key`: two values get one text exactly when they compare equal. None = absent."""
+    key = value_key(value, col_type)
+    if key is None:
+        return None
+    kind, v = key
+    return repr(v) if kind == "n" else v.isoformat() if kind == "t" else v
+
+
+def line_value(text, col_type: str):
+    """A line's text read back as the column's type - the one read-side cast."""
+    if text is None:
+        return None
+    if col_type == "number":
+        try:
+            number = float(text)
+        except ValueError:
+            return text
+        return number if number == number else text
+    if col_type == "datetime":
+        from datetime import datetime
+
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return text
+    return text
 
 
 def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name: str,

@@ -184,6 +184,7 @@ def test_create_all_does_not_add_a_column_to_an_existing_table(unmigrated_db):
 # migration that puts the column on an existing database, and say which migration
 # that is in the pull request.
 SYSTEM_TABLE_COLUMNS = {
+    "audit_batches": ('at', 'id', 'table_name', 'transaction_id', 'work_kind', 'written_by'),
     "audit_logs": ('business_key', 'column_name', 'id', 'new_value', 'old_value', 'row_id', 'source_name', 'table_name', 'timestamp', 'transaction_id', 'updated_by'),
     # auth_*: company sign-in (admin/sso.py), new tables made whole by create_all
     "auth_api_keys": ('created_at', 'id', 'key_hash', 'last_used_at', 'name', 'user_name'),
@@ -203,6 +204,7 @@ SYSTEM_TABLE_COLUMNS = {
     #   running on every existing database, because `create_all` never adds a column to a
     #   table it finds.
     # a whole replay's named maps - new, created whole (총괄 c67aa93bb ㄴ)
+    "line_columns": ('bit', 'column_name', 'retired_at', 'table_name'),
     "replay_named_maps": ('rows', 'rule', 'run_id', 'scope'),
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
