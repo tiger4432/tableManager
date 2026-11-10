@@ -111,3 +111,14 @@ def test_a_blank_layer_copies_as_null_through_the_one_seat(db):
                           .where(lt.c.row_id == "r3", lt.c.source_name.in_(["fileC", "fileD"]))).all())
     assert got == {"fileC": None, "fileD": None}
     assert ("r3", "lot") in {cell for cell in lines.layers(db, "t", ["r3"])}          # it still speaks
+
+
+def test_an_object_value_refuses_the_page_and_copies_nothing(db):
+    db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="qty",
+                                                    source_name="fileZ", value={"value": 5},
+                                                    ingested_at=T2, updated_by="seed"))
+    with pytest.raises(ValueError) as said:
+        line_migration.copy_page(db, "t", CFG, None, 10, transaction_id="tx-copy")
+    assert str(said.value) == line_migration.OBJECT_REFUSAL % {"t": "t", "row": "r1", "col": "qty", "source": "fileZ"}
+    lt = lines.shape(db, "t", CFG)["lines"]
+    assert db.execute(select(lt.c.line_id)).all() == []
