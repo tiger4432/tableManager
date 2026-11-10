@@ -65,4 +65,84 @@ def test_the_writers_read_counts_nothing_and_refuses_another_part(grid, monkeypa
     monkeypatch.setattr(main, "grid_count", lambda *a, **k: (_ for _ in ()).throw(AssertionError("counted")))
     assert client.get("/tables/%s/data" % TABLE, params={"part": grid_look.WRITERS}).status_code == 200
     assert client.get("/tables/%s/data" % TABLE, params={"part": "rows"}).status_code == 422
-    assert client.get("/tables/%s/data" % TABLE, params={"part": grid_look.WRITERS, "pivot": "true"}).status_code == 422
+    pivot = client.get("/tables/%s/data" % TABLE, params={"part": grid_look.WRITERS, "pivot": "true"})
+    assert pivot.status_code == 200 and set(pivot.json()) == {"table_name", "skip", "written_by"}, pivot.text
+
+
+def test_a_pivot_page_reads_no_writer_either(grid, db_session, monkeypatch):
+    """Lead 11-10 (ops: a pivot page read cell_sources 13 s for its 2,000 rows - the row page alone had been split):
+    a pivot page says `updating` and reads no layer's writer; its `part=writers` read does."""
+    client, ids = grid
+    _model_writers(db_session, ids)
+    _look(client, "rule", "r-chain", position="9", role="ok", written_by="chain", rule_columns='["value"]')
+    asked = []
+    real = grid_look._writers
+    monkeypatch.setattr(grid_look, "_writers", lambda *a, **k: asked.append(1) or real(*a, **k))
+    page = client.get("/tables/%s/data" % TABLE, params={"pivot": "true"})
+    assert page.status_code == 200 and page.json()["pivot"], page.text
+    assert page.json()["looks"]["updating"] is True and asked == [], "the pivot page read the layers' writers"
+    later = client.get("/tables/%s/data" % TABLE, params={"pivot": "true", "part": grid_look.WRITERS})
+    assert later.status_code == 200 and asked == [1] and "chain" in later.json()["written_by"].values(), later.text
+
+
+def test_the_writers_read_runs_under_the_grid_read_limit(grid, monkeypatch):
+    """Lead 11-10 (ops: a page's writers read 13 s on cell_sources while the screen had moved on): its statements run
+    under grid_read_timeout_seconds, as a search does - a plain page read does not."""
+    from database import context
+    from parsers import directory_watcher
+
+    client, _ids = grid
+    monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: 7.0)
+    seen = []
+    real = grid_look.read
+    monkeypatch.setattr(grid_look, "read", lambda *a, **k: seen.append(context.request_read_seconds.get())
+                        or real(*a, **k))
+    assert client.get("/tables/%s/data" % TABLE).status_code == 200
+    assert client.get("/tables/%s/data" % TABLE, params={"part": grid_look.WRITERS}).status_code == 200
+    assert seen == [None, 7.0], seen
+
+
+def test_the_same_page_asked_again_while_its_writers_read_runs_waits_for_that_read(grid, monkeypatch):
+    """One writers read a page at a time: a second ask of the same page shares the running read's answer; another
+    page reads its own."""
+    import threading
+    import time
+
+    client, _ids = grid
+    reads, go = [], threading.Event()
+    real = grid_look.written_of
+
+    def held(rows):
+        reads.append(1)
+        go.wait(10)
+        return real(rows)
+
+    monkeypatch.setattr(grid_look, "written_of", held)
+    answers = []
+
+    def ask(skip, **more):
+        answers.append(client.get("/tables/%s/data" % TABLE, params=dict(more, part=grid_look.WRITERS, skip=skip)))
+
+    first = threading.Thread(target=ask, args=(0,))
+    first.start()
+    deadline = time.monotonic() + 10
+    while not reads and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert reads == [1], "canary: the first read runs"
+    second = threading.Thread(target=ask, args=(0,))
+    second.start()
+    time.sleep(0.3)
+    assert reads == [1], "the same page was read twice at once"
+    pivot = threading.Thread(target=ask, args=(0,), kwargs={"pivot": "true"})
+    pivot.start()
+    while len(reads) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert reads == [1, 1], "the same arguments as a pivot are another read"
+    go.set()
+    for thread in (first, second, pivot):
+        thread.join(10)
+    assert [a.status_code for a in answers] == [200, 200, 200]
+    plain = [a.json() for a in answers if "pivot" not in a.request.url.query.decode()]
+    assert len(plain) == 2 and plain[0] == plain[1]
+    assert client.get("/tables/%s/data" % TABLE, params={"part": grid_look.WRITERS, "skip": 1}).status_code == 200
+    assert reads == [1, 1, 1], "another page reads its own"

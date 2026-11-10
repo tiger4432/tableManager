@@ -79,9 +79,13 @@ def _read(client, **params):
         assert later.status_code == 200, later.text
         written = later.json()["written_by"]
         for row in page["data"]:
-            for column, cell in row["data"].items():
+            for column, cell in (row.get("data") or {}).items():
                 if grid_look.paint_key(row["row_id"], column) in written:
                     cell["written_by"] = written[grid_look.paint_key(row["row_id"], column)]
+            for cell in (row.get("cells") or {}).values():       # a pivot's cell: its row's value column (lead 11-10)
+                key = grid_look.paint_key(cell.get("row_id"), page["pivot"]["value"])
+                if key in written:
+                    cell["written_by"] = written[key]
     return page
 
 

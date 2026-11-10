@@ -2348,7 +2348,9 @@ def grid_read(route):
                 asked.get("table_name"), asked.get("order_by", "row_id"), asked.get("filters")))))
         q = asked.get("q") if isinstance(asked.get("q"), str) else None     # a direct call leaves Query sentinels
         filters = asked.get("filters")
-        seconds = grid_read_timeout() if q or asked.get("search") or pattern_filtered_columns(filters) else None
+        # a page's writers read too (lead 11-10: ops read cell_sources 13 s for one, and the screen had long moved on)
+        seconds = (grid_read_timeout() if q or asked.get("search") or pattern_filtered_columns(filters)
+                   or asked.get("part") == grid_look.WRITERS else None)
         started = time.time()
         try:
             with read_limit(seconds):
@@ -2509,7 +2511,7 @@ def grid_page(
         return pivot_page(db, table_name, table_model, skip=skip, limit=limit, order_by=order_by,
                           order_desc=order_desc, filters=filters, counted=counted, q=q, cols=cols,
                           transaction_id=transaction_id, enrichment_queue=enrichment_queue,
-                          target_row_id=target_row_id, after=after, before=before)
+                          target_row_id=target_row_id, after=after, before=before, part=part)
 
     search_scope: dict = {}
     query, cache_key = narrowed_table_query(
@@ -2788,8 +2790,13 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns(), places=item_places)
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
-    merged, looks = read_as_page(db, table_name, raw_rows,
-                                 pivoted.keys + [pivoted.column, pivoted.value] + pivoted.carry, include_sources=False)
+    # 🔴 ITS CELLS' WRITERS READ AFTER IT TOO (lead 11-10: ops read cell_sources 13 s inside a pivot page of 2,000
+    #    rows) - `part=writers` answers them by the rows' own keys, as a row page's does
+    writers = asked.get("part") == grid_look.WRITERS
+    merged, looks = read_as_page(db, table_name, raw_rows, pivoted.keys + [pivoted.column, pivoted.value]
+                                 + pivoted.carry, include_sources=False, writers=writers)
+    if writers:
+        return {"table_name": table_name, "skip": skip, "written_by": grid_look.written_of(merged)}
     logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
                 "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
                 len(items), more, skip, limit, order_by, _filtered_column_count(filters))
@@ -2852,7 +2859,7 @@ def get_table_data(
     sort by is refused before anything is counted. `marking`: the reader's marking of this table narrows it, as its
     set filter (`markings.as_filters`) - the values never ride the URL. `part=writers`: the page's cells' writers
     alone, read after the page is drawn (`grid_look.WRITERS`) - nothing counted."""
-    if part not in (None, grid_look.WRITERS) or (part and pivot):
+    if part not in (None, grid_look.WRITERS):
         raise HTTPException(status_code=422, detail="part=%s: a row page's part is only 'writers'" % part)
     if marking:
         filters = markings.as_filters(db, table_name, marking, filters, access.person(request))
@@ -2869,11 +2876,44 @@ def get_table_data(
             counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
                                  transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                                  enrichment_queue_scope=enrichment_queue_scope)
-    return grid_page(table_name=table_name, skip=skip, limit=limit, q=q, cols=cols, order_by=order_by,
-                     order_desc=order_desc, target_row_id=target_row_id, transaction_id=transaction_id,
-                     filters=filters, enrichment_queue=enrichment_queue,
-                     enrichment_queue_scope=enrichment_queue_scope, defer_total=defer_total, world=world,
-                     after=after, before=before, counted=counted, pivot=pivot, part=part, db=db)
+    page = functools.partial(grid_page, table_name=table_name, skip=skip, limit=limit, q=q, cols=cols,
+                             order_by=order_by, order_desc=order_desc, target_row_id=target_row_id,
+                             transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
+                             enrichment_queue_scope=enrichment_queue_scope, defer_total=defer_total, world=world,
+                             after=after, before=before, counted=counted, pivot=pivot, part=part, db=db)
+    if part:
+        return _writers_once((table_name, world, pivot, skip, limit, q, cols, order_by, order_desc, target_row_id,
+                              transaction_id, filters, enrichment_queue, enrichment_queue_scope, after, before), page)
+    return page()
+
+
+#: The writers reads running now, by their page's arguments (lead 11-10: the screen drops a page's writers answer when
+#: it moves on, the database still reads it - ops read cell_sources 13 s a page). The same page asked again while its
+#: read runs waits for that read's answer; one read a page at a time, in this process, before the grid pool.
+_WRITERS_NOW, _WRITERS_LOCK = {}, threading.Lock()
+
+
+def _writers_once(key, read):
+    with _WRITERS_LOCK:
+        running = _WRITERS_NOW.get(key)
+        mine = running is None
+        if mine:
+            running = _WRITERS_NOW[key] = {"done": threading.Event()}
+    if not mine:
+        running["done"].wait()
+        if "failed" in running:
+            raise running["failed"]
+        return running["answer"]
+    try:
+        running["answer"] = read()
+        return running["answer"]
+    except BaseException as exc:
+        running["failed"] = exc
+        raise
+    finally:
+        with _WRITERS_LOCK:
+            _WRITERS_NOW.pop(key, None)
+        running["done"].set()
 
 
 @app.get("/tables/{table_name}/data/count")
