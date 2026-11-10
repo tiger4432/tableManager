@@ -170,6 +170,9 @@ class _Runs:
     def first(self):
         return self.row
 
+    def all(self):
+        return [] if self.row is None else [self.row]
+
 
 def run_row(op="ledger_backfill", state=retroactive.RUN_RUNNING,
             started_ago=3600.0, progressed_ago=None, params='{"source": "lot_event"}',
@@ -252,49 +255,45 @@ def test_no_run_in_flight_is_None_rather_than_an_invented_row():
 
 # ------------------------------------------------------------------ the gate itself
 
-@pytest.mark.parametrize("held", [True, False])
-def test_the_gate_never_opens_and_now_also_sees_other_processes(held):
-    """🔴 불변식은 그대로다 — 이 게이트는 «절대 더 열리지 않는다». 시간이 지났다고 여는 것은
-    멎은 실행을 「같은 셀을 두 세션이 쓰는」 순서와 바꾸는 일이고, 그건 `start_retroactive_run`
-    이 「나중에 아무도 설명 못 한다」고 적어 둔 바로 그것이다.
-
-    🔴 바뀐 것은 «범위»다(2026-09-22). 종전엔 `_retroactive_thread` «하나»만 봤다 — 이 프로세스
-       안의 손잡이다. 체인 리플레이가 워커로 가고 회수는 여기 남으므로, 게이트가 지키라고
-       쓰인 그 쌍이 «프로세스 둘»에 놓인다. 손잡이만 보면 그 경우에 계속 「열림」이라 답한다.
-    ⚠️ 그래서 «더 닫히는» 쪽으로만 바뀌었다. 이 시험이 지키는 불변식과 같은 방향이다.
-
-    ⚰️ 손잡이 증인은 은퇴했다 (총괄 f453968fe ③). 그것이 잡던 「행을 못 쓴 실행」은 이제 생길
-       수 없다 — `claim` 이 행을 «먼저» 쓰고, 못 쓰면 아무것도 안 띄운다. 일은 이 프로세스가
-       손잡이를 갖지 않는 자식에서 돈다. 증인은 표 하나다.
-    """
-    from run_auto_update import MultiDiscoveryScheduler
-
-    scheduler = types.SimpleNamespace(
-        retroactive_moving_state=lambda: {"run_id": "r"} if held else None)
-    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is held
+#: Where each stand-in op writes - fed to the gate so the judgement is measured apart from the declarations
+#: (`retroactive.writes` against real declarations has its own table in test_retro_gate_by_place.py).
+PLACES = {"ledger_backfill": {"ledger:w1"}, "ledger_rescope": {"ledger:w1"}, "chain_replay": {"table:t1"},
+          "mystery": {retroactive.EVERYWHERE}}
 
 
-def test_a_run_in_another_process_closes_the_gate_here():
-    """🔴 이것이 이 라운드가 연 «구멍»이다. 손잡이는 죽어 있고 표가 「돌고 있다」고 말한다 —
-    리플레이가 워커에서 돌고 회수가 여기서 시작되려는 정확히 그 순간이다.
-    종전 코드는 여기서 「열림」이라 답했고, 두 작업이 같은 표의 같은 셀을 썼을 것이다.
-    """
-    from run_auto_update import MultiDiscoveryScheduler
-
-    scheduler = types.SimpleNamespace(
-        _retroactive_thread=types.SimpleNamespace(is_alive=lambda: False),
-        retroactive_moving_state=lambda: {"run_id": "other-proc-1", "op": "chain_replay"})
-    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
+@pytest.fixture
+def places(monkeypatch):
+    monkeypatch.setattr(retroactive, "writes", lambda op, params: PLACES[op])
 
 
 @pytest.mark.parametrize("moving", ["progressing", "stalled", "unreported"])
-def test_the_gate_is_closed_for_a_stalled_run_exactly_as_for_a_moving_one(moving):
-    """Same row, same answer, whatever the run is doing."""
-    from run_auto_update import MultiDiscoveryScheduler
+def test_the_gate_never_opens_on_time(places, moving):
+    """🔴 불변식은 그대로다 — 겹치는 곳에 쓰는 실행이 돌면 게이트는 «시간이 지났다고» 열리지 않는다.
+    멎은 실행도 움직이는 실행과 «같은 답»이다. 바뀐 것(11-10)은 «누구에게» 닫히나 — 겹치는 실행에게만.
+    ⚰️ `retroactive_busy` 은퇴: 「무엇이든 돌면 전부 닫힘」을 `claim` 의 곳별 판단이 대신한다."""
+    ago = {"progressing": (60.0, 5.0), "stalled": (7200.0, 3600.0), "unreported": (7200.0, None)}[moving]
+    row = run_row(op="ledger_backfill", started_ago=ago[0], progressed_ago=ago[1])
+    got = retroactive.in_flight(_Runs(row), op="ledger_rescope", params={})
+    assert got is not None and got["run_id"] == "abc123"
+    assert got["overlaps"] == ["ledger:w1"]
 
-    scheduler = types.SimpleNamespace(
-        retroactive_moving_state=lambda: {"run_id": "r", "moving": moving})
-    assert MultiDiscoveryScheduler.retroactive_busy(scheduler) is True
+
+def test_a_run_writing_elsewhere_does_not_close_the_gate(places):
+    """원장 뒤따르기가 도는 동안 다른 표의 리플레이는 «같이 돈다» (총괄 11-10 ㄱ)."""
+    assert retroactive.in_flight(_Runs(run_row(op="ledger_backfill")), op="chain_replay", params={}) is None
+
+
+@pytest.mark.parametrize("running, asking", [("mystery", "chain_replay"), ("ledger_backfill", "mystery")])
+def test_a_run_whose_places_are_unknown_waits_for_and_holds_every_run(places, running, asking):
+    """쓰는 곳을 선언이 못 답하면 «모든 곳» — 어느 쪽이든 닫힌다. 모르는 것을 «안 겹친다»로 읽지 않는다."""
+    got = retroactive.in_flight(_Runs(run_row(op=running)), op=asking, params={})
+    assert got is not None and got["overlaps"]
+
+
+def test_asked_without_an_op_the_newest_run_in_flight_answers(places):
+    """화면·`/health` 가 묻는 자리 — 곳을 안 물으면 도는 실행 그대로."""
+    got = retroactive.in_flight(_Runs(run_row(op="chain_replay")))
+    assert got["run_id"] == "abc123" and "overlaps" not in got
 
 
 # ------------------------------------------- why it is running, not only that it is
@@ -356,13 +355,16 @@ def test_a_refusal_names_the_run_and_the_way_out(caplog, monkeypatch):
     #    저자가 하나라서 워커가 내는 거절도 «같은 문장»이고, 이 시험은 그 저자를 잰다.
     monkeypatch.setattr(
         retroactive, "gate_refusal",
-        lambda db: ("run_id=held-by-worker op=chain_replay moving for 12s "
+        lambda db, op=None, params=None: ("run_id=held-by-worker op=chain_replay moving for 12s "
                     "(runner=worker/7) — clear it with "
                     "POST /admin/retroactive/runs/held-by-worker/cancel"))
+    # the tick's refusal is `claim`'s (11-10: no busy pre-check) - claim raises the gate's own sentence
+    def refused(run_id=None, **_):
+        raise retroactive.RetroactiveRefused(retroactive.gate_refusal(None, "withdraw", {}))
+
+    monkeypatch.setattr(retroactive, "claim", refused)
     scheduler = types.SimpleNamespace(
         _retroactive_thread=types.SimpleNamespace(is_alive=lambda: False),
-        retroactive_moving_state=lambda: {"run_id": "held-by-worker"},
-        retroactive_busy=lambda: True,
         _retroactive_last=None)
 
     with caplog.at_level(logging.WARNING):

@@ -23,10 +23,10 @@ from chain import ingestion_worker as worker                             # noqa:
 
 def test_a_queued_replay_is_found_by_sweeping_not_by_a_doorbell(monkeypatch):
     """게이트 ⑰. 초인종을 «전혀 쓰지 않고» 찾는다 — 워커를 꺼 둔 사이에 걸린 일이 산다."""
-    monkeypatch.setattr(retroactive, "next_queued",
-                        lambda db, op: {"run_id": "r-1", "op": op, "params": {}}
-                        if op == "chain_replay" else None)
-    monkeypatch.setattr(retroactive, "gate_refusal", lambda db: None)
+    monkeypatch.setattr(retroactive, "queued_in_order",
+                        lambda db, op: [{"run_id": "r-1", "op": op, "params": {}}]
+                        if op == "chain_replay" else [])
+    monkeypatch.setattr(retroactive, "gate_refusal", lambda db, op=None, params=None: None)
 
     got = worker.start_replay_if_queued(object())
 
@@ -37,9 +37,9 @@ def test_nothing_queued_costs_one_question_and_no_gate_read(monkeypatch):
     """⚠️ 평소(대기 중인 리플레이 없음)에 게이트를 «안 묻는다». 워커 틱이 2 초라
     이 순서가 분당 질의 30 과 60 을 가른다."""
     asked = []
-    monkeypatch.setattr(retroactive, "next_queued", lambda db, op: None)
+    monkeypatch.setattr(retroactive, "queued_in_order", lambda db, op: [])
     monkeypatch.setattr(retroactive, "gate_refusal",
-                        lambda db: asked.append(1))
+                        lambda db, op=None, params=None: asked.append(1))
 
     assert worker.start_replay_if_queued(object()) is None
     assert asked == [], "대기 중인 것이 없는데 게이트를 물었다"
@@ -50,11 +50,11 @@ def test_a_closed_gate_refuses_and_says_how_to_clear_it(monkeypatch, caplog):
     문장의 저자는 `retroactive.gate_refusal` 하나라 스케줄러가 내는 것과 같다."""
     import logging
 
-    monkeypatch.setattr(retroactive, "next_queued",
-                        lambda db, op: {"run_id": "r-2", "op": op, "params": {}})
+    monkeypatch.setattr(retroactive, "queued_in_order",
+                        lambda db, op: [{"run_id": "r-2", "op": op, "params": {}}])
     monkeypatch.setattr(
         retroactive, "gate_refusal",
-        lambda db: "run_id=other op=withdraw moving for 3s (runner=sched/1) — "
+        lambda db, op=None, params=None: "run_id=other op=withdraw moving for 3s (runner=sched/1) — "
                    "clear it with POST /admin/retroactive/runs/other/cancel")
 
     with caplog.at_level(logging.INFO):
@@ -71,13 +71,27 @@ def test_a_sweep_that_throws_does_not_stop_the_drain(monkeypatch):
     def _boom(db, op):
         raise RuntimeError("retroactive_runs is mid-migration")
 
-    monkeypatch.setattr(retroactive, "next_queued", _boom)
+    monkeypatch.setattr(retroactive, "queued_in_order", _boom)
     try:
         worker.start_replay_if_queued(object())
     except RuntimeError:
         # 루프가 감싸고 있으므로 여기까지 새는 것 자체는 허용이다 —
         # 감싸는 자리가 «루프»라는 것을 아래 오라클이 못 박는다.
         pass
+
+
+def test_a_refused_older_replay_does_not_hold_a_newer_one(monkeypatch):
+    """11-10 (lead): the sweep takes the oldest queued replay whose places overlap no run in flight - one writing
+    where a running run writes waits, the one behind it writing elsewhere starts."""
+    monkeypatch.setattr(retroactive, "queued_in_order", lambda db, op: [
+        {"run_id": "r-busy", "op": op, "params": {"rule": "a"}},
+        {"run_id": "r-free", "op": op, "params": {"rule": "b"}}])
+    monkeypatch.setattr(retroactive, "gate_refusal", lambda db, op=None, params=None:
+                        "both write table:t1" if params["rule"] == "a" else None)
+
+    got = worker.start_replay_if_queued(object())
+
+    assert got is not None and got["run_id"] == "r-free"
 
 
 def test_the_loop_starts_the_replay_without_awaiting_it():
@@ -102,7 +116,7 @@ def test_the_loop_starts_the_replay_without_awaiting_it():
 
 
 # ---------------------------------------------------------------------------
-# 🔴 진짜 몸통 — 위의 넷은 `next_queued` 를 통째로 갈아끼운다
+# 🔴 진짜 몸통 — 위의 넷은 훑기(`queued_in_order`, 11-10 전엔 `next_queued`)를 통째로 갈아끼운다
 # ---------------------------------------------------------------------------
 # 그래서 그 넷은 「루프가 훑기를 «어떻게 쓰나»」를 재고, 훑기 «자체»는 한 번도 안 돌았다.
 # 실제로 그 몸통은 `from database import models` 가 빠져 박스에서 2 초마다 NameError 로

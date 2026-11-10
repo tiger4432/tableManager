@@ -17,6 +17,7 @@ first; this answers the second.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -184,23 +185,23 @@ def _chain(db, sight, beats, now):
 def _retroactive(db, now):
     from admin import retroactive
 
-    run = retroactive.in_flight(db, now=now)
-    if run is None:
-        return []
-    parts = str(run.get("runner") or "").split("/")
-    name, pid = parts[0], (parts[2] if len(parts) == 3 else None)
-    started = run.get("started_at")
-    elapsed = None
-    if started:
-        at = datetime.fromisoformat(started)
-        elapsed = (now - (at if at.tzinfo else at.replace(tzinfo=timezone.utc))).total_seconds()
-    return [_item(_label(run["op"]), _WHERE_BY_RUNNER.get(name, WHERE_OWN_PROCESS),
-                  int(pid) if str(pid).isdigit() else None, started, elapsed,
-                  run.get("processed_rows"), run.get("total_rows"),
-                  None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
-                  else {"run_id": run["run_id"]},
-                  state=run_state(run.get("runner")),
-                  waiting=run.get("waiting"))]
+    items = []
+    for run in retroactive.in_flight_runs(db, now=now):    # runs writing apart run side by side (lead 11-10)
+        parts = str(run.get("runner") or "").split("/")
+        name, pid = parts[0], (parts[2] if len(parts) == 3 else None)
+        started = run.get("started_at")
+        elapsed = None
+        if started:
+            at = datetime.fromisoformat(started)
+            elapsed = (now - (at if at.tzinfo else at.replace(tzinfo=timezone.utc))).total_seconds()
+        items.append(_item(_label(run["op"]), _WHERE_BY_RUNNER.get(name, WHERE_OWN_PROCESS),
+                           int(pid) if str(pid).isdigit() else None, started, elapsed,
+                           run.get("processed_rows"), run.get("total_rows"),
+                           None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
+                           else {"run_id": run["run_id"]},
+                           state=run_state(run.get("runner")),
+                           waiting=run.get("waiting")))
+    return items
 
 
 def _label(op):
@@ -216,20 +217,21 @@ def _label(op):
 def queued_runs(db, now):
     """The queued retroactive runs no outbox row wakes (`retroactive.wakes_by_outbox` - a chain-owned op), oldest
     first: no queue line names them, so a waiting replay showed only once it started (owner 11-09). What each waits
-    on: the run in flight, by op and run id; nothing in flight, none."""
+    on: the run in flight writing where it writes (`retroactive.writes`, lead 11-10), by op and run id; none, none."""
     from admin import retroactive
     from database import models
 
-    rows = (db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op, models.RetroactiveRun.queued_at)
+    rows = (db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op, models.RetroactiveRun.queued_at,
+                     models.RetroactiveRun.params)
             .filter(models.RetroactiveRun.state == retroactive.RUN_QUEUED)
             .order_by(models.RetroactiveRun.queued_at, models.RetroactiveRun.run_id).all())
     rows = [row for row in rows if not retroactive.wakes_by_outbox(row.op)]
     if not rows:
         return []
-    ahead = retroactive.in_flight(db, now=now)
-    waits = "after %s · %s" % (ahead["op"], ahead["run_id"]) if ahead else None
     items = []
-    for run_id, op, queued_at in rows:
+    for run_id, op, queued_at, params in rows:
+        ahead = retroactive.in_flight(db, now=now, op=op, params=json.loads(params) if params else {})
+        waits = "after %s · %s" % (ahead["op"], ahead["run_id"]) if ahead else None
         at = queued_at if queued_at is None or queued_at.tzinfo else queued_at.replace(tzinfo=timezone.utc)
         items.append(_item("%s · %s" % (_label(op), run_id), WHERE_QUEUED, None, at.isoformat() if at else None,
                            (now - at).total_seconds() if at else None, cancel={"run_id": run_id},

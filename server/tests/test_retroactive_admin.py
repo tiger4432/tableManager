@@ -1177,8 +1177,8 @@ class TestTheSchedulerRunsItOffTheTickThread:
 
         assert sched.start_retroactive_run(first) is True
         assert spawned == [first["run_id"]]
-        assert sched.retroactive_busy() is True
-        # ...and a second request is REFUSED, not started beside it - it waits, queued.
+        assert retroactive.in_flight(retro_env)["run_id"] == first["run_id"]
+        # ...and a second request writing where it writes is REFUSED, not started beside it - it waits, queued.
         assert sched.start_retroactive_run(second) is False
         assert spawned == [first["run_id"]]
         states = {r.run_id: r.state for r in retro_env.query(models.RetroactiveRun).all()}

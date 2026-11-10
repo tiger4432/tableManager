@@ -4409,7 +4409,8 @@ def start_replay_if_queued(db):
     """
     from admin import retroactive
 
-    nxt = retroactive.next_queued(db, "chain_replay")
+    waiting = retroactive.queued_in_order(db, "chain_replay")
+    nxt = waiting[0] if waiting else None
     # 🔴 [게이트 ⓖ] «성공한 훑기»가 보여야 한다. 안 그러면 「돌았는데 할 일이 없다」와
     #    「한 번도 안 돌았다」가 «같은 픽셀»이다 — 실제로 2 초마다 NameError 로 죽는 동안
     #    시험 29 는 초록이었고, 박스를 열기 전까지 아무도 몰랐다.
@@ -4417,14 +4418,16 @@ def start_replay_if_queued(db):
     #    워커는 `beat("chain")` 을 부르므로 이 값은 «파일로 나간다».
     heartbeat.record_lap("chain", "replay_sweep",
                          found=(nxt or {}).get("run_id") or "none")
-    if not nxt:
-        return None
-    blocked = retroactive.gate_refusal(db)
+    blocked = None
+    for nxt in waiting:                 # 🆕 11-10: the oldest whose places overlap no run in flight (`retroactive.writes`)
+        refusal = retroactive.gate_refusal(db, nxt["op"], nxt["params"])
+        if not refusal:
+            return nxt
+        blocked = blocked or refusal
     if blocked:
         # 사유 + 푸는 법. 저자는 `gate_refusal` 하나라 스케줄러가 내는 문장과 «같다».
         logger.info("[Chain] a queued replay is waiting for the gate: %s", blocked)
-        return None
-    return nxt
+    return None
 
 
 def release_dead_replays(db):

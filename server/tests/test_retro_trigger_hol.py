@@ -61,9 +61,11 @@ class _Session:
     def order_by(self, *a, **k):
         return self
 
-    def first(self):
-        pending = [r for r in self.rows if not r.processed_chain]
-        return pending[0] if pending else None
+    def limit(self, *a, **k):
+        return self
+
+    def all(self):
+        return [r for r in self.rows if not r.processed_chain]
 
     def commit(self):
         self.commits += 1
@@ -88,13 +90,12 @@ def one_tick(scheduler, session):
 
 @pytest.fixture
 def scheduler(tmp_path):
-    """A real scheduler with only the two things this block calls stubbed: whether a run
-    is in flight, and starting one. Everything else is the product's."""
+    """A real scheduler with only starting a run stubbed (11-10: no busy pre-check - `claim` inside the start
+    judges). Everything else is the product's."""
     from run_auto_update import MultiDiscoveryScheduler
 
     s = MultiDiscoveryScheduler(check_interval=5, server_dir=str(tmp_path))
     s.started = []
-    s.retroactive_busy = lambda: False
     s.start_retroactive_run = lambda payload: (s.started.append(payload) or True)
     return s
 
@@ -108,16 +109,16 @@ def test_a_request_that_cannot_be_handled_is_finished_rather_than_re_picked(sche
     assert bad.status == "FAILED"
 
 
-def test_the_request_BEHIND_it_runs_on_the_next_tick(scheduler):
+def test_the_request_BEHIND_it_runs(scheduler):
     """🔴 GATE 2, AND THE ONE THAT RESTARTS PRODUCTION. Before this, the second row was
-    never reached at all - not on the next tick, not after a restart."""
+    never reached at all - not on the next tick, not after a restart. 11-10: the tick tries
+    the rows oldest first, so it is reached in the same tick."""
     bad, good = _Row(1, "{not json"), _Row(2, json.dumps({"op": "withdraw",
                                                           "run_id": "abc"}))
     session = _Session([bad, good])
 
-    one_tick(scheduler, session)          # the bad one is finished
-    assert scheduler.started == []
-    one_tick(scheduler, session)          # the next tick reaches the good one
+    one_tick(scheduler, session)          # the bad one is finished, the good one reached
+    assert bad.status == "FAILED"
     assert [p["run_id"] for p in scheduler.started] == ["abc"]
     assert good.processed_chain is True
 
@@ -161,3 +162,26 @@ def test_a_chain_replay_doorbell_is_marked_but_not_run_here(scheduler):
     assert scheduler.started == [], "스케줄러가 리플레이를 시작했다 — 게이트 ⑩ 이 깨진다"
     assert row.processed_chain is True, (
         "초인종을 안 찍었다 — 이 행이 맨 앞에 영원히 남아 뒤의 요청을 굶긴다")
+
+
+@pytest.mark.parametrize("refused, started, left", [
+    ((), ["first"], {"second"}),                    # one start a tick - the second waits for the next
+    (("first",), ["second"], {"first"}),            # a refused older row does not hold a newer one (lead 11-10)
+    (("first", "second"), [], {"first", "second"}),  # nothing the gate lets through - both wait, neither FAILED
+])
+def test_the_tick_starts_the_oldest_the_gate_lets_through(scheduler, refused, started, left):
+    """11-10 (lead): runs whose places do not overlap run side by side, so a wake-up row the gate refuses no
+    longer heads the queue for the rows behind it."""
+    def start(payload):
+        if payload["run_id"] in refused:
+            return False
+        scheduler.started.append(payload)
+        return True
+
+    scheduler.start_retroactive_run = start
+    rows = [_Row(1, json.dumps({"op": "withdraw", "run_id": "first"})),
+            _Row(2, json.dumps({"op": "withdraw", "run_id": "second"}))]
+    one_tick(scheduler, _Session(rows))
+    assert [p["run_id"] for p in scheduler.started] == started
+    assert {json.loads(r.payload)["run_id"] for r in rows if not r.processed_chain} == left
+    assert all(r.status in ("PENDING", "SUCCESS") for r in rows)

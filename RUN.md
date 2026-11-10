@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **소급끼리 «쓰는 곳»이 안 겹치면 같이 돈다 — 백필 · 원장 소급이 도는 동안 다른 표의 체인 소급이 시작** — git pull · 런처 재기동(스케줄러 · 체인 워커 · API)
+>
+> ```
+> 무엇     소급 하나가 돌면 다른 소급이 «전부» 기다리던 것을, 쓰는 곳(표 · 원장 세계)이 겹치는 것만 기다리게 함
+>          체인 소급 = 그 규칙이 쓰는 표 (cascade 면 그 표가 깨우는 규칙의 표까지, 끝까지)
+>          파일 다시 읽기 = 그 표 + 그 표가 깨우는 규칙의 표, 끝까지
+>          enrichment 백필 = 그 규칙의 파생 표 + 그 표가 깨우는 규칙의 표, 끝까지
+>          노테이션 소급(fold_written_notation) = 그 표 + 그 표가 깨우는 규칙의 표, 끝까지
+>          원장 소급(backfill · catch_up · rescope) = 그 세계
+>          그 밖 15 작업(withdraw · fold_units · resolve …)은 «모든 곳» — 예전처럼 다른 소급 전부와 겹침
+> 볼 것    원장 backfill 을 걸고 다른 표의 체인 소급을 걸면 둘 다 running, 진행 줄 둘 다 오름
+> 답의 뜻  둘째가 «queued · after <첫째>» 로 남고 거절 줄에 «- both write table:<표>» → 같은 표를 씀, 기다리는 게 맞음
+>          «- both write ledger:<세계>» → 같은 세계를 씀, 기다리는 게 맞음
+>          겹치는 실행이 없어 보이는데 기다림 → 그 체인 소급의 쪽 사건이 아직 체인 큐에 있음(× 줄이 같이 뜸)
+>          아래 «not known» 줄이 같이 뜸 → 선언이 쓰는 곳을 못 답함(규칙 이름 없음 등) = 모든 곳으로 기다림
+> 볼 줄    scheduler 로그   [Retroactive] gate closed: run_id=<앞> … - both write <곳>. Leaving run_id=<내 것> queued …
+>          chain worker 로그 [Chain] a queued replay is waiting for the gate: … - both write <곳>
+>          [Retroactive] where <op> writes is not known (<사유>) - it waits for every run
+> 끄기     없음 — 되돌리기는 이 커밋 revert. 급하면 앞 실행 × (POST /admin/retroactive/runs/<id>/cancel)
+> ```
+>
+> ---
+>
 > ## [11-10] **어드민 개요 요약(/dashboard/summary)이 표마다 DB 에 가지 않는다 — 카탈로그 한 번** — git pull · API 재기동
 >
 > ```
