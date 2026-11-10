@@ -143,6 +143,24 @@ def declared_of(relation: str, tables: dict):
     return None
 
 
+def value_types(db, table_name: str) -> dict:
+    """{column: "number" | "datetime" | "string"} by the PHYSICAL type of `t__now` - the type crud.line_text /
+    line_value take. A column declared datetime but stored as text stays text (its value is the written text, as
+    today), so a line never respells what the table holds. Framework columns are left out."""
+    from sqlalchemy import inspect
+    from sqlalchemy.types import DateTime as _DateTime, Float, Integer as _Integer, Numeric
+
+    framework = {n for n, _ in FRAMEWORK}
+    out = {}
+    for col in inspect(db.connection()).get_columns(now_relation(table_name)):
+        if col["name"] in framework or col["name"] == "won_by":
+            continue
+        kind = col["type"]
+        out[col["name"]] = ("number" if isinstance(kind, (Float, Numeric, _Integer)) else
+                            "datetime" if isinstance(kind, _DateTime) else "string")
+    return out
+
+
 def bit_map(db, table_name: str) -> dict:
     """{column: bit} of t's live columns."""
     rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(

@@ -995,7 +995,9 @@ def line_value(text, col_type: str):
             number = float(text)
         except ValueError:
             return text
-        return number if number == number else text
+        if number != number:
+            return text
+        return int(number) if number.is_integer() and abs(number) < 2 ** 53 else number   # «2.0» reads back as 2
     if col_type == "datetime":
         from datetime import datetime
 

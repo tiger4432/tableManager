@@ -167,3 +167,22 @@ def test_a_string_column_tells_007_from_7():
     assert crud.line_text("007", "string") != crud.line_text("7", "string")
     assert crud.values_differ("007", "7", "string")
     assert crud.line_text("007", "number") == crud.line_text("7", "number")       # a number column folds them
+
+
+@pytest.mark.parametrize("value", ["2", 2, 2.0, "-0.000", "2.5", "1e20", "9007199254740993", "abc", "nan"])
+def test_a_number_line_value_round_trips_and_whole_numbers_read_as_int(value):
+    from database import crud
+
+    text_once = crud.line_text(value, "number")
+    back = crud.line_value(text_once, "number")
+    assert crud.line_text(back, "number") == text_once
+    if text_once in ("2.0", "0.0"):
+        assert type(back) is int
+
+
+def test_value_types_follow_the_physical_column(db):
+    lines.ensure_line_table(db, "t", CFG)
+    assert lines.value_types(db, "t") == {"lot": "string", "qty": "number", "seen": "datetime"}
+    db.execute(text("CREATE TABLE u__now (row_id VARCHAR PRIMARY KEY, business_key_val VARCHAR, "
+                    "created_at TIMESTAMP, updated_at TIMESTAMP, event_time VARCHAR, won_by JSON)"))
+    assert lines.value_types(db, "u") == {"event_time": "string"}     # declared datetime, stored as text
