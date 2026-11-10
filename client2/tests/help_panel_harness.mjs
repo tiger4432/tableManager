@@ -32,6 +32,8 @@ function makeDoc() {
         get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
         set textContent(v) { this._text = String(v); this.children = []; },
         appendChild(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.push(c); return c; },
+        append(...cs) { cs.forEach((c) => this.appendChild(c)); },
+        querySelector() { return null; },
         remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter((x) => x !== this); this.parentNode = null; },
         setAttribute(k, v) { this.attrs[k] = String(v); },
         getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
@@ -48,6 +50,8 @@ function makeDoc() {
       };
       return el;
     },
+    createTextNode(text) { const n = this.createElement('#text'); n.textContent = text; return n; },
+    createDocumentFragment() { return this.createElement('#fragment'); },
   };
 }
 const has = (el, cls) => String(el.className).split(' ').includes(cls);
@@ -457,7 +461,7 @@ const DEFECTS = [
   ['M17 a needs line on every tool', swap('if (v.unfilled.length) box', 'if (true) box')],
   ['M18 not checked drawn as passed', swap("if ('not_checked' in c) return { state: 'not', said: shown(c.not_checked) };", "if ('not_checked' in c) return { state: 'ok', said: '' };")],
   ['M19 a failed copy says Copied', swap("ok === false ? 'Copy failed' : 'Copied'", "'Copied'")],
-  ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || base.why', 'why: base.why')],
+  ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || (operations && operations.why) || base.why', 'why: (operations && operations.why) || base.why')],
   ['M21 the example on one line', swap('JSON.stringify(body, null, 2)', 'JSON.stringify(body)')],
   ['M22 the made-up count said when there is none', swap('    if (d.dropped) {', '    if (true) {')],
   ['M23 the retrieval not drawn', swap('if (d.retrieval) box', 'if (false) box')],
