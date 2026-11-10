@@ -66,8 +66,10 @@ def _pages(seq, width: int, most=None):
 def write_lines(db, table: str, items, *, kind: str, transaction_id):
     """Write `items` into `table` as lines - see the module. Returns
     {"changed": {row_id: {"old": {col: value}|None, "new": {col: value}|None, "work": work kind}},
-     "lines": lines written, "left_out": items that changed nothing} - `old` is the current line step 1 locked, `new`
-    the one step 5 wrote (None: deleted), what the broadcast and the outbox read (one author)."""
+     "lines": lines written, "left_out": items that changed nothing,
+     "audit": [{"transaction_id", "table_name", "changed_rows", "kind", "written_by"}] one an audit row - `kind` its work
+     kind, `changed_rows` the distinct row_ids it wrote lines for in this write} - `old` is the current line step 1
+    locked, `new` the one step 5 wrote (None: deleted), what the broadcast and the outbox read (one author)."""
     cfg = crud.TABLE_CONFIG[table]
     shape = lines.shape(db, table, cfg)
     now, ln, bits, chunks = shape["now"], shape["lines"], shape["bits"], shape["chunks"]
@@ -97,8 +99,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     for i in sorted(kept):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
-    _audit(db, table, items, kept, work, transaction_id, at)
-    return {"changed": changed, "lines": len(kept), "left_out": left_out}
+    audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
+    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit}
 
 
 def _claim(db, table, cfg, now, items):
@@ -286,11 +288,17 @@ def _merge_now(db, table, cfg, shape, row_ids, at):
     return merged
 
 
-def _audit(db, table, items, kept, work, transaction_id, at):
+def _audit(db, table, items, kept, targets, work, transaction_id, at):
     """Step 6 - one audit row a (work kind, who) of the batch: transaction, table, who, work kind, at. No values, no
-    count - the panel counts the transaction's lines."""
-    said = sorted({(work[i], items[i].get("written_by")) for i in kept}, key=lambda p: (p[0], p[1] or ""))
-    if said:
-        audit = lines.AuditBatch.__table__
-        db.execute(insert(audit), [{"transaction_id": transaction_id, "table_name": table, "written_by": who,
-                                    "work_kind": work_kind, "at": at} for work_kind, who in said])
+    count - the panel counts the transaction's lines. -> the rows for the caller's after-commit add_changed, each with
+    the distinct row_ids its (work kind, who) wrote in this write."""
+    said = {}
+    for i in kept:
+        said.setdefault((work[i], items[i].get("written_by")), set()).add(targets[i])
+    order = sorted(said, key=lambda p: (p[0], p[1] or ""))
+    if order:
+        db.execute(insert(lines.AuditBatch.__table__), [{"transaction_id": transaction_id, "table_name": table,
+                                                         "written_by": who, "work_kind": work_kind, "at": at}
+                                                        for work_kind, who in order])
+    return [{"transaction_id": transaction_id, "table_name": table, "changed_rows": len(said[(work_kind, who)]),
+             "kind": work_kind, "written_by": who} for work_kind, who in order]

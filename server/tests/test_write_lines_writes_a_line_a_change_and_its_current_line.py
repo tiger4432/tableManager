@@ -134,3 +134,17 @@ def test_the_batch_and_the_audit_transaction_are_the_transaction_id_as_given(db)
     _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"}, tx=tx)
     assert _lines(db)[0]["batch"] == tx
     assert db.execute(select(lines.AuditBatch.__table__.c.transaction_id)).scalar() == tx
+
+
+def test_the_answer_says_each_audit_row_and_the_distinct_rows_it_wrote(db):
+    _write(db, {"key": {"k": "K0"}, "values": {"k": "K0", "a": "x"}, "source_name": "f1", "written_by": "loader"})
+    out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1", "written_by": "loader"},
+                 {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1", "written_by": "loader"},
+                 {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "f1", "written_by": "loader"},
+                 {"key": {"k": "K0"}, "values": {"k": "K0", "a": "x"}, "source_name": "f1", "written_by": "loader"},
+                 {"key": {"k": "K0"}, "values": {"a": "z"}, "source_name": "user", "written_by": "kim"}, tx="tx2")
+    assert out["left_out"] == 1 and out["audit"] == [
+        {"transaction_id": "tx2", "table_name": TABLE, "changed_rows": 1, "kind": "edit", "written_by": "kim"},
+        {"transaction_id": "tx2", "table_name": TABLE, "changed_rows": 2, "kind": "new", "written_by": "loader"}]
+    rows = db.execute(select(lines.AuditBatch.__table__).where(lines.AuditBatch.transaction_id == "tx2")).mappings()
+    assert sorted((a["work_kind"], a["written_by"]) for a in rows) == [(a["kind"], a["written_by"]) for a in out["audit"]]
