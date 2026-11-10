@@ -13,7 +13,7 @@
 > ?enrich_actions=true         /api/ledger/subgraph 의 «파라미터가 아니다». 적으면 오류 없이 무시된다
 >                              (되돌아오지 못하게 server/tests/test_ledger_subgraph.py 가 박아 두었다)
 > ```
-> ✅ **살아남는 것** — **기존 column queue 는 그대로다**(이 문서 §1~§5·§7 의 대부분). 결손을 «찾는» 일은 `GET /api/ledger/gaps` 가 **어휘를 순회해서** 하고, 후보를 «고르고 확정»하는 일은 `server/chain/enrichment/candidates.py`(`resolve_target_candidate`·`confirm_keys`)가, 화면은 `client2/src/enrichment_queue.js` + `enrichment_reference_view.js` 가 한다. 🔴 **후계가 «없는» 것 하나** — walk 의 «노드»로서의 `Enrich Action`. 통합 `/enrichment/worklist` API 도 여전히 미구현이다.
+> ✅ **살아남는 것** — **기존 column queue 는 그대로다**(이 문서 §1~§5·§7 의 대부분). 결손을 «찾는» 일은 `GET /api/ledger/gaps` 가 **어휘를 순회해서** 하고, 후보를 «고르고 확정»하는 일은 `server/chain/enrichment/candidates.py`(`resolve_target_candidate`·`confirm_keys`)가, 화면은 `enrichment_reference_view.js` 와 Overview 의 Enrichment 줄(서버가 쥔 결손 수 — ⚰️ `enrichment_queue.js` 은퇴 2026-11-10)이 한다. 🔴 **후계가 «없는» 것 하나** — walk 의 «노드»로서의 `Enrich Action`. 통합 `/enrichment/worklist` API 도 여전히 미구현이다.
 
 ---
 

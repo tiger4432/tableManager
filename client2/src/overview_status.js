@@ -11,12 +11,12 @@
 // dot's colour (lead 575a844f7); what is specific to a row is its FACTS, not a fifth word. Grey is
 // every row that cannot be judged — not arrived yet (`undefined`, fact 「Loading…」), unread
 // (`null`), or nothing to judge (no collectors, a small sample) — and the fact says which.
-import { countText, isCount, localeCountText } from './absent.js';
+import { UNKNOWN, countText, isCount, localeCountText } from './absent.js';
 import { errorText } from './body_error.js';
 import { absentPath } from './absent_listing.js';
-import { LOADING, unitText } from './ui_words.js';
+import { LOADING, UPDATING, unitText } from './ui_words.js';
 import { failedSince } from './chain_queue_panel.js';
-import { countNumberText } from './match_count.js';
+import { countNumberText, countedAgo } from './match_count.js';
 import { runtimeView } from './runtime_panel.js';
 import { sourcesView } from './ledger_sources_panel.js';
 import { isFailedStatus } from './retry_verdict.js';
@@ -100,15 +100,23 @@ export function autoRow({ auto, failed } = {}) {
   return row('auto', 'Auto Update', facts, tone);
 }
 
-/** admin.js `fetchEnrichmentStatus()` — `{ rules, totalMissing, missingCapped }`, or null when unread. */
+/** admin.js `fetchEnrichmentStatus()` — GET /enrichment/rules: `{ rules, missing }`, or null when unread. `missing` is the
+ *  count the server holds (owner 11-10 «1 ㄱ», D): {total, capped, counted_at, updating, unknown}. A rule not counted yet
+ *  or whose last count failed is in `unknown`, and then the sum is not said - «Unknown», never a sum short of it. */
 export function enrichmentRow(enrich) {
   if (enrich === undefined) return pending('enrichment', 'Enrichment');
   if (!enrich) return row('enrichment', 'Enrichment', [], TONE.UNKNOWN);
   const rules = Array.isArray(enrich.rules) ? enrich.rules.length : 0;
   if (!rules) return row('enrichment', 'Enrichment', ['No rules'], TONE.UNKNOWN);
-  return row('enrichment', 'Enrichment', [unitText(rules, 'rule'),
-    `missing ${countNumberText({ total: enrich.totalMissing, capped: enrich.missingCapped === true })}`],
-    enrich.totalMissing > 0 ? TONE.WARN : TONE.OK);
+  const m = enrich.missing && typeof enrich.missing === 'object' ? enrich.missing : null;
+  const unknown = m && Array.isArray(m.unknown) ? m.unknown.length : 0;
+  const busy = m && m.updating === true ? [UPDATING] : [];
+  if (!m || unknown || !isCount(m.total)) {
+    return row('enrichment', 'Enrichment', [unitText(rules, 'rule'), `missing ${UNKNOWN}`,
+      ...(unknown ? [`${unitText(unknown, 'rule')} not counted`] : []), ...busy], TONE.UNKNOWN);
+  }
+  return row('enrichment', 'Enrichment', [unitText(rules, 'rule'), `missing ${countNumberText(m)}${countedAgo(m)}`, ...busy],
+    m.total > 0 ? TONE.WARN : TONE.OK);
 }
 
 /** The loop in `/runtime` that is the ledger follow-up (server 0e7530cef): its `state`, and when stopped its `said`. */

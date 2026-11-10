@@ -101,7 +101,7 @@
 | 규칙 로더/검증 | `enrichment_rules.json` 을 읽어 결정키·대상필드·참조뷰·집계를 검증. 모르는 키는 «이유를 대며» 거절 | `enrichment/config.py` (1,940줄 · `validate_enrichment_rules`) | 체인 로더 · 어드민 · 백필 | ✅ 닿는다 |
 | dedup 파생 | 결정키로 묶어 파생 행을 만든다 | `enrichment/mapper.py` (`map_enrichment_dedup`) | 체인 규칙(선언이 «문자열»로 이름을 든다, 갈래 ③) | ✅ 닿는다 |
 | 큐 분류 | 파생 행 중 「아직 못 채운 것」을 분류 | `enrichment/analysis.py` (`classify_queue`·`iter_derived_rows`) | 🔴 제품 경로 «0» — 오늘 부르는 곳은 CLI `server/scripts/enrichment_insights.py` 뿐 | ⚠️ 반쪽 (§A-7) |
-| 큐 술어 (화면용) | 「어느 행이 아직 일이 남았나」를 **서버가** OR-of-blank 로 조립한다 | `GET /tables/{t}/data?enrichment_queue=<rule>` (`enrichment/config.py`) | `client2/src/enrichment_queue.js` → 소비자 **하나**(admin 결손 카운트). 그리드는 이 술어로 «좁히지 않는다» | ⚠️ 반쪽 |
+| 큐 술어 (화면용) | 「어느 행이 아직 일이 남았나」를 **서버가** OR-of-blank 로 조립한다 | `GET /tables/{t}/data?enrichment_queue=<rule>` (`enrichment/config.py`) | 클라 철자 ⚰️ 은퇴(2026-11-10) — 결손 수는 서버가 이 술어로 세어 `GET /enrichment/rules` 의 `missing` 으로 답한다. 그리드는 이 술어로 «좁히지 않는다» | ⚠️ 반쪽 |
 | 후보 해석 | 참조뷰를 물어 대상 칸의 후보를 뽑고, 둘 이상이면 `REASON_AMBIGUOUS` 로 거절 | `enrichment/candidates.py` (`resolve_target_candidate`·`confirm_keys`·`AutoConfirmCollector`) | `builtin:auto_confirm` · 소급 `enrichment_confirm` | ✅ 닿는다 |
 | 자동 확정 스윕 | 지지도 임계 위의 후보를 자동 확정. `apply` 는 체크포인트 없이는 «거절» | `enrichment/analysis.run_auto_confirm_sweep` | `GET /admin/enrichment/auto-confirm/dry-run` · 소급 op `enrichment_confirm` | ✅ 닿는다 |
 | 룰 도입 «이전» 행의 파생 생성 | 소급 백필 | `enrichment/backfill.py` (`run_backfill`) | 소급 op `enrichment_backfill` · CLI `server/scripts/backfill_enrichment.py` | ✅ 닿는다 |

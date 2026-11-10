@@ -228,7 +228,7 @@ const DEFECTS = [
       "if (el.classList) el.classList.toggle('is-counting', !c.total);")],
   // ── ㄱ-1 (lead 10-13) ──
   ['N1 10,000+ loses its +', swap("${c.capped ? '+' : ''}", '')],
-  ['N2 the age is not said', swap('return at ? `${rows} · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : rows;', 'return rows;')],
+  ['N2 the age is not said', swap("return at ? ` · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : '';", "return '';")],
   ['N3 a capped count says an age', swap('const at = c.capped ? null : parseServerInstant(c.countedAt);', 'const at = parseServerInstant(c.countedAt);')],
   ['N4 a read never asked says it is counting', swap('return c.counting ? countingText(unit) : COUNTING;', 'return countingText(unit);')],
   ['N5 the age is never drawn again', swap('el.matchAgeTimer = c.countedAt && !c.capped ? clock.every(draw, AGE_EVERY_MS) : null;', 'el.matchAgeTimer = null;')],
