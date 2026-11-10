@@ -34,7 +34,7 @@ from .roleframe import (
     read_columns_once,
     unit_positions,
 )
-from .setup_bundle import entity_type_column, exclusion_columns, executes_the_bindings
+from .setup_bundle import VALUE_ROLE, entity_type_column, exclusion_columns, executes_the_bindings
 from database.crud import is_blank_key_part
 from .setup_registry import (
     LedgerSetupSnapshot,
@@ -454,16 +454,20 @@ def _binding_cells(binding, entities=None, cells=None, position=None) -> frozens
 
 
 def _blank_cells(mapping, entities, cells, position, hard) -> set:
-    """The cells naming `mapping`'s entities that are blank at the row (`crud.is_blank_key_part`), the read's identity
-    and time (`hard`) aside."""
+    """The cells `mapping` needs that are blank at the row, the read's identity and time (`hard`) aside: those naming
+    its entities (`crud.is_blank_key_part`) and its value object's column (`_is_missing`, the judge that refused the
+    row before, 총괄 11-10 - a blank value unsays its sentence, not the row's others)."""
+    value = mapping.bindings.get(VALUE_ROLE)
+    valued = ({value.get("column")} if isinstance(value, Mapping) and value.get("kind") == "column" else set()) - hard
     return {column for binding in mapping.bindings.values()
             for column in _binding_cells(binding, entities, cells, position)
-            if column not in hard and column in cells and is_blank_key_part(cells[column][position])}
+            if column not in hard and column in cells and is_blank_key_part(cells[column][position])} | {
+        column for column in valued if column in cells and _is_missing(cells[column][position])}
 
 
 def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> tuple:
-    """-> (`(position, column)` blank entity cells, which refuse nothing; each sentence's rows - those whose cells
-    naming its entities are all filled) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
+    """-> (`(position, column)` blank cells, which refuse nothing; each sentence's rows - those whose cells naming
+    its entities, and its value's, are all filled) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
     `_refuse_molecule`, `_row_type_refusal` and the declarative mapper (`sentence_rows`).
 
     A sentence is said from its rows: a row leaving one of its entity cells blank is not one of them, and a sentence
