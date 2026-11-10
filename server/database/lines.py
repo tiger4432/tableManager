@@ -196,9 +196,14 @@ def bit_map(db, table_name: str) -> dict:
 
 
 def has_lines(db, table_name: str) -> bool:
-    """Whether t keeps lines (has slots in line_columns) - an audit row of a relation without lines has no
-    countable «changed rows»."""
-    return db.execute(select(LineColumn.bit).where(LineColumn.table_name == table_name).limit(1)).first() is not None
+    """Whether t's lines are BUILT (t__lines exists, so t carries won_by) - THE answer every read of won_by or
+    t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
+    unique business key index). Not the slots: those are assigned before building and outlive drop_line_table."""
+    from sqlalchemy import inspect
+
+    if table_name_refusal(table_name):
+        return False
+    return inspect(db.connection()).has_table(lines_relation(table_name))
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -286,7 +291,11 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
-    return {"lines": lines, "bits": bits, "chunks": chunks}
+    # t itself on its own MetaData (ensure creates the lines only): declared columns typed as stored, plus won_by
+    table = Table(table_name, MetaData(), *_data_columns(table_cfg, sql_type_of, row_id_key=True),
+                  Column(WON_BY, won_by_type()))
+    columns = [c.name for c in table.columns if c.name != WON_BY]
+    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
 
 
 def won_by_type():
@@ -311,19 +320,31 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
     return s
 
 
-def key_index_refusal(conn, table_name: str):
+def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else the operator sentence. The index is built by the one command that builds it
-    (migrations/add_business_key_unique_index - CONCURRENTLY, so never inside this transaction)."""
+    (business_key_val)) needs; else the number of business keys held by more than one row (0: the index is just not
+    built). The index is built by the one command that builds it (migrations/add_business_key_unique_index -
+    CONCURRENTLY, so never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
     verdict = bk.plan_table(conn, table_name)
-    if verdict.get("verdict") == bk.OK_ALREADY:
-        return None
-    dups = verdict.get("dup_keys") or 0
-    why = f"{dups} business keys appear more than once" if dups else "no unique index on business_key_val yet"
-    return (f"table {table_name!r}: {why} - run python server/migrations/add_business_key_unique_index.py --apply "
-            f"--only {table_name} (it names the duplicates to clean first), then keep lines again")
+    return None if verdict.get("verdict") == bk.OK_ALREADY else (verdict.get("dup_keys") or 0)
+
+
+def key_index_next(missing) -> str:
+    """[(table, duplicate keys)] -> why, then the next action: duplicates fold first (the retroactive operation
+    fold_duplicate_rows), then the index command. ONE sentence for the pre-check line and ensure's refusal."""
+    why = ", ".join(f"{t} ({d} business keys appear more than once)" if d else f"{t} (no unique index on business_key_val)"
+                    for t, d in missing)
+    folds = [t for t, d in missing if d]
+    fold = (f"in the Retroactive tab run Fold duplicate rows on {', '.join(folds)}, then " if folds else "")
+    command = "python server/migrations/add_business_key_unique_index.py --apply " + " ".join(f"--table {t}" for t, _ in missing)
+    return f"{why} - first {fold}run {command}"
+
+
+def key_index_refusal(conn, table_name: str):
+    dups = key_index_missing(conn, table_name)
+    return None if dups is None else f"Cannot keep lines: {key_index_next([(table_name, dups)])}, then keep lines again"
 
 
 def drop_line_table(db, table_name: str) -> None:

@@ -64,6 +64,23 @@ def test_t_stays_a_table_with_won_by_and_its_lines_beside_it(db):
     assert db.execute(text("SELECT lot, won_by FROM t WHERE row_id = 'r0'")).one() == ("kept", None)
 
 
+def test_shape_binds_t_as_built_with_won_by(db):
+    make_table(db, "t", CFG)
+    s = ensure(db, "t", CFG)
+    built = [c["name"] for c in inspect(db.connection()).get_columns("t")]
+    assert [c.name for c in s["table"].columns] == built
+    assert s["columns"] == [n for n in built if n != "won_by"]
+    db.execute(s["table"].insert().values(row_id="r1", lot="x", won_by={"lot": 1}))
+    assert db.execute(text("SELECT lot FROM t WHERE row_id = 'r1'")).scalar() == "x"
+
+
+def test_slots_assigned_before_building_are_not_lines(db):
+    make_table(db, "t", CFG)
+    lines.shape(db, "t", CFG)                                           # slots, no t__lines yet
+    assert lines.bit_map(db, "t") and not lines.has_lines(db, "t")
+    assert not lines.has_lines(db, "x" * 60)
+
+
 def test_a_column_added_lands_on_t_and_its_lines(db):
     ensure(db, "t", CFG)
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
@@ -88,6 +105,7 @@ def test_drop_line_table_leaves_t_as_it_was(db):
     ensure(db, "t", CFG)
     assert lines.has_lines(db, "t")
     lines.drop_line_table(db, "t")
+    assert lines.bit_map(db, "t") and not lines.has_lines(db, "t")      # slots outlive the drop; lines are gone
     insp = inspect(db.connection())
     assert "t__lines" not in insp.get_table_names()
     assert "won_by" not in {c["name"] for c in insp.get_columns("t")}
