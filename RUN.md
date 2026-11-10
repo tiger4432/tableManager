@@ -8,6 +8,11 @@
 >          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼),
 >          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
 >          저장 거절 둘: 이름이 «:target» 으로 끝나는 규칙 · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐)
+>          🔴 이 거절은 «로드» 때도 같음 — 운영에 이미 그런 AI 규칙이 있으면 재기동 뒤 그 규칙이 «통째로» 안 섬
+>          (전: 규칙은 답하고 기억 쓰기만 실패)
+> 재기동 뒤 chain_worker.log «[ChainRules] <규칙>: memory.columns: <칸> not in <표> (it has: …)»
+>          또는 «[ChainRules] … may not end in ':target'» — 보이면 그 AI 규칙이 빠진 것
+>          칸 이름을 표에 맞추거나 memory.columns 를 지우면(기본 칸) 다시 섬 · 이름은 «:target» 꼬리를 떼면 섬
 >          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
 >          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
 >          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
