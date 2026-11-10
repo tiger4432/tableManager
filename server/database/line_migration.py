@@ -141,7 +141,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         if col not in bits:
             continue                                   # a column t no longer holds
         g = groups.setdefault((row_id, source, at, by, rule, key), {})
-        g[col] = crud.line_text(crud.layer_value({source: value}, source), kinds.get(col, "string"))
+        g[col] = crud.line_text(value, kinds.get(col, "string"))
         copied += 1
     empty = {**{lines.value_column(c): None for c in bits},
              **{f"{f}_{i}": 0 for f in lines.BIT_FAMILIES for i in range(chunks)}}

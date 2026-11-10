@@ -27,7 +27,7 @@ def db():
               ("r2", "lot", "fileA", "x", T1), ("r3", "qty", "fileB", 7, T1), ("gone", "lot", "fileA", "z", T1)]
     for row_id, col, source, value, at in layers:
         session.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name=col,
-                                                             source_name=source, value={"value": value},
+                                                             source_name=source, value=value,
                                                              ingested_at=at, updated_by="seed"))
     lines.ensure_line_table(session, "t", CFG)
     yield session
@@ -103,7 +103,7 @@ def test_a_blank_layer_copies_as_null_through_the_one_seat(db):
     layer copies as a NULL value that still speaks for its column."""
     for source, value in (("fileC", ""), ("fileD", "   ")):
         db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r3", column_name="lot",
-                                                        source_name=source, value={"value": value},
+                                                        source_name=source, value=value,
                                                         ingested_at=T2, updated_by="seed"))
     copy_all(db)
     lt = lines.shape(db, "t", CFG)["lines"]
