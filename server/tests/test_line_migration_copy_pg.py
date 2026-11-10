@@ -51,3 +51,23 @@ def test_copied_lines_merge_to_what_t_shows_on_pg(db):
     assert set(won) == {"lot", "qty"}
     with pytest.raises(line_migration.AlreadyCopied, match="already copied, 3 lines"):
         line_migration.copy_page(db, NAME, CFG, None, 1, transaction_id="tx-again")
+
+
+@pytest.mark.parametrize("stored, line, won", [(1.0, "1", False), ("1.0", "1.0", True)])
+def test_a_text_cell_copies_what_todays_write_would_store_on_pg(db, stored, line, won):
+    """JSONB keeps 1.0 a float (sqlite reads it back as 1): the copy runs the write's cast, so a text column's JSON
+    1.0 is «1» and a text «1.0» stays (lead 11-11). t shows «1.0» as PostgreSQL wrote it, so won_by names the line
+    only where it says what t shows - no «lot» key is the state the notation retro reads (A 95b58102c)."""
+    from sqlalchemy import select
+
+    db.execute(text(f"UPDATE {NAME} SET lot = '1.0' WHERE row_id = 'r2'"))
+    db.execute(CellSource.__table__.insert().values(table_name=NAME, row_id="r2", column_name="lot",
+                                                    source_name="fileN", value=stored,
+                                                    ingested_at=T2, updated_by="seed"))
+    line_migration.copy_page(db, NAME, CFG, None, 10, transaction_id="tx-copy")
+    lt = lines.shape(db, NAME, CFG)["lines"]
+    line_id, said = db.execute(select(lt.c.line_id, lt.c[lines.value_column("lot")])
+                               .where(lt.c.row_id == "r2", lt.c.source_name == "fileN")).one()
+    assert said == line
+    won_by = db.execute(text(f"SELECT won_by FROM {NAME} WHERE row_id = 'r2'")).scalar() or {}
+    assert (won_by.get("lot") == line_id) if won else ("lot" not in won_by)

@@ -1,10 +1,12 @@
 # 지금 돌리면 되는 것
 
-> ## [11-11] **셀소스 복사 — 객체 값을 만나면 그 쪽을 거절한다** — 착지(11-14) 뒤 복사를 돌릴 때
+> ## [11-11] **셀소스 복사 — 객체 값 · 쓰기가 거절하는 값을 만나면 그 쪽을 거절한다** — 착지(11-14) 뒤 복사를 돌릴 때
 >
 > ```
 > 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds an object value - nothing of this page was copied; tell the lead
 > 뜻        옛 층 값이 JSON 객체다. 박스에는 0 행이었다. 그 쪽은 한 줄도 안 옮겼다
+> 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds <값>, which the write refuses: <사유> is expected - nothing of this page was copied; tell the lead
+> 뜻        옛 층 값을 오늘의 쓰기가 받지 않는다(숫자 칸의 글자 · 무한대 숫자). 그 쪽은 한 줄도 안 옮겼다
 > 할 일      그 문장 그대로 총괄에게. 다시 돌리지 않는다
 > ```
 
