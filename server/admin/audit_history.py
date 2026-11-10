@@ -428,11 +428,11 @@ def group_rows(db, table_name, group, limit) -> list:
 def winners(db, table_name, row_ids) -> dict:
     """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of t
     (the merge at write time, pins included), each line by its id: what a grid cell's colour and writer ask, no
-    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10). A table that keeps
-    no lines (`lines.keeps_lines` - a shipped table, a view) has no won_by: none."""
-    from database import crud, lines
+    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10). A table whose lines
+    are not built (`lines.has_lines` - a shipped table, a view, a table ensure refused) has no won_by: none."""
+    from database import lines
 
-    if not lines.keeps_lines(table_name, crud.TABLE_CONFIG.get(table_name)):
+    if not lines.has_lines(db, table_name):
         return {}
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
     now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String),
@@ -455,10 +455,10 @@ def winners(db, table_name, row_ids) -> dict:
 def head_lines(db, table_name, row_ids, columns=None) -> dict:
     """{(row_id, column): {source: {"value", "at", "written_by"}}} - each source's newest line of the cell (its head
     bit), a withdrawn one left out (the source says nothing): the layers a Sources window shows. The head index -
-    (row_id, source_name) WHERE a head bit is set. A table that keeps no lines has none."""
-    from database import crud, lines
+    (row_id, source_name) WHERE a head bit is set. A table whose lines are not built (`lines.has_lines`) has none."""
+    from database import lines
 
-    if not lines.keeps_lines(table_name, crud.TABLE_CONFIG.get(table_name)):
+    if not lines.has_lines(db, table_name):
         return {}
     bits = line_bits(db, table_name)
     if columns is not None:
