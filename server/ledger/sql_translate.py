@@ -207,6 +207,11 @@ _TEXT, _FLOAT, _INTEGER, _TIME = "text", "float", "integer", "time"
 _NUMBERS = (_FLOAT, _INTEGER, "numeric")
 
 
+#: The object end of a sentence with no object (a registration): no type, no key - no node names it, and its atom's
+#: object kind is None, as the stored compiler writes it (`roleframe`, `is_registration`).
+NO_OBJECT = (None, {})
+
+
 class Leg:
     """One sentence or reference of one source as a column map. `ends` {arm: (bare type, {key: spec})} - the subject
     is the outgoing end; a spec is {"column", "declared", "kind", "zone"} or {"constant": spelled}. `qualifiers` {name:
@@ -218,7 +223,7 @@ class Leg:
     def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, naive):
         self.source, self.relation, self.sentence, self.predicate = plan.source_id, plan.relation, sentence, predicate
         self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
-        self.basis, self.version, self.columns, self.plan, self.world = basis, version, columns, plan, None
+        self.basis, self.version, self.columns, self.plan, self.world_name = basis, version, columns, plan, None
         self.naive = naive
         self.time = plan.driver.occurred_at
 
@@ -394,8 +399,6 @@ def _entity(relation, kinds, binding, why):
 
     if binding.get("kind") != "entity" or entity_type_column(binding):
         raise NotCompiled(f"{why}: an entity role bound by {binding.get('kind')!r} or a type read per row")
-    if binding.get("attributes"):
-        raise NotCompiled(f"{why}: entity attributes")
     return bare_name(binding["entity_type"]), {key: _key(relation, kinds, child, f"{why}.keys.{key}")
                                                 for key, child in (binding.get("keys") or {}).items()}
 
@@ -428,11 +431,15 @@ def _qualifier(kinds, binding, why) -> dict:
     return {"column": binding["column"], "kind": kind}
 
 
-def compile_source(snapshot, plan, kinds, world) -> list:
-    """`plan`'s legs - a sentence each, and each entity reference its entities carry - or `NotCompiled`."""
+def compile_source(snapshot, plan, kinds, world) -> tuple:
+    """(`plan`'s legs - a sentence each, and each entity reference its entities carry - , the bare types whose entity
+    attributes it does not read) or `NotCompiled`. An attribute is read by its key only (lead 11-10, stage 1): the
+    sentences' nodes and edges are walked, their attribute values and the registrations they make are not."""
+    from collections.abc import Mapping
+
     import map_overlay
 
-    from .setup_bundle import NOT_AN_EVENT_BASIS, bare_name, is_event_time_role
+    from .setup_bundle import NOT_AN_EVENT_BASIS, bare_name, is_event_time_role, is_registration
 
     if not plan.runs:
         raise NotCompiled("not planned: %s" % ((plan.refusal or {}).get("message") or plan.status))
@@ -448,17 +455,21 @@ def compile_source(snapshot, plan, kinds, world) -> list:
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
     kept += [f"NOT ({_when(kinds, clause['when'], 'read.exclude_when')})"
              for clause in driver.exclude_when if clause.get("when") is not None]
-    legs, prefix = [], f"ledger-v2:{snapshot.snapshot_sha256}#"
+    legs, prefix, unread = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set()
     for sentence, mapping in sorted(plan.profile.mappings.items()):
-        if mapping.registered_roles:
-            raise NotCompiled(f"{sentence}: entity attributes")
+        unread.update(bare_name(binding["entity_type"]) for binding in mapping.bindings.values()
+                      if isinstance(binding, Mapping) and binding.get("attributes") and binding.get("entity_type"))
         emission_plan = roleframe._emission_plan(context, mapping.predicate_id, mapping.config_path)
         emission = emission_plan.emission
-        if emission.object_kind != "entity_ref":
+        # a sentence with no object (a registration) says its subject only - its object end is none (`NO_OBJECT`)
+        objectless = is_registration(emission.object_kind)
+        if emission.object_kind != "entity_ref" and not objectless:
             raise NotCompiled(f"{sentence}: a {emission.object_kind} object")
         named = {role: mapping.bindings[reference.role_id]
-                 for role, reference in (("subject", emission.subject), ("object", emission.object_role))}
+                 for role, reference in (("subject", emission.subject), ("object", emission.object_role))
+                 if not (objectless and role == "object")}
         ends = {role: _entity(plan.relation, kinds, binding, f"{sentence}.{role}") for role, binding in named.items()}
+        ends.setdefault("object", NO_OBJECT)
         qualifiers = {}
         for name, reference in emission.qualifiers.items():
             binding = mapping.bindings.get(reference.role_id)
@@ -470,7 +481,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
             qualifiers[name] = _qualifier(kinds, binding, f"{sentence}.{name}")
         event = any(is_event_time_role(role) for role in mapping.bindings)
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
-        first = {role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}
+        first = {"object": [], **{role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
@@ -497,7 +508,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
-    return legs
+    return legs, sorted(unread)
 
 
 def _text_columns(keys, kinds):
@@ -513,9 +524,12 @@ def compile_world(snapshot, fetch, world) -> tuple:
     for source, plan in sorted(snapshot.source_plans.items()):
         try:
             kinds = column_kinds(fetch, plan.relation) if plan.runs else {}
-            for leg in compile_source(snapshot, plan, kinds, world):
-                leg.world = world
+            read, unread = compile_source(snapshot, plan, kinds, world)
+            for leg in read:
+                leg.world_name = world
                 legs.append(leg)
+            left_out.extend({"source": source, "world": world, "why": f"attributes of {bare} not read"}
+                            for bare in unread)
         except NotCompiled as why:
             left_out.append({"source": source, "world": world, "why": str(why)})
     return legs, left_out

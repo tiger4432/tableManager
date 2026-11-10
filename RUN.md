@@ -1,5 +1,35 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **노드 속성(entity attributes)을 쓰는 소스가 가상 걷기에서 통째로 빠지지 않는다 — 노드 · 엣지는 읽고 속성 값만 아직 안 읽음** — git pull · API 재기동
+>
+> ```
+> 무엇     전: 소스의 어느 역할에 속성(bind.entities.<type>.attributes)이 하나라도 있으면 그 소스의 문장 «전부»가 빠짐
+>          -> 걷기가 빈 답(«아무것도 안 나옴»)
+>          지금: 그 소스의 노드와 엣지는 걷는다. 속성 값과 그 속성이 만드는 등록(register)만 아직 안 읽는다
+> 볼 것    걷기 답 engine.left_out 에 소스마다 «attributes of <type> not read» — 소스 빠짐이 아니라 «값 안 읽음» 알림
+>          노드 화면의 속성 칸이 비어 있다(값이 필요하면 engine=stored)
+> 답의 뜻  «attributes of … not read» -> 다음 착지(속성 값 읽기) 몫
+>          «a value object» -> 그다음 몫 · «not planned: … (view)» -> 선언 거절(운영에서는 뷰 안 씀)
+> 끄기     없음 — 걷기에 engine=stored 를 적으면 원장을 읽는다
+> ```
+>
+> ---
+>
+> ## [11-10] **가상 걷기가 «목적어 없는 문장»(등록, object.kind none)도 읽는다 — 그 소스가 빠지지 않는다** — git pull · API 재기동
+>
+> ```
+> 무엇     선언의 register 같은 문장(목적어 없음, 노드 속성 없음)이 가상 걷기에서 빠지지 않고 읽힌다
+>          원자는 원장의 것과 같다: 주어만, object_kind 없음, payload {}
+>          노드 속성(entity attributes)을 단 등록 · 값 객체(value) 문장은 아직 빠진다 — 다음 착지
+> 볼 것    걷기 답 engine.left_out 에 «a none object» 사유가 사라짐
+>          박스(엔진 virtual): system 세계 빠짐 15/17 -> 12/17 (남은 12 는 노드 속성)
+> 답의 뜻  left_out 에 «entity attributes» -> 다음 착지 몫 · «a value object» -> 그다음 몫
+>          «not planned: … (view)» -> 선언 거절(운영에서는 뷰 안 씀) — 엔진과 무관
+> 끄기     없음 — 걷기에 engine=stored 를 적으면 원장을 읽는다
+> ```
+>
+> ---
+>
 > ## [11-10] **읽기 뒤에서 세는 일이 한 기제 — 컬럼 고르기는 바로 답하고, 어드민 결손 수는 서버가 쥔 수** — git pull · 런처 재기동(전부)
 >
 > ```
