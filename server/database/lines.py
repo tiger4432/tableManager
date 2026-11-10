@@ -544,23 +544,69 @@ def spoken(db, table_name: str, row_ids) -> dict:
                       .where(lt.c.row_id.in_(row_ids), or_(*[lt.c[h] != 0 for h in heads]))).all()
     out = {}
     for row in rows:
-        cols = out.setdefault(row[0], set())
-        for chunk, value in enumerate(row[1:]):
-            value &= (1 << 64) - 1
-            while value:
-                low = value & -value
-                bit = chunk * BITS_PER_CHUNK + low.bit_length() - 1
-                if bit in by_bit:
-                    cols.add(by_bit[bit])
-                value ^= low
+        out.setdefault(row[0], set()).update(_columns_of(row[1:], by_bit))
     return out
 
 
-def winners_sql(s: dict, table_name: str, column: str):
+def _columns_of(chunk_values, by_bit) -> set:
+    """The column names whose bits are set in one bit family's chunks (bigint, bit 63 the sign)."""
+    cols = set()
+    for chunk, value in enumerate(chunk_values):
+        value = (value or 0) & ((1 << 64) - 1)
+        while value:
+            low = value & -value
+            bit = chunk * BITS_PER_CHUNK + low.bit_length() - 1
+            if bit in by_bit:
+                cols.add(by_bit[bit])
+            value ^= low
+    return cols
+
+
+def layers(db, table_name: str, row_ids, columns=None) -> dict:
+    """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by", "origin_row_id", "line_id",
+    "owner_rule", "owner_key"}}} - each source's standing word on each cell: its head line, unless that line withdrew
+    the column. THE layer read after the overhaul (lead 11-11): what cell_sources answered, in the same shape, from
+    t__lines; values read back as t's stored kind. Reads only - no slots, no shape."""
+    from sqlalchemy import inspect, or_
+
+    from . import crud
+
+    row_ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    if not row_ids or not has_lines(db, table_name):
+        return {}
+    conn = db.connection()
+    chunks = _built_chunks(conn, table_name)
+    by_bit = {bit: col for col, bit in bit_map(db, table_name).items() if columns is None or col in columns}
+    built = {c["name"] for c in inspect(conn).get_columns(lines_relation(table_name))}
+    cells = [c for c in by_bit.values() if value_column(c) in built]
+    heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
+    own = ("line_id", "source_name", "at", "written_by", "owner_rule", "owner_key", "input_row")
+    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String),
+               *[Column(n, BigInteger if n in ("line_id",) else (DateTime(timezone=True) if n == "at" else String))
+                 for n in own],
+               *[Column(n, BigInteger) for n in heads + gone], *[Column(value_column(c), String) for c in cells])
+    kinds = value_types(db, table_name)
+    out = {}
+    for i in range(0, len(row_ids), 1000):
+        for r in db.execute(select(lt).where(lt.c.row_id.in_(row_ids[i:i + 1000]),
+                                             or_(*[lt.c[h] != 0 for h in heads]))).mappings():
+            said = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
+            for col in said:
+                if col not in cells:
+                    continue
+                out.setdefault((r["row_id"], col), {})[r["source_name"]] = {
+                    "value": crud.line_value(r[value_column(col)], kinds.get(col, "string")),
+                    "ingested_at": r["at"], "updated_by": r["written_by"], "origin_row_id": r["input_row"],
+                    "line_id": r["line_id"], "owner_rule": r["owner_rule"], "owner_key": r["owner_key"]}
+    return out
+
+
+def winners_sql(s: dict, table_name: str, column: str, exclude_source: str = None):
     """For one column: (row_id, line_id, value, pinned) of the winning head line of each row in the expanding
     bindparam `row_ids` - built from crud.rank_terms, the one order compute_priority_value walks. A head line that
     withdrew the column is no candidate. A pin (cell_overwrites.manual_priority_source) admits only the pinned
-    source's head line; `pinned` says a pin was there. s = shape(...)."""
+    source's head line; `pinned` says a pin was there. `exclude_source`: that source's line is no candidate (R2's
+    «what shows once this source is gone»). s = shape(...)."""
     from types import SimpleNamespace
 
     from sqlalchemy import and_, bindparam, case, exists, func, literal, not_
@@ -594,12 +640,13 @@ def winners_sql(s: dict, table_name: str, column: str):
                      func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
               .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
               .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
-                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin))
+                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin),
+                     *([lt.c.source_name != exclude_source] if exclude_source is not None else []))
               .subquery())
     return select(ranked.c.row_id, ranked.c.line_id, ranked.c.value, ranked.c.pinned).where(ranked.c.rn == 1)
 
 
-def merge(db, table_name: str, table_cfg: dict, row_ids) -> dict:
+def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
        a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
@@ -620,7 +667,8 @@ def merge(db, table_name: str, table_cfg: dict, row_ids) -> dict:
     out = {}
     for column in {c for cols in said.values() for c in cols}:
         rows = [r for r in row_ids if column in said.get(r, ())]
-        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column), {"row_ids": rows})}
+        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column, exclude_source),
+                                                           {"row_ids": rows})}
         for r in rows:
             if r in won:
                 v, lid = won[r]
