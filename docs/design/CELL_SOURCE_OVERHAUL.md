@@ -48,7 +48,7 @@
 
 - head_bits (A 안 3): 그 원천의 그 칸에서 아직 최신인 칸들. 새 줄은 written_bits 로 시작하고, 같은 (개체, 원천)의 앞선 줄들은 «쓰기» 4 단계(따로 한 문장)에서 그 비트를 내린다. 줄의 값 · 시각 · 출처는 안 바뀌고 이 칸만 바뀐다.
 - withdrawn_bits: 그 원천이 그 칸에서 «말 없음». 사람이 비운 칸(값 NULL)과 구별한다.
-- 비트 칸의 표현은 표 크기와 무관하게 하나다: bigint 묶음 — 비트 칸 셋마다 칸 64 개에 bigint 하나(`written_0` · `head_0` · `withdrawn_0`, 64 칸을 넘으면 `_1` …). 두 방언 모두 & | ~ 가 된다. 64 칸 넘는 표가 몇인지는 짓는 날 선언(table_config)에서 카나리아와 같이 센다.
+- 비트 칸의 표현은 표 크기와 무관하게 하나다: bigint 묶음 — 비트 칸 셋마다 칸 64 개에 bigint 하나(`written_0` · `head_0` · `withdrawn_0`, 64 칸을 넘으면 `_1` …). 두 방언 모두 & | ~ 가 된다. 64 칸 넘는 표: 박스 선언(server/config/table_config.json — gitignore 된 박스 파일, 운영 주장 아님) 69 표 중 0, 가장 넓은 표 40 칸 (카나리아: column_types 가 있는 표 69, C 11-10). 그래도 묶음 둘째부터의 길은 시험(65 째 칸 → written_1)이 지킨다.
 - 칸 → 비트 자리는 `line_columns`(표 · 칸 · 비트) 카탈로그 표에 붙이기만 한다. 저자는 `lines.shape` 하나다. 칸이 지워져도 그 비트 자리는 다시 쓰지 않는다 — 옛 줄의 비트가 다른 칸을 가리키게 되므로. 시험이 이것을 단언한다(칸 지움 → 새 칸 → 새 비트).
 - `line_columns` 를 새로 짓는 까닭 (총괄 조건 «칸마다 오래 사는 기록이 이미 있나»): 찾은 자리 — origin/main 1bbddc5e5 models.py 의 `__tablename__` 18 개 중 칸마다 한 행을 쥔 표는 없다(audit_logs · cell_sources · cell_overwrites 는 칸 이름을 «값»으로 들 뿐 칸의 수명을 쥐지 않는다). 칸 선언은 table_config(운영자가 적는 선언)에 있는데, 기계가 정하는 비트 자리를 운영자 선언에 쓰지 않는다. 칸 이름 바꾸기 이력을 쥔 자리도 없다(이름 바꾸기 = 지움 + 새 칸). 그래서 새 표.
 - 표기 소급(fold_written_notation): 새 줄을 쓰되 «언제»는 고친 줄의 것을 그대로 둔다. 머리는 옮고, 순위는 안 바뀌고, 옛 줄도 남는다. 고친 때는 묶음이 가진다.
@@ -173,6 +173,7 @@
 - 층 표시 · 행 이력 · 칸 이력: `t__lines` 를 (row_id, 언제) 인덱스로 읽는다. 보이는 행 수에 묶인다.
 - 이력은 줄이 적은 값만 보인다. «전 값» 셈은 짓지 않는다(소유자). 이력 봉투(schemas.AuditLogResponse)에서 old_value 칸을 지운다(총괄 11-10 — 소유자 «감사로그에 값을 넣지마 · 줄이려는데 왜 키워»). 그 칸을 읽는 클라 자리는 클라2 몫이다: client2/src/timeline.js 에서 old_value 를 읽는 자리 넷(값 그리기 둘 · 감사 종류 판정 auditKind 둘)과 주석 하나, client2/src/look_panel.js 하나 (origin/main e31816d34, git grep «old_value» client2/src, 카나리아 new_value = 3 파일).
   - auditKind(감사 알약)는 old_value 가 아니라 감사 행의 작업 종류 칸(+ «누가»)을 읽는다 (총괄 11-10 — 알약은 사라지지 않고 저자가 하나다). 클라2 몫: timeline.js 의 auditKind 두 자리 · 값 그리기 두 자리 · look_panel.js 한 자리를 «작업 칸을 읽어 알약»으로. OVERWRITE 알약은 «edit»(+ 사람 출처)에서 나온다.
+  - 감사 목록의 알약은 audit_batches.work_kind 하나만 읽는다(edit · new · delete · withdraw · merge · mark · declare …) — 목록이 줄 표를 읽어 «사람 출처»를 가르면 패널이 줄 표 읽기에 묶인다. 출처(사람 · 적재 · 체인 규칙)는 행을 펼칠 때 줄에서 보인다. OVERWRITE 낱말은 edit 로 접는다 (총괄 11-10).
 - 방송 · outbox 의 옛 값(쓰기 1 의 옛 지금 줄)은 체인이 «바뀌었나»를 판단하는 기계 계약이라 그대로 둔다 (총괄 11-10). 이력 화면의 값이 아니다.
 
 ## 순위로 합치는 법
