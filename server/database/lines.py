@@ -317,27 +317,29 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else why not, in operator words. The index is built by the one command that builds it
-    (migrations/add_business_key_unique_index - CONCURRENTLY, so never inside this transaction)."""
+    (business_key_val)) needs; else the number of business keys held by more than one row (0: the index is just not
+    built). The index is built by the one command that builds it (migrations/add_business_key_unique_index -
+    CONCURRENTLY, so never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
     verdict = bk.plan_table(conn, table_name)
-    if verdict.get("verdict") == bk.OK_ALREADY:
-        return None
-    dups = verdict.get("dup_keys") or 0
-    return f"{dups} business keys appear more than once" if dups else "no unique index on business_key_val"
+    return None if verdict.get("verdict") == bk.OK_ALREADY else (verdict.get("dup_keys") or 0)
 
 
-def key_index_command(table_names) -> str:
-    """The command that builds the missing indexes - it names the duplicates to clean first."""
-    return ("python server/migrations/add_business_key_unique_index.py --apply "
-            + " ".join(f"--table {t}" for t in table_names))
+def key_index_next(missing) -> str:
+    """[(table, duplicate keys)] -> why, then the next action: duplicates fold first (the retroactive operation
+    fold_duplicate_rows), then the index command. ONE sentence for the pre-check line and ensure's refusal."""
+    why = ", ".join(f"{t} ({d} business keys appear more than once)" if d else f"{t} (no unique index on business_key_val)"
+                    for t, d in missing)
+    folds = [t for t, d in missing if d]
+    fold = (f"in the Retroactive tab run Fold duplicate rows on {', '.join(folds)}, then " if folds else "")
+    command = "python server/migrations/add_business_key_unique_index.py --apply " + " ".join(f"--table {t}" for t, _ in missing)
+    return f"{why} - first {fold}run {command}"
 
 
 def key_index_refusal(conn, table_name: str):
-    why = key_index_missing(conn, table_name)
-    return None if why is None else (f"table {table_name!r}: {why} - first run {key_index_command([table_name])}, "
-                                     f"then keep lines again")
+    dups = key_index_missing(conn, table_name)
+    return None if dups is None else f"Cannot keep lines: {key_index_next([(table_name, dups)])}, then keep lines again"
 
 
 def drop_line_table(db, table_name: str) -> None:

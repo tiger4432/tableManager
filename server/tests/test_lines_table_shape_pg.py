@@ -27,7 +27,7 @@ def db(pg_engine):
     session = sessionmaker(bind=pg_engine)()
     yield session
     session.rollback()
-    for name in ("lt", "lt65", "lt_nokey"):
+    for name in ("lt", "lt65", "lt_nokey", "lt_dups"):
         lines.drop_line_table(session, name)
         session.execute(text(f'DROP TABLE IF EXISTS "{name}"'))
     session.commit()
@@ -40,16 +40,24 @@ def test_ensure_refuses_a_table_without_a_unique_business_key(db):
         lines.ensure_line_table(db, "lt_nokey", CFG)
 
 
-def test_the_pre_check_lists_tables_without_the_key_index_with_the_command(db):
+def test_the_pre_check_lists_tables_without_the_key_index_with_the_next_action(db):
     from database import line_migration
 
     make_table(db, "lt", CFG)
     make_table(db, "lt_nokey", CFG, unique_key=False)
-    missing = line_migration.key_index_missing(db, ["lt", "lt_nokey"])
-    assert missing == [("lt_nokey", "no unique index on business_key_val")]
+    make_table(db, "lt_dups", CFG, unique_key=False)
+    db.execute(text("INSERT INTO lt_dups (row_id, business_key_val) VALUES ('a', 'K'), ('b', 'K')"))
+    missing = line_migration.key_index_missing(db, ["lt", "lt_nokey", "lt_dups"])
+    assert missing == [("lt_nokey", 0), ("lt_dups", 1)]
     line = line_migration.key_index_line(missing)
-    assert line.endswith("add_business_key_unique_index.py --apply --table lt_nokey")
+    assert "lt_dups (1 business keys appear more than once)" in line
+    assert line.endswith("first in the Retroactive tab run Fold duplicate rows on lt_dups, then run python "
+                         "server/migrations/add_business_key_unique_index.py --apply --table lt_nokey --table lt_dups")
+    assert line_migration.key_index_line(line_migration.key_index_missing(db, ["lt_nokey"])).endswith(
+        "first run python server/migrations/add_business_key_unique_index.py --apply --table lt_nokey")
     assert line_migration.key_index_line([]) is None
+    with pytest.raises(ValueError, match="Fold duplicate rows on lt_dups"):
+        lines.ensure_line_table(db, "lt_dups", CFG)
 
 
 def test_alter_columns_changes_t_and_its_lines(db):
