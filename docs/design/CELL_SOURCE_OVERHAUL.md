@@ -40,6 +40,8 @@
 - `t__lines` 인덱스: (row_id, 언제) · (묶음) · 부분 인덱스 (row_id, 출처) WHERE head_bits ≠ 0.
 - 이름: `lines.now_relation(t)` = «t__now», `lines.lines_relation(t)` = «t__lines», 어느 스키마에서나 같다. PG 이름 한도(63 바이트)를 넘는 t 는 그 함수가 거절한다(오늘 선언된 이름 중 닿는 것이 있는지 — 짓는 날 센다).
 - 데이터를 읽는 자리(걷기 · 원장 소스 · 체인 · 내보내기 · 리포트)는 보기 t 그대로다. pg_class · pg_index · EXPLAIN 의 relname 을 표 이름과 견주는 자리(index_wants · catalogue_indexes · column_index_kinds · sort/search_column_states · ensure_auto_indexes · main.grid_model)는 `lines.now_relation(t)` 를 지난다(D 가 AST 로 센다).
+- 원장 소스의 «뷰 거절»(ledger/setup_bundle.reads_a_row_table — 소유자 «운영에서는 뷰 안 써»): 판정은 선언 카탈로그(table_config.json 을 load_physical_catalog · _adapt_physical_catalog 가 읽음)의 kind 칸을 보고 PG 를 보지 않는다 (B 11-10). 이주는 table_config 를 건드리지 않는다(운영자 선언에 기계가 쓰지 않음) — 그래서 보기 t 가 된 선언된 표는 그대로 «table»이고 운영자 뷰(kind: view)는 그대로 거절된다. 판정 쪽 일은 0 이고, 시험 하나가 «선언된 표의 보기 t 소스는 참 · kind: view 소스는 거짓»을 고정한다. 착지 때 reads_a_row_table 을 묻는 자리를 AST 로 센다.
+- PG 의 relkind 를 직접 묻는 자리는 보기 t 에서 답이 바뀐다: ledger/backfill._table_rows(r · p 가 아니면 None — 소급 줄의 전체 행 수 · 남은 시간이 사라짐)는 `lines.now_relation(t)` 를 센다 (B 몫, 이주 착지와 같이).
 
 ## 줄 칸 결정 (C · A 11-10)
 
