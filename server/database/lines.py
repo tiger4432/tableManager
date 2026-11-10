@@ -311,9 +311,9 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
     return s
 
 
-def key_index_refusal(conn, table_name: str):
+def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else the operator sentence. The index is built by the one command that builds it
+    (business_key_val)) needs; else why not, in operator words. The index is built by the one command that builds it
     (migrations/add_business_key_unique_index - CONCURRENTLY, so never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
@@ -321,9 +321,19 @@ def key_index_refusal(conn, table_name: str):
     if verdict.get("verdict") == bk.OK_ALREADY:
         return None
     dups = verdict.get("dup_keys") or 0
-    why = f"{dups} business keys appear more than once" if dups else "no unique index on business_key_val yet"
-    return (f"table {table_name!r}: {why} - run python server/migrations/add_business_key_unique_index.py --apply "
-            f"--only {table_name} (it names the duplicates to clean first), then keep lines again")
+    return f"{dups} business keys appear more than once" if dups else "no unique index on business_key_val"
+
+
+def key_index_command(table_names) -> str:
+    """The command that builds the missing indexes - it names the duplicates to clean first."""
+    return ("python server/migrations/add_business_key_unique_index.py --apply "
+            + " ".join(f"--table {t}" for t in table_names))
+
+
+def key_index_refusal(conn, table_name: str):
+    why = key_index_missing(conn, table_name)
+    return None if why is None else (f"table {table_name!r}: {why} - first run {key_index_command([table_name])}, "
+                                     f"then keep lines again")
 
 
 def drop_line_table(db, table_name: str) -> None:

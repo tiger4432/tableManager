@@ -40,6 +40,18 @@ def test_ensure_refuses_a_table_without_a_unique_business_key(db):
         lines.ensure_line_table(db, "lt_nokey", CFG)
 
 
+def test_the_pre_check_lists_tables_without_the_key_index_with_the_command(db):
+    from database import line_migration
+
+    make_table(db, "lt", CFG)
+    make_table(db, "lt_nokey", CFG, unique_key=False)
+    missing = line_migration.key_index_missing(db, ["lt", "lt_nokey"])
+    assert missing == [("lt_nokey", "no unique index on business_key_val")]
+    line = line_migration.key_index_line(missing)
+    assert line.endswith("add_business_key_unique_index.py --apply --table lt_nokey")
+    assert line_migration.key_index_line([]) is None
+
+
 def test_alter_columns_changes_t_and_its_lines(db):
     make_table(db, "lt", CFG)
     lines.ensure_line_table(db, "lt", CFG)
