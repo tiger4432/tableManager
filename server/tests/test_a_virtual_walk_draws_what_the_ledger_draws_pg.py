@@ -142,10 +142,11 @@ def test_a_sentence_with_no_object_is_read_as_the_ledger_holds_it(registering):
     assert _drawn(virtual) == _drawn(stored) and virtual["engine"]["left_out"] == []
 
 
-def test_a_source_with_entity_attributes_walks_its_edges_without_them(world):
-    """Lead 11-10 stage 1: a role carrying entity attributes no longer leaves its whole source out - the source's edges
-    are read (walk-shadow: no bin on its edge predicate), the attribute values and the registrations they make are
-    not, and the answer says which type's attributes it did not read."""
+def test_a_source_with_entity_attributes_is_read_with_them(world):
+    """Lead 11-10 stage 2: a source whose wafers carry an attribute - its declared registration sentence says it - is
+    read whole: nothing left out, walk-shadow finds every atom of the source (the registrations with their attribute
+    included, and no second registration of a type the source registers itself), the walk draws what the stored one
+    draws, attribute and all."""
     from test_ledger_worlds_are_independent_and_meet_in_a_walk import _registering
 
     document = _registering("step")
@@ -157,15 +158,37 @@ def test_a_source_with_entity_attributes_walks_its_edges_without_them(world):
     finally:
         raw.rollback()
         raw.close()
-    assert [(item["source"], item["why"]) for item in left_out] == [(CHANGED, "attributes of wafer not read")]
-    edges = sorted({leg.predicate for leg in legs if leg.source == CHANGED and leg.ends["incoming"][0]})
-    assert edges, "canary: the source's edge sentences are read"
-    _shadow_finds_no_difference(board, follow=edges)
+    assert left_out == []
+    said = _shadow_finds_no_difference(board, follow=sorted({leg.predicate for leg in legs if leg.source == CHANGED}))
+    assert said[CHANGED]["atoms"]["stored"] >= 7, "canary: edges and registrations both"
     stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
-    assert _drawn(virtual)[1] == _drawn(stored)[1] and len(stored["edges"]) >= 3
+    assert _drawn(virtual) == _drawn(stored) and len(stored["edges"]) >= 3
     labelled = [n for n in stored["nodes"] if n["type"] == "wafer" and (n.get("attributes") or {}).get("label")]
     assert labelled, "canary: the stored walk draws the attribute"
-    assert not [n for n in virtual["nodes"] if (n.get("attributes") or {}).get("label")]
+
+
+def test_a_role_with_attributes_registers_its_node_once_a_row_and_only_with_a_value(world):
+    """Lead 11-10 stage 2: a source registering nothing itself, its wafers carrying `label` (from `step`) in two sentences
+    of one row - the translator registers each wafer ONCE a row (one molecule, one fact), and not for a row whose
+    `step` is blank (P4). Walk-shadow on «register» finds the stored registrations, no more, no fewer."""
+    document = _only(CHANGED, KEPT, one=True)
+    subjects = document["vocabulary"][REGISTER]["subjects"]
+    if "wafer@1" not in subjects:
+        subjects.append("wafer@1")
+    document["entities"]["wafer@1"]["attributes"] = ["label"]
+    bind = document["sources"][CHANGED]["bind"]
+    bind["entities"] = {"wafer@1": {"attributes": {"label": {"kind": "column", "column": "step"}}}}
+    bind["mappings"]["wafer-processed-again"] = json.loads(json.dumps(bind["mappings"]["wafer-processed-with-recipe"]))
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    said = _shadow_finds_no_difference(board, follow=[REGISTER.split("@")[0]])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "canary: W1 twice (P1, P2) and W2 once (P3) - P4 has no step"
 
 
 def _shadow_finds_no_difference(board, follow=None):

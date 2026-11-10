@@ -214,8 +214,8 @@ def _events(body):
     return {n["keys"]["event"]: n for n in body["nodes"] if n["type"] == "measurement_event"}
 
 
-#: «stored» names the ledger; None names no engine - the tables' own read (virtual), which reads an entity's attributes
-#: by its keys only yet (lead 11-10 stage 1): the same nodes and edges, no attribute value, and it says so
+#: «stored» names the ledger; None names no engine - the tables' own read (virtual): the same nodes, edges and attribute
+#: values (lead 11-10 stage 2)
 ENGINES = ("stored", None)
 
 
@@ -240,11 +240,10 @@ def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client, engine)
     if engine is None:
         stored = _walk(client, WALKS["walk_fold_recipe_step"] + [("engine", "stored")])
         assert _drawn(recipe) == _drawn(stored)
-        assert all("value" not in (node.get("attributes") or {}) for node in events.values())
-        assert {(item["source"], item["why"]) for item in recipe["engine"]["left_out"]} == {
-            ("metro", "attributes of measurement_event not read"),
-            ("process_event", "attributes of process_event not read")}, recipe["engine"]
-    for name, node in events.items() if engine else ():
+        assert {name: node["attributes"] for name, node in events.items()} == {
+            name: node["attributes"] for name, node in _events(stored).items()}
+        assert recipe["engine"]["left_out"] == [], recipe["engine"]
+    for name, node in events.items():
         said = node["attributes_by_world"]["value"][0]
         assert node["attributes"]["value"] == said["value"] and said["occurred_at"], (name, node)
     # the lump's members, through their wafer, to that wafer's measurements
