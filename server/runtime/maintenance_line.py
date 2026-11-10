@@ -496,6 +496,16 @@ def _take_asks(db_session_factory, asks, cuts=None):
             closed[row_id] = "FAILED"
             logger.warning("[Indexes] the request for an index on %s (%s, %s) is closed: %s - see its line above",
                            table, ", ".join(columns), why, word)
+    keyed = [table for row_id, (table, _columns, why) in asks
+             if why == models.KEY_UNIQUE and closed.get(row_id) == "SUCCESS"]
+    if keyed:                                    # a table's key index stands: its lines can be built (lead 11-11 ㄱ)
+        from database import lines
+
+        db = db_session_factory()
+        try:
+            lines.ensure_declared(db.get_bind(), keyed)
+        finally:
+            db.close()
     if not closed and cuts == before:
         return
     db = db_session_factory()

@@ -386,8 +386,13 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     if drop:
         retire_bits(db, table_name, list(drop))
     after = chunk_count(db, table_name)
+    from sqlalchemy import inspect
+
     for rel in (_checked(table_name), lines_relation(table_name)):
+        present = {c["name"] for c in inspect(conn).get_columns(rel)} if add else set()
         for name in add:
+            if name in present:                  # t already has it (the schema sync added it first)
+                continue
             type_sql = (sql_type_of(types[name]) if rel == table_name else String()).compile(
                 dialect=conn.dialect)
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
@@ -523,3 +528,57 @@ def merge(db, table_name: str, table_cfg: dict, row_ids) -> dict:
             elif (r, column) not in pins:
                 out.setdefault(r, {})[column] = (None, None)
     return out
+
+
+def ensure_declared(engine, tables=None) -> dict:
+    """Every declared table that keeps lines gets them: t__lines + won_by where missing (empty - old rows are not
+    copied, «끊음»), and t__lines catches up with columns t was given. ONE function: the schema sync calls it for all
+    declared tables, the index line for a table whose business key index it just built (lead 11-11 ㄱ), the test
+    fixtures after building tables. A built table costs reads only, no DDL. The DDL waits for its lock as every
+    runtime DDL does (db_safety.short_ddl - lock_timeout, then the holder named); not had, the table is refused and
+    the next sync or index build tries again. -> {table: refusal sentence}."""
+    import logging
+
+    from sqlalchemy import inspect
+    from sqlalchemy.orm import Session
+
+    import db_safety
+
+    from . import crud, models
+
+    log = logging.getLogger(__name__)
+    refused = {}
+    for name in list(tables if tables is not None else models.DYNAMIC_TABLES):
+        cfg = crud.TABLE_CONFIG.get(name)
+        if not isinstance(cfg, dict) or not keeps_lines(name, cfg) or table_name_refusal(name):
+            continue
+        with Session(engine) as db:
+            insp = inspect(db.connection())
+            if not insp.has_table(name):
+                continue
+            built = has_lines(db, name)
+            have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
+            missing = [c for c in (cfg.get("column_types") or {}) if c not in have] if built else []
+        if built and not missing:
+            continue
+
+        def work(conn, name=name, cfg=cfg, built=built, missing=missing):
+            db = Session(bind=conn)
+            if built:
+                alter_columns(db, name, cfg, add=missing)
+            else:
+                ensure_line_table(db, name, cfg)            # refuses (ValueError) a table without the key index
+            db.flush()
+
+        try:
+            db_safety.short_ddl(engine, name, work, "lines")
+        except ValueError as err:
+            refused[name] = str(err)
+            log.error("[Lines] %s", err)
+        except Exception as err:                             # noqa: BLE001 - said; the next sync tries again
+            held = getattr(err, "ddl_holders", None)
+            refused[name] = (f"Cannot keep lines: {name} (held by {held}) - the next schema sync or index build "
+                             f"tries again" if held else f"Cannot keep lines: {name} ({err}) - the next schema sync "
+                             f"tries again")
+            log.error("[Lines] %s", refused[name], exc_info=None if held else err)
+    return refused
