@@ -4,9 +4,77 @@ Every declared table t is two plain tables: `t__now` (one current line per entit
 `t__lines` (one line per write - the history). The name t is a view over `t__now` that refuses writes. Names, the
 column -> bit map and every DDL on the three go through here; nothing else spells «__now» or «__lines».
 """
+import contextlib
+import contextvars
+import math
+
+from sqlalchemy import (BigInteger, Column, DateTime, Index, Integer, MetaData, String, Table, UniqueConstraint,
+                        func, select, text)
+from sqlalchemy.types import JSON
+
+from .database import Base
 
 MAX_NAME_BYTES = 63                                  # PostgreSQL's identifier limit
 NOW_SUFFIX, LINES_SUFFIX = "__now", "__lines"
+LINE_KINDS = ("write", "withdraw", "deleted", "mark")
+BIT_FAMILIES = ("written", "head", "withdrawn")
+BITS_PER_CHUNK = 64
+REFUSAL = "a write to the view {view} is refused - write through database.lines (write_lines)"
+
+#: The columns every data table carries before its declared ones (today's framework columns, same types).
+FRAMEWORK = (("row_id", String), ("business_key_val", String), ("created_at", DateTime(timezone=True)),
+             ("updated_at", DateTime(timezone=True)))
+
+
+class LineColumn(Base):
+    """Column -> bit slot of a table's lines. Append-only: a dropped column keeps its row (retired_at set) and its
+    slot is never handed out again - an old line's bit would otherwise name another column."""
+
+    __tablename__ = "line_columns"
+
+    table_name = Column(String, primary_key=True)
+    bit = Column(Integer, primary_key=True)
+    column_name = Column(String, nullable=False)
+    retired_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (Index("uq_line_columns_live", "table_name", "column_name", unique=True,
+                            postgresql_where=text("retired_at IS NULL"), sqlite_where=text("retired_at IS NULL")),)
+
+
+class AuditBatch(Base):
+    """The audit log: one row per (transaction, table, work kind). No values - «changed rows» is counted from the
+    table's lines by batch."""
+
+    __tablename__ = "audit_batches"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    transaction_id = Column(String, nullable=False)
+    table_name = Column(String, nullable=False)
+    written_by = Column(String)
+    work_kind = Column(String, nullable=False)
+    at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (Index("ix_audit_batches_table_at", "table_name", "at"),
+                      Index("ix_audit_batches_transaction", "transaction_id"),
+                      Index("ix_audit_batches_at_id", "at", "id"))
+
+
+_SEEDING = contextvars.ContextVar("lines_seeding", default=False)
+
+
+@contextlib.contextmanager
+def seeding():
+    """Tests' ORM writes (add · attribute set · session.delete) on a line table are taken only inside this; the
+    flush hook refuses them elsewhere."""
+    token = _SEEDING.set(True)
+    try:
+        yield
+    finally:
+        _SEEDING.reset(token)
+
+
+def is_seeding() -> bool:
+    return _SEEDING.get()
 
 
 def _checked(name: str) -> str:
@@ -23,3 +91,173 @@ def now_relation(table_name: str) -> str:
 def lines_relation(table_name: str) -> str:
     """The physical table holding t's lines."""
     return _checked(table_name + LINES_SUFFIX)
+
+
+def bit_map(db, table_name: str) -> dict:
+    """{column: bit} of t's live columns."""
+    rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(
+        LineColumn.table_name == table_name, LineColumn.retired_at.is_(None))).all()
+    return {name: bit for name, bit in rows}
+
+
+def has_lines(db, table_name: str) -> bool:
+    """Whether t keeps lines (has slots in line_columns) - an audit row of a relation without lines has no
+    countable «changed rows»."""
+    return db.execute(select(LineColumn.bit).where(LineColumn.table_name == table_name).limit(1)).first() is not None
+
+
+def assign_bits(db, table_name: str, columns) -> dict:
+    """Give each column without a live slot the next slot after every slot t ever had; -> the live map."""
+    live = bit_map(db, table_name)
+    top = db.execute(select(func.max(LineColumn.bit)).where(LineColumn.table_name == table_name)).scalar()
+    nxt = -1 if top is None else top
+    for name in columns:
+        if name not in live:
+            nxt += 1
+            db.add(LineColumn(table_name=table_name, bit=nxt, column_name=name))
+            live[name] = nxt
+    db.flush()
+    return live
+
+
+def retire_bits(db, table_name: str, columns) -> None:
+    """Mark dropped columns' slots retired; the slots stay taken."""
+    db.query(LineColumn).filter(LineColumn.table_name == table_name, LineColumn.column_name.in_(list(columns)),
+                                LineColumn.retired_at.is_(None)).update({LineColumn.retired_at: func.now()},
+                                                                        synchronize_session=False)
+
+
+def chunk_count(db, table_name: str) -> int:
+    """How many bigint chunks each bit family takes - from every slot t ever had, retired ones included."""
+    top = db.execute(select(func.max(LineColumn.bit)).where(LineColumn.table_name == table_name)).scalar()
+    return max(1, math.ceil(((top if top is not None else -1) + 1) / BITS_PER_CHUNK))
+
+
+def bit_columns(family: str, chunks: int) -> list:
+    return [f"{family}_{i}" for i in range(chunks)]
+
+
+def _data_columns(table_cfg: dict, sql_type_of) -> list:
+    columns = [Column(name, type_) for name, type_ in FRAMEWORK]
+    framework = {name for name, _ in FRAMEWORK}
+    for name, type_str in (table_cfg.get("column_types") or {}).items():
+        if name not in framework:
+            columns.append(Column(name, sql_type_of(type_str)))
+    return columns
+
+
+def shape(db, table_name: str, table_cfg: dict) -> dict:
+    """t's two tables as Core Table objects on a private MetaData, with the names and the bit map they were built
+    from. Assigns slots to new declared columns (the caller commits)."""
+    from .models import sql_type_of
+
+    declared = [name for name in (table_cfg.get("column_types") or {}) if name not in {n for n, _ in FRAMEWORK}]
+    bits = assign_bits(db, table_name, declared)
+    chunks = chunk_count(db, table_name)
+    meta = MetaData()
+    now = Table(now_relation(table_name), meta, *_data_columns(table_cfg, sql_type_of), Column("won_by", JSON))
+    now.c.row_id.primary_key = True
+    now.append_constraint(UniqueConstraint("row_id", name=f"uq_{now.name}_row_id"))
+    now.append_constraint(UniqueConstraint("business_key_val", name=f"uq_{now.name}_bk"))
+    line_cols = [Column("line_id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
+                 Column("line_kind", String, nullable=False), Column("source_name", String), Column("at", DateTime(timezone=True)),
+                 Column("written_by", String), Column("batch", String), Column("input_row", String),
+                 Column("owner_rule", String), Column("owner_key", String), Column("confirmed", String)]
+    for family in BIT_FAMILIES:
+        line_cols += [Column(name, BigInteger, nullable=False, server_default=text("0"))
+                      for name in bit_columns(family, chunks)]
+    data = [c for c in _data_columns(table_cfg, sql_type_of) if c.name != "row_id"]
+    lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
+    head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
+    Index(f"ix_{lines.name}_row_at", lines.c.row_id, lines.c.at)
+    Index(f"ix_{lines.name}_batch", lines.c.batch)
+    Index(f"ix_{lines.name}_head", lines.c.row_id, lines.c.source_name,
+          postgresql_where=text(head_any), sqlite_where=text(head_any))
+    return {"now": now, "lines": lines, "view": table_name, "bits": bits, "chunks": chunks,
+            "view_columns": [c.name for c in now.columns if c.name != "won_by"]}
+
+
+def _view_ddl(dialect: str, s: dict) -> list:
+    view, now = s["view"], s["now"].name
+    cols = ", ".join(f'"{c}"' for c in s["view_columns"])
+    msg = REFUSAL.format(view=view).replace("'", "''")
+    out = [f'CREATE VIEW "{view}" AS SELECT {cols} FROM "{now}"']
+    if dialect == "postgresql":
+        fn = _checked(f"refuse_{view}"[:MAX_NAME_BYTES])
+        out += [f"CREATE OR REPLACE FUNCTION \"{fn}\"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                f"RAISE EXCEPTION '{msg}'; END $$",
+                f'CREATE TRIGGER "{view}_refuse" INSTEAD OF INSERT OR UPDATE OR DELETE ON "{view}" '
+                f'FOR EACH ROW EXECUTE FUNCTION "{fn}"()']
+    else:
+        out += [f'CREATE TRIGGER "{view}_refuse_{op.lower()}" INSTEAD OF {op} ON "{view}" '
+                f"BEGIN SELECT RAISE(ABORT, '{msg}'); END" for op in ("INSERT", "UPDATE", "DELETE")]
+    return out
+
+
+def _drop_view_ddl(dialect: str, view: str) -> list:
+    out = [f'DROP VIEW IF EXISTS "{view}"']
+    if dialect == "postgresql":
+        out.append(f'DROP FUNCTION IF EXISTS "{f"refuse_{view}"[:MAX_NAME_BYTES]}"()')
+    return out                                   # sqlite drops a view's triggers with the view
+
+
+def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
+    """Create t's two tables, their indexes, and the view t with its refusing trigger - what is missing only.
+    -> the shape."""
+    s = shape(db, table_name, table_cfg)
+    conn = db.connection()
+    s["now"].metadata.create_all(conn, checkfirst=True)
+    from sqlalchemy import inspect
+
+    if table_name not in inspect(conn).get_view_names():
+        for stmt in _view_ddl(conn.dialect.name, s):
+            conn.exec_driver_sql(stmt)
+    return s
+
+
+def drop_line_table(db, table_name: str) -> None:
+    """Drop the view t, both tables, and a migration's `t__old` if there is one. The slots stay retired-or-live in
+    line_columns (a table re-created under the same name keeps its slot numbering)."""
+    conn = db.connection()
+    for stmt in _drop_view_ddl(conn.dialect.name, table_name):
+        conn.exec_driver_sql(stmt)
+    for name in (lines_relation(table_name), now_relation(table_name), _checked(table_name + "__old")):
+        conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{name}"')
+
+
+def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=()) -> list:
+    """Column DDL on both tables in the caller's transaction: drop the view, change `t__now` and `t__lines` alike,
+    re-create the view. add/retype: column names in table_cfg's column_types; drop: column names.
+    -> the statements run (the same text an operator is shown)."""
+    from .models import sql_type_of
+
+    conn = db.connection()
+    dialect = conn.dialect.name
+    types = table_cfg.get("column_types") or {}
+    statements = list(_drop_view_ddl(dialect, table_name))
+    before = chunk_count(db, table_name)
+    if add:
+        assign_bits(db, table_name, list(add))
+    if drop:
+        retire_bits(db, table_name, list(drop))
+    after = chunk_count(db, table_name)
+    for rel in (now_relation(table_name), lines_relation(table_name)):
+        for name in add:
+            type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
+            statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
+        for name in drop:
+            statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{name}"')
+        for name in retype:
+            if dialect != "postgresql":
+                raise ValueError("retyping a column is a PostgreSQL operation")
+            type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
+            statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING "{name}"::{type_sql}')
+    for family in BIT_FAMILIES:
+        for name in bit_columns(family, after)[before:]:
+            statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
+    for stmt in statements:
+        conn.exec_driver_sql(stmt)
+    view_statements = _view_ddl(dialect, shape(db, table_name, table_cfg))
+    for stmt in view_statements:
+        conn.exec_driver_sql(stmt)
+    return statements + view_statements
