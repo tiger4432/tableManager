@@ -178,6 +178,14 @@ CHILD_LOG_MAX_BYTES = 20 * 1024 * 1024
 # (owner 10-20, lead cc6840513: the API and the chain stopped while a retroactive run went on).
 CONSOLE_QUEUE_LINES = 10000
 
+#: The OS priority a child starts at - `ChildSpec.priority` (owner 11-10: the background work queued the reads at
+#: C100). Windows' class flag at creation; a below-normal process's own children start below normal too (Windows
+#: gives a child its parent's class when the parent's is below normal), so the chain's slots and the scheduler's
+#: retroactive runs follow their parent. Elsewhere nothing is set.
+PRIORITY_NORMAL = "normal"
+PRIORITY_BELOW_NORMAL = "below normal"
+_PRIORITY_FLAG = {PRIORITY_NORMAL: 0, PRIORITY_BELOW_NORMAL: 0x00004000}
+
 STATE_RUNNING = "running"
 STATE_BACKOFF = "backoff"
 STATE_FAILED = "failed"
@@ -601,7 +609,7 @@ class ChildSpec:
 
     def __init__(self, name, cmd, cwd, env=None, restartable=True,
                  heartbeat=None, start_delay=0.0, ports=(), port_host=None,
-                 log_file=None):
+                 log_file=None, priority=PRIORITY_NORMAL):
         self.name = name
         self.cmd = cmd
         self.cwd = cwd
@@ -620,6 +628,9 @@ class ChildSpec:
         # Where this child's stdout/stderr is tee'd. None keeps the old
         # behaviour (console only, recorded nowhere).
         self.log_file = log_file
+        if priority not in _PRIORITY_FLAG:
+            raise ValueError("%s: priority %r is not one of %s" % (name, priority, ", ".join(_PRIORITY_FLAG)))
+        self.priority = priority
 
 
 class _ChildState:
@@ -702,10 +713,11 @@ class Supervisor:
         merged = os.environ.copy()
         if spec.env:
             merged.update(spec.env)
+        flags = _PRIORITY_FLAG[spec.priority] if os.name == "nt" else 0
         if getattr(self, "own_window", False) and os.name == "nt":
-            return self._spawn_in_own_window(spec, merged)
+            return self._spawn_in_own_window(spec, merged, flags)
         if not spec.log_file:
-            return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged)
+            return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged, creationflags=flags)
         # PYTHONUNBUFFERED is not a nicety here. With stdout on a pipe instead of
         # a console, CPython block-buffers it, and the one line this capture
         # exists for - the bind error - can sit in an 8 KB buffer while the
@@ -714,7 +726,7 @@ class Supervisor:
         merged.setdefault("PYTHONUNBUFFERED", "1")
         return subprocess.Popen(spec.cmd, cwd=spec.cwd, env=merged,
                                 stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT, creationflags=flags)
 
     def _tees_to_console(self, name) -> bool:
         """이 자식의 stdout 을 콘솔에도 흘릴 것인가 (S-138 ①).
@@ -733,7 +745,7 @@ class Supervisor:
             return True
         return (name or "").strip().lower() in wanted
 
-    def _spawn_in_own_window(self, spec, env):
+    def _spawn_in_own_window(self, spec, env, flags=0):
         """이 자식을 «자기 콘솔 창»에 띄운다. Windows 전용 (S-138 ②, 판정 257).
 
         🔴 파이프를 «포기하는» 것이 이 모드의 값이자 대가다. 프로세스의 stdout 은 하나라,
@@ -749,7 +761,7 @@ class Supervisor:
         return subprocess.Popen(
             ["cmd", "/c", "title", title, "&", "cmd", "/c", quoted],
             cwd=spec.cwd, env=env,
-            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0) | flags)
 
     def _to_console(self, name, line):
         """Hand a line to the console thread; when it is behind by CONSOLE_QUEUE_LINES the line is dropped and
@@ -905,6 +917,8 @@ class Supervisor:
             child.next_restart_at = None
             self._attach_log_pump(child)
             self._log(f"Starting {name}: {' '.join(child.spec.cmd)}")
+            self._log(f"Priority of {name}: {child.spec.priority}"
+                      + ("" if os.name == "nt" else " (not set: not Windows)"))
             self._record(child, "started", pid=getattr(child.proc, "pid", None))
         except Exception as e:
             # A spawn that raises is a failure exactly like a child that exits

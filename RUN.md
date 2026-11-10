@@ -13,6 +13,23 @@
 >
 > ---
 >
+> ```
+>
+> ---
+>
+> ## [11-10] **뒤에서 도는 일은 «낮은 우선순위»로 — 화면 읽기가 먼저** (소유자 11-10 «c100을 고쳐야지»)
+>
+> ```
+> 하는 일  와처 · 체인 워커(와 그 슬롯) · 원장 워커 · 자동 갱신 스케줄러(와 소급 실행)는 BELOW_NORMAL 로 뜸
+>          API(와 그리드 풀 자식)는 보통. 어느 자식이 낮은지는 launcher_specs.py 의 priority= 칸 하나
+> 볼 줄    launcher.log 에 자식마다 한 줄:  Priority of Chained Ingestion Worker: below normal
+>                                         Priority of Backend FastAPI Server: normal
+> 확인     작업 관리자 > 세부 정보 > 해당 python.exe 우클릭 > 우선 순위 설정 = «보통 이하»
+> 답의 뜻  C100 일 때 STALL 줄의 api 몫이 예전보다 커지고 체인 · 원장 몫이 작아지면 의도대로
+>          pg 몫이 크면 이 착지로는 안 풀림 — PostgreSQL 은 런처 자식이 아니라 우선순위를 안 받음
+> 끄기     launcher_specs.py 에서 priority=PRIORITY_BELOW_NORMAL 을 지우고 런처 재기동
+> ```
+
 > ## [11-10] **받은 릴리스 묶음은 설치 폴더의 release 폴더에 넣기만 — 런처가 켜질 때 알아서 반영** — 이 기능이 든 첫 묶음만 노트대로 손으로 한 번
 >
 > ```
