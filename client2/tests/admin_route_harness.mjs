@@ -57,6 +57,14 @@ console.log('\n── N. THE RULE AN ADDRESS NAMES ─────────�
     && lacks.refusal.code === '' && lacks.refusal.path === '', lacks.refusal);
   ok('N5 no name asked (the list read) and an unread answer pass as they are',
     X.ruleAddressed(READ, '').body === READ && X.ruleAddressed(null, 'x').body === null && X.ruleAddressed(null, 'x').refusal === null);
+  // held until a person acts (lead 11-10): the 30 s refresh is a list read, and it says it again
+  const again = X.ruleAddressed(READ, '', lacks.held);
+  ok('N6 the 30 s list read after it says the same line again, and keeps it', again.refusal === lacks.held
+    && again.held === lacks.held && again.body === READ, again);
+  const opened = X.ruleAddressed(READ, '한글 규칙', lacks.held);
+  ok('N7 a person opens a rule: the line goes', opened.refusal === null && opened.held === null);
+  const fresh = X.ruleAddressed(READ, '', lacks.held, true);
+  ok('N8 a person starts a new rule: the line goes', fresh.refusal === null && fresh.held === null);
 }
 
 const swap = (from, to) => (src) => {
@@ -68,6 +76,10 @@ const DEFECTS = [
   ['M2 the value not decoded', swap('try { value = decodeURIComponent(raw.slice(eq + 1)); }', 'try { value = raw.slice(eq + 1); }')],
   ['M3 a missing rule opens its empty form', swap('  const { name: _asked, declaration: _none, raw: _empty, ...list } = body;\n', '  const list = body;\n')],
   ['M4 a missing rule is not said', swap("return { body: list, refusal: { code: '', path: '', message: ruleNotFound(name) } };", 'return { body: list, refusal: null };')],
+  ['M6 the 30 s list read takes the line away', swap('if (!name) return { body, refusal: byPerson ? null : held, held: byPerson ? null : held };',
+    'if (!name) return { body, refusal: null, held: null };')],
+  ['M7 the line outlives a rule a person opened', swap("body.rules.includes(name)) return { body, refusal: null, held: null };",
+    "body.rules.includes(name)) return { body, refusal: held, held };")],
   ['M5 the old ?tab= link forgotten', swap("if (!raw) raw = new URLSearchParams(search || '').get('tab') || '';", '')],
 ];
 const CONTROLS = [
@@ -82,6 +94,8 @@ function verdict(M) {
   const lacks = M.ruleAddressed(MISSING, 'gone rule');
   if ('name' in lacks.body || !lacks.refusal || lacks.refusal.message !== 'Rule gone rule not found') return true;
   if (M.ruleAddressed(READ, '한글 규칙').body !== READ) return true;
+  if (M.ruleAddressed(READ, '', lacks.held).refusal !== lacks.held) return true;
+  if (M.ruleAddressed(READ, '한글 규칙', lacks.held).refusal !== null) return true;
   return false;
 }
 

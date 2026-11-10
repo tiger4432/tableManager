@@ -515,8 +515,10 @@ function parseRoute() {
   return adminRouteOf(window.location.hash, window.location.search);
 }
 
-// A rule an address names (`#chain=<name>`, owner 11-10 «플로우 ㄱ»): the chain tab's next read opens it.
+// A rule an address names (`#chain=<name>`, owner 11-10 «플로우 ㄱ»): the chain tab's next read opens it; when the file
+// lacks it, why - held until a person opens a rule or leaves the tab.
 let chainRuleAsked = '';
+let chainNotFound = null;
 
 /** 🔴 THE MAP ADDRESSES ITSELF WITH QUERY PARAMS, AND THAT PROPERTY IS THE ONE BEING PRESERVED.
  *
@@ -592,6 +594,7 @@ function switchTab(tabName, opts = {}) {
   if (!t) return;
 
   currentTab = t.tab;
+  if (t.tab !== 'chain') chainNotFound = null;
 
   // Update Tab Button styles
   tabDefs.forEach(o => o.btn.classList.remove('active'));
@@ -1205,8 +1208,9 @@ async function refreshChainRule(name, extra = {}) {
     opts.unavailable = fetchFailureLine(null, 'Rule registry read failed');
   }
   // an address (or a stale pick) naming a rule the file lacks: nothing open, and why (owner 11-10 «플로우 ㄱ»)
-  const addressed = ruleAddressed(body, name);
+  const addressed = ruleAddressed(body, name, chainNotFound, Boolean(extra.forNew));
   body = addressed.body;
+  chainNotFound = addressed.held;
   if (addressed.refusal && !opts.refusal) opts.refusal = addressed.refusal;
   chainRulePanel.setLists({
     ...(mappers === null ? {} : { mappers }),

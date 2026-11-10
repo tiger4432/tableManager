@@ -29,9 +29,13 @@ export const chainRuleHref = (name) => adminHref('chain', name);
 export const ruleNotFound = (name) => `Rule ${name} not found`;
 
 /** One rule's read (GET /admin/chain/rules/raw?name=) for `name`: as it came when the file has that rule; else the list
- *  with nothing open and why - the editor does not draw an empty form under a name the file lacks. */
-export function ruleAddressed(body, name) {
-  if (!name || !body || !Array.isArray(body.rules) || body.rules.includes(name)) return { body, refusal: null };
+ *  with nothing open and why - the editor does not draw an empty form under a name the file lacks. `held` is the «not
+ *  found» said before: a list read (the 30 s refresh) says it again, until a person opens a rule or a new one (`byPerson`)
+ *  - a refresh does not take away why the address opened nothing (lead 11-10). -> {body, refusal, held} */
+export function ruleAddressed(body, name, held = null, byPerson = false) {
+  if (!name) return { body, refusal: byPerson ? null : held, held: byPerson ? null : held };
+  if (!body || !Array.isArray(body.rules) || body.rules.includes(name)) return { body, refusal: null, held: null };
   const { name: _asked, declaration: _none, raw: _empty, ...list } = body;
-  return { body: list, refusal: { code: '', path: '', message: ruleNotFound(name) } };
+  const refusal = { code: '', path: '', message: ruleNotFound(name) };
+  return { body: list, refusal, held: refusal };
 }
