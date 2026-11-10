@@ -304,7 +304,7 @@ def line_table(table_name, bits):
                     *[sa.Column(name, typed.get(name, sa.String())) for name in bits])
 
 
-def _said(row, bit, kind="written"):
+def bit_said(row, bit, kind="written"):
     chunk, place = divmod(bit, LINE_BITS)
     return bool((int(getattr(row, "%s_%d" % (kind, chunk)) or 0) >> place) & 1)
 
@@ -343,8 +343,8 @@ def line_entries(table_name, row, bits, column=None, business_key=None, row_dele
         return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
                      new_value="row deleted", source_name="system")]
     return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
-                 new_value=None if _said(row, bit, "withdrawn") else getattr(row, name))
-            for name, bit in bits.items() if (column is None or name == column) and _said(row, bit)]
+                 new_value=None if bit_said(row, bit, "withdrawn") else getattr(row, name))
+            for name, bit in bits.items() if (column is None or name == column) and bit_said(row, bit)]
 
 
 def count_row_lines(db, table_name, row_id, cap: int = None):
@@ -453,7 +453,7 @@ def head_lines(db, table_name, row_ids, columns=None) -> dict:
     for i in range(0, len(ids), 1000):
         for row in db.execute(sa.select(t).where(t.c.row_id.in_(ids[i:i + 1000]), sa.or_(*heads))):
             for name, bit in bits.items():
-                if _said(row, bit, "head") and not _said(row, bit, "withdrawn"):
+                if bit_said(row, bit, "head") and not bit_said(row, bit, "withdrawn"):
                     out.setdefault((row.row_id, name), {})[row.source_name] = {
                         "value": getattr(row, name), "at": row.at, "written_by": row.written_by}
     return out

@@ -863,6 +863,14 @@ def layer_writer(source_name) -> str:
     return str(source_name or "").split(" (", 1)[0]
 
 
+def human_source_clause(column):
+    """The SQL of «`layer_writer`(the name in `column`) is USER_SOURCE» - a person's line, a collision-merge copy of one
+    included (lead 11-10 ㄴ). Its text is the partial index's predicate on t__lines: keep the two alike."""
+    from sqlalchemy import or_
+
+    return or_(column == USER_SOURCE, column.like(USER_SOURCE + " (%"))
+
+
 def layer_ranks_as(source_name):
     """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
     chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
@@ -2446,15 +2454,28 @@ RECORRECTION_WINDOW_DAYS = 7
 # 하기 위해서다. 전 기간 창은 과거 누적에 희석돼 어떤 회귀에도 움직이지 않는다.
 
 
-def _is_json_null(col):
-    """JSON 컬럼이 '값 없음'인지 — SQL NULL과 JSON null 양쪽을 덮는다.
-
-    AuditLog.old/new_value는 SQLAlchemy JSON 타입이라 파이썬 None이 SQL NULL이 아니라
-    JSON 'null'로 저장된다(실측: old_value IS NULL = 0행, old_value::text='null' = 4,290행).
-    한쪽만 검사하면 조용히 빗나간다.
-    """
+def human_lines(db: Session, since) -> list:
+    """[(table, row_id, history group, {columns it wrote})] - every line a person wrote at or after `since`, in each
+    declared table that keeps lines (`human_source_clause`; the t__lines partial index on it). What the two Overview
+    figures count (cell-source overhaul: audit_logs retires)."""
     import sqlalchemy as sa
-    return sa.or_(col.is_(None), sa.cast(col, sa.String) == "null")
+
+    from admin import audit_history
+    from admin.audit_cache import group_of
+    from database import lines
+
+    found = []
+    for table_name in sorted(TABLE_CONFIG):
+        if not lines.has_lines(db, table_name):
+            continue
+        bits = audit_history.line_bits(db, table_name)
+        t = audit_history.line_table(table_name, bits)
+        written = [t.c[name] for name in t.c.keys() if name.startswith("written_")]
+        for row in db.execute(sa.select(t.c.row_id, t.c.batch, *written).where(
+                human_source_clause(t.c.source_name), t.c.at >= since)):
+            found.append((table_name, row.row_id, group_of(row.batch),
+                          {name for name, bit in bits.items() if audit_history.bit_said(row, bit)}))
+    return found
 
 
 def get_recorrection_stats(db: Session, window_days: int = RECORRECTION_WINDOW_DAYS) -> dict:
@@ -2463,49 +2484,19 @@ def get_recorrection_stats(db: Session, window_days: int = RECORRECTION_WINDOW_D
     반환: {window_days, measured_cells, recorrected_cells, rate_pct}
     `rate_pct`는 분모가 0이면 None — 표본이 없을 때 0%로 위장하지 않는다.
     분모(`measured_cells`)는 **항상 함께** 반환한다. 분모 없는 비율은 읽을 수 없다.
+    A cell is (table, row, column) a person's line wrote in the window (`human_lines`); it is re-corrected when two or
+    more of their transactions wrote it - a paste touching a cell twice is one act. A line is written only when a value
+    changes, so a re-write of the same value is none.
     """
-    import sqlalchemy as sa
     from datetime import timezone, timedelta
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
-    AL = models.AuditLog
-
-    inner = (
-        db.query(
-            AL.table_name.label("t"),
-            AL.row_id.label("r"),
-            AL.column_name.label("c"),
-            # [함정 2] 한 transaction_id 안의 여러 행은 **한 번의 사람 행위**다.
-            # 엑셀 붙여넣기 한 번이 같은 셀을 두 번 건드릴 수 있다(실측: 643개 그룹/1,286행).
-            # 행 수로 세면 44일 기준 3.88%로 부풀고, 트랜잭션으로 접으면 2.96%다.
-            sa.func.count(sa.distinct(AL.transaction_id)).label("txs"),
-        )
-        .filter(
-            # [함정 1] 자동 소스 제외. 파서/체인이 같은 셀을 반복해 덮는 것은 정상 동작이지
-            # 사람의 재교정이 아니다. 자동 소스는 파일명을 소스명으로 쓰기 때문에 값 집합이
-            # 열려 있다 — 블랙리스트가 아니라 USER_SOURCE 양성 선택이어야 한다.
-            AL.source_name == USER_SOURCE,
-            AL.timestamp >= cutoff,
-            # [함정 3] "같은 값을 다시 쓴 것"의 처리.
-            # 실제 값이 같은 재기입은 감사 로그에 **애초에 들어오지 않는다** —
-            # apply_row_update_internal의 has_changed 가드가 값이 바뀐 컬럼만 기록한다.
-            # (실측: 값이 동일한 user 행 중 진짜 동일값 재기입은 0건.)
-            # 남는 것은 신규 행 생성 시 is_new=True가 가드를 건너뛰며 남기는 null→null 행뿐이다
-            # (실측 4,290행). 이는 사람이 **빈칸으로 둔** 컬럼이지 쓴 셀이 아니므로 분모에서 뺀다.
-            sa.not_(sa.and_(_is_json_null(AL.old_value), _is_json_null(AL.new_value))),
-        )
-        .group_by(AL.table_name, AL.row_id, AL.column_name)
-        .subquery()
-    )
-
-    # FILTER 절 대신 CASE — SQLite/PostgreSQL 양쪽에서 동일하게 동작한다.
-    measured, recorrected = db.query(
-        sa.func.count(),
-        sa.func.coalesce(sa.func.sum(sa.case((inner.c.txs > 1, 1), else_=0)), 0),
-    ).select_from(inner).one()
-
-    measured = int(measured or 0)
-    recorrected = int(recorrected or 0)
+    cells = {}
+    for table_name, row_id, group, columns in human_lines(db, cutoff):
+        for column in columns:
+            cells.setdefault((table_name, row_id, column), set()).add(group)
+    measured = len(cells)
+    recorrected = sum(1 for groups in cells.values() if len(groups) > 1)
     return {
         "window_days": window_days,
         "measured_cells": measured,
@@ -2618,16 +2609,8 @@ def get_effort_stats(db: Session, weights: dict,
     tx_count = int(tx_count or 0)
     session_count = int(session_count or 0)
 
-    # 분모: 같은 창에서 **사람이 만든 전체 tx** 수. audit_logs의 부분 커버링 인덱스
-    # (idx_audit_user_recorrection: timestamp + INCLUDE transaction_id WHERE source_name='user')가
-    # 그대로 이 쿼리도 커버한다 — 새 인덱스가 필요 없다.
-    AL = models.AuditLog
-    total_user_tx = (
-        db.query(sa.func.count(sa.distinct(AL.transaction_id)))
-        .filter(AL.source_name == USER_SOURCE, AL.timestamp >= cutoff)
-        .scalar()
-    ) or 0
-    total_user_tx = int(total_user_tx)
+    # 분모: 같은 창에서 **사람이 만든 전체 tx** 수 - the people's lines' transactions (`human_lines`).
+    total_user_tx = len({group for _t, _r, group, _c in human_lines(db, cutoff)})
 
     return {
         "window_days": window_days,

@@ -17,7 +17,9 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
+from conftest import retire_dynamic_model
 from database import crud, models
+from tests.support import line_tables
 
 # Session ids are namespaced so a test can never be confused with real traffic.
 S1 = "effort_test_sess_1"
@@ -34,15 +36,26 @@ def _effort(db, *, session, key=0, mouse=0, nav=0, nav_preserved=0, tx=None, day
     ))
 
 
+EFFORT_TABLE = "effort_test_tbl"
+EFFORT_ENTRY = {"business_key": "k", "composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
+
+
+@pytest.fixture(autouse=True)
+def effort_lines(db_session, monkeypatch):
+    """The cell-source overhaul: the denominator's transactions are a person's lines (`crud.human_lines`)."""
+    models.init_dynamic_models({EFFORT_TABLE: EFFORT_ENTRY})
+    monkeypatch.setitem(crud.TABLE_CONFIG, EFFORT_TABLE, EFFORT_ENTRY)
+    bits = line_tables.build(db_session.get_bind(), EFFORT_TABLE)
+    yield bits
+    line_tables.drop(db_session.get_bind(), EFFORT_TABLE)
+    retire_dynamic_model(EFFORT_TABLE)
+
+
 def _user_tx(db, tx, *, days_ago=1, source=None):
-    """An audit row so the tx exists in the measured_ratio denominator."""
-    db.add(models.AuditLog(
-        table_name="effort_test_tbl", row_id="r1", column_name="a",
-        old_value="before", new_value="after",
-        source_name=source or crud.USER_SOURCE, updated_by="tester",
-        transaction_id=tx,
-        timestamp=datetime.now(timezone.utc) - timedelta(days=days_ago),
-    ))
+    """A person's line in transaction `tx`, so the tx exists in the measured_ratio denominator."""
+    line_tables.line(db.connection(), EFFORT_TABLE, line_tables.bits_of(EFFORT_TABLE), "r1",
+                     source=source or crud.USER_SOURCE, batch=tx, written_by="tester",
+                     at=datetime.now(timezone.utc) - timedelta(days=days_ago), values={"a": "after"})
 
 
 DEFAULT_W = {"key": 1, "mouse": 3, "nav": 5, "nav_preserved": 0}

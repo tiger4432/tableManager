@@ -33,6 +33,11 @@ def build(engine, table):
     return dict(shape["bits"])
 
 
+def bits_of(table) -> dict:
+    """{column: bit} of `table` as `build` made it."""
+    return dict(_BUILT[table]["bits"])
+
+
 def drop(engine, table):
     with Session(bind=engine) as session:
         lines.drop_line_table(session, table)
