@@ -6570,13 +6570,13 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     """A person pins the source cells show (Pin), or takes the pin off (`source_name` None, or the source already
     pinned there - a toggle), and commit. The pin stays in cell_overwrites (outside the overhaul); a row whose pin
     moved gets one «mark» line (`write_lines`), which merges it again - the shown value moves when the pin moves it.
-    A cell whose pinned source has no head line there is skipped. A pin that moves a key part's shown value
+    A cell whose pinned source has no standing line there (`lines.layers`) is skipped. A pin that moves a key part's shown value
     rebuilds the key, and a row whose new key another row holds is merged into it (write_lines' step 5½). -> (the
     rows asked whose cells were not all skipped - a merged row's holder in its place -, as ORM rows; one history
     entry a cell whose shown value moved - no before value; the rows merged away)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
-    from admin.audit_history import head_lines
+    from database import lines
     from database.write_lines import write_lines
 
     if not updates:
@@ -6590,7 +6590,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         if item["column_name"] not in by_row[item["row_id"]]:
             by_row[item["row_id"]].append(item["column_name"])
     rows = {r.row_id for r in db.query(table_model.row_id).filter(table_model.row_id.in_(list(by_row))).all()}
-    heads = head_lines(db, table_name, sorted(rows), sorted({c for cols in by_row.values() for c in cols}))
+    heads = lines.layers(db, table_name, sorted(rows), sorted({c for cols in by_row.values() for c in cols}))
     co = models.CellOverwrite
     marks = {(m.row_id, m.column_name): m
              for m in db.query(co).filter(co.table_name == table_name, co.row_id.in_(sorted(rows))).all()}

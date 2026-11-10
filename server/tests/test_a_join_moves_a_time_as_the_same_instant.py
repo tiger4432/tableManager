@@ -92,8 +92,9 @@ def test_a_join_moves_a_time_and_every_copy_is_the_same_instant(db, blank):
     from chain import cell_layer
 
     key_of = dict(db.execute(text('SELECT row_id, k FROM "%s"' % LEFT)).all())
-    layer = {key_of[s.row_id]: s.value for s in db.query(models.CellSource).filter(
-        *cell_layer._claimed_filter(LEFT, crud.CHAIN_SOURCE, ["t"]))}
+    from database import lines
+
+    layer = {key_of[row_id]: line[lines.value_column("t")] for row_id, _col, line in _claimed(db, LEFT, crud.CHAIN_SOURCE, ["t"])}
 
     assert outcome["written"] >= 1
     assert isinstance(layer["L1"], str)
@@ -102,3 +103,15 @@ def test_a_join_moves_a_time_and_every_copy_is_the_same_instant(db, blank):
         assert "L2" not in layer and table["L2"] is not None       # the file value stands
     else:
         assert layer["L2"] is None and table["L2"] is None         # the blank answer, written
+
+
+def _claimed(db, table, source, columns):
+    """The product's claim predicate read back as cells: [(row_id, column, line)] the source still says."""
+    from sqlalchemy import select
+
+    from chain import cell_layer
+
+    lt, bits = cell_layer.claimed_lines(db, table)
+    return [(line["row_id"], col, line) for line in db.execute(
+        select(lt).where(*cell_layer._claimed_filter(lt, bits, source, columns))).mappings()
+        for col in cell_layer._claimed_cells(line, bits, columns)]

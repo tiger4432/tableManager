@@ -99,8 +99,7 @@ def _chain_cells(db, column="grade"):
     """The chain's claims on the target, as `{row_id: origin_row_id}` - its row layers too (the product's predicate)."""
     from chain import cell_layer
 
-    return {row.row_id: row.origin_row_id for row in db.query(models.CellSource).filter(
-        *cell_layer._claimed_filter(TARGET, join_into.CHAIN_LAYER, [column])).all()}
+    return {row_id: line["input_row"] for row_id, _col, line in _claimed(db, TARGET, join_into.CHAIN_LAYER, [column])}
 
 
 # ---------------------------------------------------------------------------
@@ -321,3 +320,15 @@ def test_every_registered_kind_answers_the_question_one_way_or_the_other():
         assert (answer is None) is stamps, (
             "kind %r is %sregistered as stamping its origin but the seat says %r"
             % (kind, "" if stamps else "not ", answer))
+
+
+def _claimed(db, table, source, columns):
+    """The product's claim predicate read back as cells: [(row_id, column, line)] the source still says."""
+    from sqlalchemy import select
+
+    from chain import cell_layer
+
+    lt, bits = cell_layer.claimed_lines(db, table)
+    return [(line["row_id"], col, line) for line in db.execute(
+        select(lt).where(*cell_layer._claimed_filter(lt, bits, source, columns))).mappings()
+        for col in cell_layer._claimed_cells(line, bits, columns)]

@@ -471,29 +471,3 @@ def winners(db, table_name, row_ids) -> dict:
                 t.c.line_id, t.c.source_name, t.c.written_by, t.c.at).where(t.c.line_id.in_(named[i:i + 1000]))):
             line[line_id] = {"source": source, "written_by": written_by, "at": at}
     return {cell: line[line_id] for cell, line_id in won.items() if line_id in line}
-
-
-def head_lines(db, table_name, row_ids, columns=None) -> dict:
-    """{(row_id, column): {source: {"value", "at", "written_by"}}} - each source's newest line of the cell (its head
-    bit), a withdrawn one left out (the source says nothing): the layers a Sources window shows. The head index -
-    (row_id, source_name) WHERE a head bit is set. A table whose lines are not built (`lines.has_lines`) has none."""
-    from database import lines
-
-    if not lines.has_lines(db, table_name):
-        return {}
-    bits = line_bits(db, table_name)
-    if columns is not None:
-        bits = {name: bit for name, bit in bits.items() if name in set(columns)}
-    t = line_table(table_name, bits)
-    types = lines.value_types(db, table_name)
-    heads = [t.c[name] != 0 for name in t.c.keys() if name.startswith("head_")]
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    out = {}
-    for i in range(0, len(ids), 1000):
-        for row in db.execute(sa.select(t).where(t.c.row_id.in_(ids[i:i + 1000]), sa.or_(*heads))):
-            for name, bit in bits.items():
-                if bit_said(row, bit, "head") and not bit_said(row, bit, "withdrawn"):
-                    out.setdefault((row.row_id, name), {})[row.source_name] = {
-                        "value": line_cell(types, row, name), "at": row.at, "written_by": row.written_by}
-    return out
-

@@ -604,7 +604,6 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
     again - a moved line may show at once (lead 11-11 ㄱ). -> (shell's line, holder's before, holder's after)."""
     from datetime import datetime
 
-    from admin.audit_history import head_lines
     from database import models
 
     now = shape["table"]
@@ -646,7 +645,7 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
         held = lines.value_types(db, table)
         tag = "%s_%s" % (s_now["business_key_val"], shell[:6]) if s_now.get("business_key_val") else shell[:6]
         user_cols = sorted(c for c in both if c in bits)
-        heads = head_lines(db, table, [shell, holder], user_cols) if user_cols else {}
+        heads = lines.layers(db, table, [shell, holder], user_cols) if user_cols else {}
         spoke = lines.spoken(db, table, [shell]).get(shell, set())
         talking = (WRITE, WITHDRAW)
         renamed = {src: crud.merged_layer_name(src, tag) for src in db.execute(
@@ -665,11 +664,11 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                   if h and h["value"] is not None}
         if theirs:
             said.append({"source_name": crud.merged_layer_name(crud.USER_SOURCE, "old_exist_%s" % holder[:6]),
-                         "written_by": next(iter(theirs.values()))["written_by"],
+                         "written_by": next(iter(theirs.values()))["updated_by"],
                          "values": text({c: h["value"] for c, h in theirs.items()})})
         ours = {c: h for c in user_cols for h in [(heads.get((shell, c)) or {}).get(crud.USER_SOURCE)] if h}
         if ours:
-            said.append({"source_name": crud.USER_SOURCE, "written_by": next(iter(ours.values()))["written_by"],
+            said.append({"source_name": crud.USER_SOURCE, "written_by": next(iter(ours.values()))["updated_by"],
                          "values": text({c: h["value"] for c, h in ours.items()})})
             copy = renamed.get(crud.USER_SOURCE)
             if copy:                               # its moved copy no longer heads them - the shell's «user» does

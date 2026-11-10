@@ -66,8 +66,7 @@ def _events(db):
 
 
 def _sources(db, row_id, column="a"):
-    from admin.audit_history import head_lines
-    return {s: h["value"] for s, h in (head_lines(db, TABLE, [row_id], [column]).get((row_id, column)) or {}).items()}
+    return {s: h["value"] for s, h in (lines.layers(db, TABLE, [row_id], [column]).get((row_id, column)) or {}).items()}
 
 
 def _two(db):

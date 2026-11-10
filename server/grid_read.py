@@ -488,7 +488,7 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
     priority_source}` a cell: the line t.won_by names (`audit_history.winners`) - its source the winner, its
     writer `updated_by` (None when no line won it: before the landing, nobody is known - lead 11-11) -, the pins from
-    cell_overwrites, and with `include_sources` each source's head line (`audit_history.head_lines`)."""
+    cell_overwrites, and with `include_sources` each source's head line (`lines.layers`)."""
     if not rows:
         return []
 
@@ -563,7 +563,9 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     from admin import audit_history
 
     won = audit_history.winners(db, table_name, row_ids)
-    heads = audit_history.head_lines(db, table_name, row_ids) if include_sources else {}
+    from database import lines
+
+    heads = lines.layers(db, table_name, row_ids) if include_sources else {}
 
     data_list = []
     for row in rows:
@@ -645,15 +647,17 @@ def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
         return {}
     row_ids = sorted({row_id for row_id, _ in cells})
     columns = sorted({column for _, column in cells})
-    heads = audit_history.head_lines(db, table_name, row_ids, columns)
+    from database import lines
+
+    heads = lines.layers(db, table_name, row_ids, columns)
     won = audit_history.winners(db, table_name, row_ids)
     pins = {(ow.row_id, ow.column_name): ow.manual_priority_source for ow in db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name, models.CellOverwrite.row_id.in_(row_ids),
         models.CellOverwrite.column_name.in_(columns))}
     out = {}
     for row_id, column in cells:
-        sources = {name: {"value": wire_text(one["value"]), "updated_by": one["written_by"],
-                          "timestamp": one["at"].isoformat() if one["at"] else None}
+        sources = {name: {"value": wire_text(one["value"]), "updated_by": one["updated_by"],
+                          "timestamp": one["ingested_at"].isoformat() if one["ingested_at"] else None}
                    for name, one in heads.get((row_id, column), {}).items()}
         line = won.get((row_id, column))
         out[(row_id, column)] = {"sources": sources, "manual_priority_source": pins.get((row_id, column)),

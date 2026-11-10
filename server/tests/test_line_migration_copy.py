@@ -27,7 +27,7 @@ def db():
               ("r2", "lot", "fileA", "x", T1), ("r3", "qty", "fileB", 7, T1), ("gone", "lot", "fileA", "z", T1)]
     for row_id, col, source, value, at in layers:
         session.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name=col,
-                                                             source_name=source, value={"value": value},
+                                                             source_name=source, value=value,
                                                              ingested_at=at, updated_by="seed"))
     lines.ensure_line_table(session, "t", CFG)
     yield session
@@ -96,3 +96,29 @@ def test_an_interrupted_copy_resumes_after_its_last_committed_row(db):
     assert cells == 2                                               # r2, r3 only - r1 is not copied twice
     lt = lines.shape(db, "t", CFG)["lines"]
     assert db.execute(select(lt.c.line_id).where(lt.c.row_id == "r1")).all().__len__() == 2
+
+
+def test_a_blank_layer_copies_as_null_through_the_one_seat(db):
+    """Length-0 text (after strip) is absence, folded by one function (crud.layer_value / line_text) - a «» or «  »
+    layer copies as a NULL value that still speaks for its column."""
+    for source, value in (("fileC", ""), ("fileD", "   ")):
+        db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r3", column_name="lot",
+                                                        source_name=source, value=value,
+                                                        ingested_at=T2, updated_by="seed"))
+    copy_all(db)
+    lt = lines.shape(db, "t", CFG)["lines"]
+    got = dict(db.execute(select(lt.c.source_name, lt.c[lines.value_column("lot")])
+                          .where(lt.c.row_id == "r3", lt.c.source_name.in_(["fileC", "fileD"]))).all())
+    assert got == {"fileC": None, "fileD": None}
+    assert ("r3", "lot") in {cell for cell in lines.layers(db, "t", ["r3"])}          # it still speaks
+
+
+def test_an_object_value_refuses_the_page_and_copies_nothing(db):
+    db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="qty",
+                                                    source_name="fileZ", value={"value": 5},
+                                                    ingested_at=T2, updated_by="seed"))
+    with pytest.raises(ValueError) as said:
+        line_migration.copy_page(db, "t", CFG, None, 10, transaction_id="tx-copy")
+    assert str(said.value) == line_migration.OBJECT_REFUSAL % {"t": "t", "row": "r1", "col": "qty", "source": "fileZ"}
+    lt = lines.shape(db, "t", CFG)["lines"]
+    assert db.execute(select(lt.c.line_id)).all() == []

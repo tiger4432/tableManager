@@ -1,5 +1,13 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11] **셀소스 복사 — 객체 값을 만나면 그 쪽을 거절한다** — 착지(11-14) 뒤 복사를 돌릴 때
+>
+> ```
+> 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds an object value - nothing of this page was copied; tell the lead
+> 뜻        옛 층 값이 JSON 객체다. 박스에는 0 행이었다. 그 쪽은 한 줄도 안 옮겼다
+> 할 일      그 문장 그대로 총괄에게. 다시 돌리지 않는다
+> ```
+
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```

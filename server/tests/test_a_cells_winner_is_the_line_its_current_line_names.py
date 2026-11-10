@@ -69,6 +69,9 @@ def test_the_sources_panel_reads_the_same_heads_and_winner(cells):
     a, b = found[("r1", "a")], found[("r1", "b")]
     assert (a["priority_source"], sorted(a["sources"]), a["sources"]["user"]["updated_by"], a["value"]) == (
         "user", ["f.csv", "user"], "person", "A2")
+    when = {n: datetime.fromisoformat(one["timestamp"]) for n, one in a["sources"].items()}   # the legend's «when»
+    assert {n: t if t.tzinfo else t.replace(tzinfo=timezone.utc) for n, t in when.items()} == {
+        "f.csv": T0, "user": T0 + timedelta(minutes=1)}, "each source's time is its head line's at"
     assert (b["priority_source"], list(b["sources"])) == ("f.csv", ["f.csv"]), "the chain's withdrawal says nothing"
     at = datetime.fromisoformat(a["won"]["at"])         # sqlite gives it back naive (UTC), PG in the session's zone
     assert a["won"]["written_by"] == "person" and (at if at.tzinfo else at.replace(tzinfo=timezone.utc)) ==         T0 + timedelta(minutes=1)

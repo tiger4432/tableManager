@@ -54,31 +54,56 @@ PROTECTED_SOURCES = frozenset({"user"})
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
 
-def _claimed_filter(table_name: str, source_name: str, columns: list = None, written_by=None):
-    """The predicate for "cells `source_name` claims on `table_name`".
+def claimed_lines(db, table_name: str):
+    """(t__lines Core Table, column -> bit) the claim filter is built over - read, no slots (lines.built_lines)."""
+    from database import lines
 
-    Extracted so `count_withdrawable` and `withdraw_source` cannot answer
-    different questions: a count that used a slightly different filter from the
-    operation it previews is a count that lies, and it would lie silently.
+    return lines.built_lines(db, table_name)
 
-    A name whose bracketed layers rank as it (`crud.layer_ranks_as` - the chain's layer per source
-    row, 총괄 8ec008914) claims those layers too.
+
+def _claimed_filter(lt, bits: dict, source_name: str, columns: list = None, written_by=None, batch=None):
+    """The predicate for "lines `source_name` claims on a table" over its t__lines `lt` (`claimed_lines`): its head
+    lines naming one of `columns` (every column when None). A head line that withdrew the column still matches - the
+    reader drops it by its withdrawn bit, as `lines.layers` does.
+
+    Extracted so `count_withdrawable` and `withdraw_source` cannot answer different questions: a count that used a
+    slightly different filter from the operation it previews is a count that lies, and it would lie silently.
+
+    A name whose bracketed layers rank as it (`crud.layer_ranks_as` - the chain's layer per source row, 총괄
+    8ec008914) claims those layers too. `batch`: one write's lines only (B's R2 batch, after 11-14).
     """
     from sqlalchemy import or_
 
-    from database import crud, models
+    from database import crud, lines
 
-    named = models.CellSource.source_name == source_name
+    named = lt.c.source_name == source_name
     tag = "\x00"
     copy = crud.merged_layer_name(source_name, tag)
     if crud.layer_ranks_as(copy) == source_name:
-        named = or_(named, models.CellSource.source_name.startswith(copy.split(tag)[0], autoescape=True))
-    conds = [models.CellSource.table_name == table_name, named]
-    if columns:
-        conds.append(models.CellSource.column_name.in_(list(columns)))
+        named = or_(named, lt.c.source_name.startswith(copy.split(tag)[0], autoescape=True))
+    masks = {}
+    for col, bit in bits.items():
+        if not columns or col in columns:
+            chunk = bit // lines.BITS_PER_CHUNK
+            masks[chunk] = masks.get(chunk, 0) | lines._mask(bit)
+    conds = [named, or_(*[lt.c[f"head_{c}"].op("&")(m) != 0 for c, m in sorted(masks.items())])]
     if written_by:      # one rule's layers - the declaration that wrote them (`replay.unwritten_scope`)
-        conds.append(models.CellSource.updated_by.in_(list(written_by)))
+        conds.append(lt.c.written_by.in_(list(written_by)))
+    if batch is not None:
+        conds.append(lt.c.batch == batch)
     return conds
+
+
+def _claimed_cells(row, bits: dict, columns=None) -> list:
+    """The columns a claimed line still says (head, not withdrawn) - of `columns` when given."""
+    from database import lines
+
+    by_bit = {bit: col for col, bit in bits.items() if not columns or col in columns}
+    chunks = 1 + max((b // lines.BITS_PER_CHUNK for b in bits.values()), default=0)
+    heads = [row[f"head_{c}"] for c in range(chunks)]
+    gone = [row[f"withdrawn_{c}"] for c in range(chunks)]
+    return sorted(lines._columns_of(heads, by_bit) - lines._columns_of(gone, by_bit))
+
 
 def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     """Stored sources + human pins for a chunk of rows: TWO batched queries, not two per cell.
@@ -93,19 +118,10 @@ def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     here would silently put the resolution back on dict order. `columns` keeps both reads to those
     columns (None = every column).
     """
-    from database import models
+    from database import lines
 
-    cs = models.CellSource
-    in_columns = [cs.column_name.in_(list(columns))] if columns else []
-    sources = {}
-    for row_id, col, src, val, ing, origin in (
-            db.query(models.CellSource.row_id, models.CellSource.column_name,
-                     models.CellSource.source_name, models.CellSource.value,
-                     models.CellSource.ingested_at, models.CellSource.origin_row_id)
-            .filter(models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(chunk_row_ids), *in_columns)
-            .order_by(models.CellSource.source_name.asc()).all()):
-        sources.setdefault((row_id, col), {})[src] = {"value": val, "ingested_at": ing, "origin_row_id": origin}
+    sources = {cell: dict(sorted(named.items()))
+               for cell, named in lines.layers(db, table_name, chunk_row_ids, columns).items()}
 
     return sources, pins_of(db, table_name, chunk_row_ids, columns)
 
@@ -140,20 +156,10 @@ def person_cells(db, table_name: str, row_ids) -> dict:
     """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by"}}} - every layer of each cell a person
     wrote a layer on, blank or not (`crud.layer_writer`). THE ONE «did a person write here» judgement: a gone row
     (`person_rows`) and an AI rule's memory of a person's correction (`chain.ask_rule`, lead 10-28) both read it."""
-    from database import crud, models
+    from database import crud, lines
 
-    cs = models.CellSource
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = {}
-    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        layers = {}
-        for row_id, column, source, value, at, by in (
-                db.query(cs.row_id, cs.column_name, cs.source_name, cs.value, cs.ingested_at, cs.updated_by)
-                .filter(cs.table_name == table_name, cs.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
-            layers.setdefault((row_id, column), {})[source] = {"value": value, "ingested_at": at, "updated_by": by}
-        found.update({cell: named for cell, named in layers.items()
-                      if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named)})
-    return found
+    return {cell: named for cell, named in lines.layers(db, table_name, row_ids).items()
+            if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named)}
 
 
 def person_rows(db, table_name: str, row_ids, own=None) -> dict:
@@ -168,7 +174,9 @@ def person_rows(db, table_name: str, row_ids, own=None) -> dict:
     from chain.enrichment import backfill
     from database import crud, models
 
-    co, cs = models.CellOverwrite, models.CellSource
+    from database import lines
+
+    co = models.CellOverwrite
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
     found = {row_id: {crud.USER_SOURCE} for row_id, _column in person_cells(db, table_name, ids)}
     keys, mine, own = key_columns(table_name), rule_layer_names(), own or {}
@@ -178,9 +186,9 @@ def person_rows(db, table_name: str, row_ids, own=None) -> dict:
                                                      co.manual_priority_source.isnot(None)):
             found.setdefault(row_id, set()).add(crud.USER_SOURCE)
         layers = {}
-        for row_id, column, name, value, by in db.query(cs.row_id, cs.column_name, cs.source_name, cs.value,
-                                                        cs.updated_by).filter(cs.table_name == table_name,
-                                                                              cs.row_id.in_(chunk)):
+        for row_id, column, name, value, by in [(r, c, n, e["value"], e["updated_by"])
+                                                for (r, c), named in lines.layers(db, table_name, chunk).items()
+                                                for n, e in named.items()]:
             writer = crud.layer_writer(name)
             # by the writer the name folds to - a merge renames a layer «chain_ingestion (<key>)» (총괄 10-14 4)
             if writer == backfill.SOURCE_NAME or (writer in mine and by in own.get(row_id, ())):
@@ -290,43 +298,19 @@ def unowned_layers(db, after_id, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
     return found, (rows[-1][0] if rows else after_id), len(rows)
 
 
-def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
+def cells_stamped_by(db, table_name, origin_row_ids) -> list:
     """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - the layers these rows fed.
 
-    🔴 [S-280 · 판정 434] THE NOTE READ BACK. `origin_row_id` was written while the input
-    row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is
-    gone — which is the one question a deleted row cannot be asked itself.
-
-    READ ONLY, one layer a tuple: a (columns x rows) group per layer name also named cells
-    another row fed under a shared name (`chain_ingestion`).
+    🔴 [S-280 · 판정 434] THE NOTE READ BACK. The line carries its source row (`input_row`), written while the input
+    row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is gone — the one question a
+    deleted row cannot be asked itself. `table_name` None: every declared table whose lines are built (a caller
+    that does not know which tables the rows fed). READ ONLY, one layer a tuple.
     """
-    from database import models
+    from database import crud, lines
 
-    # Each origin once, in order: per origin, a repeat would be answered twice (QA c762f6820 · 총괄 ③).
-    ids = list(dict.fromkeys(str(item) for item in (origin_row_ids or ()) if item))
-    one_at_a_time = db.get_bind().dialect.name == "postgresql"
-    found = []
-    for i in range(0, len(ids), chunk_size):
-        chunk = ids[i:i + chunk_size]
-        found.extend(tuple(row) for row in (
-            db.execute(STAMPED_BY_EACH_ORIGIN, {"ids": chunk}) if one_at_a_time else
-            db.query(models.CellSource.table_name, models.CellSource.row_id,
-                     models.CellSource.column_name, models.CellSource.source_name,
-                     models.CellSource.origin_row_id)
-            .filter(models.CellSource.origin_row_id.in_(chunk)).all()))
-    return found
-
-
-#: `cells_stamped_by` on PostgreSQL: each origin asked through `idx_sources_by_origin` on its own.
-#: 🔴 OFFSET 0 KEEPS THE LATERAL FROM BEING FOLDED (총괄 d28171060 - 운영에서 그 인덱스의 scans 가 안
-#:    늘었다). As one `IN (1,000)` the planner sizes the batch from the statistics - believing an
-#:    origin feeds thousands of cells (a join's value row feeds many), it read the whole table:
-#:    measured on 3M rows, 1,000 origins not stamped yet, a Seq Scan 370 ms; this, an index
-#:    probe per origin, 10 ms.
-STAMPED_BY_EACH_ORIGIN = text(
-    "SELECT c.table_name, c.row_id, c.column_name, c.source_name, c.origin_row_id"
-    "  FROM unnest(CAST(:ids AS varchar[])) AS o(id)"
-    "  CROSS JOIN LATERAL (SELECT * FROM cell_sources s WHERE s.origin_row_id = o.id OFFSET 0) c")
+    tables = [table_name] if table_name else [t for t, cfg in (crud.TABLE_CONFIG or {}).items()
+                                               if isinstance(cfg, dict) and lines.keeps_lines(t, cfg)]
+    return [(t, *cell) for t in tables for cell in lines.stamped_by(db, t, origin_row_ids)]
 
 
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE,
@@ -337,38 +321,29 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
     `crud.owned_layer_name`, a source row's layer, a merge's copy), and an `enrichment_backfill` layer - the
     backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a rule's that wrote the cell after it. What settle
     takes back when its answer leaves it out. READ ONLY, the shape `cells_stamped_by` answers."""
-    from sqlalchemy import and_, func, or_, tuple_
     from chain.enrichment import backfill
-    from database import crud, models
+    from database import crud, lines
 
-    S = models.CellSource
-    names = rule_layer_names()
-    wanted = list(dict.fromkeys(cells or ()))
-    pairs_joined = db.get_bind().dialect.name == "postgresql"
+    names = rule_layer_names() + (backfill.SOURCE_NAME,)
+    declared = set(declarations or ())
+
+    def theirs(source, entry):
+        return crud.layer_writer(source) in names and (entry["updated_by"] in declared
+                                                       or source == backfill.SOURCE_NAME)
+
     found = []
-    mine = or_(S.updated_by.in_(list(declarations)), S.source_name == backfill.SOURCE_NAME)
     whole = list(dict.fromkeys(str(r) for r in rows or () if r))
-    for i in range(0, len(whole), chunk_size):
-        found.extend(tuple(row) for row in db.query(
-            S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
-            S.table_name == table_name, S.row_id.in_(whole[i:i + chunk_size]), mine)
-            if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
+    for (row_id, column), named in lines.layers(db, table_name, whole).items():
+        found.extend((table_name, row_id, column, source, entry["origin_row_id"])
+                     for source, entry in named.items() if theirs(source, entry))
     whole = set(whole)
-    wanted = [cell for cell in wanted if cell[0] not in whole]
-    for i in range(0, len(wanted), chunk_size):
-        part = wanted[i:i + chunk_size]
-        query = db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
-            S.table_name == table_name, mine)
-        if pairs_joined:
-            # the pairs joined as two arrays: a 1,000-pair row-value IN is a 1,000-arm BitmapOr planned 363-384 ms a
-            # chunk (C 11-06; 1,000 rows x 14 columns 5.8 s -> 0.21 s), and rows IN + columns IN read every column
-            # of those rows - 300,000 rows for 2,000 pairs on a 300-column table (B 11-06, lead's rule)
-            pair = func.unnest([r for r, _c in part], [c for _r, c in part]).table_valued("r", "c").render_derived(
-                name="wanted_cell")
-            query = query.join(pair, and_(S.row_id == pair.c.r, S.column_name == pair.c.c))
-        else:
-            query = query.filter(tuple_(S.row_id, S.column_name).in_(part))
-        found.extend(tuple(row) for row in query.all() if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
+    wanted = {cell for cell in dict.fromkeys(cells or ()) if cell[0] not in whole}
+    if wanted:
+        read = lines.layers(db, table_name, sorted({r for r, _c in wanted}), {c for _r, c in wanted})
+        for (row_id, column), named in read.items():
+            if (row_id, column) in wanted:
+                found.extend((table_name, row_id, column, source, entry["origin_row_id"])
+                             for source, entry in named.items() if theirs(source, entry))
     return found
 
 
@@ -393,7 +368,7 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
     `lost_a_layer` is {table: (columns, row ids)} of the layers withdrawn - what the delete path
     tells the rules (총괄 e11bb4de0 (나)).
     """
-    return withdraw_layers(db, cells_stamped_by(db, origin_row_ids), apply, log, table, columns, keep)
+    return withdraw_layers(db, cells_stamped_by(db, table, origin_row_ids), apply, log, table, columns, keep)
 
 
 def withdraw_layers(db, layers, apply: bool = False, log=logger.info, table: str = None, columns=None,
@@ -473,8 +448,6 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         counted as `pinned_skipped`. The pin is a human saying "show me this
         one"; silently honouring the withdrawal would override that choice.
     """
-    from database import models
-
     if source_name in PROTECTED_SOURCES:
         raise ReplayRefused(
             f"refusing to withdraw source '{source_name}': it is the layer that means "
@@ -488,9 +461,10 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    no progress line and no stop meanwhile (box, 1M). The price, kept by the owner's 5-second rule: where the
     #    source claims few rows the whole run pages the whole table, 3.0-4.4x longer and 6.3x at most (1M rows, 9M
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
-    cs = models.CellSource
-    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by))
+    from sqlalchemy import select
+
+    lt, bits = claimed_lines(db, table_name)
+    q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
     asked = [chunk_size]
 
     class _Asked:
@@ -508,8 +482,9 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
             return None
         ids = [row_id for (row_id,) in page]
         claims = {}
-        for row_id, col, name in q.filter(cs.row_id.in_(ids)):
-            claims.setdefault((row_id, col), []).append(name)
+        for line in db.execute(q.where(lt.c.row_id.in_(ids))).mappings():
+            for col in _claimed_cells(line, bits, columns):
+                claims.setdefault((line["row_id"], col), []).append(line["source_name"])
         claimed = {row_id for row_id, _col in claims}
         return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
