@@ -48,7 +48,7 @@ def beats(tmp_path, monkeypatch):
         ts = time.time() - age
         with open(os.path.join(str(tmp_path), "chain.json"), "w", encoding="utf-8") as fh:
             json.dump({"name": "chain", "pid": 1, "ts": ts, "beats": 1, "started_at": ts,
-                       "note": None, "work": work or {}, "laps": {"chain": dict(lap, at=ts)}}, fh)
+                       "note": None, "works": [work] if work else [], "laps": {"chain": dict(lap, at=ts)}}, fh)
     return write
 
 
@@ -87,9 +87,9 @@ def test_a_worker_of_its_own_is_read_from_its_heartbeat_lap(db_session, beats):
            "running": [{"rule": "r1", "mapper": "m", "target_table": "t", "rows_in": 3,
                         "started": started}],
            "outcomes": {"r1": {"outcome": "ran", "reason": None, "at": time.time() - 5}}},
-          age=2.0, work={"open": 1, "oldest_what": "tx r1 · 3 row(s) of t", "oldest_stage": "write:t",
-                         "oldest_facts": {"line_keys": ["tx-r1"]}, "oldest_progress_ts": time.time() - 2,
-                         "oldest_started_ts": started})
+          age=2.0, work={"what": "tx r1 · 3 row(s) of t", "stage": "write:t",
+                         "facts": {"line_keys": ["tx-r1"]}, "progress_ts": time.time() - 2,
+                         "started_ts": started})
     out = main.get_chain_queue_depth(db=db_session)
 
     assert out["loop_in_this_process"] is False, "this process still runs no loop"

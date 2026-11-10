@@ -182,12 +182,11 @@ def work_on(pid, beats=None):
     from utils import heartbeat
 
     for name, beat in sorted((heartbeat.read_all() if beats is None else beats).items()):
-        work = beat.get("work") or {}
-        facts = work.get("facts") or {}
-        if beat.get("stale") or pid not in (facts.get("db_pid"), facts.get("lock_db_pid")):
-            continue
-        run = work_facts(work)["rule_run"]
-        return "%s · %s%s" % (name, work.get("what") or "work", ", rule %s" % run["rule"] if run else "")
+        for work in () if beat.get("stale") else beat.get("works") or ():
+            facts = work.get("facts") or {}
+            if pid in (facts.get("db_pid"), facts.get("lock_db_pid")):
+                run = work_facts(work)["rule_run"]
+                return "%s · %s%s" % (name, work.get("what") or "work", ", rule %s" % run["rule"] if run else "")
     return None
 
 

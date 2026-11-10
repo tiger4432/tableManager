@@ -245,7 +245,7 @@ def _payload_locked(name, now):
         **({"state": st["state"]} if st.get("state") else {}),
         # Written by whichever thread beats next - which is the point. The
         # poller reports the ingestion thread's stall.
-        "work": _work_snapshot_locked(name),
+        "works": _work_snapshot_locked(name),
         # S-176: what each loop in THIS process last did. Absent until a loop has
         # recorded one, so a process with no instrumented loop writes exactly the
         # payload it wrote before.
@@ -307,24 +307,16 @@ def forget(name):
 
 
 def _work_snapshot_locked(name):
-    """Oldest un-progressed claim for ``name``. Caller holds ``_state_lock``.
+    """Every open claim for ``name``, the oldest un-progressed first. Caller holds ``_state_lock``.
 
-    Publishes an absolute timestamp rather than an age, so a reader measures the
+    Publishes absolute timestamps rather than ages, so a reader measures the
     stall from *now* and not from whenever the beat happened to be written.
+    All of them (총괄 11-10): a replay judged beside a chain group on the same beat must
+    not hide the group's pids from a pause, nor be hidden from the line it holds a table of.
     """
-    mine = [c for c in _claims.values() if c["name"] == name]
-    if not mine:
-        return {"open": 0}
-    oldest = min(mine, key=lambda c: c["last_progress"])
-    return {
-        "open": len(mine),
-        "oldest_progress_ts": oldest["last_progress"],
-        "oldest_started_ts": oldest["started"],
-        "oldest_what": oldest["what"],
-        "oldest_stage": oldest["stage"],
-        "oldest_facts": dict(oldest["facts"]),
-        "oldest_stalled_on": oldest["stalled_on"],
-    }
+    mine = sorted((c for c in _claims.values() if c["name"] == name), key=lambda c: c["last_progress"])
+    return [{"progress_ts": c["last_progress"], "started_ts": c["started"], "what": c["what"],
+             "stage": c["stage"], "facts": dict(c["facts"]), "stalled_on": c["stalled_on"]} for c in mine]
 
 
 def _refresh_mine_locked(now, name=None, stage=None):
@@ -459,6 +451,22 @@ def open_claims():
         return [dict(c) for c in _claims.values()]
 
 
+def _work_read(work, now, stall_after):
+    # Measured from now, not from when the beat was written: a beat
+    # that is itself 30 s old must not under-report the stall by 30 s.
+    since = now - float(work.get("progress_ts") or now)
+    return {
+        "what": work.get("what"),
+        "stage": work.get("stage"),
+        "facts": work.get("facts") or {},
+        "stalled_on": work.get("stalled_on"),
+        "no_progress_seconds": round(max(0.0, since), 2),
+        "held_seconds": round(max(0.0, now - float(work.get("started_ts") or now)), 2),
+        "stalled": since > stall_after,
+        "stall_after_seconds": stall_after,
+    }
+
+
 def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
              stall_after=DEFAULT_STALL_AFTER_SEC):
     """Read every worker heartbeat. Returns ``{name: {...}}``.
@@ -506,23 +514,12 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                         max(0.0, now - float(lap.get("at") or now)), 2))
                     for loop, lap in laps.items() if isinstance(lap, dict)
                 }
-            work = data.get("work") or {}
-            if work.get("open"):
-                # Measured from now, not from when the beat was written: a beat
-                # that is itself 30 s old must not under-report the stall by 30 s.
-                since = now - float(work.get("oldest_progress_ts") or now)
-                entry["work"] = {
-                    "open": work.get("open"),
-                    "what": work.get("oldest_what"),
-                    "stage": work.get("oldest_stage"),
-                    "facts": work.get("oldest_facts") or {},
-                    "stalled_on": work.get("oldest_stalled_on"),
-                    "no_progress_seconds": round(max(0.0, since), 2),
-                    "held_seconds": round(
-                        max(0.0, now - float(work.get("oldest_started_ts") or now)), 2),
-                    "stalled": since > stall_after,
-                    "stall_after_seconds": stall_after,
-                }
+            works = [_work_read(work, now, stall_after) for work in data.get("works") or ()
+                     if isinstance(work, dict)]
+            if works:
+                # every open claim, and the oldest of them as `work` - picked here only, so the
+                # two never say different things (총괄 11-10)
+                entry["works"], entry["work"] = works, dict(works[0], open=len(works))
             out[name] = entry
         except Exception as e:
             # 🔴 UNREAD IS NOT STOPPED (lead 10-29): a file the writer is replacing refuses the open for 7-11 ms idle,

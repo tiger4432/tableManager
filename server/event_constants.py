@@ -230,7 +230,8 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
                "elapsed_seconds": running.get("elapsed_seconds"), "rule_run": running.get("rule_run"),
                "report": running.get("report")}
         if str(running.get("stage") or "").startswith(CHAIN_WAITING_FOR):
-            return said(CHAIN_STATE_WAITING_FOR_TABLE, table=running["stage"][len(CHAIN_WAITING_FOR):], **why)
+            return said(CHAIN_STATE_WAITING_FOR_TABLE, table=running["stage"][len(CHAIN_WAITING_FOR):],
+                        held_by=running.get("held_by"), **why)
         if running.get("stalled"):
             return said(CHAIN_STATE_STALLED, stalled_on=running.get("stalled_on"), **why)
         return said(CHAIN_STATE_RUNNING, **why)

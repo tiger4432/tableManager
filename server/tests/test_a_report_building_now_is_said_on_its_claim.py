@@ -35,7 +35,8 @@ def fixture_claim():
 def _on_file():
     """The report as the chain's beat file holds it now - read from disk."""
     with open(heartbeat.heartbeat_path("chain"), encoding="utf-8") as handle:
-        return (json.load(handle)["work"].get("oldest_facts") or {}).get("report")
+        works = json.load(handle)["works"]
+    return (works[0]["facts"] if works else {}).get("report")
 
 
 def _live(wafer="L1/W1", queued=()):

@@ -139,8 +139,7 @@ def _cancel_running_group(put, b, _mp):
     from chain import control
 
     now = time.time()
-    put(SLOT, b, {"pid": 7, "work": {"open": 1, "oldest_facts": {"db_pid": 55}, "oldest_progress_ts": now,
-                                     "oldest_started_ts": now}})
+    put(SLOT, b, {"pid": 7, "works": [{"facts": {"db_pid": 55}, "progress_ts": now, "started_ts": now}]})
     db = _Db("postgresql")
     control.cancel_running_group(db)
     return db.pids

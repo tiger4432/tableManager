@@ -2885,7 +2885,8 @@ def _holding_the_tables(tables):
     # the way out of the wait - «waiting for» stayed on the beat after the lock was got (총괄 59f2ab3f4); the pid
     # leaving writes the beat at once
     heartbeat.progress(table_locks.HOLDING + ", ".join(tables))
-    heartbeat.note_work(lock_db_pid=None)
+    # what it holds and since when - a line waiting for one of them names it (`runtime.running.held_by`, owner 11-10)
+    heartbeat.note_work(lock_db_pid=None, holding={"tables": list(tables), "since": time.time()})
 
 
 #: A cancelled statement, by the driver's class name - the server's own words are its locale's.

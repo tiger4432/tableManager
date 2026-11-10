@@ -42,16 +42,16 @@ def sources(tmp_path, monkeypatch, db_session):
         ts = time.time()
         with open(os.path.join(str(tmp_path), "%s.json" % name), "w", encoding="utf-8") as fh:
             json.dump({"name": name, "pid": pid, "ts": ts, "beats": 1, "started_at": ts,
-                       "note": None, "work": work or {},
+                       "note": None, "works": [work] if work else [],
                        "laps": {name: dict(lap, at=ts)} if lap else {}}, fh)
 
     def chain(lines):
         """A group holding queue `lines` - its claim as a group writes it (총괄 59f2ab3f4 ㄴ: the chain's items are lines)."""
         ts = time.time()
         beat("chain", 111, {"outcomes": {}, "running": []}, work={
-            "open": 1, "oldest_what": "tx probe · 1 row(s) of u", "oldest_stage": "write:u",
-            "oldest_facts": {"line_keys": list(lines)}, "oldest_progress_ts": ts - 2,
-            "oldest_started_ts": ts - 30} if lines else None)
+            "what": "tx probe · 1 row(s) of u", "stage": "write:u",
+            "facts": {"line_keys": list(lines)}, "progress_ts": ts - 2,
+            "started_ts": ts - 30} if lines else None)
 
     def run(state):
         db_session.add(models.RetroactiveRun(

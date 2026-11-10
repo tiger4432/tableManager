@@ -904,7 +904,14 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
                     why = str(refused)
             if why is None:
                 try:
-                    with table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")}):
+                    # a claim on the chain's beat, with the group's own on_held: a line waiting for these tables
+                    # names this run (총괄 11-10). No on_wait - a pause cancels no sweep
+                    from chain import ingestion_worker
+                    from utils import heartbeat
+                    with heartbeat.work_claim(ingestion_worker.GROUP_BEAT, "replay %s" % run_id,
+                                              note=ingestion_worker._worker_note()), \
+                            table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")},
+                                             on_held=ingestion_worker._holding_the_tables):
                         swept = _sweep(db, rule, root)
                 except table_locks.NotHeld as not_held:
                     # not judged this wake - its tally stays for the next (총괄 1ff4dcc6c ④)

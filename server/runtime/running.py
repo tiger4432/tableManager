@@ -98,19 +98,42 @@ def chain_lines_running(beats=None):
     from chain import slots
     from utils import heartbeat
 
-    out = {}
+    out, holders = {}, []
     for name, beat in sorted((heartbeat.read_all() if beats is None else beats).items()):
         if beat.get("stale") or not (name == "chain" or name.startswith(slots.BEAT_PREFIX)):
             continue
-        work = beat.get("work") or {}
+        works = beat.get("works") or ()
         held = ((beat.get("laps") or {}).get(slots.HOLDS) or {}).get("line")
-        facts = dict(work_facts(work) if work.get("open") else work_facts({}),
-                     pid=beat.get("pid") if name.startswith(slots.BEAT_PREFIX) else None)
-        for key in ((work.get("facts") or {}).get("line_keys") or ()) if work.get("open") else ():
-            out[key] = facts
+        pid = beat.get("pid") if name.startswith(slots.BEAT_PREFIX) else None
+        for work in works:
+            facts = dict(work_facts(work), pid=pid)
+            for key in (work.get("facts") or {}).get("line_keys") or ():
+                out[key] = facts
+            if (work.get("facts") or {}).get("holding"):
+                holders.append((name, work))
         if held:
-            out.setdefault(held, facts)
+            out.setdefault(held, dict(work_facts(works[0] if works else {}), pid=pid))
+    for facts in out.values():
+        if str(facts.get("stage") or "").startswith(event_constants.CHAIN_WAITING_FOR):
+            facts["held_by"] = held_by(facts["stage"][len(event_constants.CHAIN_WAITING_FOR):], holders)
     return out
+
+
+def held_by(table, holders, now=None):
+    """-> «slot N · <rule> · Ns» / «replay <run> · Ns»: the work holding `table` for a line waiting for it (owner 11-10),
+    from what the holder wrote on its own claim (`chain.ingestion_worker._holding_the_tables`); None when no fresh beat
+    says it holds it."""
+    from chain import slots
+
+    now = time.time() if now is None else now
+    for name, work in holders:
+        holding = work["facts"]["holding"]
+        if table in (holding.get("tables") or ()):
+            run = (work.get("facts") or {}).get("rule_run") or {}
+            who = "slot " + name[len(slots.BEAT_PREFIX):] if name.startswith(slots.BEAT_PREFIX) else work.get("what")
+            return " · ".join([str(who)] + ([run["rule"]] if run.get("rule") else [])
+                              + ["%d s" % max(0, now - float(holding.get("since") or now))])
+    return None
 
 
 def chain_sight():

@@ -336,7 +336,8 @@ def workers():
     for name, entry in heartbeat.read_all().items():
         if entry.get("pid"):
             names[int(entry["pid"])] = name
-        table = ((entry.get("work") or {}).get("facts") or {}).get("table") or table
+        for work in entry.get("works") or ():
+            table = (work.get("facts") or {}).get("table") or table
     return names, table
 
 

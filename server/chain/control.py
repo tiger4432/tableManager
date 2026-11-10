@@ -158,8 +158,9 @@ def cancel_running_group(db, ids=None):
 
     if db.get_bind().dialect.name != "postgresql":
         return []
-    groups = [((beat.get("work") or {}).get("facts") or {}) for name, beat in heartbeat.read_all().items()
-              if name == ingestion_worker.GROUP_BEAT or name.startswith(slots.BEAT_PREFIX)]
+    groups = [work.get("facts") or {} for name, beat in heartbeat.read_all().items()
+              if name == ingestion_worker.GROUP_BEAT or name.startswith(slots.BEAT_PREFIX)
+              for work in beat.get("works") or ()]
     if ids is not None:
         groups = [facts for facts in groups if _holds_one_of(db, facts, ids)]
     pids = sorted({facts[fact] for facts in groups for fact in ("db_pid", "lock_db_pid") if facts.get(fact)})
