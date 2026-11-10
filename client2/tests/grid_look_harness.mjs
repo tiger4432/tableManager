@@ -372,6 +372,25 @@ nodes = [nodeOf('r1', { a: cellOf2('1') })];
 refreshed = [];
 await fillWriters('/tables/T/data?skip=0&limit=1000', 0, { signal: undefined, current: () => reading });
 eq('D5 a newer read while the answer was read: nothing taken, nothing drawn', [nodes[0].data.data.a.written_by ?? null, refreshed], [null, []]);
+{
+  const logged = [];
+  const say = console.error;
+  console.error = (...line) => logged.push(String(line[0]));
+  const outcomes = [];
+  try {
+    for (const way of [async () => ({ ok: false, status: 500, json: async () => ({ detail: 'boom' }), text: async () => '' }),
+      async () => { throw new Error('network down'); }]) {
+      globalThis.fetch = way;
+      nodes = [nodeOf('r1', { a: cellOf2('1') })];
+      refreshed = [];
+      let threw = null;
+      try { await fillWriters('/tables/T/data?skip=0&limit=1000', 0, live); } catch (e) { threw = e.message; }
+      outcomes.push([nodes[0].data.data.a.written_by ?? null, refreshed, threw]);
+    }
+  } finally { console.error = say; }
+  eq('D6 a writers read refused, or one that never answers well: nothing taken, nothing drawn, nothing thrown - one line each in the console',
+    [outcomes, logged], [[[null, [], null], [null, [], null]], ['Writers not read', 'Failed to fetch writers']]);
+}
 
 // ── J: Load All and the row jump take a page's looks as the page read does (lead 11-10 ㄱ) ──
 {
@@ -408,6 +427,25 @@ eq('D5 a newer read while the answer was read: nothing taken, nothing drawn', [n
   eq('J2 the row jump: a cached page drawn with its looks; a page read for the jump with its own, and cached with them',
     [cachedHit, Object.keys(S.looks.paints), Object.keys(((S.pageCache.get(2000) || {}).looks || { paints: {} }).paints)],
     [['j1/v'], ['j2/v'], ['j2/v']]);
+
+  // a page whose looks say updating: the jump draws and caches it, its writers read asked and left out - never awaited
+  S.pageCache = new Map();
+  const asked = [];
+  let drawnRows = null;
+  S.gridApi = new Proxy({ getRowNode: () => null, getColumnState: () => [], getColumns: () => [], getDisplayedRowCount: () => 0,
+    setGridOption: (key, value) => { if (key === 'rowData') drawnRows = value.map((r) => r.row_id); } },
+  { get: (t, k) => (k in t ? t[k] : () => undefined) });
+  globalThis.fetch = (url) => {
+    const u = new URL(String(url), 'http://box/');
+    asked.push(u.searchParams.get('part') || u.pathname.split('/').pop());
+    if (String(url).includes('part=writers')) return new Promise(() => {});
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ row_id: 'j3', data: {} }], total: null,
+      target_offset: 0, calculated_skip: 3000, looks: { rules: RULES, paints: {}, updating: true } }) });
+  };
+  const jumped = await Promise.race([navigatorStep3({ row_id: 'j3', column_name: 'v' }).then(() => 'done'),
+    new Promise((r) => setTimeout(() => r('waited'), 500))]);
+  eq('J3 a page whose writers are still out: the jump drew it and cached it and did not wait - the writers read asked after it',
+    [jumped, drawnRows, S.pageCache.has(3000), asked], ['done', ['j3'], true, ['data', 'count', 'writers']]);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
