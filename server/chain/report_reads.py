@@ -515,23 +515,51 @@ class Report:
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture
-        embedded (or why not), any other column (a condition value's: `[]`) «—», a wafer with no row a blank - and
-        the pairs left out."""
+        embedded (or why not), any other column (a condition value's: `[]`) «—», a wafer of no picture why (`_unpaired`)
+        - and the pairs left out."""
         rows, left_out = [], []
         for role in self.spec.get(report_shape.PICTURE_ROWS) or ():
             name = str(role["label"])
             # a picture table of many rows (chip patches) is read to its cap, never refused (owner 10-24 «컴페어 patches
             # 1만개 이상이라고 멈추네»)
-            found, twice = self._pairs(role, [role["image"]], [members[0] for members in columns
-                                                                if len(members) == 1], name=name, capped=True)
+            singles = [members[0] for members in columns if len(members) == 1]
+            found, twice = self._pairs(role, [role["image"]], singles, name=name, capped=True)
             px = role.get("px") or report_shape.PICTURE_PX
             source = role.get(report_shape.IMAGE_SOURCE)
+            why = self._unpaired(role, name, [w for w in singles if not found.get((w, name), (None,))[0]])
             cells = [{"text": "—"} if len(members) != 1 else
                      _picture(_ref(source, found[(members[0], name)][0]), px) if found.get((members[0], name), (None,))[0]
-                     else {"text": ""} for members in columns]
+                     else {"refused": why[members[0]]} for members in columns]
             rows.append((name, cells))
             left_out += twice
         return rows, left_out
+
+    def _unpaired(self, role, name, wafers):
+        """{wafer: why it has no picture of `role`} - its row is not there, two rows say it, or its picture is blank;
+        a row not there names the picture table's nearest key - the most parts equal, then the closest spelled - so a
+        spelling apart shows (owner 11-10: the cell was blank, no reason). The table read again by the first key column
+        alone."""
+        import difflib
+
+        shared = [c for c in report_shape.wafer_columns(role["wafer"]) if c in self.keys]
+        at = [self.keys.index(c) for c in shared]
+        firsts = sorted({_part(w[at[0]]) for w in wafers}, key=lambda v: (v is not None, v or "")) if wafers else []
+        rows = _rows(self.db, role, shared + [role["image"]], [(part,) for part in firsts], keys=shared[:1],
+                     capped=True) if firsts else []
+        spelled = lambda row: " · ".join("%s %s" % (report_shape.column_word(self.spec, c), v)
+                                         for c, v in zip(shared, row))
+        out = {}
+        for wafer in wafers:
+            want = tuple(_part(wafer[i]) for i in at)
+            near = [row for row in rows if _part(row[0]) == want[0]]
+            same = [row for row in near if _parts(row[:len(shared)]) == want]
+            close = lambda row: (sum(a == b for a, b in zip(_parts(row[:len(shared)]), want)), sum(
+                difflib.SequenceMatcher(None, a or "", b or "").ratio() for a, b in zip(_parts(row[:len(shared)]), want)))
+            out[wafer] = ("%d %s rows for %s" % (len(same), name, self.said(wafer)) if len(same) > 1 else
+                          "%s row of %s has no %s" % (name, self.said(wafer), role["image"]) if same else
+                          "no %s row for %s%s" % (name, self.said(wafer),
+                                                 " - nearest: %s" % spelled(max(near, key=close)) if near else ""))
+        return out
 
     def _cell(self, row):
         """A table cell: its text, and the numbers a format holds it by - its share, its F and N."""
