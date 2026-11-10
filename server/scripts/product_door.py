@@ -121,7 +121,7 @@ def row_item_by_id(row_id, values, *, source_name, updated_by=None):
 
 
 def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT,
-             log=print):
+             log=print, transaction_id=None):
     """Send `items` through the door in requests of at most `MAX_ROWS_PER_REQUEST`.
 
     `items` may be any iterable, so a caller with ten million rows does not build a list.
@@ -148,7 +148,8 @@ def put_rows(table, items, *, base_url=DEFAULT_BASE_URL, timeout=DEFAULT_TIMEOUT
     def _flush():
         if not buffer:
             return
-        body = json.dumps({"updates": buffer, "silent": False}).encode("utf-8")
+        body = json.dumps(dict({"updates": buffer, "silent": False},     # one id for a caller's whole run
+                               **({"transaction_id": transaction_id} if transaction_id else {}))).encode("utf-8")
         request = urllib.request.Request(
             url, data=body, method="PUT", headers={"Content-Type": "application/json"})
         started = time.monotonic()

@@ -35,10 +35,9 @@ USAGE - dry run by default:
     python scripts/seed_syn_step_defects.py
     python scripts/seed_syn_step_defects.py --apply --i-accept-writing-to-owner-database
 
-ROLLBACK - one namespace, two lines:
-
-    DELETE FROM step_defect_obs     WHERE mat_id LIKE 'SYN-AUG-%';
-    DELETE FROM step_inspection_run WHERE mat_id LIKE 'SYN-AUG-%';
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
 """
 import argparse
 import os
@@ -175,7 +174,7 @@ def _put(table, rows, url, log=print):
         values = dict(row)
         items.append(product_door.row_item(
             values.pop("business_key_val"), values, source_name=SOURCE_NAME))
-    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None)
+    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None, transaction_id=RUN_TX)
     log("   wrote    %-22s %6d rows in %d request(s)"
         % (table, result["rows"], result["requests"]))
     return result["rows"]
@@ -196,6 +195,10 @@ def _composite(connection, step):
           % (step, total, peak[0], peak[1], peak[1] / mean if mean else 0))
     for cy in range(GRID):
         print("        " + " ".join("%4d" % cell.get((cx, cy), 0) for cx in range(GRID)))
+
+
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
 
 
 def main(argv=None):
@@ -240,4 +243,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     raise SystemExit(main())

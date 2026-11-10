@@ -29,9 +29,9 @@ USAGE -- dry run by default; the gate runs BEFORE the commit either way:
     python scripts/seed_syn_cx_void_density.py
     python scripts/seed_syn_cx_void_density.py --apply --i-accept-writing-to-owner-database
 
-ROLLBACK -- one predicate, and it cannot reach anybody else's rows:
-
-    DELETE FROM void_obs WHERE work_id = 'SYN-DENSITY-20260824';
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
 """
 import argparse
 import os
@@ -111,6 +111,11 @@ def _counts(connection):
             "view": view, "void_obs": rows}
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+ASK_UNDO = "don't paste SQL"
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -177,7 +182,7 @@ def main(argv=None):
                 values.pop("row_id", None)      # the engine mints it (ruling 150)
                 items.append(product_door.row_item(
                     values["void_uid"], values, source_name=SOURCE_NAME))
-            product_door.put_rows("void_obs", items, base_url=args.url,
+            product_door.put_rows("void_obs", items, base_url=args.url, transaction_id=RUN_TX,
                                   log=lambda *_: None)
             print("wrote %d void rows across %d cells through the door"
                   % (len(rows), len(chosen)))
@@ -209,8 +214,7 @@ def main(argv=None):
             # 🔴 COMPENSATION, NOT ROLLBACK (ruling 181). The rows are committed through
             # the door and their atoms exist; what undoes them is another write through it.
             if passed:
-                print("COMMITTED through the door.  Undo: this script's own clear, or"
-                      " DELETE the work_id namespace by id through /rows/batch_delete.")
+                print("COMMITTED through the door.  Undo: this script's own clear, or ask - %s." % ASK_UNDO)
             else:
                 print("GATE FAILED - compensating: withdrawing this run's rows.")
                 _clear_own(c, args.url)
@@ -224,4 +228,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     raise SystemExit(main())
