@@ -17,6 +17,7 @@ moved is an EDIT event like any write (lead 11-11 ㄱ).
     a declared key column          it shows the key - the next write does not take it back (QA 11-11)
     one key merged twice           two layers, one head line each (the tag names the whole merged row)
     this write's person cell       -                     the holder's cell marked a person's (the old pending mark)
+    a table keyed by one column    its key column edited re-keys the row, a held key merges, a blank writes nothing
 """
 import json
 
@@ -260,3 +261,51 @@ def test_a_moved_withdraw_line_does_not_empty_the_holders_cell(db):
     assert _rows(db)["K2"] == (shell, None), "canary: the shell's a withdrawn"
     _write(db, "f3.csv", {"k": "K1"}, row_id=shell)
     assert _rows(db) == {"K1": (holder, "kept")}
+
+
+@pytest.fixture(name="one_key")
+def fixture_one_key(db_session, monkeypatch):
+    table, cfg = "rk_one", {"business_key": "code", "column_types": {"code": "string", "a": "string"}}
+    models.init_dynamic_models({table: cfg})
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
+    Base.metadata.create_all(bind=db_session.get_bind())
+    lines.ensure_line_table(db_session, table, cfg)
+    db_session.commit()
+    ticking_clock(monkeypatch)
+
+    def write(values, row_id=None):
+        out = crud.apply_batch_updates(db_session, table, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(row_id=row_id, business_key_val=None if row_id else values["code"],
+                                      updates=values, source_name="f.csv", updated_by="loader")]))
+        db_session.commit()
+        return out
+
+    def rows():
+        model = models.DYNAMIC_TABLES[table]
+        db_session.expire_all()
+        return {r.business_key_val: (r.row_id, r.code, r.a) for r in db_session.query(model)}
+
+    write({"code": "C1", "a": "one"})
+    write({"code": "C2", "a": "two"})
+    return write, rows
+
+
+def test_a_key_column_edited_re_keys_its_row(one_key):
+    write, rows = one_key
+    row = rows()["C2"][0]
+    write({"code": "C9"}, row_id=row)
+    assert rows()["C9"] == (row, "C9", "two")
+
+
+def test_a_key_column_edited_onto_a_held_key_merges(one_key):
+    write, rows = one_key
+    holder, shell = rows()["C1"][0], rows()["C2"][0]
+    _results, _cells, _logs, deleted = write({"code": "C1"}, row_id=shell)
+    assert (rows(), deleted) == ({"C1": (holder, "C1", "two")}, [shell])
+
+
+def test_a_key_column_written_blank_keeps_the_key(one_key):
+    write, rows = one_key
+    row = rows()["C2"][0]
+    write({"code": None, "a": "x"}, row_id=row)
+    assert rows()["C2"][0] == row

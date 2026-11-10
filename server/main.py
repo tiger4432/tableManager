@@ -4042,7 +4042,7 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
         "items": [item],
         "change_count": change_count
     }))
-    return {"status": "success", "row_id": row_id}
+    return {"status": "success", "row_id": item["row_id"], "deleted_row_ids": deleted_row_ids}
 
 @app.put("/tables/{table_name}/{row_id}/{col_name}/priority")
 async def set_cell_priority(

@@ -551,7 +551,8 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
     """Step 5½ - a row that was there before whose key part's value step 5 moved gets its key rebuilt
     (`crud.rebuilt_business_key` on the merged values, `crud.put_business_key`'s two columns - design «업무 키가 바뀔
-    때»). Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
+    때»); on a table keyed by one column, that column's value composed (`crud.compose_business_key`) - a blank one
+    writes nothing, and a row an item named by its key keeps that key: the old `_update_row_business_key`'s rules. Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
     the batch that took it before (row_id order) - so rows swapping or passing keys along in one batch move, not
     merge. The keys are written first (`_put_keys`); then a held key takes the row in (`_merge_into`), with what this
     write named as its explicit values and, from a person, its person's cells - the old write seat's rule
@@ -559,17 +560,26 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
     who)}; `new` and `keys` follow."""
     from types import SimpleNamespace
 
-    parts = cfg.get("composite_key_source") or []
-    if not parts:
+    parts, key_column = cfg.get("composite_key_source") or [], cfg.get("business_key")
+    watched = parts or ([key_column] if key_column else [])
+    if not watched:
         return {}
-    now, types, key_column = shape["table"], cfg.get("column_types") or {}, cfg.get("business_key")
+    now, types = shape["table"], cfg.get("column_types") or {}
+    by_key = {targets[i] for i in targets if items[i].get("business_key_val") or items[i].get("key")}
     moving = {}
     for row_id in sorted(new):
         was = old.get(row_id)
         if was is None or not any(crud.values_differ(was.get(p), new[row_id].get(p), types.get(p, "string"))
-                                  for p in parts):
+                                  for p in watched):
             continue
-        key = crud.rebuilt_business_key(table, SimpleNamespace(**new[row_id]))
+        if parts:
+            key = crud.rebuilt_business_key(table, SimpleNamespace(**new[row_id]))
+        else:
+            if row_id in by_key:                   # the item's own key wins (looked up by it)
+                continue
+            key = crud.compose_business_key(table, [new[row_id].get(key_column)], [key_column])
+            if crud.is_blank_value(key):
+                continue
         if key != keys.get(row_id, was.get("business_key_val")):
             moving[row_id] = key
     held = {}                                      # key -> the row outside the moves that holds it
@@ -587,7 +597,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
                 taken[key] = row_id
         else:
             into[row_id] = holder
-    _put_keys(db, now, key_column, moving, moves, new, keys)
+    _put_keys(db, now, key_column if parts else None, moving, moves, new, keys)
     merged = {}
     for row_id, holder in sorted(into.items()):
         explicit, human, who = {}, set(), None
