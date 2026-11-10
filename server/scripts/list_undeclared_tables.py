@@ -68,6 +68,35 @@ import paths  # noqa: E402
 from error_said import told
 
 
+def declared_config(config_path):
+    """table_config.json as a dict, or None when missing / unreadable / not an object."""
+    if not os.path.exists(config_path):
+        return None
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        return None
+    return cfg if isinstance(cfg, dict) else None
+
+
+def line_relations(cfg):
+    """The relations a declared table owns once it keeps lines (`t__now`, `t__lines`, a migration's `t__old`) -
+    declared, not residue: listing them would print a DROP for a table's whole data."""
+    from database import lines
+
+    owned = set()
+    for name, entry in cfg.items():
+        if isinstance(entry, dict) and lines.keeps_lines(name, entry):
+            owned |= {lines.now_relation(name), lines.lines_relation(name), name + "__old"}
+    return owned
+
+
+def is_residue(table, declared, system, owned):
+    """A base table nobody declares: not a declared table, not a product system table, not a declared table's lines."""
+    return table not in declared and table not in system and table not in owned
+
+
 def declared_tables(config_path):
     """Table names declared in table_config.json.
 
@@ -76,16 +105,8 @@ def declared_tables(config_path):
     the same report, because the first would list every table in the database as
     residue.
     """
-    if not os.path.exists(config_path):
-        return None
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except Exception:
-        return None
-    if not isinstance(cfg, dict):
-        return None
-    return set(cfg.keys())
+    cfg = declared_config(config_path)
+    return None if cfg is None else set(cfg.keys())
 
 
 def build_models(config_path):
@@ -112,13 +133,13 @@ def system_tables(models):
     return set(models.Base.metadata.tables.keys()) - set(models.DYNAMIC_TABLES.keys())
 
 
-def physical_tables(conn, schema):
-    from sqlalchemy import text
+def physical_tables(conn, schema, kinds=("BASE TABLE",)):
+    from sqlalchemy import bindparam, text
     rows = conn.execute(text(
         "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = :s AND table_type = 'BASE TABLE' "
+        "WHERE table_schema = :s AND table_type IN :k "
         "ORDER BY table_name"
-    ), {"s": schema}).fetchall()
+    ).bindparams(bindparam("k", expanding=True)), {"s": schema, "k": list(kinds)}).fetchall()
     return [r[0] for r in rows]
 
 
@@ -200,10 +221,11 @@ def run(db_url=None, schema="public", out=None):
         lines.append(f"  database : {conn.execute(_text()).scalar()}  schema={schema}")
         lines.append("")
         present = physical_tables(conn, schema)
-        present_set = set(present)
+        present_set = set(physical_tables(conn, schema, ("BASE TABLE", "VIEW")))   # a declared t is a view of t__now
+        owned = line_relations(declared_config(config_path) or {})
 
         for t in present:
-            if t in declared or t in system:
+            if not is_residue(t, declared, system, owned):
                 continue
             est, exact = approximate_rows(conn, schema, t)
             undeclared.append((t, est, exact))
