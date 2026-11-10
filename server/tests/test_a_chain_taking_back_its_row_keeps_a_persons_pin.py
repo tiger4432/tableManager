@@ -61,4 +61,4 @@ def test_a_pin_alone_is_a_persons_part_to_the_shell_question(env):
     row_id = _chain_row(env, {})
     assert cell_layer.shells(env, PLAIN, [row_id]) == [row_id]
     _pin(env, row_id, "v", "f01.csv")
-    assert (cell_layer.shells(env, PLAIN, [row_id]), cell_layer.person_rows(env, PLAIN, [row_id])) == ([], {row_id})
+    assert (cell_layer.shells(env, PLAIN, [row_id]), cell_layer.person_rows(env, PLAIN, [row_id])) == ([], {row_id: [crud.USER_SOURCE]})

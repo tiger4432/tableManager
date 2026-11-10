@@ -86,7 +86,7 @@ def test_1_every_source_gone_the_official_row_goes(world, caplog):
         hw.delete(world, "A")
         hw.settle(world)
     assert _official(world) == {}
-    assert "[ChainShell] table=%s rows_deleted=1 - only the chain's keys were left" % hw.OFFICIAL in [
+    assert "[ChainShell] table=%s rows_deleted=1 - nothing but the chain's keys and values another chain attached was left" % hw.OFFICIAL in [
         r.getMessage() for r in caplog.records]
     history = world["db"].query(models.AuditLog).filter_by(table_name=hw.OFFICIAL, row_id=row_id,
                                                            column_name="DELETE").all()
@@ -99,7 +99,7 @@ def test_1_every_source_gone_the_official_row_goes(world, caplog):
     assert deletions and not [(r["name"], e.id) for e in deletions for r in world["rules"]
                               if worker._is_trigger_event(e) and worker.fires(r, e)], "the deletion wakes a rule"
     said = [r.getMessage() for r in caplog.records]
-    shell_at = said.index("[ChainShell] table=%s rows_deleted=1 - only the chain's keys were left" % hw.OFFICIAL)
+    shell_at = said.index("[ChainShell] table=%s rows_deleted=1 - nothing but the chain's keys and values another chain attached was left" % hw.OFFICIAL)
     assert not [line for line in said[shell_at:] if "[ChainRule] rule=" in line], "a rule ran after the deletion"
 
 

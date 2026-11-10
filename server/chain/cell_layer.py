@@ -127,33 +127,11 @@ GONE_DELETER = "chain_no_source_rows"
 def rule_layer_names() -> tuple:
     """The layer names a rule writes under its declaration (`updated_by` = `rule_shape.declaration_of`, what
     `rule_run.signed` stamps): the chain's, and a decide's auto-confirm stamps. «This rule's layer» to
-    `cells_written_by` and `rows_others_wrote` alike (총괄 10-28)."""
+    `cells_written_by` and `person_rows` alike (총괄 10-28)."""
     from chain.enrichment import candidates
     from database import crud
 
     return crud.CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY
-
-
-def rows_others_wrote(db, table_name: str, own) -> dict:
-    """{row_id: [layer names]} - of `own` {row_id: the rules whose rows they are}, the rows another writer has a layer
-    on (총괄 355ee9840 2): not a person's (`crud.layer_writer`), not those rules' chain or auto-confirm layer
-    (`updated_by` is the rule that wrote it), not the backfill's old name for that write."""
-    from chain.enrichment import backfill
-    from database import crud, models
-
-    S = models.CellSource
-    ids = list(own)
-    mine = rule_layer_names()
-    found = {}
-    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        for row_id, name, by in (db.query(S.row_id, S.source_name, S.updated_by)
-                                 .filter(S.table_name == table_name, S.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
-            writer = crud.layer_writer(name)
-            # by the writer the name folds to - a merge renames a layer «chain_ingestion (<key>)» (총괄 10-14 4)
-            if writer in (crud.USER_SOURCE, backfill.SOURCE_NAME) or (writer in mine and by in own[row_id]):
-                continue
-            found.setdefault(row_id, set()).add(name)
-    return {row_id: sorted(names) for row_id, names in found.items()}
 
 
 def person_cells(db, table_name: str, row_ids) -> dict:
@@ -176,20 +154,44 @@ def person_cells(db, table_name: str, row_ids) -> dict:
     return found
 
 
-def person_rows(db, table_name: str, row_ids) -> set:
-    """The rows a person has a part on: a layer they wrote, blank or not (`person_cells`), or a pin they set on a cell
-    (`cell_overwrites.manual_priority_source`). THE ONE «is a person's part left on this row» - a chain taking back what
-    it made keeps such a row (`shells`, `ingestion_worker._settle`; owner 11-10 «체인이 낸 행 부분만 없애면 됨»)."""
-    from database import models
+def person_rows(db, table_name: str, row_ids, own=None) -> dict:
+    """{row_id: [what keeps it]} - the rows a part other than the chain taking them back keeps. THE ONE «is a part
+    left that keeps this row» (`shells`, `ingestion_worker._settle`; owner 11-10 «체인이 낸 행 부분만 없애면 됨»):
+      a person's part     a layer they wrote, blank or not (`person_cells`), or a pin (`manual_priority_source`)
+      a writer not the chain - a file's key layer, or a value it wrote
+      a chain that made the row - a value under a layer name that also holds a key column of the row
+    A chain that only attached values to a row another made (no key-column layer of its own there) keeps nothing
+    (lead 11-10, the owner's official master): the row goes and that chain hears the DELETE. `own` {row_id: rules}:
+    the rules taking the row back - their layers (and the backfill's old name for them) keep nothing either."""
+    from chain.enrichment import backfill
+    from database import crud, models
 
-    co = models.CellOverwrite
+    co, cs = models.CellOverwrite, models.CellSource
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = {row_id for row_id, _column in person_cells(db, table_name, ids)}
+    found = {row_id: {crud.USER_SOURCE} for row_id, _column in person_cells(db, table_name, ids)}
+    keys, mine, own = key_columns(table_name), rule_layer_names(), own or {}
     for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        found.update(row_id for (row_id,) in db.query(co.row_id).filter(
-            co.table_name == table_name, co.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]),
-            co.manual_priority_source.isnot(None)))
-    return found
+        chunk = ids[i:i + DEFAULT_CHUNK_SIZE]
+        for (row_id,) in db.query(co.row_id).filter(co.table_name == table_name, co.row_id.in_(chunk),
+                                                     co.manual_priority_source.isnot(None)):
+            found.setdefault(row_id, set()).add(crud.USER_SOURCE)
+        layers = {}
+        for row_id, column, name, value, by in db.query(cs.row_id, cs.column_name, cs.source_name, cs.value,
+                                                        cs.updated_by).filter(cs.table_name == table_name,
+                                                                              cs.row_id.in_(chunk)):
+            writer = crud.layer_writer(name)
+            # by the writer the name folds to - a merge renames a layer «chain_ingestion (<key>)» (총괄 10-14 4)
+            if writer == backfill.SOURCE_NAME or (writer in mine and by in own.get(row_id, ())):
+                continue
+            layers.setdefault(row_id, []).append((column, name, value))
+        for row_id, named in layers.items():
+            made = {name for column, name, _value in named if column in keys}
+            for column, name, value in named:
+                chain = crud.layer_ranks_as(name) == crud.CHAIN_SOURCE
+                if (not chain and (column in keys or not crud.is_blank_value(value))) or (
+                        chain and column not in keys and name in made and not crud.is_blank_value(value)):
+                    found.setdefault(row_id, set()).add(name)
+    return {row_id: sorted(names) for row_id, names in found.items()}
 
 
 def key_columns(table_name: str) -> set:
@@ -203,11 +205,10 @@ def key_columns(table_name: str) -> set:
 
 
 def shells(db, table_name: str, row_ids) -> list:
-    """is_shell, for each of these rows (총괄 5eee501eb · 판정 ㄱ, 소유자 10-09 「키값만 남아 있네」): no layer
-    outside the key columns holds a value - a blank the chain wrote is none - every key-column layer is the
-    chain's, and no person's layer anywhere, blank or not. And the row shows nothing outside its keys, so a
-    value no layer carries is not taken for nothing. A person's part - a layer or a pin - is `person_rows`'. The chain's
-    write seat and the sweep ask this one."""
+    """is_shell, for each of these rows (총괄 5eee501eb · 판정 ㄱ, 소유자 10-09 「키값만 남아 있네」): nothing keeps it
+    (`person_rows` - a person's part, a writer not the chain, a chain that made it; a chain that only attached values
+    keeps nothing, lead 11-10), and it shows nothing outside its keys that no layer carries - a value no layer carries
+    is not taken for nothing. The chain's write seat and the sweep ask this one."""
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(table_name)
@@ -225,26 +226,27 @@ def shells(db, table_name: str, row_ids) -> list:
         by_row = {}
         for (row_id, column), named in layers.items():
             by_row.setdefault(row_id, []).extend((column, name, entry["value"]) for name, entry in named.items())
-        persons = person_rows(db, table_name, chunk)
+        kept = person_rows(db, table_name, chunk)
         for row in db.query(model).filter(model.row_id.in_(chunk)).all():
-            if row.row_id in persons or any(not crud.is_blank_value(getattr(row, column, None)) for column in shown):
+            layered = {column for column, _name, _value in by_row.get(row.row_id, ())}
+            # a shown value no layer carries is not taken for nothing; one a layer carries, person_rows judged
+            if row.row_id in kept or any(not crud.is_blank_value(getattr(row, column, None))
+                                         for column in shown if column not in layered):
                 continue
-            if all(crud.layer_ranks_as(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value)
-                   for column, name, value in by_row.get(row.row_id, ())):
-                found.append(row.row_id)
+            found.append(row.row_id)
     return found
 
 
 def delete_shells(db, table_name: str, gone) -> list:
     """The rows `gone` (`shells`' answer), deleted by the grid's door - their layers and a history line go with them,
-    one DELETE that wakes no rule - and said once. Every seat that takes layers back asks `shells` and hands its answer
+    one DELETE on the chain's channel, so a rule that takes chain events hears it (lead 11-10) - and said once. Every seat that takes layers back asks `shells` and hands its answer
     here; a chain write asks after its recount (총괄 69b8b029c, 소유자 10-21 「체인 껍데기는 여전함」). -> `gone`."""
     from database import crud
 
     for i in range(0, len(gone), DEFAULT_CHUNK_SIZE):
         crud.delete_rows_batch(db, table_name, gone[i:i + DEFAULT_CHUNK_SIZE], SHELL_DELETER)
     if gone:
-        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left", table_name, len(gone))
+        logger.info("[ChainShell] table=%s rows_deleted=%d - nothing but the chain's keys and values another chain attached was left", table_name, len(gone))
     return gone
 
 

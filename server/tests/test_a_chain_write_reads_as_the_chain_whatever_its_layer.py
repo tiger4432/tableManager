@@ -348,6 +348,8 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     assert notes.pop("retype_column").startswith("The table is locked while it converts")
     # The columns already declared another type, the same conversion table by table (총괄 fd7ef4de1).
     assert notes.pop("retype_declared_columns").startswith("Each table is locked while its column converts")
+    # The withdrawal cascades as the live chain does (owner 11-10 «소급 ㄱ»).
+    assert notes.pop("withdraw").startswith("The chain follows a withdrawal as it follows a live write")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 
