@@ -10,6 +10,7 @@ import math
 
 from sqlalchemy import (BigInteger, Column, DateTime, Index, Integer, MetaData, String, Table, UniqueConstraint,
                         func, select, text)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
 
 from .database import Base
@@ -91,9 +92,27 @@ def is_seeding() -> bool:
 
 
 def _checked(name: str) -> str:
+    if '"' in name or "$" in name:
+        raise ValueError(f"relation name {name!r} carries a quote or a dollar sign")
     if len(name.encode("utf-8")) > MAX_NAME_BYTES:
         raise ValueError(f"relation name {name!r} is longer than {MAX_NAME_BYTES} bytes")
     return name
+
+
+#: The longest name derived from a declared table: `t__lines_ra`.
+MAX_TABLE_NAME_BYTES = MAX_NAME_BYTES - len(LINES_SUFFIX + "_ra")
+
+
+def table_name_refusal(table_name: str):
+    """None when t can carry line tables; else the operator sentence (which table, how many bytes, what to do) -
+    the migration's pre-check says it before any DDL."""
+    if '"' in table_name or "$" in table_name:
+        return f"table {table_name!r} carries a quote or a dollar sign - declare it under a plain name and migrate again"
+    size = len(table_name.encode("utf-8"))
+    if size <= MAX_TABLE_NAME_BYTES:
+        return None
+    return (f"table {table_name!r} is {size} bytes long; line tables need {MAX_TABLE_NAME_BYTES} or fewer - "
+            f"declare it under a shorter name (a non-ASCII character takes 3 bytes) and migrate again")
 
 
 def now_relation(table_name: str) -> str:
@@ -168,13 +187,22 @@ def bit_columns(family: str, chunks: int) -> list:
     return [f"{family}_{i}" for i in range(chunks)]
 
 
-def _data_columns(table_cfg: dict, sql_type_of) -> list:
-    columns = [Column(name, type_) for name, type_ in FRAMEWORK]
+def _data_columns(table_cfg: dict, sql_type_of, row_id_key: bool) -> list:
+    columns = [Column(name, type_, primary_key=(row_id_key and name == "row_id")) for name, type_ in FRAMEWORK]
     framework = {name for name, _ in FRAMEWORK}
     for name, type_str in (table_cfg.get("column_types") or {}).items():
         if name not in framework:
             columns.append(Column(name, sql_type_of(type_str)))
     return columns
+
+
+#: The longest name derived from t is `t__lines_ra` - so a declared table name is at most 53 bytes.
+INDEX_SUFFIXES = {"ra": "(row_id, at)", "b": "batch", "p": "person lines by at", "h": "head lines"}
+
+
+def index_name(table_name: str, suffix: str) -> str:
+    """`t__lines_<suffix>` - the short, checked name of a line-table index (row-at · batch · person · head)."""
+    return _checked(f"{lines_relation(table_name)}_{suffix}")
 
 
 def shape(db, table_name: str, table_cfg: dict) -> dict:
@@ -186,10 +214,9 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     bits = assign_bits(db, table_name, declared)
     chunks = chunk_count(db, table_name)
     meta = MetaData()
-    now = Table(now_relation(table_name), meta, *_data_columns(table_cfg, sql_type_of), Column("won_by", JSON))
-    now.c.row_id.primary_key = True
-    now.append_constraint(UniqueConstraint("row_id", name=f"uq_{now.name}_row_id"))
-    now.append_constraint(UniqueConstraint("business_key_val", name=f"uq_{now.name}_bk"))
+    now = Table(now_relation(table_name), meta, *_data_columns(table_cfg, sql_type_of, row_id_key=True),
+                Column("won_by", JSON().with_variant(JSONB, "postgresql")))
+    now.append_constraint(UniqueConstraint("business_key_val", name=_checked(f"{now.name}_bk")))
     line_cols = [Column("line_id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
                  Column("line_kind", String, nullable=False), Column("source_name", String), Column("at", DateTime(timezone=True)),
                  Column("written_by", String), Column("batch", String), Column("input_row", String),
@@ -197,14 +224,14 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     for family in BIT_FAMILIES:
         line_cols += [Column(name, BigInteger, nullable=False, server_default=text("0"))
                       for name in bit_columns(family, chunks)]
-    data = [c for c in _data_columns(table_cfg, sql_type_of) if c.name != "row_id"]
+    data = [c for c in _data_columns(table_cfg, sql_type_of, row_id_key=False) if c.name != "row_id"]
     lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
     head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
-    Index(f"ix_{lines.name}_row_at", lines.c.row_id, lines.c.at)
-    Index(f"ix_{lines.name}_batch", lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
-    Index(f"ix_{lines.name}_person_at", lines.c.at, postgresql_include=["row_id", "batch"],
+    Index(index_name(table_name, "ra"), lines.c.row_id, lines.c.at)
+    Index(index_name(table_name, "b"), lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
+    Index(index_name(table_name, "p"), lines.c.at, postgresql_include=["row_id", "batch"],
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
-    Index(f"ix_{lines.name}_head", lines.c.row_id, lines.c.source_name,
+    Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
     return {"now": now, "lines": lines, "view": table_name, "bits": bits, "chunks": chunks,
             "view_columns": [c.name for c in now.columns if c.name != "won_by"]}
@@ -258,17 +285,28 @@ def drop_line_table(db, table_name: str) -> None:
         conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{name}"')
 
 
-def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=()) -> list:
+def _built_chunks(conn, table_name: str) -> int:
+    from sqlalchemy import inspect
+
+    names = {c["name"] for c in inspect(conn).get_columns(lines_relation(table_name))}
+    return sum(1 for i in range(len(names)) if f"head_{i}" in names)
+
+
+def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=None) -> list:
     """Column DDL on both tables in the caller's transaction: drop the view, change `t__now` and `t__lines` alike,
-    re-create the view. add/retype: column names in table_cfg's column_types; drop: column names.
+    re-create the view. add: column names in table_cfg's column_types (the cfg AFTER the change); drop: column
+    names; retype: {column: USING expression} from admin/retype.using - the cast has one author there, and sqlite
+    skips it as today's retype does. A rename is a drop + a new column (a new bit).
     -> the statements run (the same text an operator is shown)."""
     from .models import sql_type_of
 
     conn = db.connection()
     dialect = conn.dialect.name
     types = table_cfg.get("column_types") or {}
+    for name in [*add, *drop, *(retype or {})]:
+        _checked(name)
     statements = list(_drop_view_ddl(dialect, table_name))
-    before = chunk_count(db, table_name)
+    before = _built_chunks(conn, table_name)
     if add:
         assign_bits(db, table_name, list(add))
     if drop:
@@ -280,17 +318,26 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
         for name in drop:
             statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{name}"')
-        for name in retype:
-            if dialect != "postgresql":
-                raise ValueError("retyping a column is a PostgreSQL operation")
-            type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
-            statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING "{name}"::{type_sql}')
+        for name, using in (retype or {}).items():
+            if dialect == "postgresql":
+                type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
+                statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING {using}')
     for family in BIT_FAMILIES:
         for name in bit_columns(family, after)[before:]:
             statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
+    if after > before:                           # the head index's WHERE names every head chunk
+        statements.append(f'DROP INDEX IF EXISTS "{index_name(table_name, "h")}"')
     for stmt in statements:
         conn.exec_driver_sql(stmt)
-    view_statements = _view_ddl(dialect, shape(db, table_name, table_cfg))
+    s = shape(db, table_name, table_cfg)
+    if after > before:
+        head = next(i for i in s["lines"].indexes if i.name == index_name(table_name, "h"))
+        from sqlalchemy.schema import CreateIndex
+
+        ddl = str(CreateIndex(head).compile(dialect=conn.dialect))
+        conn.exec_driver_sql(ddl)
+        statements.append(ddl)
+    view_statements = _view_ddl(dialect, s)
     for stmt in view_statements:
         conn.exec_driver_sql(stmt)
     return statements + view_statements
