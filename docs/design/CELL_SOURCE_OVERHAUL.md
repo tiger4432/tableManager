@@ -29,6 +29,7 @@
 
 바뀐 뒤, 표마다:
 
+- 어느 표가 두 표가 되나 — 한 좌석 `lines.keeps_lines(t, table_cfg)` (총괄 11-11): 운영자가 선언한 표(kind table)만. 보기(kind: view) · 제품이 싣는 시스템 표(shipped.tables) · 선언 안 된 관계(원장 자체 표 — 이미 덧붙이기 이력이라 두 겹을 만들지 않음)는 그대로 남는다. 이주 대상 · 카탈로그(stored_relation) · 인덱스 · 찌꺼기 보고(list_undeclared_tables)가 전부 이것을 묻는다.
 - `t__lines`: t 의 칸 + line_id(PK, 늘어나기만 함) · 줄 종류 · 출처 · 언제 · 누가 · 묶음(= transaction_id) · 입력 행 · 규칙 주인 · 확정 · written_bits · head_bits · withdrawn_bits.
   - 줄 표의 값 칸은 선언 타입과 무관하게 글자다 (총괄 11-10 ㄱ — 오늘 cell_sources.value 가 JSON 이라 타입 바꾸기가 이력을 건드린 적이 없다). 두 표 칸은 이름 · 순서가 같고, 줄 값은 «한 좌석» crud.line_text(value, 칸 타입)이 짓고(crud.value_key 위 — 같다고 견주는 두 값은 정확히 같은 글자) 읽을 때 crud.line_value 하나가 캐스트한다. 쓰기 5 단계(A) · 이주 옛 줄(C) · «같나» 빼기 · 행 이력 읽기(D)가 전부 이 둘을 지난다.
   - 줄 종류: «write»(값을 말함 · 합치기 후보) · «withdraw»(말 없음) · «deleted»(행 지움) · «mark»(고정 걸기/풀기 · 순위 다시 합치기 — 네비용 표시, head_bits 0 · 합치기 후보 아님). old_exist 백업 줄은 그 출처 이름의 «write» 줄이다.
