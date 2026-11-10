@@ -106,6 +106,8 @@ MAX_TABLE_NAME_BYTES = MAX_NAME_BYTES - len(LINES_SUFFIX + "_ra")
 def table_name_refusal(table_name: str):
     """None when t can carry line tables; else the operator sentence (which table, how many bytes, what to do) -
     the migration's pre-check says it before any DDL."""
+    if '"' in table_name or "$" in table_name:
+        return f"table {table_name!r} carries a quote or a dollar sign - declare it under a plain name and migrate again"
     size = len(table_name.encode("utf-8"))
     if size <= MAX_TABLE_NAME_BYTES:
         return None
@@ -301,6 +303,8 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     conn = db.connection()
     dialect = conn.dialect.name
     types = table_cfg.get("column_types") or {}
+    for name in [*add, *drop, *(retype or {})]:
+        _checked(name)
     statements = list(_drop_view_ddl(dialect, table_name))
     before = _built_chunks(conn, table_name)
     if add:
@@ -328,8 +332,11 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     s = shape(db, table_name, table_cfg)
     if after > before:
         head = next(i for i in s["lines"].indexes if i.name == index_name(table_name, "h"))
-        head.create(conn)
-        statements.append(f"CREATE INDEX {head.name} (head chunks 0..{after - 1})")
+        from sqlalchemy.schema import CreateIndex
+
+        ddl = str(CreateIndex(head).compile(dialect=conn.dialect))
+        conn.exec_driver_sql(ddl)
+        statements.append(ddl)
     view_statements = _view_ddl(dialect, s)
     for stmt in view_statements:
         conn.exec_driver_sql(stmt)

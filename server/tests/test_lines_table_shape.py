@@ -107,6 +107,11 @@ def test_chunks_follow_the_built_table_not_the_slot_map(db):
     assert {"c64", "written_1", "head_1", "withdrawn_1"} <= cols
     head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h'")).scalar()
     assert "head_1" in head_sql
+    said = lines.alter_columns(db, "t", {"column_types": {**wider["column_types"], **{f"d{i}": "string" for i in range(64)}}},
+                               add=[f"d{i}" for i in range(64)])
+    index_line = next(x for x in said if "t__lines_h" in x and x.startswith("CREATE INDEX"))
+    db.execute(text('DROP INDEX "t__lines_h"'))
+    db.execute(text(index_line))                        # the line shown to the operator runs as it is
 
 
 def test_now_has_row_id_as_its_key(db):
@@ -126,3 +131,7 @@ def test_a_too_long_table_name_is_refused_with_its_size():
     assert lines.table_name_refusal("x" * 53) is None
     said = lines.table_name_refusal("표" * 18)                 # 54 bytes in UTF-8
     assert "54 bytes" in said and "53 or fewer" in said
+
+
+def test_a_quoted_table_name_is_refused_before_migration():
+    assert "quote" in lines.table_name_refusal('a"b')
