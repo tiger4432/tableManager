@@ -30,6 +30,7 @@
 바뀐 뒤, 표마다:
 
 - `t__lines`: t 의 칸 + line_id(PK, 늘어나기만 함) · 줄 종류 · 출처 · 언제 · 누가 · 묶음(= transaction_id) · 입력 행 · 규칙 주인 · 확정 · written_bits · head_bits · withdrawn_bits.
+  - 줄 표의 값 칸은 선언 타입과 무관하게 글자다 (총괄 11-10 ㄱ — 오늘 cell_sources.value 가 JSON 이라 타입 바꾸기가 이력을 건드린 적이 없다). 두 표 칸은 이름 · 순서가 같고, 줄 값은 «한 좌석» crud.line_text(value, 칸 타입)이 짓고(crud.value_key 위 — 같다고 견주는 두 값은 정확히 같은 글자) 읽을 때 crud.line_value 하나가 캐스트한다. 쓰기 5 단계(A) · 이주 옛 줄(C) · «같나» 빼기 · 행 이력 읽기(D)가 전부 이 둘을 지난다.
   - 줄 종류: «write»(값을 말함 · 합치기 후보) · «withdraw»(말 없음) · «deleted»(행 지움) · «mark»(고정 걸기/풀기 · 순위 다시 합치기 — 네비용 표시, head_bits 0 · 합치기 후보 아님). old_exist 백업 줄은 그 출처 이름의 «write» 줄이다.
   - 비트: «write» 는 말한 칸을 written_bits 에 적고 head_bits 도 그것으로 시작한다. «withdraw» 는 거둔 칸을 written_bits 와 withdrawn_bits 에 같이 적고 head_bits 도 그것으로 시작한다(그 원천의 그 칸 머리가 «말 없음» 줄이 된다 — 앞선 머리는 «쓰기» 4 가 내린다). «mark» · «deleted» 는 세 비트가 모두 0 이고 «쓰기» 4 를 건너뛴다 — 고정을 거는 mark 줄이 사람의 머리 비트를 내리지 않는다.
   - 쓰기 하나 = 줄 하나. 칸마다가 아니라 «행 × 쓰기»마다 한 줄이고, written_bits 가 어느 칸을 말했는지 적는다.
@@ -131,16 +132,16 @@
 
 ## 칸 DDL — 한 함수
 
-- `lines.alter_columns(db, table_name, changes)`(C 몫 · 총괄 11-10): 한 트랜잭션에서 «보기 t · 트리거 지움 → 두 표에 같은 칸 DDL(더하기 · 타입 바꾸기 · 지우기 · 이름 바꾸기) → 보기 t · 트리거 다시 지음». PG 는 보기가 기대는 칸의 타입 바꾸기 · 지우기를 거부하고, 더한 칸은 보기에 안 나타나기 때문이다(PG 일반 동작 — 짓는 날 버리는 DB 시험으로 확인).
+- `lines.alter_columns(db, table_name, table_cfg, add, drop, retype)`(C 몫 · 총괄 11-10): 한 트랜잭션에서 «보기 t · 트리거 지움 → 두 표에 같은 칸 이름 · 같은 순서(더하기 · 지우기) + 타입 바꾸기는 `t__now` 만 → 보기 t · 트리거 다시 지음». 이름 바꾸기 = 지움 + 새 칸(새 비트). 타입 바꾸기의 형변환 식은 admin/retype.using 하나가 짓고 sqlite 는 오늘처럼 건너뛴다. PG 는 보기가 기대는 칸의 타입 바꾸기 · 지우기를 거부하고, 더한 칸은 보기에 안 나타나기 때문이다(PG 일반 동작 — 짓는 날 버리는 DB 시험으로 확인).
 - 표 만들기는 `lines.ensure_line_table`(두 표 · 보기 · 트리거 · 인덱스). 표 지우기는 `lines.drop_line_table`(보기 · 두 표 · 있으면 `t__old`).
 - 운영자에게 «손으로 돌릴 줄»로 보여 주는 DDL 문장(schema_drift · list_undeclared_tables)도 이 함수가 낸 문장을 그대로 보인다.
 - 지나야 할 자리 — A 셈, origin/main 8151d231e(문자열 grep + AST, 카나리아 models.py create_all = 1):
   - 칸 DDL: models.sync_dynamic_tables_schema 의 ADD COLUMN · models.create_missing_dynamic_tables 의 create_all(표 만들기 → ensure_line_table) · admin/retype.py 의 ALTER COLUMN TYPE + 그 칸 인덱스 DROP · admin/schema_drift._add_column_ddl · scripts/list_undeclared_tables.py.
-  - 표 모양: models.init_dynamic_models(Table · append_column · 인덱스 둘) — 두 Table 이 여기서 같은 칸 목록으로 나온다. models.model_index_ddl(CreateIndex).
+  - 표 모양: models.init_dynamic_models(Table · append_column · 인덱스 둘) — 두 Table 이 여기서 같은 칸 이름 목록으로 나온다(줄 표의 값 칸은 글자). models.model_index_ddl(CreateIndex).
   - 메타데이터 전체 만들기/지우기: main.bootstrap_database_schema · setup/init_db 의 create_all · setup/reset_db 의 drop_all — 보기 · 트리거는 create_all 이 짓지 않으니 ensure_line_table 이 이 셋을 따라간다.
   - 칸 아닌 DDL 은 `t__now` 에 건다: 자동 인덱스 · gin 검색 인덱스 · 남은 인덱스 지우기 · decide 키 인덱스 안내 · chain/unique_key 의 조인 키 유일 인덱스 · notation_norm 의 접은 값 식 인덱스.
   - 저장 매개변수: 선언된 «storage» 는 `t__now` 에 건다(제자리 UPDATE 의 표). `t__lines` 는 덧붙이기만 하는 표라 PG 기본값(C 판단).
-- 칸 어긋남 가드: 부팅 때 두 표의 칸 목록을 견주어, 갈라졌으면 그 표의 쓰기를 거절하고 한 줄로 말한다(데이터를 지키는 가드).
+- 칸 어긋남 가드: 부팅 때 두 표의 칸 «이름» 목록을 견주어(줄 표 값 칸의 타입은 글자라 견주지 않는다), 갈라졌으면 그 표의 쓰기를 거절하고 한 줄로 말한다(데이터를 지키는 가드).
 
 ## 이름 t 보기는 쓰기를 거절한다 (총괄 11-10 ㄱ)
 
