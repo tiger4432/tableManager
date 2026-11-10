@@ -1,7 +1,7 @@
 # `notation_rules.json` 세팅 — 표기 정규화(조회 시점 폴드)
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-09-26 (§2.3 `write` 칸은 모든 쓰기 문에서 접혀 저장 — 2 단계 · 값 규칙 · 별칭 표) · 2026-09-15 (§6 — 소비자는 ON 절 하나가 아니라 «키 식» `notation_norm.key_expression_sql/_text` 하나를 지나는 네 자리, 텍스트 아닌 컬럼은 `::text` — S-245 `ddd5b3ba`) · 직전 2026-08-04 (🔴 **전면 재작성 — 이 문서가 서술하던 모델은 철회됐습니다.** `92b8d6f`가 출하한 **물리 파생 컬럼(`<컬럼>_norm`)**은 `8d306a5`에서 **아무도 소비하기 전에** 통째로 제거됐습니다(사용자 확정 2026-08-04). 지금 선언이 뜻하는 것은 「이 컬럼의 **표기가 정규화된 것으로 선언됐다**」 하나이고, 소비자가 **조회 시점에 비교의 양쪽을 SQL에서 접습니다**. **저장되는 것은 없습니다** — 파생 컬럼도, `<컬럼>_norm` 관례도, 재파생 스크립트도 이제 없습니다. 종전 판의 §2(층 셋)·§4.1·§4.2·§4.4·§7은 **전부 소멸했고**, 그 자리를 §2(한 단계)·§5.2(병합군 라우트)·§6(가상 조인의 함수 인덱스)이 대신합니다) | **Owner:** Backend / Ops
-> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 [virtual_join_rules](./virtual_join_rules.md)** · 정본 코드는 `server/notation_norm.py`
+> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 조인의 키 비교**(`chain/join_into` · `chain/join_key_index`) · 정본 코드는 `server/notation_norm.py`
 
 <!-- Loader evidence (2026-08-04, 8d306a5 - measured against the tree, not transcribed):
   python fold:    notation_norm.fold_notation(text, rules)        (reference spelling)
@@ -16,13 +16,13 @@
                    by the owner's decision 5ee9d3bd1 ③)
   read entry:     normalized_by_table() -> rules_for_column / is_normalized
                   join_pair_rules(lt, lc, rt, rc)  <- "either side declared = both folded"
-  cache:          RULES_CACHE_TTL = 5.0 + reset_cache()  (main.reload_local_process_cache)
+  cache:          config_watcher.held - read again when notation_rules.json or table_config changes
   key expression: notation_norm.key_expression_sql(column, rules)                 (SQLAlchemy - what a join COMPARES)
                   notation_norm.key_expression_text(inner_sql, rules, text_column)  (PG text - what an index is BUILT on)
                   = coalesce(fold(col), '') ; non-text column -> coalesce(fold(col::text), '')   (S-245 ddd5b3ba, 2026-09-15)
                   except a datetime column -> assy_key_instant(col, zone) (b3a6e64f7, 10-20) and a float / numeric
                   column -> assy_key_number(col), the ledger's spelling (363775bfd, 10-31)
-  consumers:      virtual_join_executor.join_onclause      (the ON clause, both sides)
+  consumers:      chain.join_into                          (the join's key read, both sides)
                   chain.join_key_index.index_key_expression / required_index_ddl   (decides text-or-not: it holds the table; moved 21abf176, virtual_join.config re-imports it)
                   chain.unique_key                         (duplicate probe groups by the same expression; moved 21abf176)
                   chain.join_into._folded                  (the unified join's write-time join)
@@ -44,7 +44,7 @@
 | 선언이 뜻하는 것 | 「이 컬럼은 **저 컬럼으로 파생된다**」 | 「이 컬럼의 **표기가 정규화됐다**」 |
 | 값 | 물리 컬럼 `<컬럼>_norm`에 **저장** | **아무것도 저장하지 않음** |
 | 켜는 절차 | `table_config` 컬럼 → 이 파일 쌍 → `display_columns` (**층 셋**) | 이 파일에 **한 줄** |
-| 소비 | 없음(1단계라 아무도 안 읽음) | **가상 조인의 키 비교**가 양쪽을 접어 씀 |
+| 소비 | 없음(1단계라 아무도 안 읽음) | **조인의 키 비교**가 양쪽을 접어 씀 |
 | 규칙이 틀렸을 때 | 규칙 고치고 **재파생 스크립트** 실행 | 규칙만 고치면 **다음 조회부터** 끝 |
 | 쓰기 거부 | 파생 컬럼으로 가는 쓰기를 400으로 거부 | **거부할 것이 없음**(쓰기 경로에 존재하지 않음) |
 
@@ -126,10 +126,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 
 ### 2.2 반영 시점
 
-`notation_rules.json`은 **config watcher의 감시 대상이 아닙니다**(watcher가 보는 파일은 `table_config.json` 하나뿐입니다). 반영은 두 갈래입니다:
-
-- **자동**: 선언 캐시 TTL이 **5초**(`RULES_CACHE_TTL`) — 저장하고 5초 뒤 다음 조회부터. 워커 프로세스도 포함입니다.
-- **즉시**: `POST /admin/reload-configs`(웹서버 프로세스의 캐시를 그 자리에서 버립니다).
+`notation_rules.json` 은 설정 감시기가 봅니다 — 저장하면 마지막 쓰기 뒤 약 1 초에 프로세스마다 다시 읽고(`config_watcher.held`), 다음 조회부터 새 규칙입니다. 워커 프로세스도 포함입니다.
 
 > ✅ **「이미 쌓인 행은 어떻게 되나」라는 질문이 사라졌습니다.** 저장되는 값이 없으므로 과거 행과 새 행에 차이가 없습니다 — 규칙을 바꾸면 **모든 행이 같은 순간에** 새 규칙으로 비교됩니다. 종전 판의 「한 컬럼에 두 세대가 섞인다」 함정은 존재하지 않습니다.
 
@@ -263,7 +260,7 @@ folds '01' and '1' into one value
 
 | code | 언제 | 실제 메시지(발췌) |
 |---|---|---|
-| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are separator, case, zero_pad` |
+| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are …`(`notation_norm.KNOWN_RULES` 전부) |
 | `shape` | 선언이 `true`/`false`/객체가 아님 | `declaration must be true, false, or an object {rules}` |
 | `shape` | **옛 모델의 `derived` 키** | `'derived' is no longer a thing: normalization does not produce a column any more, it folds BOTH SIDES of a comparison at query time. ...` |
 | `shape` | 파일이 객체가 아님 / `columns`가 객체가 아님 | `notation_rules.json must be an object; the whole file was ignored and NO column is normalized` |
@@ -300,20 +297,20 @@ GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으
 
 > ⚠️ **`effective`는 「이 컬럼이 정규화됐다고 선언됐다」까지입니다.** 「무엇이 합쳐졌나」도 「그 조인이 실제로 도나」도 답하지 않습니다 — 위 표의 나머지 두 줄이 그 자리입니다.
 
-## 6. 🔴 소비자 — 가상 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
+## 6. 🔴 소비자 — 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
 
-이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 네 자리가 그것을 지납니다: 가상 조인 ON 절(`virtual_join_executor.join_onclause`) · 인덱스 DDL(`virtual_join_config.index_key_expression`) · 중복 탐침(`virtual_join.unique_key`) · 통합 join 의 쓰기 조인(`chain/join_into`)(S-245 `ddd5b3ba`). 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다(🆕 시각 칸은 `assy_key_instant(col, zone)` — 10-20 `b3a6e64f7`, float · numeric 칸은 원장 철자와 같은 `assy_key_number(col)` — 10-31 `363775bfd`) — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
+이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 그것을 지나는 자리: 유일 인덱스 DDL(`chain/join_key_index`) · 통합 join 의 쓰기 조인(`chain/join_into`, S-245 `ddd5b3ba`) · 규칙의 키 읽기(`chain/rule_run`). ⚰️ 가상 조인 ON 절 · 그 인덱스 DDL · 중복 탐침은 가상 조인과 함께 은퇴. 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다(🆕 시각 칸은 `assy_key_instant(col, zone)` — 10-20 `b3a6e64f7`, float · numeric 칸은 원장 철자와 같은 `assy_key_number(col)` — 10-31 `363775bfd`) — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
 
 **① 어느 한쪽이라도 선언됐으면 양쪽이 접힙니다.** 한쪽만 접을 수 있는 인자도, 플래그도, 호출 모양도 **일부러 없습니다**(`notation_norm.join_pair_rules`). 양쪽이 서로 다른 규칙으로 선언돼 있으면 유효 집합은 **합집합**입니다 — 폴드는 컬럼의 성질이 아니라 **비교의 성질**이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택입니다.
 
-**② 승인 게이트의 방향이 뒤집힙니다.** 가상 조인의 승인 조건은 「조인 키를 덮는 유효한 UNIQUE 인덱스」인데, 키에 정규화가 걸리면 **평범한 b-tree 인덱스는 후보에서 배제되고 표현식(함수) 인덱스만 후보가 됩니다.** 이유가 성능이 아니라 **정확성**이라는 점에 주의하십시오:
+**② 승인 게이트의 방향이 뒤집힙니다.** 조인의 승인 조건은 「조인 키를 덮는 유효한 UNIQUE 인덱스」인데, 키에 정규화가 걸리면 **평범한 b-tree 인덱스는 후보에서 배제되고 표현식(함수) 인덱스만 후보가 됩니다.** 이유가 성능이 아니라 **정확성**이라는 점에 주의하십시오:
 
 > 원본으로 서로 다른 두 행(`'CL-1'`과 `'CL_1'`)이 접히면 **한 값**입니다. 컬럼에 UNIQUE가 있어도 **접힌 키로는 중복**이고, 그 중복이 곧 조인 팬아웃입니다. 즉 평범한 UNIQUE 인덱스는 **게이트가 묻는 유일성을 애초에 증명하지 못합니다.**
 
 거부 코드는 `no_unique_index`이고, `GET /admin/chain/join/verify`가 **만들어야 할 DDL을 그대로** 줍니다(정규화가 걸린 키에서는 함수 인덱스 형태이고, 인덱스 이름에 `_nf` 접미가 붙습니다):
 
 ```sql
-CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
+CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf_ns_eb ON "core_wafer_map" (
   translate(
     regexp_replace("core_lot", '[	
  ... 　-]+', '-', 'g'),
@@ -326,7 +323,7 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 - DDL이 길어 보이는 것은 대가입니다. `\uXXXX` 이스케이프라 **전부 ASCII**이고 psql에 그대로 붙여 넣을 수 있습니다(제어문자를 날것으로 싣지 않는 이유입니다).
 - ⚠️ **접기는 공짜가 아닙니다.** `8d306a5` 실측 — 폴드 자체가 행당 3.06µs, 그리고 함수 인덱스를 만들기 전 `dt_log` 조인이 **3.1ms → 151.6ms**였습니다. 켜기 전에 §3의 병합군을 보고, 켠 뒤에는 인덱스를 만드십시오.
 
-절차의 정본은 [virtual_join_rules](./virtual_join_rules.md)와 [CONFIG_ROLLOUT_GUIDE §5](../CONFIG_ROLLOUT_GUIDE.md)입니다.
+절차의 정본은 [CONFIG_ROLLOUT_GUIDE §5](../CONFIG_ROLLOUT_GUIDE.md)입니다.
 
 ## 7. 🔴 맵 키는 이 기능이 건드리지 않습니다
 
@@ -349,19 +346,19 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 
 ## 9. 잘못됐을 때 — 되돌리기
 
-1. **선언 되돌리기**: `columns`에서 그 줄을 지우거나 `false`로 바꾸면 **다음 조회부터** 원본 비교로 돌아갑니다(TTL 5초 또는 `POST /admin/reload-configs`). 🔴 **치울 데이터가 없습니다** — 저장된 것이 없기 때문입니다. 함수 인덱스는 남지만 해롭지 않고, 필요 없으면 `DROP INDEX`하면 됩니다.
+1. **선언 되돌리기**: `columns`에서 그 줄을 지우거나 `false`로 바꾸면 **다음 조회부터** 원본 비교로 돌아갑니다(감시기가 저장을 보고 약 1 초 뒤). 🔴 **치울 데이터가 없습니다** — 저장된 것이 없기 때문입니다. 함수 인덱스는 남지만 해롭지 않고, 필요 없으면 `DROP INDEX`하면 됩니다.
 2. **파일 통째로 복구**:
    ```bash
    conda run -n assy_manager python server/scripts/backup_config.py list
    conda run -n assy_manager python server/scripts/backup_config.py restore notation_rules_<yymmdd>.json.bak --yes
    ```
-3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 조회가 실패하지 않습니다. 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어집니다 — 이 기능이 생기기 전과 **정확히 같은 동작**(원본 비교)이라 안전한 방향입니다.
+3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 조회가 실패하지 않습니다. 한 번도 잘 읽은 적이 없으면 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어지고, 잘 읽은 뒤라면 그 마지막 규칙을 그대로 씁니다 — 이 기능이 생기기 전과 **정확히 같은 동작**(원본 비교)이라 안전한 방향입니다.
 
 ## 10. 함정
 
 - 🔴 **`server/scripts/rederive_notation_norm.py`는 삭제됐습니다**(`8d306a5`). 다시 파생할 것이 없기 때문입니다. 그 명령이 적힌 문서를 보면 그것이 낡은 것입니다.
 - 🔴 **`<컬럼>_norm` 컬럼이 이 환경에 있다면 그것은 잔여물입니다.** 코드 어디도 그것을 쓰지 않습니다. `table_config.json`에서 지워도 **물리 컬럼은 DB에 남습니다**(한 방향 문).
 - 🔴 **한쪽만 접을 방법을 찾지 마십시오** — 없는 것이 설계입니다. 「깨끗한 쪽은 선언 안 해도 되겠지」가 맞는 이유가 바로 그것이고(§3의 표), 그래서 **어느 한쪽만 선언해도 양쪽이 접힙니다.**
-- ⚠️ **선언 캐시 TTL이 5초라, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 종전 판과 달리 **복구할 것은 없습니다** — 다음 조회가 이미 새 규칙입니다.
+- ⚠️ **규칙은 감시기가 저장을 본 순간 바뀌므로, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 종전 판과 달리 **복구할 것은 없습니다** — 다음 조회가 이미 새 규칙입니다.
 - ⚠️ **`case`가 ASCII만 접는다는 것을 「미구현」으로 읽지 마십시오** — §1.2의 실측이 강제한 **의도된 좁힘**입니다. 비ASCII 대소문자 폴딩을 넣으면 두 엔진이 갈라지고 계약이 빨개집니다.
 - ⚠️ **`/admin/config/notation/preview`는 요청 경로에 상주할 질의가 아닙니다** — 전수 스캔입니다. 대시보드에 걸지 마십시오.

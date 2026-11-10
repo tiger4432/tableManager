@@ -58,13 +58,13 @@
 | `event_frame.py` · `runtime_v2.py` · `roleframe.py` · `source_profile*.py` | 실행 경로 — 물리 batch → EventFrame → `map`/RoleFrame → `bind` |
 | `implementations.py` | 어떤 `implementation_id` 가 실행 가능한지 코드에서 발견해 답한다 |
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
-| `store.py` | 원자 append 와 커서 전진을 «한 트랜잭션»으로 |
+| `store.py` | 원자 append — 라이브 경로는 커서를 옮기지 않는다(`advance_cursor=False`); 소스의 등록 행은 census 틱이 쓴다 |
 | `backfill.py` | 페이지·분자 경계와 **선언을 거치는 유일한** 실행 드라이버 |
-| `dry_run.py` | `POST /admin/ledger/dry-run` 전용. 백필 경로가 «아니다» |
+| `dry_run.py` | ⚰️ 미리보기와 `POST /admin/ledger/dry-run` 은 2026-09-13 은퇴 — 남은 것은 «쓰기 0» 보장의 뼈대뿐 |
 
 ### 1.2 읽기 쪽
 
-**라우트는 «넷»이다** (실측 2026-09-16 — `git grep -c '^@router\.' -- server/ledger/trace_router.py` = 4). 🆕 10-13 `ace9426aa`: `/subgraph` 는 데코레이터가 아니라 호출로 선다(`router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))` :365) — 옛 명령 `'^@router\.'` 은 이제 3 을 센다. 둘 다 세는 명령 `git grep -c -E '^@router\.|^router\.[a-z_]+\(' -- server/ledger/trace_router.py` = **4** @`ed5a6b576`.
+**라우트는 «넷»이다** (실측 2026-09-16 — `git grep -c '^@router\.' -- server/ledger/trace_router.py` = 4). 🆕 10-13 `ace9426aa`: `/subgraph` 는 데코레이터가 아니라 호출로 선다(`router.api_route("/subgraph", methods=["GET", "POST"])(in_pool(evidence_subgraph))`) — 옛 명령 `'^@router\.'` 은 이제 3 을 센다. 둘 다 세는 명령 `git grep -c -E '^@router\.|^router\.[a-z_]+\(' -- server/ledger/trace_router.py` = **4** @`ed5a6b576`.
 🔴 **[2026-09-16] 종전 이 자리는 「셋」이었고 그것이 거짓이 됐다** — `key-values` 가 붙었다. (그 앞: 「둘」 → `gaps` 가 붙어 「셋」, 2026-08-31.)
 ⚠️ **그래도 «원장의 사실»에 답하는 것은 `subgraph` 하나다** — `declaration` 과 `gaps` 는 «선언에 대해» 답하고, `key-values` 는 씨앗을 고르라고 «오늘 있는 값»을 답한다.
 
@@ -93,13 +93,13 @@ source rows
   → 분자 묶기 (read.unit)
   → 원자 (map → bind)   🆕 setup_version 6 — `prepare` 절 은퇴(`0b59a2f30`). 계산된 칸은 체인이 쓴 표의 칸으로 읽는다
   → 게이트 검사
-  → ledger_events + 커서 커밋
+  → ledger_events 커밋 (행 색인에 그 행의 이름이 남는다)
 ```
 
 - **분자**는 혼자 참이어야 하는 최소 묶음이다. 한 파편이 틀리면 전체를 거절한다.
 - `source_raw_ref` 는 원천 행으로 돌아갈 수 있어야 한다.
 - `occurred_at` 은 «세계에서 사실이 성립한 시각»이다. 적재 시각으로 대신하지 않는다.
-- 원자와 커서는 같은 트랜잭션에 저장한다.
+- 원자와 행 색인(그 행을 번역했다는 표)은 같은 쓰기에 저장한다. 커서는 옮기지 않는다.
 
 ## 3. 새 소스 붙이는 법
 
@@ -174,9 +174,9 @@ mapper 가 넘기는 Entity 참조는 **식별 키를 «하나»만 나른다**(
 cd server && conda run -n assy_manager python -m pytest tests/test_ledger_source_contract.py tests/test_ledger_l1_unit.py
 ```
 
-최소 넷: Source Contract 가 모든 가능 발화를 `ready` 로 판정 · dry-run 의 `atoms_rendered` 가
-기대 모양이고 쓰기 0 · 정상 분자는 전부 저장되고 잘못된 분자는 전부 거절되며 반쪽이 안 남음 ·
-재실행 시 커서·dedupe·provenance 가 의도대로. PostgreSQL 전용 테스트는 skip 수를 확인하고
+최소 넷: Source Contract 가 모든 가능 발화를 `ready` 로 판정 · 원자가
+기대 모양 · 정상 분자는 전부 저장되고 잘못된 분자는 전부 거절되며 반쪽이 안 남음 ·
+재실행 시 dedupe·provenance 가 의도대로. PostgreSQL 전용 테스트는 skip 수를 확인하고
 별도로 돌린다.
 
 ## 3-bis. 테이블이 아닌 소스
@@ -289,16 +289,13 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 
 | 실행 | 의미 |
 |---|---|
-| 같은 선언으로 재실행 | 커서 이후만 읽음; 끝났으면 0행 |
-| `--reset-cursor` | 처음부터 다시 읽고 동일 provenance 는 dedupe |
-| 선언 변경 후 `--reset-cursor` | 새 `source_translator_ver` 의 «새 주장»으로 기록될 수 있음 |
+| 같은 선언으로 재실행 | 아직 번역 안 된 행(행 색인에 이름이 없는 행)만 읽음; 끝났으면 0행 |
+| `--reset-cursor` · `--from` | 늘 `destructive_approval_required` 로 거절 — 다시 만들려면 `--whole-source --apply`(BACKFILL_GUIDE ⓗ) |
 
 ### 4.4 숫자 읽기
 
-`rows_read`(원천에서 읽은 행) · `molecules`(독립 판정 단위) · `molecules_refused` ·
-`molecules_incomplete`(원천 일부가 아직 안 온 분자) · `atoms`(통과한 원자) ·
-`rows_matching_nothing`.
-행 수와 원자 수는 같을 필요가 없다 — 분자 수와 거절 수를 «함께» 본다.
+`rows_read`(사건으로 쌓은 행) · `batches`(사건이 된 쪽) · `inserted` · `deduped` · `max_queue_depth` ·
+`stopped` · `translator_ver` · `page_rows`. 분자 · 거절 수는 이 보고에 없다(`molecules` 은퇴).
 
 ### 4.5 정정
 
