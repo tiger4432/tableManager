@@ -185,6 +185,12 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 
 - 이주는 소급 일 하나다 (B 안 ㄱ). OPERATIONS 의 `migrate_to_lines`, 인자 table. 진행은 retroactive_runs 의 같은 칸을 쓴다: 단계는 result.stage, 옮긴 줄은 processed_rows / total_rows. 단계 이름은 create · now rows · old lines · indexes · catch-up · swap 여섯이다.
 - 따라잡기는 같은 실행 안의 단계다. 줄어들 때까지 되풀이하고, 마지막 한 번은 swap 과 같은 트랜잭션 안에서 표 잠금(lock_timeout 을 둔다)을 쥔 채 한다. 잠금 밖에서 끝내면 그 틈의 쓰기를 잃는다.
+- 단계 함수 (database/line_migration.py, C 11-11 · B 가 부름):
+  - `plan(db, table) -> {"stage", "after", "since", "total"}` — 끝난 단계와 커서를 표에서 읽어 답한다(다시 시작)
+  - `create(db, table)` · `indexes(db, table)`
+  - `now_rows(db, table, after) -> (moved, next_after)` · `old_lines(db, table, after) -> (moved, next_after)` — after 는 row_id 커서, None 이면 끝
+  - `catch_up(db, table, since) -> (moved, next_since)` — 줄어들 때까지 B 가 되풀이
+  - `swap(db, table, since, lock_timeout)` — 마지막 따라잡기 + 이름 바꾸기, 한 트랜잭션 · 표 잠금. 못 잡으면 `SwapLockBusy` → B 가 물러났다 재시도
 - 이주 시간은 안 쟀다. 박스 리허설 시간 × 운영과 박스의 크기 비로 말한다.
 - 쓰기는 5 의 순간에만 멈춘다. 그 사이에 들어온 쓰기는 따라잡기로 한 번 더 옮긴다.
 - 진행은 표마다 단계와 옮긴 줄 수를 일 트랜잭션 밖의 진행 표에 쓴다 (B 분야).
