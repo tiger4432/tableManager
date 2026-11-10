@@ -70,7 +70,7 @@ import { putRescopeHandoff } from './rescope_handoff.js';
 import { readAdminToken, adminFetch } from './admin_token.js';
 // 그리고 «거절을 읽는» 규칙도 하나입니다 — 여기서 상태 코드로 문자열을 짓지 않습니다.
 import { CHROME, failureFactOf, fetchFailureLine, retroFailureLine } from './config_resolve_view.js';
-import { retroCountUrl } from './retroactive_view.js';
+import { retroCountRequest } from './retroactive_view.js';
 // C-109. 다시 돌릴 수 있는 규칙의 목록은 «표마다» 다릅니다. 그 물음이 자기 모듈에 사는
 // 사유는 그 파일 머리글에 있습니다(이 파일은 node 가 import 못 합니다).
 import { loadReplayableRules } from './replayable_rules.js';
@@ -376,7 +376,8 @@ async function runRetroactive(op, params) {
 async function countRetroactive(op, params) {
   if (!readAdminToken()) return { ok: false, error: 'no admin token on this browser' };
   try {
-    const res = await adminFetch(retroCountUrl(API_BASE, op, Object.entries(params).map(([key, value]) => ({ key, value }))));
+    const asked = retroCountRequest(API_BASE, op, Object.entries(params).map(([key, value]) => ({ key, value })));
+    const res = await adminFetch(asked.url, asked.init);
     if (!res.ok) return { ok: false, error: await retroFailureLine(res, failureFactOf(res), CHROME.FETCH_FAILED) };
     const body = await res.json().catch(() => ({}));
     const label = body.affected_label || null;

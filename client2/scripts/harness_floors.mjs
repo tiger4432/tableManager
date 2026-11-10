@@ -1240,7 +1240,7 @@ export const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 358],   // 356 -> 358: the count's one address, retroCountUrl (owner 11-10 «노테이션 소급 ㄱ»)
+  ['retroactive_view_harness.mjs', 358],   // 356 -> 358: the count's one address, retroCountRequest (owner 11-10 «노테이션 소급 ㄱ»)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],
