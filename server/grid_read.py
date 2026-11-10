@@ -461,7 +461,10 @@ def _skipped_values(db, table_model, column, is_numeric):
     raw = table.columns[column]
     if not (is_numeric or isinstance(raw.type, String)):
         return None
-    held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table.name)
+    from database import lines
+
+    held = models.catalogue_indexes(db.connection().connection.dbapi_connection,
+                                    lines.stored_relation(table.name, crud.TABLE_CONFIG.get(table.name)))
     if not any(models.orders_rows_by(index, [column]) for index in held):
         return None
     prep = bind.dialect.identifier_preparer

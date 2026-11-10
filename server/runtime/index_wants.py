@@ -132,7 +132,7 @@ def _asking():
 def _plan_wants(label, view, statement, params, seconds, bind):
     from sqlalchemy import text
 
-    from database import crud
+    from database import crud, lines
 
     with bind.connect() as connection:
         plan = connection.execute(text("EXPLAIN (FORMAT JSON) " + statement), params).scalar()
@@ -145,17 +145,18 @@ def _plan_wants(label, view, statement, params, seconds, bind):
     if not found:
         logger.info("[Indexes] reference view %s took %.1f s - its plan scans no table whole through an equal, IN or "
                     "LIKE filter; no index asked", label, seconds)
-    for table, column, why, reason in found:
-        reason = reason or (None if table in crud.TABLE_CONFIG else "not a table the product declares")
+    for relation, column, why, reason in found:
+        table = lines.declared_of(relation, crud.TABLE_CONFIG)     # a declared table's scan names t__now
+        reason = reason or (None if table is not None else "not a table the product declares")
         if reason:
             logger.info("[Indexes] reference view %s took %.1f s - %s (%s) not asked for a %s: %s",
-                        label, seconds, table, column, why, reason)
+                        label, seconds, relation, column, why, reason)
         else:
             want(table, [column], why, seconds, bind)
 
 
 def _page_plan_wants(table, statement, params, filtered, order, seconds, bind):
-    from database import models
+    from database import crud, lines, models
 
     raw = bind.raw_connection()
     try:
@@ -165,7 +166,8 @@ def _page_plan_wants(table, statement, params, filtered, order, seconds, bind):
         cursor.close()
     finally:
         raw.close()
-    equal, by_row, sort = page_plan(json.loads(plan) if isinstance(plan, str) else plan, table)
+    equal, by_row, sort = page_plan(json.loads(plan) if isinstance(plan, str) else plan,
+                                    lines.stored_relation(table, crud.TABLE_CONFIG.get(table)))
     equal = [column for column in filtered if column in equal]
     if not equal or not (by_row or sort):
         logger.info("[Indexes] a %s page took %.1f s - its plan %s; no index over its filter and order asked", table,
@@ -177,7 +179,8 @@ def _page_plan_wants(table, statement, params, filtered, order, seconds, bind):
 
 
 def page_plan(plan, table):
-    """(equal, by row, sorted) of a page's `plan` (EXPLAIN FORMAT JSON) over `table`: the columns its scans of the table
+    """(equal, by row, sorted) of a page's `plan` (EXPLAIN FORMAT JSON) over the relation `table` (a declared table's
+    is `lines.stored_relation`'s - its scans name t__now): the columns its scans of the table
     compare to one value - an index condition or a filter -, those a scan checks row by row (a Filter: the rows came
     another way - the order's index, or the whole table), and whether a Sort is left."""
     equal, by_row, sort = [], [], False
@@ -309,7 +312,7 @@ def ask(table, columns, why, seconds, bind):
     from sqlalchemy.orm import Session
 
     import event_constants
-    from database import models
+    from database import crud, lines, models
     from parsers.directory_watcher import auto_index_per_table
 
     if bind.dialect.name != "postgresql":
@@ -321,7 +324,8 @@ def ask(table, columns, why, seconds, bind):
             _tell(table, columns, "an automatic index on %s (%s) is not asked for a %s: %s"
                   % (table, ", ".join(columns), why, models.PG_TRGM_MISSING))
             return False
-        held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table)
+        held = models.catalogue_indexes(db.connection().connection.dbapi_connection,
+                                        lines.stored_relation(table, crud.TABLE_CONFIG.get(table)))
         served = [index["name"] for index in held if models.auto_index_serves(index, columns, why)]
         if served:
             _tell(table, columns, "%s (%s)%s - not asked for a %s: %s already serves it"
