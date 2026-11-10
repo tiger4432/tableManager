@@ -345,7 +345,11 @@ def aggregation_record(spec, column_types=None):
     another separator (lead 10-13) - kept, with why; it runs the old SQL. `column_types`: the source table's (None:
     unknown, and a min/max stays its record)."""
     if isinstance(spec, str):
-        return ("Count()" if spec == "count" else spec), None
+        from chain import join_into
+
+        # «=…» is a formula as a join take's and a formula column's are; a bare text is one too (declarations before)
+        text = join_into.formula_text(spec)
+        return ("Count()" if spec == "count" else spec if text is None else text), None
     if not isinstance(spec, dict) or spec.get("fn") not in EXPRESSED:
         return spec, None                                   # _parse_aggregation names what is wrong
     fn, column = spec["fn"], spec.get("column")
@@ -429,6 +433,11 @@ def _parse_expression(name: str, text: str, table=None):
     return {"expression": text, "reads": compiled["names"]}, None
 
 
+#: The formula way an aggregation refusal names - a formula is the aggregation's text itself (lead 11-10: the owner
+#: wrote {"expression": ...} and was told only of fn/column).
+FORMULA_EXAMPLE = '"=UniqueCount([col])"'
+
+
 def _parse_aggregation(name: str, spec, column_types=None, table=None):
     """`(normalized, None)` 또는 `(None, 사유)`. 정규형은 `{"expression": 글자, "reads": [칸…]}` 이고, 수식으로 같은 답이
     안 나는 옛 레코드만 `{"fn":…, "column":…}` 그대로다(lead 5667ea0fe — `aggregation_record` 가 가른다).
@@ -445,13 +454,14 @@ def _parse_aggregation(name: str, spec, column_types=None, table=None):
     if isinstance(spec, str):
         return _parse_expression(name, spec, table)
     if not isinstance(spec, dict):
-        return None, (f"aggregation '{name}' must be \"count\" or "
+        return None, (f"aggregation '{name}' must be a formula as text, e.g. {FORMULA_EXAMPLE}, or "
                       f"{{\"fn\": ..., \"column\": ...}}, not {type(spec).__name__}")
 
     fn = spec.get("fn")
     if fn not in AGGREGATION_FUNCTIONS:
         return None, (f"aggregation '{name}' declares fn={fn!r}; supported: "
-                      f"{', '.join(AGGREGATION_FUNCTIONS)}")
+                      f"{', '.join(AGGREGATION_FUNCTIONS)} - or a formula as text, e.g. "
+                      f"\"{name}\": {FORMULA_EXAMPLE}")
 
     separator = spec.get("separator")
     if "separator" in spec and fn not in AGGREGATION_SEPARATOR_DEFAULTS:

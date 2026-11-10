@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **집계 수식도 «=» 로 시작해도 된다 — 조인 take · 칸 수식 · decide/derive 집계가 같은 답** — git pull · 재기동 API · 체인 워커
+>
+> ```
+> 무엇     aggregations 에 "stack_height": "=UniqueCount([stack_height])" 처럼 적으면 받는다(전: 거절). = 없는 옛 글과 "count" 도 그대로
+>          {"expression": "…"} 꼴은 여전히 거절 — 거절 문장이 «or a formula as text, e.g. "stack_height": "=UniqueCount([col])"» 를 말한다
+>          체인 폼의 집계 수식 칸도 take 수식 칸처럼 «=» 를 받는다(미리보기 포함)
+> 볼 것    Declarations 의 그 규칙 거절 줄이 사라짐 · 파생 표에 그 칸 값
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-10] **소급 «Remove rows with no source left» 가 «키 + 다른 체인이 붙인 값» 행도 지운다 — master 정리** — git pull · 재기동 API · 스케줄러
 >
 > ```

@@ -339,13 +339,24 @@ def right_key(rule: dict) -> tuple:
 
 
 
+def formula_text(value):
+    """The calculator's text of a value that is a formula «=…» (spaces around it aside) - else None. THE ONE «is this
+    value a formula»: a take's `fn` and a formula column (`formula_of`), a decide's or derive's aggregation
+    (`enrichment.config.aggregation_record`) (lead 11-10, owner «조인은 = 하잖아»)."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[len(FORMULA_MARK):] if text.startswith(FORMULA_MARK) else None
+
+
 def formula_of(fn):
     """The calculator's reading (`expression.compile`) of a take's `fn` when it is a formula «=…» - else None."""
-    if not (isinstance(fn, str) and fn.startswith(FORMULA_MARK)):
+    text = formula_text(fn)
+    if text is None:
         return None
     import expression
 
-    return expression.compile(fn[len(FORMULA_MARK):])
+    return expression.compile(text)
 
 
 def _from(item: dict):
