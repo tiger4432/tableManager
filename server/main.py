@@ -5221,11 +5221,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
                 will_fire = bool(worker.wakes(rule, r))
                 entry = {"name": rule.get("name"), "will_fire": will_fire}
                 if not will_fire:
-                    entry["why_not"] = (worker.FIRE_REFUSED_DELETE if not worker._is_trigger_event(r, rule) else
-                                        "declaration is switched off (`enabled: false`)"
-                                        if rule_shape.is_switched_off(rule) else
-                                        "chain-produced event; this rule does not declare "
-                                        "`allow_chain_trigger`")
+                    # the seat's own reason; None only when the kind refused it (`wakes` = kind and `fires`)
+                    entry["why_not"] = worker.fire_refusal(rule, r) or worker.FIRE_REFUSED_DELETE
                 matched.append(entry)
             # ⛔ 「하나라도 돈다」이지 「전부 돈다」가 아니다. 한 행이 규칙 A 로는 돌고
             #    B 로는 안 도는 경우가 있고, 그 행은 «목록에 남는다» — 아래 `will_fire`/
