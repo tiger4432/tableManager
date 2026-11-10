@@ -3430,28 +3430,11 @@ async def create_row(table_name: str, request: Request, count: int = 1, user_nam
     from fastapi.concurrency import run_in_threadpool
 
     def _create_and_collect():
-        new_rows_ = crud.create_empty_rows_batch(db, table_name, count, user_name)
+        # the history entries are the «created» lines' (cell-source overhaul), from the write's own answer
         logs = []
-        if new_rows_:
-            log_objs = db.query(models.AuditLog).filter(
-                models.AuditLog.table_name == table_name,
-                models.AuditLog.row_id.in_([r.row_id for r in new_rows_]),
-                models.AuditLog.column_name == "CREATE"
-            ).all()
-            for log in log_objs:
-                logs.append({
-                    "id": log.id,
-                    "table_name": log.table_name,
-                    "row_id": log.row_id,
-                    "column_name": log.column_name,
-                    "old_value": log.old_value,
-                    "new_value": log.new_value,
-                    "source_name": log.source_name,
-                    "updated_by": log.updated_by,
-                    "transaction_id": log.transaction_id,
-                    "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                    "business_key": log.business_key
-                })
+        new_rows_ = crud.create_empty_rows_batch(db, table_name, count, user_name, created_lines=logs)
+        for log in logs:
+            log["timestamp"] = log["timestamp"].isoformat() if log.get("timestamp") else None
         items = []
         for row in new_rows_:
             inject_system_columns(row)

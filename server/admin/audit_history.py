@@ -271,7 +271,7 @@ def count_row_history(query, cap: int = None):
 
 #: The kinds a history shows: a write, a withdrawal, a row deleted. A «mark» line (a pin, a rank re-merge) says no
 #: column and stays out of the history pages - the audit navigation reaches it.
-HISTORY_KINDS = ("write", "withdraw", "deleted")
+HISTORY_KINDS = ("write", "withdraw", "deleted", "created")
 LINE_BITS = 64
 
 
@@ -346,7 +346,8 @@ def line_page(db, table_name, row_id, limit, cursor=None, column=None):
 
 def line_entries(table_name, row, bits, types, column=None, business_key=None, row_deleted=False):
     """A line as today's history entries (schemas.AuditLogResponse fields): one per column it said - withdrawn: no
-    value -, or the row-deletion entry (crud.ROW_DELETION_COLUMN, «row deleted», system)."""
+    value -, or the row-deletion entry (crud.ROW_DELETION_COLUMN, «row deleted», system), or the row-creation entry
+    (crud.ROW_CREATION_COLUMN, «row created», system)."""
     from database import crud
 
     base = {"table_name": table_name, "row_id": row.row_id, "updated_by": row.written_by,
@@ -355,6 +356,9 @@ def line_entries(table_name, row, bits, types, column=None, business_key=None, r
     if row.line_kind == "deleted":
         return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
                      new_value="row deleted", source_name="system")]
+    if row.line_kind == "created":                 # the grid's «add row» - the row's history begins here (A 11-11)
+        return [dict(base, id=entry_id(row.line_id, crud.ROW_CREATION_COLUMN), column_name=crud.ROW_CREATION_COLUMN,
+                     new_value="row created", source_name="system")]
     return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
                  new_value=None if bit_said(row, bit, "withdrawn") else line_cell(types, row, name))
             for name, bit in bits.items() if (column is None or name == column) and bit_said(row, bit)]

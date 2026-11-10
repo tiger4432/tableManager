@@ -176,6 +176,19 @@ def test_a_delete_on_a_table_without_lines_takes_the_row_out_with_no_line(db, mo
     assert db.execute(t.select()).all() == [] and not inspect(db.connection()).has_table(name + "__lines")
 
 
+def test_a_created_line_makes_a_row_with_no_value_and_an_existing_row_is_not_made_again(db):
+    """The grid's «add row» (C 11-11, the pair of «deleted»): a «created» line, its three bit words 0, work "new", the
+    row's CREATE event; an item naming a row already there makes nothing."""
+    out = _write(db, {"line_kind": "created", "written_by": "kim"}, kind="create")
+    [said] = out["items"]
+    [line] = _lines(db)
+    assert (said["work"], line["line_kind"], line["written_0"], line["head_0"], line["withdrawn_0"], line["row_id"]) == (
+        "new", "created", 0, 0, 0, said["row_id"]), (said, line)
+    assert said["row_id"] in _now(db) and [a["kind"] for a in out["audit"]] == ["new"]
+    again = _write(db, {"row_id": said["row_id"], "line_kind": "created", "written_by": "kim"}, kind="create", tx="tx2")
+    assert (again["items"][0]["work"], again["lines"], len(_lines(db))) == (None, 0, 1), again
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})

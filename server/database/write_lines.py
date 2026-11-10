@@ -8,13 +8,15 @@ the bit map, the rank and the winners query are `database.lines`' - nothing here
 An item is a dict:
     row_id        the entity, or None for one named by its key
     key           {key column: value} - composed by `crud.compose_business_key`; a given `business_key_val` wins
-    line_kind     "write" (default) · "withdraw" · "deleted" · "mark"
+    line_kind     "write" (default) · "withdraw" · "deleted" · "created" (a row made with no value - the grid's
+                  «add row»; the pair of «deleted», C 11-11) · "mark"
     values        {column: value} for a write - cast here by `crud.cast_value_by_type`
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
     folds         source names whose head bits the write's columns also take off (a file's folded layer)
     version_judged  true when the caller judged the row's version already (a map judged whole)
-`kind` is the writing seat's word (funnel · chain · formula · withdraw · delete · notation · merge · mark · seed); the
+`kind` is the writing seat's word (funnel · chain · formula · withdraw · delete · create · notation · merge · mark ·
+seed); the
 work kind of each item (edit · new · delete · withdraw · merge · mark) is decided in step 1.
 """
 from __future__ import annotations
@@ -24,8 +26,8 @@ from sqlalchemy import union_all, update
 
 from database import crud, lines
 
-WRITE, WITHDRAW, DELETED, MARK = "write", "withdraw", "deleted", "mark"
-LINE_KINDS = (WRITE, WITHDRAW, DELETED, MARK)
+WRITE, WITHDRAW, DELETED, CREATED, MARK = "write", "withdraw", "deleted", "created", "mark"
+LINE_KINDS = (WRITE, WITHDRAW, DELETED, CREATED, MARK)
 #: bound parameters one statement carries at most - under sqlite's 32,766; and the rows one UNION ALL joins, under
 #: sqlite's 500 compound SELECTs
 PARAMS_MOST, UNION_MOST = 30000, 500
@@ -105,10 +107,10 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
     plain = _plain(table, cfg, items, targets, old, held, keeps)
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
-    # a table with no lines: a delete still takes its row out, with no line (lead 11-11 2)
+    # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2)
     kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held) if keeps
-                      else ({i for i in targets if items[i]["line_kind"] == DELETED},
-                            sum(1 for i in targets if i not in plain and items[i]["line_kind"] != DELETED)))
+                      else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED)},
+                            sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED))))
     moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
@@ -200,7 +202,12 @@ def _claim(db, table, cfg, now, items):
     wanted, by_key, bare, looked = {}, {}, [], {}  # key -> minted row_id · item -> key · rows of no key · found only
     for i, it in enumerate(items):
         if it.get("row_id") in old:
-            targets[i] = it["row_id"]
+            if it["line_kind"] != CREATED:         # a row already there is not made again
+                targets[i] = it["row_id"]
+            continue
+        if it["line_kind"] == CREATED:             # made with no value - its row_id as given, or one minted
+            targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
+            bare.append(targets[i])
             continue
         if it["line_kind"] != WRITE:
             continue                               # nothing to take back from a row that is not there

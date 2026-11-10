@@ -6365,49 +6365,30 @@ def create_empty_row(db: Session, table_name: str):
     new_rows = create_empty_rows_batch(db, table_name, 1)
     return new_rows[0] if new_rows else None
 
-def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
-    """신규 빈 행을 일괄 생성하고 요약 히스토리를 남깁니다."""
+def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system",
+                            created_lines: list = None):
+    """Make `count` rows with no value - a «created» line each (`write_lines`, the pair of «deleted»; C 11-11), its
+    CREATE event and one audit row - and commit. -> the new rows. `created_lines` (a list): their history entries put
+    on it (`line_history_entries`), for the notification."""
     # ⛔ A VIEW FIRST. Without this the owner's add-row button reached
     # `table_model(row_id=…)` and answered 500 (S-224).
     refuse_write_to_view(table_name)
+    from database.write_lines import write_lines
 
-    from sqlalchemy.sql import func
-    
     tx_id = str(uuid6.uuid7())
-    
+
     with transaction_context(user_name, tx_id, "batch_create"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
-            
-        new_rows = []
-        for _ in range(count):
-            row = table_model(
-                row_id=str(uuid6.uuid7()),
-                updated_at=func.now()
-            )
-            new_rows.append(row)
-        
-        db.add_all(new_rows)
-        
-        logs_to_cache = []
-        if count > 0:
-            for row in new_rows:
-                log_dict = create_audit_log(
-                    db, table_name, row.row_id, "CREATE",
-                    None, "row created", "system", user_name,
-                    transaction_id=tx_id,
-                    business_key=row.business_key_val,
-                    add_to_cache=False
-                )
-                logs_to_cache.append(log_dict)
-
-        if logs_to_cache:
-            bulk_insert_audit_logs(db, logs_to_cache)
-
+        answer = write_lines(db, table_name, [{"line_kind": "created", "written_by": user_name}
+                                              for _ in range(max(0, count))], kind="create", transaction_id=tx_id)
+        made = [said["row_id"] for said in answer["items"] if said["work"] == "new"]
         db.commit()
-
-        return new_rows
+        if created_lines is not None:
+            created_lines.extend(line_history_entries(table_name, answer, "created", user_name, tx_id))
+        order = {row_id: n for n, row_id in enumerate(made)}
+        return sorted(db.query(table_model).filter(table_model.row_id.in_(made)).all(), key=lambda r: order[r.row_id])
 
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
     """단일 행을 삭제합니다 (배치 로직으로 통합).
@@ -6422,6 +6403,8 @@ def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
 
 #: The column a row's deletion history line names - what 「this row was deleted」 is read by.
 ROW_DELETION_COLUMN = "DELETE"
+#: The column a row's creation history entry names - the grid's «add row» (a «created» line).
+ROW_CREATION_COLUMN = "CREATE"
 
 
 def deleted_rows(db: Session, table_name: str, row_ids) -> set:
@@ -6439,7 +6422,7 @@ def record_row_deletions(db: Session, table_name: str, row_ids, user_name: str,
     shell): a «deleted» line a row (`write_lines`, kind delete), which takes the row out of t and stages its DELETE
     event with the row's values as its old ones, in the caller's transaction - the caller owns the commit. The line is
     the history «what was deleted?» asks (`deleted_rows`). -> write_lines' answer: `items` the line each row got
-    (`work` "delete"; None for a row already gone), `at` its instant."""
+    (`work` "delete"; `line_id` None for a row already gone), `at` its instant."""
     from database.write_lines import write_lines
 
     items = [{"row_id": row_id, "line_kind": "deleted", "written_by": user_name}
@@ -6447,22 +6430,23 @@ def record_row_deletions(db: Session, table_name: str, row_ids, user_name: str,
     return write_lines(db, table_name, items, kind="delete", transaction_id=transaction_id)
 
 
-def deletion_entries(table_name: str, answer: dict, written_by: str, transaction_id: str) -> list:
-    """The history entries (schemas.AuditLogResponse fields) of the deleted lines `record_row_deletions` wrote - what
-    a delete's notification carries, built from its answer without reading the lines again."""
+def line_history_entries(table_name: str, answer: dict, line_kind: str, written_by: str, transaction_id: str) -> list:
+    """The history entries (schemas.AuditLogResponse fields) of the «deleted» or «created» lines a write_lines answer
+    says it wrote - what a delete's or an add-row's notification carries, built from the answer without reading the
+    lines again (`audit_history.line_entries`)."""
     from types import SimpleNamespace
 
     from admin import audit_history
 
     out = []
     for said in answer.get("items") or ():
-        if said.get("work") != "delete" or said.get("line_id") is None:    # a table without lines: no line
+        if said.get("line_id") is None:          # a row already gone or there, or a table without lines: no line
             continue
         was = (answer["changed"].get(said["row_id"]) or {}).get("old") or {}
-        line = SimpleNamespace(line_kind="deleted", line_id=said["line_id"], row_id=said["row_id"],
+        line = SimpleNamespace(line_kind=line_kind, line_id=said["line_id"], row_id=said["row_id"],
                                written_by=written_by, batch=transaction_id,
                                business_key_val=was.get("business_key_val"), at=answer.get("at"))
-        out.extend(audit_history.line_entries(table_name, line, {}, {}, row_deleted=True))
+        out.extend(audit_history.line_entries(table_name, line, {}, {}, row_deleted=line_kind == "deleted"))
     return out
 
 
@@ -6478,7 +6462,8 @@ def delete_row_layers(db: Session, table_name: str, row_ids: list) -> None:
 def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str,
                       deleted_lines: list = None):
     """Delete rows - a «deleted» line each (`record_row_deletions`), their pins with them - and commit. -> how many
-    rows went. `deleted_lines` (a list): their history entries put on it (`deletion_entries`), for the notification."""
+    rows went. `deleted_lines` (a list): their history entries put on it (`line_history_entries`), for the
+    notification."""
     # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
     # on what the caller sent (S-224).
     refuse_write_to_view(table_name)
@@ -6498,7 +6483,7 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             from session_contract import end_step
             end_step(db)
             if deleted_lines is not None:
-                deleted_lines.extend(deletion_entries(table_name, answer, user_name, tx_id))
+                deleted_lines.extend(line_history_entries(table_name, answer, "deleted", user_name, tx_id))
         return len(gone)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
