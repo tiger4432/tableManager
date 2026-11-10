@@ -147,12 +147,17 @@ def value_types(db, table_name: str) -> dict:
     """{column: "number" | "datetime" | "string"} by the PHYSICAL type of `t__now` - the type crud.line_text /
     line_value take. A column declared datetime but stored as text stays text (its value is the written text, as
     today), so a line never respells what the table holds. Framework columns are left out."""
+    return physical_kinds(db, now_relation(table_name))
+
+
+def physical_kinds(db, relation: str) -> dict:
+    """{column: "number" | "datetime" | "string"} of a relation's stored columns, framework columns left out."""
     from sqlalchemy import inspect
     from sqlalchemy.types import DateTime as _DateTime, Float, Integer as _Integer, Numeric
 
     framework = {n for n, _ in FRAMEWORK}
     out = {}
-    for col in inspect(db.connection()).get_columns(now_relation(table_name)):
+    for col in inspect(db.connection()).get_columns(relation):
         if col["name"] in framework or col["name"] == "won_by":
             continue
         kind = col["type"]
@@ -226,9 +231,16 @@ def index_name(table_name: str, suffix: str) -> str:
 def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's two tables as Core Table objects on a private MetaData, with the names and the bit map they were built
     from. Assigns slots to new declared columns (the caller commits)."""
+    from sqlalchemy import inspect
+
     from .models import sql_type_of
 
-    declared = [name for name in (table_cfg.get("column_types") or {}) if name not in {n for n, _ in FRAMEWORK}]
+    stored = (physical_kinds(db, now_relation(table_name))
+              if inspect(db.connection()).has_table(now_relation(table_name)) else {})
+    types = dict(table_cfg.get("column_types") or {})
+    types.update(stored)                         # a built column is typed as it is STORED (as the migration keeps it)
+    table_cfg = {**table_cfg, "column_types": types}
+    declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
     bits = assign_bits(db, table_name, declared)
     chunks = chunk_count(db, table_name)
     meta = MetaData()

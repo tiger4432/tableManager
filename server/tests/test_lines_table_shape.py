@@ -186,3 +186,11 @@ def test_value_types_follow_the_physical_column(db):
     db.execute(text("CREATE TABLE u__now (row_id VARCHAR PRIMARY KEY, business_key_val VARCHAR, "
                     "created_at TIMESTAMP, updated_at TIMESTAMP, event_time VARCHAR, won_by JSON)"))
     assert lines.value_types(db, "u") == {"event_time": "string"}     # declared datetime, stored as text
+
+
+def test_shape_types_a_built_column_as_stored(db):
+    lines.ensure_line_table(db, "u", {"column_types": {"event_time": "string"}})      # built as text
+    s = lines.shape(db, "u", {"column_types": {"event_time": "datetime"}})              # declaration says datetime
+    assert type(s["now"].c.event_time.type).__name__ == "String"
+    db.execute(s["now"].insert().values(row_id="r1", event_time="2026-01-01T13:00:00"))
+    assert db.execute(text("SELECT event_time FROM u__now")).scalar() == "2026-01-01T13:00:00"
