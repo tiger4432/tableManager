@@ -7,7 +7,7 @@ the hook's CREATE held the cast 2 and its EDIT read 2.0 back from the Float colu
 import json
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 from database import crud, lines, models
@@ -107,3 +107,28 @@ def test_a_line_that_changes_no_shown_value_stages_nothing(db):
     _events(db)
     out = _write(db, "f2", k="A", n="x")
     assert out["lines"] == 1 and _events(db) == [], "another source saying what the cell shows is a line, not an edit"
+
+
+def test_a_time_column_stored_as_text_carries_its_text_as_written(db, monkeypatch):
+    """Box shape (lot_event.event_time): declared datetime, stored as text - the text a write kept is what its events
+    carry, as today, and a mapper's key built from it stays one key (lead 11-11). t__now's physical type answers
+    (lines.value_types), not the declaration."""
+    table, written = "ob_text_time", "2026-01-01T13:00:00"
+    cfg = {"composite_key_source": ["k"], "column_types": {"k": "string", "n": "string", "t": "string"}}
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
+    first = lines.winners_sql
+    monkeypatch.delattr(lines, "winners_sql")
+    second = stand_in_winners(lines.ensure_line_table(db, table, cfg))
+    monkeypatch.setattr(lines, "winners_sql", lambda t, c, column, param: (second if t == table else first)(
+        t, c, column, param), raising=False)
+    db.commit()
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, dict(cfg, column_types=dict(cfg["column_types"], t="datetime")))
+    for values in ({"k": "A", "n": "x", "t": written}, {"k": "A", "n": "y"}):
+        write_lines(db, table, [{"key": {"k": "A"}, "values": values, "source_name": "f1"}], kind="funnel",
+                    transaction_id="tx")
+        db.commit()
+    create, edit = (row.payload["data"]["t"]["value"] for row in db.execute(
+        select(models.DatabaseOutbox).order_by(models.DatabaseOutbox.id)).scalars())
+    assert (create, edit) == (written, written), (create, edit)
+    held = db.execute(text("SELECT t FROM ob_text_time__now")).scalar_one()
+    assert held == written, "t__now holds the text as written, not a time spelled again"

@@ -22,7 +22,7 @@ from __future__ import annotations
 from sqlalchemy import Integer, String, bindparam, case, delete, exists, insert, literal, or_, select
 from sqlalchemy import union_all, update
 
-from database import crud, lines
+from database import crud, lines, models
 
 WRITE, WITHDRAW, DELETED, MARK = "write", "withdraw", "deleted", "mark"
 LINE_KINDS = (WRITE, WITHDRAW, DELETED, MARK)
@@ -90,7 +90,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
 
     targets, old, keys = _claim(db, table, cfg, now, items)
     gated = _version_gate(table, cfg, items, targets, old)
-    kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets)
+    held = lines.value_types(db, table)            # a line's text by what t__now holds, not the declaration (C)
+    kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in kept}
     written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
@@ -98,7 +99,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     gone = sorted({targets[i] for i in kept if items[i]["line_kind"] == DELETED})
     for page in _pages(gone, 1):
         db.execute(delete(now).where(now.c.row_id.in_(page)))
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in kept} - set(gone)), at)
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in kept} - set(gone)), at, held)
     changed = {}
     for i in sorted(kept):
         row_id = targets[i]
@@ -198,7 +199,7 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
     return gated
 
 
-def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
+def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
     """Step 2 - the items that change something. A write's column is left out when its source's head line there says
     the same text, from the same hand and input row (ruling 434) - IS NOT DISTINCT FROM in SQL, blank = NULL - and the
     write when no column is left. A
@@ -208,7 +209,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
         items[i]["values"] = {c: crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
-                                                types.get(c, "string"))
+                                                held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     same = {}
     columns = sorted({c for i in writes for c in items[i]["values"]})
@@ -314,7 +315,7 @@ def _heads(db, ln, chunks, written):
     db.execute(statement, params)
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at):
+def _merge_now(db, table, cfg, shape, row_ids, at, held):
     """Step 5 - the touched current lines merged again from their head lines and pins, a column at a time by
     `lines.winners_sql` (the one query `lines.merge` reads too), and written with won_by. Returns {row_id: {column:
     value}} as written."""
@@ -328,9 +329,9 @@ def _merge_now(db, table, cfg, shape, row_ids, at):
         query = lines.winners_sql(table, cfg, c, "row_ids")
         for page in _pages(row_ids, 1):
             for row_id, value, line_id in db.execute(query, {"row_ids": page}):
-                merged[row_id][c], won_by[row_id][c] = crud.line_value(value, types.get(c, "string")), line_id
+                merged[row_id][c], won_by[row_id][c] = crud.line_value(value, held.get(c, "string")), line_id
     db.execute(update(now).where(now.c.row_id == bindparam("r")).values(
-        {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
+        {**{c: bindparam("v_" + c, type_=models.sql_type_of(held.get(c, "string"))) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])
     return merged
 
