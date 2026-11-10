@@ -326,6 +326,11 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
         refused = key_index_refusal(conn, table_name)
         if refused:
             raise ValueError(refused)
+    else:                                        # sqlite: no index builder, no concurrency - built here, same name
+        import migrations.add_business_key_unique_index as bk
+
+        conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
+                             f'ON "{_checked(table_name)}" (business_key_val)')
     s = shape(db, table_name, table_cfg)
     if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)}:
         conn.exec_driver_sql(f'ALTER TABLE "{_checked(table_name)}" ADD COLUMN "{WON_BY}" '
