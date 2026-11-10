@@ -1198,6 +1198,13 @@ CELLS.push({ entry: 'admin.html', after: 'Overview, Apply declared refused', rul
   return said && said.textContent === ${JSON.stringify("audit_logs is in use - try again in a minute")} ? null
     : 'the refusal says ' + (said ? said.textContent : 'nothing');
 })()` });
+// The chain editor at the rule its address names (owner 11-10 «플로우 ㄱ»): that rule open, no refusal said.
+CELLS.push({ entry: 'admin.html', after: 'Chain, a rule opened by its address', rule: 'contents', at: 'chain-rule-picker', expr: `(() => {
+  const picked = (document.querySelector('select.chain-rule-picker') || {}).value;
+  if (picked !== 'dt_log_to_dt_map') return 'the editor has ' + (picked || 'nothing') + ' open';
+  const said = document.querySelector('.chain-rule-refusal-why');
+  return said ? 'it says ' + said.textContent : null;
+})()` });
 // The four formula inputs (owner 11-09 «ㄴ»): its list open under it, then its refusal line - one field, four places.
 const FIELD_OPEN = (field) => `(() => { const f = document.querySelector(${JSON.stringify(field)});
   if (!f) return 'no formula field'; const rows = f.querySelectorAll('.formula-input__complete:not([hidden]) .option-list__row');
@@ -3980,6 +3987,14 @@ const DRIVE = {
       await until(c, "!!document.querySelector('[data-path=\"target_table\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="target_columns"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // The chain editor opened by its address (owner 11-10 «플로우 ㄱ»: the grid's Flow box opens it in a new tab), the
+    // address admin_route.js builds: the rule open, nothing picked by hand.
+    ["Chain, a rule opened by its address", async (c) => {
+      await evaluate(c, "location.hash = '#overview'; true");
+      await until(c, "!!document.querySelector('#overview-status-mount .ov-row')");
+      await evaluate(c, "location.hash = '#chain=dt_log_to_dt_map'; true");
+      await until(c, "(document.querySelector('select.chain-rule-picker') || {}).value === 'dt_log_to_dt_map' && !!document.querySelector('[data-path=\"target_table\"]')");
     }],
     ['Chain, a join whose take holds a record', async (c) => {
       // the rule as recorded: a draft is kept across reloads (C-106 ④), and the states below leave one at the size before
