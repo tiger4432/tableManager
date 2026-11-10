@@ -158,6 +158,24 @@ def test_a_deleted_line_keeps_the_key_and_the_current_line_goes(db):
     assert row_id not in _now(db) and change["new"] is None and change["work"] == "delete" and change["old"]["a"] == "x"
 
 
+def test_a_delete_on_a_table_without_lines_takes_the_row_out_with_no_line(db, monkeypatch):
+    """A table that keeps no lines (shipped, or one ensure refused - lead 11-11 2) still loses the row a delete names;
+    nothing is written as its history there."""
+    from sqlalchemy import Index, MetaData, Table, insert, inspect
+
+    name = "wl_bare"
+    monkeypatch.setitem(crud.TABLE_CONFIG, name, CFG)
+    t = Table(name, MetaData(), *lines._data_columns(CFG, models.sql_type_of, row_id_key=True))
+    Index("uq_%s_bk" % name, t.c.business_key_val, unique=True)
+    t.create(db.connection())
+    db.execute(insert(t).values(row_id="r1", business_key_val="K1", k="K1", a="x"))
+    assert not lines.has_lines(db, name)
+    out = write_lines(db, name, [{"row_id": "r1", "line_kind": "deleted", "written_by": "kim"}], kind="delete",
+                      transaction_id="tx-d")
+    assert (out["lines"], out["items"][0]["work"], out["items"][0]["line_id"]) == (0, "delete", None), out
+    assert db.execute(t.select()).all() == [] and not inspect(db.connection()).has_table(name + "__lines")
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})
@@ -256,11 +274,15 @@ def test_the_answer_says_each_item_s_row_work_and_columns_in_the_items_order(db,
                  {"row_id": "gone", "line_kind": "withdraw", "columns": ["a"], "source_name": "f1"},
                  {"row_id": a, "values": {"k": "A", "a": "z", "n": 3}, "source_name": "f1"}, tx="tx2")
     [b] = [row_id for row_id, change in out["changed"].items() if change["work"] == "new"]
-    assert out["items"] == [{"row_id": a, "work": "left_out", "columns": []},
-                            {"row_id": b, "work": "new", "columns": ["a", "k"]},
-                            {"row_id": a, "work": "gated", "columns": ["a", "n"]},
-                            {"row_id": None, "work": None, "columns": ["a"]},
-                            {"row_id": a, "work": "edit", "columns": ["a", "n"]}], out["items"]
+    assert [{k: v for k, v in said.items() if k != "line_id"} for said in out["items"]] == [
+        {"row_id": a, "work": "left_out", "columns": []},
+        {"row_id": b, "work": "new", "columns": ["a", "k"]},
+        {"row_id": a, "work": "gated", "columns": ["a", "n"]},
+        {"row_id": None, "work": None, "columns": ["a"]},
+        {"row_id": a, "work": "edit", "columns": ["a", "n"]}], out["items"]
+    lined = [said["line_id"] for said in out["items"]]          # the line each item wrote, None where it wrote none
+    assert [line_id is not None for line_id in lined] == [False, True, False, False, True]
+    assert sorted(r["line_id"] for r in _lines(db) if r["batch"] == "tx2") == sorted(lined[1::3]), lined
 
 
 def test_a_column_no_line_has_written_keeps_t_s_value_and_one_withdrawn_to_nothing_empties(db):

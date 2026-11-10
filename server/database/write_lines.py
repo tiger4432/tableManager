@@ -70,14 +70,15 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
      "lines": lines written, "left_out": items that changed nothing,
      "audit": [{"transaction_id", "table_name", "changed_rows", "kind", "written_by"}] one an audit row - `kind` its work
      kind, `changed_rows` the distinct row_ids it wrote lines for in this write,
-     "gated": {reason: writes the version gate refused},
-     "items": [{"row_id", "work", "columns"}] one an item, in the items' order - the row it was claimed as (None: a
-     withdraw, delete or mark of no current line), its work kind or "left_out" (changed nothing) or "gated", the
+     "gated": {reason: writes the version gate refused}, "at": the write's instant (its lines' `at`),
+     "items": [{"row_id", "line_id", "work", "columns"}] one an item, in the items' order - the row it was claimed as (None: a
+     withdraw, delete or mark of no current line), the line it wrote (None: none), its work kind or "left_out"
+     (changed nothing) or "gated", the
      columns its line says (a write's after step 2)} - `old` is the current line step 1 locked, `new` the one step 5
     wrote (None: deleted), what the broadcast and the outbox read (one author). `items` is what a caller resolves its
     own items by - a map's rows claimed, a dropped cell's row."""
     _open(db)
-    cfg = crud.TABLE_CONFIG[table]
+    cfg = crud.TABLE_CONFIG.get(table) or {}       # a table the config does not declare keeps no lines
     keeps = lines.has_lines(db, table)
     if keeps:
         shape = lines.shape(db, table, cfg)
@@ -104,16 +105,18 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
     plain = _plain(table, cfg, items, targets, old, held, keeps)
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
+    # a table with no lines: a delete still takes its row out, with no line (lead 11-11 2)
     kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held) if keeps
-                      else ([], sum(1 for i in targets if i not in plain)))
+                      else ({i for i in targets if items[i]["line_kind"] == DELETED},
+                            sum(1 for i in targets if i not in plain and items[i]["line_kind"] != DELETED)))
     moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
-    unpinned = set()
+    unpinned, line_ids = set(), {}
     if keeps:
         lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
-        written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
+        written, line_ids = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
         _heads(db, ln, chunks, written)
         unpinned = _marks(db, table, shape, items, kept, targets, asked)
     for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
@@ -137,13 +140,13 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     _stage(db, table, cfg, shape["columns"], changed, keys,
            {targets[i]: set(items[i].get("values") or ()) | set(plain.get(i) or ())
             for i in list(kept) + moved if items[i]["line_kind"] == WRITE})
-    said = [{"row_id": claimed.get(i), "work": work[i] if i in work else "gated" if i in claimed and i not in targets
+    said = [{"row_id": claimed.get(i), "line_id": line_ids.get(i), "work": work[i] if i in work else "gated" if i in claimed and i not in targets
              else "left_out" if i in targets else None,
              "columns": sorted(set(it.get("values") or ()) | set(plain.get(i) or ())) if it["line_kind"] == WRITE
              else list(it.get("columns") or ())}
             for i, it in enumerate(items)]
-    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated,
-            "items": said}
+    return {"changed": changed, "lines": len(kept) if keeps else 0, "left_out": left_out, "audit": audit, "gated": gated,
+            "items": said, "at": at}
 
 
 def _open(db):
@@ -349,7 +352,8 @@ def _spoken(db, ln, bits, chunks, pairs) -> dict:
 def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id):
     """Step 3 - one line a kept item, in item order. A write's head bits start as its written bits, a withdraw's too
     (with its withdrawn bits); a deleted or mark line's three are 0. Returns [(line_id, row_id, sources, masks)] of
-    the write and withdraw lines in line_id order - the sources being its own and its folds - for step 4."""
+    the write and withdraw lines in line_id order - the sources being its own and its folds - for step 4 - and {item
+    index: line_id} of every line."""
     order = sorted(kept)
     rows = []
     for i in order:
@@ -368,14 +372,16 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
             row[lines.value_column(c)] = (it.get("values") or {}).get(c) if it["line_kind"] == WRITE else None
         rows.append(row)
     if not rows:
-        return []
+        return [], {}
+    line_ids = {}
     ids = db.execute(insert(ln).returning(ln.c.line_id, sort_by_parameter_order=True), rows).scalars().all()
     out = []
     for line_id, i, row in zip(ids, order, rows):
+        line_ids[i] = line_id
         if row["line_kind"] in (WRITE, WITHDRAW):
             out.append((line_id, row["row_id"], [row["source_name"]] + list(items[i].get("folds") or ()),
                         [row["written_%d" % k] for k in range(chunks)]))
-    return sorted(out)
+    return sorted(out), line_ids
 
 
 def _heads(db, ln, chunks, written):

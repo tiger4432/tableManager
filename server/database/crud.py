@@ -5300,41 +5300,24 @@ def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
     recording cannot be added to one and forgotten on the other.
 
     ⚠️ THE USER AND THE TRANSACTION COME FROM THE REQUEST CONTEXT, not from new
-    arguments. `stage_collapsed_event` below reads the same three contextvars for the same
-    reason, and widening this signature would have moved the two call sites and the
+    arguments - widening this signature would have moved the two call sites and the
     assertions that pin them for a fact both callers already carry.
 
     🔵 A `DELETE` event wakes every rule but an AI's (`chain_bindings.takes_deletions`, owner 11-06 step 2) - it
     carries each row's values as its old values for those rules.
     """
-    from database.database import row_values, stage_collapsed_event
-
     row_ids = list(row_ids or [])
     if not row_ids:
         return []
 
-    # 🔴 READ BEFORE THE DELETE, for the same reason `delete_rows_batch` reads first:
-    # the business key lives on the row, and after the delete there is nothing to ask.
-    rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
-    # Staged BEFORE the deletes so the event is added to the same flush that removes the
-    # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
-    # With each row's values as its old values (총괄 옛 키).
-    values = {row.row_id: row_values(row) for row in rows}
-    if said is not None:
-        said.append(map_keys_said(table_name, row_ids, values))
-    stage_collapsed_event(db, "DELETE", table_name, row_ids,
-                          old=[values.get(row_id, {}) for row_id in row_ids])
-
     from database.context import request_user, request_transaction_id
-    record_row_deletions(
-        db, table_name, rows,
-        request_user.get() or "system",
-        request_transaction_id.get() or str(uuid6.uuid7()))
-
+    # the deleted lines take the rows out and stage the DELETE with each row's values as its old ones (총괄 옛 키)
+    answer = record_row_deletions(db, table_name, row_ids, request_user.get() or "system",
+                                  request_transaction_id.get() or str(uuid6.uuid7()))
+    if said is not None:
+        said.append(map_keys_said(table_name, row_ids, {row_id: change["old"] or {}
+                                                        for row_id, change in answer["changed"].items()}))
     delete_row_layers(db, table_name, row_ids)
-    db.query(table_model).filter(
-        table_model.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
     return row_ids
 
 
@@ -6450,106 +6433,73 @@ def deleted_rows(db: Session, table_name: str, row_ids) -> set:
     return audit_history.deleted_line_rows(db, table_name, row_ids)
 
 
-def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
-                         transaction_id: str):
-    """The audit history for rows that are going away — ONE place, two callers.
+def record_row_deletions(db: Session, table_name: str, row_ids, user_name: str,
+                         transaction_id: str) -> dict:
+    """Rows going away - ONE place, every deleting door (the grid's delete, the map purge, the job retraction, a
+    shell): a «deleted» line a row (`write_lines`, kind delete), which takes the row out of t and stages its DELETE
+    event with the row's values as its old ones, in the caller's transaction - the caller owns the commit. The line is
+    the history «what was deleted?» asks (`deleted_rows`). -> write_lines' answer: `items` the line each row got
+    (`work` "delete"; None for a row already gone), `at` its instant."""
+    from database.write_lines import write_lines
 
-    🔴 THE TWO DELETION PATHS WROTE DIFFERENT HISTORY, AND ONLY ONE WROTE ANY.
-    `delete_rows_batch` recorded every row it removed; `purge_map_rows` recorded none, so
-    「what was deleted?」 had an answer for one kind of deletion and not for the other. The
-    rows are gone either way — what went missing was the place to ask.
+    items = [{"row_id": row_id, "line_kind": "deleted", "written_by": user_name}
+             for row_id in dict.fromkeys(row_ids or ())]
+    return write_lines(db, table_name, items, kind="delete", transaction_id=transaction_id)
 
-    ⚠️ IT WRITES TO THE LEDGER TABLE, NOT TO THE IN-MEMORY CACHE. The cache is a
-    post-COMMIT concern and this function does not own the commit: `delete_rows_batch`
-    commits and then publishes, while the map purge runs inside a batch that commits later.
-    Publishing here would put entries in the cache for a transaction that can still roll
-    back. Callers that own a commit publish the returned dicts themselves.
 
-    Returns the log dicts so a caller can do exactly that.
-    """
-    logs = []
-    for row in rows or []:
-        logs.append(create_audit_log(
-            db, table_name, row.row_id, ROW_DELETION_COLUMN,
-            None, "row deleted", "system", user_name,
-            transaction_id=transaction_id,
-            business_key=getattr(row, "business_key_val", None),
-            add_to_cache=False))
-    if logs:
-        bulk_insert_audit_logs(db, logs)
-    return logs
+def deletion_entries(table_name: str, answer: dict, written_by: str, transaction_id: str) -> list:
+    """The history entries (schemas.AuditLogResponse fields) of the deleted lines `record_row_deletions` wrote - what
+    a delete's notification carries, built from its answer without reading the lines again."""
+    from types import SimpleNamespace
+
+    from admin import audit_history
+
+    out = []
+    for said in answer.get("items") or ():
+        if said.get("work") != "delete" or said.get("line_id") is None:    # a table without lines: no line
+            continue
+        was = (answer["changed"].get(said["row_id"]) or {}).get("old") or {}
+        line = SimpleNamespace(line_kind="deleted", line_id=said["line_id"], row_id=said["row_id"],
+                               written_by=written_by, batch=transaction_id,
+                               business_key_val=was.get("business_key_val"), at=answer.get("at"))
+        out.extend(audit_history.line_entries(table_name, line, {}, {}, row_deleted=True))
+    return out
 
 
 def delete_row_layers(db: Session, table_name: str, row_ids: list) -> None:
-    """Rows' cell layers and overwrite marks, gone with the rows - the one place a row's metadata
-    is deleted: a row delete, a map purge, and a merge's stored shell (총괄 a13fcf00c)."""
+    """Rows' overwrite marks, gone with the rows - the one place a row's metadata is deleted: a row delete, a map
+    purge, and a merge's stored shell (총괄 a13fcf00c). Their history is their lines, which stay."""
     db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name,
         models.CellOverwrite.row_id.in_(row_ids)
     ).delete(synchronize_session=False)
-    db.query(models.CellSource).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
 
 
-def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str):
-    """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
+def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str,
+                      deleted_lines: list = None):
+    """Delete rows - a «deleted» line each (`record_row_deletions`), their pins with them - and commit. -> how many
+    rows went. `deleted_lines` (a list): their history entries put on it (`deletion_entries`), for the notification."""
     # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
-    # on what the caller sent. This path deletes the row's cell layers before it touches the
-    # relation, so on a view that declares `row_id` it destroyed metadata and only then let
-    # PostgreSQL refuse (S-224).
+    # on what the caller sent (S-224).
     refuse_write_to_view(table_name)
 
     if not row_ids:
         return 0
-        
+
     tx_id = str(uuid6.uuid7())
-    
+
     with transaction_context(user_name, tx_id, "batch_delete"):
-        table_model = models.DYNAMIC_TABLES.get(table_name)
-        if not table_model:
+        if not models.DYNAMIC_TABLES.get(table_name):
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
-            
-        # 삭제하기 전 row_id와 business_key_val을 먼저 조회
-        rows_to_delete = db.query(table_model).filter(
-            table_model.row_id.in_(row_ids)
-        ).all()
-            
-        # 메타데이터 연쇄 삭제
-        delete_row_layers(db, table_name, row_ids)
-
-        # 기본 데이터 삭제
-        deleted_count = db.query(table_model).filter(
-            table_model.row_id.in_(row_ids)
-        ).delete(synchronize_session=False)
-                
-        if deleted_count > 0:
-            # 🔴 THE DELETE DOOR HAD TO BE TOLD (S-74). A bulk
-            # `.delete(synchronize_session=False)` never puts the objects in
-            # `session.deleted`, so the `before_flush` hook that stages every other write
-            # cannot see them: measured 2026-09-08, this box's whole outbox history holds
-            # 1,618 CREATE, one RETROACTIVE_RUN and ZERO DELETE, while an EDIT of the same
-            # row stages normally. Everything downstream of the outbox -- the chain, and the
-            # ledger's follow-up that withdraws a deleted row's facts -- had therefore never
-            # once received a live deletion.
-            #
-            # ⚠️ THE SAME CALL `purge_map_rows` ALREADY MAKES, not a second spelling of it.
-            # And it stages the ids that were actually removed rather than the ids asked
-            # for, so a delete of something already gone does not announce a deletion.
-            from database.database import row_values, stage_collapsed_event
-
-            # with each row's values as its old values (총괄 옛 키)
-            stage_collapsed_event(
-                db, "DELETE", table_name, [row.row_id for row in rows_to_delete],
-                old=[row_values(row) for row in rows_to_delete])
-            logs_to_cache = record_row_deletions(
-                db, table_name, rows_to_delete, user_name, tx_id)
+        answer = record_row_deletions(db, table_name, row_ids, user_name, tx_id)
+        gone = [said["row_id"] for said in answer["items"] if said["work"] == "delete"]
+        if gone:
+            delete_row_layers(db, table_name, gone)
             from session_contract import end_step
             end_step(db)
-
-            
-        return deleted_count
+            if deleted_lines is not None:
+                deleted_lines.extend(deletion_entries(table_name, answer, user_name, tx_id))
+        return len(gone)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
     table_model = models.DYNAMIC_TABLES.get(table_name)

@@ -945,15 +945,13 @@ def apply_retraction(db, plan) -> int:
     delete something the dry run never showed.
 
     🔴 [총괄 eb7e84342] THROUGH `crud.purge_map_rows`, THE MAP PURGE'S DOOR. This spelled the
-    three deletes by hand as 「the same three statements」 as crud's - and that door has since
-    grown the DELETE outbox event and the deletion history, so a retracted row reached neither
-    the ledger follow-up, nor the chain's take-back lap, nor the audit log. The row's
-    `cell_sources` and `cell_overwrites` go with it there (`dt_map` here once carried 16,150
-    orphaned overwrites, measured 2026-08-12).
+    three deletes by hand - and that door has since grown the DELETE outbox event and the
+    deletion history, so a retracted row reached neither the ledger follow-up, nor the chain's
+    take-back lap, nor the history. The row's «deleted» line and its marks' going are that door's
+    (`dt_map` here once carried 16,150 orphaned overwrites, measured 2026-08-12).
 
-    ⚠️ [총괄 ec93e8ed8] THE GRID'S DELETE IS NOT THIS DOOR. `crud.delete_rows_batch` spells the
-    same deletes itself, announces only the rows it actually removed, and publishes their
-    history to the audit cache after its own commit - this door does neither.
+    ⚠️ [총괄 ec93e8ed8] THE GRID'S DELETE IS NOT THIS DOOR: `crud.delete_rows_batch` commits on
+    its own; this runs inside the caller's step. Both record through `crud.record_row_deletions`.
 
     ⚠️ COUNTED BEFORE THE PURGE: the door returns the ids it was handed, and this returns the
     rows that were actually there - one primary-key count per chunk.

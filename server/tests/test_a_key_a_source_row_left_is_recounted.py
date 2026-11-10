@@ -88,11 +88,23 @@ def fixture_db(request, tmp_path, monkeypatch):
         scratch = MetaData(schema=PG_TEST_SCHEMA)
         for name in TABLES:
             models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
+        from database import lines
+        for name in TABLES:                 # a table built again starts with no history of the earlier one
+            lines.drop_line_table(session, name)
+        session.commit()
         scratch.drop_all(session.get_bind())
         scratch.create_all(session.get_bind())
     else:
         from database.database import Base
         Base.metadata.create_all(bind=session.get_bind())
+    from sqlalchemy import Index
+
+    from database import lines
+    for name, cfg in TABLES.items():        # declared tables keep lines (cell-source overhaul) - a deletion is a line
+        Index("uq_%s_bk" % name, models.DYNAMIC_TABLES[name].__table__.c.business_key_val, unique=True).create(
+            session.connection(), checkfirst=True)        # the key index the runtime builds and ensure stands on
+        lines.ensure_line_table(session, name, cfg)
+    session.commit()
     write_rules(tmp_path, monkeypatch, RULE)
     mapper_sdk.register("okey_recorder", _recorder)
     HANDED.clear()
@@ -169,7 +181,15 @@ def _gone_lines(caplog):
 
 
 def _deletions(db, table=INV):
-    return [h.updated_by for h in db.query(models.AuditLog).filter_by(table_name=table, column_name="DELETE")]
+    """Who deleted rows of `table` - its «deleted» lines' writers (cell-source overhaul)."""
+    from sqlalchemy import select
+
+    from database import lines
+
+    if not lines.has_lines(db, table):
+        return []
+    ln = lines.shape(db, table, crud.TABLE_CONFIG[table])["lines"]
+    return list(db.execute(select(ln.c.written_by).where(ln.c.line_kind == "deleted")).scalars())
 
 
 @pytest.mark.parametrize("collapsed", [False, True], ids=["per row", "collapsed"])
@@ -222,14 +242,15 @@ def test_a_deleted_only_row_takes_its_keys_row(db, door, caplog):
 
 
 def test_the_map_purge_door_carries_the_rows_it_deletes_too(db):
-    """The second deletion door (`crud.purge_map_rows`) - read first, staged with each row's values."""
+    """The second deletion door (`crud.purge_map_rows`) - staged with each removed row's values; a row it was handed
+    that is not there is no deletion, as at the grid's door (one recorder, `crud.record_row_deletions`)."""
     _seed(db)
     crud.purge_map_rows(db, models.DYNAMIC_TABLES[SRC], SRC, [_src(db, "L3").row_id, "no-such-row"])
     db.commit()
     events = _chain(db)
 
     assert [get_payload_dict(e)[event_constants.OLD_VALUES_KEY] for e in events] == [
-        [{"log_id": "L3", "job": "J3", "lot": "C", "t": "3"}, {}]]
+        [{"log_id": "L3", "job": "J3", "lot": "C", "t": "3"}]]
     assert _inv(db) == {"J1": ("A, B", 2)}
 
 

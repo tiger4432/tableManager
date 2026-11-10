@@ -68,11 +68,14 @@ def _seed(db, part_no):
 
 
 def _authors_of_deletions(db, row_id):
-    """Who the history says removed this row. Keyed by `row_id` - the audit table keys by the
-    row, and the business key is not one of its columns (measured, not assumed)."""
-    return [log.updated_by for log in db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == TABLE,
-        models.AuditLog.row_id == row_id).all()]
+    """Who the history says removed this row - its «deleted» line's writer (cell-source overhaul)."""
+    from sqlalchemy import select
+
+    from database import lines
+
+    ln = lines.shape(db, TABLE, TABLES[TABLE])["lines"]
+    return list(db.execute(select(ln.c.written_by).where(ln.c.row_id == row_id, ln.c.line_kind == "deleted"))
+                .scalars())
 
 
 # ---------------------------------------------------------------------------

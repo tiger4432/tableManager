@@ -2905,34 +2905,13 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     edits = await run_in_threadpool(access.may_delete, request, db, table_name, batch.row_ids)  # reads the rows (QA ②)
     author = sso.who(request, batch.user_name)
 
-    # [C-1 Fix] 동기 crud 삭제 + 감사 로그 조회를 threadpool로 격리(이벤트 루프 동결 방지).
-    # 기존 삭제행별 get_deleted_row_business_key N+1 쿼리(대량 삭제 시 최악의 루프 블로커)는
-    # get_deleted_rows_business_keys_bulk의 청크 IN 쿼리 2회로 대체한다.
+    # [C-1 Fix] the delete off the event loop. Its history entries are the deleted lines' (cell-source overhaul),
+    # built from the delete's own answer - no read after it.
     def _delete_and_collect():
-        deleted = crud.delete_rows_batch(db, table_name, batch.row_ids, author)
         logs = []
-        if deleted > 0:
-            log_objs = db.query(models.AuditLog).filter(
-                models.AuditLog.table_name == table_name,
-                models.AuditLog.row_id.in_(batch.row_ids),
-                models.AuditLog.column_name == crud.ROW_DELETION_COLUMN
-            ).all()
-            bk_map = get_deleted_rows_business_keys_bulk(db, table_name, [l.row_id for l in log_objs])
-            for log in log_objs:
-                logs.append({
-                    "id": log.id,
-                    "table_name": log.table_name,
-                    "row_id": log.row_id,
-                    "column_name": log.column_name,
-                    "old_value": log.old_value,
-                    "new_value": log.new_value,
-                    "source_name": log.source_name,
-                    "updated_by": log.updated_by,
-                    "transaction_id": log.transaction_id,
-                    "timestamp": log.timestamp.isoformat() if log.timestamp else None,
-                    "business_key": bk_map.get(log.row_id),
-                    "is_row_deleted": True
-                })
+        deleted = crud.delete_rows_batch(db, table_name, batch.row_ids, author, deleted_lines=logs)
+        for log in logs:
+            log["timestamp"] = log["timestamp"].isoformat() if log.get("timestamp") else None
         return deleted, logs
 
     deleted_count, created_logs = await run_in_threadpool(_delete_and_collect)

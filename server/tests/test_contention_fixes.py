@@ -183,9 +183,12 @@ def test_batch_delete_endpoint_smoke(client, db_session):
     # the history is still written, one DELETE line per row, under that transaction
     assert "created_logs" not in body and isinstance(body["transaction_id"], str)
     assert db_session.query(model).filter(model.row_id.in_(row_ids)).count() == 0
-    assert db_session.query(models.AuditLog).filter(
-        models.AuditLog.row_id.in_(row_ids), models.AuditLog.column_name == "DELETE",
-        models.AuditLog.transaction_id == body["transaction_id"]).count() == 3
+    from sqlalchemy import func, select
+
+    from database import crud, lines
+    ln = lines.shape(db_session, "raw_table_1", crud.TABLE_CONFIG["raw_table_1"])["lines"]     # a «deleted» line a row
+    assert db_session.execute(select(func.count()).where(
+        ln.c.row_id.in_(row_ids), ln.c.line_kind == "deleted", ln.c.batch == body["transaction_id"])).scalar() == 3
 
 
 def test_batch_delete_broadcasts_each_chunk_with_its_rows_logs(client, db_session, monkeypatch):
