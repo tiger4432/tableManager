@@ -785,6 +785,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
       "chip_count": "count",                     //   행을 센다 (컬럼 없음)
       "bonding_time_min": "Min([bonding_time])", //   🆕 10-14 스팟파이어 수식 한 줄 (총괄 5667ea0fe) — 옛 {fn, column} 도 같은 수식으로 읽힘
       "wafer_ids": "UniqueConcatenate([wafer_id])", //   빈 값 빼고 · 중복 없이 · 값 순서로 ", " 로 이어붙임
+      "packages": "=UniqueCount([x] & \"|\" & [y])", // 🆕 11-10 칸 둘의 쌍을 셀 때는 & — Concatenate 는 빈 칸을 빼서 x 가 빈 행을 «|y» 한 쌍으로 셈
     },
     "reference_views": [
       { "label": "lot event",

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Lead 11-08 (owner «운영에서 받으면 바로 셋업되게» · «메모리 표도»): the AI's four tables ship in server/declarations/,
-empty, group System - an action, an action kind, a judge's example, a memory row.
+empty, group AI (owner 11-10 «ai 그룹으로 지어») - an action, an action kind, a judge's example, a memory row.
 
   tables   sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests  (edit_by target_table) · sys_ai_memory
   people   kim (on the target's edit.allow) · lee (not on it) · an administrator
@@ -30,11 +30,10 @@ def signed_in(monkeypatch):
                                                     "access": {"edit": {"allow": ["kim"]}}})
 
 
-def test_the_four_ship_in_the_system_group():
+def test_the_four_ship_in_the_ai_group():
     tables = shipped.tables()
     assert "sys_templates" in tables, "CANARY: the shipped file is the one read"
-    assert {name: tables[name].get("group") for name in EDIT_BY + (MEMORY,)} == dict.fromkeys(EDIT_BY + (MEMORY,),
-                                                                                             "System")
+    assert {name: tables[name].get("group") for name in EDIT_BY + (MEMORY,)} == dict.fromkeys(EDIT_BY + (MEMORY,), "AI")
 
 
 @pytest.mark.parametrize("table", EDIT_BY)

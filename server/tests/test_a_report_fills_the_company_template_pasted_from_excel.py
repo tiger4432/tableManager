@@ -153,7 +153,7 @@ def test_the_save_names_the_dropped_pictures_and_refuses_by_the_template(monkeyp
     declaration = {"name": "rep", "on": {"table": "w"}, "into": {"table": "w"},
                    "derive": {"kind": "report", "report": report}}
     rules, refusal, notes = rule_shape.expand_declaration(declaration)
-    assert refusal is None and len(rules) == 1
+    assert refusal is None and len(rules) == 2, "the report and its memory half"
     assert any("image(s) dropped: 1" in note for note in notes), notes
     declaration["derive"]["report"]["template"] = EXCEL.replace("{{meta}}", "{{author}}")
     rules, refusal, _notes = rule_shape.expand_declaration(declaration)
