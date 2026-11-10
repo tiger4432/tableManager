@@ -62,3 +62,23 @@ def test_the_schema_sync_is_the_door(engine, monkeypatch):
     monkeypatch.setattr(lines, "ensure_declared", lambda e, tables=None: called.append(e) or {})
     models.sync_dynamic_tables_schema(engine)
     assert called == [engine]
+
+
+def test_t_built_again_beside_its_old_lines_is_refused_not_attached(engine):
+    lines.ensure_declared(engine)
+    with engine.begin() as conn:
+        conn.execute(text('DROP TABLE "t"'))
+    Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(engine)
+    from sqlalchemy.orm import Session
+
+    with Session(engine) as db:
+        assert not lines.has_lines(db, "t")                                     # t__lines alone is not «built»
+    said = lines.ensure_declared(engine)
+    assert said["t"] == lines.ORPHAN_REFUSAL % {"t": "t", "lines": "t__lines"}
+    assert "won_by" not in {c["name"] for c in inspect(engine).get_columns("t")}
+
+
+def test_drop_every_line_table_leaves_no_orphan(engine):
+    lines.ensure_declared(engine)
+    assert lines.drop_every_line_table(engine) == ["t__lines"]
+    assert not inspect(engine).has_table("t__lines")
