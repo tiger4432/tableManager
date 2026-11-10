@@ -96,3 +96,18 @@ def test_an_interrupted_copy_resumes_after_its_last_committed_row(db):
     assert cells == 2                                               # r2, r3 only - r1 is not copied twice
     lt = lines.shape(db, "t", CFG)["lines"]
     assert db.execute(select(lt.c.line_id).where(lt.c.row_id == "r1")).all().__len__() == 2
+
+
+def test_a_blank_layer_copies_as_null_through_the_one_seat(db):
+    """Length-0 text (after strip) is absence, folded by one function (crud.layer_value / line_text) - a «» or «  »
+    layer copies as a NULL value that still speaks for its column."""
+    for source, value in (("fileC", ""), ("fileD", "   ")):
+        db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r3", column_name="lot",
+                                                        source_name=source, value={"value": value},
+                                                        ingested_at=T2, updated_by="seed"))
+    copy_all(db)
+    lt = lines.shape(db, "t", CFG)["lines"]
+    got = dict(db.execute(select(lt.c.source_name, lt.c[lines.value_column("lot")])
+                          .where(lt.c.row_id == "r3", lt.c.source_name.in_(["fileC", "fileD"]))).all())
+    assert got == {"fileC": None, "fileD": None}
+    assert ("r3", "lot") in {cell for cell in lines.layers(db, "t", ["r3"])}          # it still speaks
