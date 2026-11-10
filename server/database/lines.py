@@ -38,7 +38,9 @@ class LineColumn(Base):
     retired_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (Index("uq_line_columns_live", "table_name", "column_name", unique=True,
-                            postgresql_where=text("retired_at IS NULL"), sqlite_where=text("retired_at IS NULL")),)
+                            postgresql_where=text("retired_at IS NULL"), sqlite_where=text("retired_at IS NULL"),
+                            info={"purpose": "one live bit slot per column of a table",
+                                  "serves": "lines.bit_map / assign_bits"}),)
 
 
 class AuditBatch(Base):
@@ -54,9 +56,17 @@ class AuditBatch(Base):
     work_kind = Column(String, nullable=False)
     at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    __table_args__ = (Index("ix_audit_batches_table_at", "table_name", "at"),
-                      Index("ix_audit_batches_transaction", "transaction_id"),
-                      Index("ix_audit_batches_at_id", "at", "id"))
+    __table_args__ = (Index("ix_audit_batches_table_at", "table_name", "at",
+                            info={"purpose": "audit rows of one table, newest first",
+                                  "serves": "audit panel filtered by table"}),
+                      Index("ix_audit_batches_transaction", "transaction_id",
+                            postgresql_ops={"transaction_id": "text_pattern_ops"},
+                            info={"purpose": "audit rows of one transaction or history group «label·…»",
+                                  "serves": "audit_cache.in_group: GET /audit_logs/recent, "
+                                            "GET /audit_logs/transaction/{tx_id}"}),
+                      Index("ix_audit_batches_at_id", "at", "id",
+                            info={"purpose": "audit rows of every table, newest first",
+                                  "serves": "GET /audit_logs/recent (at, id)"}))
 
 
 _SEEDING = contextvars.ContextVar("lines_seeding", default=False)
@@ -170,7 +180,7 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
     head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
     Index(f"ix_{lines.name}_row_at", lines.c.row_id, lines.c.at)
-    Index(f"ix_{lines.name}_batch", lines.c.batch)
+    Index(f"ix_{lines.name}_batch", lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
     Index(f"ix_{lines.name}_head", lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
     return {"now": now, "lines": lines, "view": table_name, "bits": bits, "chunks": chunks,
