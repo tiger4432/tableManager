@@ -65,7 +65,6 @@
 | 🆕 선언한 칸 타입과 **DB 칸 타입이 다르다** — 부팅 로그 `[Schema]` 타입 줄 밑 «N of them can be converted on the retroactive tab» | **`retype_declared_columns`**(10-31 `23106c060`) — 소급 탭 «Convert the columns already declared another type». Preview 가 칸마다 행 수 · 바뀌는지(아니면 거절 문장 — 못 읽는 값 · 키 칸) · 예상 잠금을 보이고, Run 이 바뀌는 칸만 표 하나씩, 칸마다 한 트랜잭션(그동안 그 표가 잠김). 멈춤은 칸 사이. 칸 하나만은 «Convert a column's type»(`retype_column`) |
 | 🆕 **원장이 못 본 수정**이 있는지, 몇 행인지 알고 싶다 — 표 값이 바뀌었는데 원자가 옛 값 그대로 | `python -m ledger census --source <소스>` → 「… · 차이 X · 새 행 N · 수정 누락 D · 지워진 행 G · 지문 없음 U」(10-03 `6b698fe2d` · 🆕 10-04 `5e41fa599` 새 행 · 지워진 행 · 차이 — 차이 = 표 행 − 색인 행이라 새 행과 지워진 행이 상쇄된다, 차이 0 은 «남은 0» 이 아니다). 행 색인 줄마다 번역할 때의 행 지문(그 소스가 읽는 칸만, 빈 값은 NULL 로 접은 md5)이 있고 census 가 지금 값으로 다시 내어 견준다 — «지문 없음»은 그 전에 번역된 줄이라 따로 센다(섞으면 누락이 부풀어 보임). 고치기: 🆕 셋을 한 번에 `python -m ledger.backfill --world <세상> --catch-up`(그 세상이 읽는 소스 전부 — 새 행 · 수정 누락 · 지워진 행 차례로) · 수정 누락만 `python -m ledger.backfill --source <소스> --drifted`(미리보기) → `--drifted --apply`. 주기 census(엔진 안)는 이 수를 안 센다 — 표를 훑기 때문. 🆕 화면: 대시보드 원장 소스 패널이 소스마다 `New, not translated N · Edited, not followed N · Gone, atoms remain N · Not yet printed N · Measured <시각>`(🆕 10-04 `f36723a70` — 넷, 서버 이름표대로) 을 보이고, 새 행 · 수정 누락 · 지워진 행 중 0 보다 큰 칸이 눈에 띄고(🆕 10-04 `4b2cbc9a5` — 전엔 누락 하나, 지문 없음은 표시 없음), 그 아래에 기록이 싣는 다음 명령 한 줄(10-03 `c965f6206` · `cb9082b79` — 서버 글자 그대로). 셋째 수 칸은 `Table less indexed`(`difference` — 부호 있는 차이, «남은 수»가 아니다 · 10-04 `f36723a70`, 옛 기록의 `not_yet` 도 같은 이름 `Table less indexed` 로 — 10-06 `9ea93f6fd`, 다음 주기가 다시 찍을 때까지). 🆕 `66570d724` 주기 census 는 세지 않고, 사람이 센 수(🆕 10-04 넷 — 새 행 · 수정 누락 · 지워진 행 · 지문 없음)를 «그때 잰 시각 그대로» 잇는다(~~다음 주기가 지움~~). 기록은 다음 명령도 싣는다(`next_step`: ~~누락 > 0 → `--drifted`~~ 🆕 10-04 `5e41fa599` 새 행 · 수정 누락 · 지워진 행 중 하나라도 > 0 → `python -m ledger.backfill --world <세상> --catch-up`, 센 적 없음 → `python -m ledger census --source <소스>` — 🆕 `279d04475` 둘 다 늘 `--world <잰 세상>` 을 단다 — 🆕 10-04 `ec6874b28` 세상 하나, 이름 없으면 운영 세상). ⚠️ `--catch-up`(또는 `--drifted --apply`) 로 고친 뒤에도 기록의 수와 다음 명령은 «고치기 전» 그대로다(주기 census 는 그 넷을 잇기만 한다) — 사람이 census 를 다시 돌려야 0 이 된다 |
 | 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 🆕 11-04 `36acdd577` 한 날이 실패하면(스크립트 예외 · 파일 실패 · 잠겨서 err/ 로 간 파일) **멈추지 않고** 그 날과 까닭을 `failed_days` 에 남기고 다음 날로 간다(전: 그 날 이름을 대고 멈춤, 소유자 11-04 가 뒤집음). 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) · 🆕 `failed_days`(「failed days」 — 수와 «날 (까닭)» 목록) · 🆕 `done_until`(「collected up to (KST)」 — 지나간 마지막 날의 끝, 실패한 날 포함) — 화면에서는 낱말로(`f6d64682`). 🆕 **다음 번 `start` 는 소급 목록의 그 줄 `next_start`**(09-29 `efa60fd9c`) — 끝까지 · 취소 → `done_until`, 실행이 터짐 → 거기까지 간 날의 끝(`start` + 지난 날 수), 도는 중 → null. 그대로 다시 넣으면 틈도 겹침도 없다(`start` 는 `YYYY-MM-DD HH:MM:SS` 도 읽는다). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
-
 | 🆕 칸마다 **파일 층이 여러 겹** 쌓여 있다(같은 행을 매시간 다시 가져오는 수집기) · 헤비 레인 청크 줄의 `prefetch` 가 크다 | **`fold_file_layers`**(09-26, 총괄 225b2c658) — 파라미터 `table` · `pace`. 칸마다 같은 부류 · 같은 값의 파일 층은 **가장 새 것 하나**만 남긴다(§2.6). 쓰기 쪽은 같은 날부터 **안 쌓는다**(§1.1) |
 | 🆕 사고 중 체인 대기열에 **지금 돌면 안 되는** 일이 쌓였다 / 그것을 나중에 돌린다 | **`set_aside`** · **`rerun_set_aside`**(09-26 · 09-27) — 치워 두기는 지우지 않음, 다시 돌리기는 규칙마다 한 번 · 연쇄 없음(§2.8) |
 | 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 · 문자 칸에 **숫자로 저장된 층**이 있다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf · 10-01 ㉡) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7). 끝나면 `fold_file_layers` → VACUUM |
@@ -366,38 +365,6 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 - **스케줄 호출도 제거됐습니다**([AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)) — 🔴 **그것은 정리가 아니라 필수였습니다**: `graph_orphans.run_scheduled`가 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 되살렸을** 것입니다.
 - **CLI와 런타임 모듈은 2026-08-16 트리에서 제거됐습니다.** 옛 설명과 설정 예시는 [archive](../_archive/retired_graph_sync/README.md)에만 남습니다.
 - ⚠️ **§1의 「ⓔ만 페이지 커밋이 아니다」·§6.2·§6.3(종료 코드 3)·§7의 `--allow-production` 서술은 전부 이 연산에 대한 것이라 «함께 은퇴»합니다.** ⓐ~ⓓ에 대한 서술은 **한 줄도 영향받지 않았습니다.**
-
-<details>
-<summary>⚪ 이하 원문(역사 기록)</summary>
-
-### ~~ⓔ graph_orphan_sweep — 유일하게 「지우는」 소급~~
-
-```bash
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --label Wafer --label Core
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --limit-print 0
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --apply
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --apply --allow-production
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --max-fraction 1.0
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --min-population 10
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --ignore-rejected
-```
-
-**언제**: 매핑을 바꾼 **전후**로 돌려 어떤 정체성이 남는지 이름으로 봅니다.
-
-**왜 필요한가**: 엣지 재교정은 **엣지만** 지우고 남은 노드를 지우는 코드가 없습니다. 그래서 라벨 폐기만의 문제가 아니라 **정체성을 바꾸는 셀 편집마다 노드가 하나씩 샙니다.**
-
-🔴 **고아 판정은 두 조건 AND입니다** — ① 엣지가 0개이고 ② **현재 어떤 매핑도 그 정체성을 생산할 수 없다**. 엣지 0개만으로 지우면 정상적으로 엣지가 없는 DOE 어휘가 통째로 날아갑니다.
-
-**이 도구의 요점은 삭제가 아니라 거절입니다.** 자세한 것은 [AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)가 정본입니다(같은 모듈을 스케줄러가 하루 1회 자동으로도 돕니다). 운영자가 알아야 할 것만:
-
-* **예산 관문** — 한 라벨이 인구의 `--max-fraction`(기본 **0.5**)을 넘게 잃으면 삭제가 아니라 **`DECLINED`**입니다. **매핑 오타는 은퇴한 라벨과 겉모습이 똑같기 때문입니다.** 정말 은퇴시킨 라벨이라면 `--max-fraction 1.0`으로 다시 돌리십시오.
-* **작은 라벨 면제** — 인구가 `--min-population`(기본 **10**) 미만인 라벨은 비율 검사에서 빠집니다(3개짜리 라벨은 자기 자신의 100%입니다).
-* **깨끗한 선언 전제** — 온톨로지 매핑이 하나라도 깨끗하게 로드되지 않으면 **스윕 전체를 거절**합니다. 이유를 **먼저 읽고** 나서만 `--ignore-rejected`를 쓰십시오.
-* **격리 관문** — `--apply`를 격리 데이터 루트 밖에서 하려면 `--allow-production`이 필요합니다. dry-run은 읽기 전용이라 어디서나 됩니다.
-* `--limit-print`는 **출력 줄 수**만 자릅니다. **삭제 범위와 무관합니다**(`0`이면 전부 출력).
-
-</details>
 
 ---
 
