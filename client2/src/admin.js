@@ -30,8 +30,6 @@ import {
   ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER, adminFetch as sendWithAdminToken,
   isGateRejection, tokenGeneration, bumpTokenGeneration,
 } from './admin_token.js';
-// Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
-import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel, skipLine, resumeRun, resumeLine, cutRunFor } from './chain_queue_panel.js';
@@ -56,7 +54,8 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 import { ruleOutcomeView, ruleStateView } from './rule_outcome.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
-import { countNumberText, countOf } from './match_count.js';
+import { countNumberText } from './match_count.js';
+import { ReadAgain } from './read_again.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -3883,6 +3882,7 @@ async function fetchOverview(isStale) {
   }
 
   renderOverview({ failed, outbox, rules, mappers, auto, enrich, active });
+  readEnrichmentAgain(enrich);
 }
 
 // 시안 A ② Status — 판은 한 번 만들고 재사용한다. 줄 판정은 `overview_status` 한 자리이고,
@@ -4815,6 +4815,7 @@ function closeInlineEditor() {
 // ── Enrichment 상태 (규칙 + 결손 카운트) — Overview 의 Enrichment 줄이 쓴다, 15s TTL 캐시 ──
 
 let enrichmentStatusCache = null; // { ts, data }
+const enrichmentAgain = new ReadAgain();
 
 async function fetchEnrichmentStatus(force = false) {
   const now = Date.now();
@@ -4824,38 +4825,21 @@ async function fetchEnrichmentStatus(force = false) {
   const res = await fetch(`${API_BASE}/enrichment/rules`);
   if (!res.ok) throw new Error('enrichment rules fetch failed');
   const r = await res.json();
-  const rules = r.rules || [];
-  // Missing count: composed by `queueQuery` (enrichment_queue.js), the SAME named server
-  // queue predicate the worklist itself is fetched with, re-asked per rule with limit=1 so
-  // only `total` is read. The shared predicate is what makes this number and the worklist's
-  // count the same population; a filter dict spelled here instead would be AND-ed by the
-  // consumer into "every target blank" and undercount any rule with two targets.
-  const perRule = [];
-  let totalMissing = 0;
-  // A narrowed read counts up to 10,000 (ㄱ-1): past it the sum is «at least» - said «10,000+».
-  let missingCapped = false;
-  for (const rule of rules) {
-    // 큐 조건을 만들 수 없으면 missing = null(조회 실패 표기). 조건을 떼고 물으면
-    // 파생 테이블 전체 행 수가 「결손」이라는 이름으로 카드에 실린다.
-    const queue = queueQuery(rule);
-    let missing = null;
-    if (queue) {
-      try {
-        const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
-          `?skip=0&limit=1&${queue}`;
-        const cres = await fetch(url);
-        if (cres.ok) {
-          const cr = await cres.json();
-          const counted = countOf(cr);
-          missing = counted.total || 0;
-          missingCapped = missingCapped || counted.capped;
-          totalMissing += missing;
-        }
-      } catch (e) { /* missing = null → 카드/배지에서 조회 실패 표기 */ }
-    }
-    perRule.push({ rule, missing });
-  }
-  const data = { rules, perRule, totalMissing, missingCapped };
+  // The missing count is the server's, counted behind this answer one rule at a time (owner 11-10 «1 ㄱ», D): this read
+  // only reads it - no per-rule /tables/<derived>/data count from here, however many pages ask.
+  const data = { rules: r.rules || [], missing: r.missing && typeof r.missing === 'object' ? r.missing : null };
   enrichmentStatusCache = { ts: now, data };
   return data;
+}
+
+/** While the server counts behind its answer (`missing.updating`) the Enrichment row alone is read again - the one
+ *  read-again judge (read_again.js), as long as the Overview is the tab shown; the 30 s round reads the rest. */
+function readEnrichmentAgain(enrich) {
+  enrichmentAgain.after(enrich && enrich.missing, () => !document.hidden && currentTab === 'overview', async () => {
+    let next = null;
+    try { next = await fetchEnrichmentStatus(true); } catch (e) { /* the 30 s round reads it again */ }
+    if (!next || currentTab !== 'overview') return;
+    overviewBoard().update(enrichmentRow(next));
+    readEnrichmentAgain(next);
+  });
 }

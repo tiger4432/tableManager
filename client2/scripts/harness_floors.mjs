@@ -291,12 +291,6 @@ export const FLOORS = new Map([
   //    module state, so a harness never has to slice its text, so the module's structure
   //    never acquires a veto over refactoring it. A floor drop here means the round trip
   //    stopped being scored in one of its two directions, which is invisible to exit codes.
-  // 🔴 what SURVIVED the enrichment deletion. Four harnesses had `src/enrichment.js` as a
-  //    subject; three had ONLY that, and this one also scored the shipped
-  //    `enrichment_queue.js` (admin.js:13 imports `queueQuery`). Deleting it wholesale
-  //    would have dropped live coverage, so its P6 assertions moved here -- and stopped
-  //    slicing on the way: they now import the module instead of rebuilding it.
-  ['enrichment_queue_harness.mjs', 14],
   ['excel_form_roundtrip_harness.mjs', 306],
   // New 2026-08-05 with MAP_ALIGNMENT_SPEC 0.3 step 1 (the frame becomes a value). Same rule
   // as the other new entries: the floor is the count it reports on the commit that introduces
