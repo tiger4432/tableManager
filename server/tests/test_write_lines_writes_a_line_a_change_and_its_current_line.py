@@ -217,3 +217,14 @@ def test_two_sqlite_writers_of_one_row_wait_for_the_write_lock_before_they_read(
         engine.dispose()
     assert still and "error" not in got, got.get("error")
     assert got["answer"]["changed"][row_id]["old"]["a"] == "1", "the second read the row before the first let it go"
+
+
+def test_a_version_gated_table_takes_a_newer_version_and_refuses_an_older_one_after_the_lock(db, monkeypatch):
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(CFG, version_column="n"))
+    [row_id] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x", "n": 2}, "source_name": "f1"})["changed"]
+    older = _write(db, {"row_id": row_id, "values": {"a": "old", "n": 1}, "source_name": "f2"}, tx="tx2")
+    by_hand = _write(db, {"row_id": row_id, "values": {"a": "kim"}, "source_name": "user"}, tx="tx3")
+    newer = _write(db, {"row_id": row_id, "values": {"a": "new", "n": 3}, "source_name": "f2"}, tx="tx4")
+    assert (older["lines"], older["gated"]) == (0, {crud.REASON_VERSION_OLDER: 1}), older
+    assert (by_hand["lines"], by_hand["gated"]) == (1, {}), "a person's correction is not version-ordered"
+    assert (newer["lines"], _lines(db)[-1]["a"]) == (1, "new"), newer

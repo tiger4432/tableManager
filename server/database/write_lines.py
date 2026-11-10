@@ -13,6 +13,7 @@ An item is a dict:
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
     folds         source names whose head bits the write's columns also take off (a file's folded layer)
+    version_judged  true when the caller judged the row's version already (a map judged whole)
 `kind` is the writing seat's word (funnel · chain · formula · withdraw · delete · notation · merge · mark · seed); the
 work kind of each item (edit · new · delete · withdraw · merge · mark) is decided in step 1.
 """
@@ -68,7 +69,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     {"changed": {row_id: {"old": {col: value}|None, "new": {col: value}|None, "work": work kind}},
      "lines": lines written, "left_out": items that changed nothing,
      "audit": [{"transaction_id", "table_name", "changed_rows", "kind", "written_by"}] one an audit row - `kind` its work
-     kind, `changed_rows` the distinct row_ids it wrote lines for in this write} - `old` is the current line step 1
+     kind, `changed_rows` the distinct row_ids it wrote lines for in this write,
+     "gated": {reason: writes the version gate refused}} - `old` is the current line step 1
     locked, `new` the one step 5 wrote (None: deleted), what the broadcast and the outbox read (one author)."""
     _open(db)
     cfg = crud.TABLE_CONFIG[table]
@@ -87,6 +89,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         raise RuntimeError("write_lines: the database gave no time for %r's lines" % table)
 
     targets, old, keys = _claim(db, table, cfg, now, items)
+    gated = _version_gate(table, cfg, items, targets, old)
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in kept}
@@ -101,7 +104,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
-    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit}
+    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated}
 
 
 def _open(db):
@@ -168,6 +171,29 @@ def _claim(db, table, cfg, now, items):
     for page in _pages(bare, 1):
         db.execute(insert(now), [{"row_id": row_id} for row_id in page])
     return targets, old, keys
+
+
+def _version_gate(table, cfg, items, targets, old) -> dict:
+    """Step 1's other half - a write to a version-gated table (`version_column`) is judged against the current line
+    step 1 locked, by `crud.version_gate_verdict`, the row taken or refused whole. A refused item leaves `targets`.
+    -> {reason: items refused}."""
+    from types import SimpleNamespace
+
+    if not cfg.get("version_column"):
+        return {}
+    gated = {}
+    for i in sorted(targets):
+        it = items[i]
+        if it["line_kind"] != WRITE or it.get("version_judged"):
+            continue
+        applied, reason = crud.version_gate_verdict(
+            table, cfg, SimpleNamespace(**(old.get(targets[i]) or {})), targets[i] not in old,
+            SimpleNamespace(source_name=it.get("source_name"), updates=it.get("values") or {}))
+        if not applied:
+            del targets[i]
+        if reason is not None:
+            gated[reason] = gated.get(reason, 0) + 1
+    return gated
 
 
 def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
