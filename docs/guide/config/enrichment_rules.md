@@ -33,6 +33,38 @@
   worked example source: server/config/sample/chain_rules.json.sample - the four derive.decide rules dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log (moved 10-01 from the flat sample deleted 2026-09-24; two alignment_rule cells name them)
 -->
 
+## 0. derive 로 파생 행 만들기 — `derive: {kind: "decide"}` 통합 문법 예시 (소유자 11-10)
+
+```
+행을 «새로 만들면» decide — 원천 표의 행을 key 로 묶어 파생 표(into.table)에 행 하나씩, 묶인 행들의 값을 모아 그 행의 칸에
+«있는 행의 칸에» 모아 쓰면 join 의 take fn — chain_rules §5-B-bis
+derive 는 모든 통합 규칙의 칸 이름이고 종류는 kind 가 정한다: join · decide · mapper
+```
+
+`chain_rules.json` 의 `rules` 에 이 선언 하나(체인 탭 저장도 같은 판정):
+
+```json
+{
+  "name": "dt_job_count",
+  "enabled": true,
+  "on": {"table": "dt_log"},
+  "into": {"table": "dt_job_rollup"},
+  "derive": {"kind": "decide", "decide": {
+    "key": ["dt_job"],
+    "fields": [],
+    "aggregations": {
+      "netdie_count": "=UniqueCount([dt_cell_key])",
+      "event_time": "=Max([event_time])"
+    }
+  }}
+}
+```
+
+- `aggregations` — 파생 칸 이름 → 식. 대괄호 안은 «원천 표»의 칸. 예: `"stack_height": "=UniqueCount([stack_height])"` (같은 key 의 서로 다른 stack_height 수)
+- `key` — 파생 행 하나를 정하는 칸. 원천 · 파생 표 양쪽에 같은 이름, 다르면 짝 — §2
+- `fields` — 사람이 확인해 채울 칸. 없으면 `[]`(확인 큐 없음)
+- 두 표는 `table_config.json` 에 선언되어 있어야 한다 — 파생 칸은 파생 표의 `column_types` 에
+
 ## 1. 언제 이 파일을 만지는가
 
 - **대량 원본 테이블의 결손 필드(사람이 판단해 채우는 값)를 워크리스트로 만들 때** — 규칙 하나가 ① 워크리스트/참조뷰 API ② 체인 dedup 투영(판단키당 1행 upsert) ③ 온톨로지 `RESOLVED_AS` 승격을 동시에 켭니다
