@@ -1625,12 +1625,15 @@ def _count_fold_written_notation(db, params, scan_limit):
     from chain import replay
 
     s = replay.fold_written_notation(db, params["table"], apply=False, limit=scan_limit,
-                                     log=lambda m: logger.debug(m))
+                                     log=lambda m: logger.debug(m), row_ids=params.get("row_ids"))
     truncated = s["rows_scanned"] >= scan_limit
     # a row re-keyed or merged is a change too - a table keyed by a number may move nothing else
     affected = s["cells_folded"] + s["keys_changed"] + s["rows_merged"]
-    # a declaration this table wrote that the read refused: its 0 is not «none» (lead 11-10, owner «ㅇㅇ»)
-    refused = _refused_notation(params["table"])
+    # a declaration this table wrote that the read refused, or a picked row it does not hold: its 0 is not «none»
+    # (lead 11-10, owner «ㅇㅇ» · «노테이션 소급 ㄱ»)
+    missing = s.get("row_ids_not_found") or []
+    refused = _refused_notation(params["table"]) + (
+        "'%s' holds no row %s. " % (params["table"], replay.named_ids(missing)) if missing else "")
     if not s["written_columns"] and not s["text_columns"] and not s["rows_scanned"]:
         return {"affected": 0, "absence": ABSENCE_CANNOT_POINT if refused else ABSENCE_NOT_APPLICABLE,
                 "affected_label": "cells and row keys whose spelling changes",
@@ -1685,11 +1688,13 @@ def _run_fold_written_notation(db, params, log, control=None):
 
     s = replay.fold_written_notation(db, params["table"], apply=True, log=log,
                                      checkpoint=_checkpoint(control),
-                                     **_given(params, "limit", "chunk_size", "pace"))
+                                     **_given(params, "limit", "chunk_size", "pace", "row_ids"))
     _final_progress(control, s.get("rows_scanned"), s)
     out = {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
                                    "rows_merged", "same_key_groups", "split_key_groups", "keys_not_rebuilt",
                                    "moves_again", "stopped_on_moves_again", "rows_scanned")}
+    if s.get("row_ids_not_found"):
+        out["row_ids_not_found"] = s["row_ids_not_found"]
     if s["rows_merged"] and not s["stopped"]:
         # a table that held a key twice could not take its uq_bk_ index, and the builder runs at the scheduler's
         # start only - so it builds it here, after the merge (총괄 10-20)
@@ -2414,6 +2419,10 @@ OPERATIONS = {
         "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
         "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
         "params": [_p("table"),
+                   # the cell chain_replay takes (S-254): the grid holds row_id on every table
+                   _p("row_ids", required=False, kind="csv",
+                      help="fold only these rows, by row_id - the identity a grid holds for every table; "
+                           "omit for the whole table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
                       help="bound the rows scanned"),
@@ -2423,8 +2432,8 @@ OPERATIONS = {
         "run": _run_fold_written_notation,
         "judge": _judge_table,
         "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
-                "'fold_written_notation', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
-                "'chunk_size': N})\" - pace, limit and chunk_size optional"),
+                "'fold_written_notation', {'table': '<table>', 'row_ids': ['<row_id>', ...], 'pace': '<pace>', "
+                "'limit': N, 'chunk_size': N})\" - row_ids, pace, limit and chunk_size optional"),
         # 총괄 2dc2c1baf · c6a8c069c ㉡: in place - a layer's value, the shown value and the key
         # move; no layer is created or deleted and no `ingested_at` moves. A row whose folded key
         # another row holds, or whose cells no longer spell its key, is skipped; a value a second
