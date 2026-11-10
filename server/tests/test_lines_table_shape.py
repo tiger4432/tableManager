@@ -89,3 +89,9 @@ def test_stored_relation_by_declaration():
     assert lines.stored_relation("t", CFG) == "t__now"
     assert lines.stored_relation("audit_batches", None) == "audit_batches"
     assert lines.stored_relation("v", {"kind": "view", "column_types": {}}) == "v"
+
+
+def test_declared_of_reads_stored_relation_backwards():
+    tables = {"t": CFG, "v": {"kind": "view", "column_types": {}}}
+    assert lines.declared_of("t__now", tables) == "t" and lines.declared_of("v", tables) == "v"
+    assert lines.declared_of("t", tables) is None and lines.declared_of("audit_batches", tables) is None

@@ -113,6 +113,14 @@ def stored_relation(table_name: str, table_cfg) -> str:
     return now_relation(table_name)
 
 
+def declared_of(relation: str, tables: dict):
+    """stored_relation read backwards: the declared table (of {name: table_cfg}) whose relation this is, or None."""
+    for name, cfg in tables.items():
+        if stored_relation(name, cfg) == relation:
+            return name
+    return None
+
+
 def bit_map(db, table_name: str) -> dict:
     """{column: bit} of t's live columns."""
     rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(
