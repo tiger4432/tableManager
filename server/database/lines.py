@@ -259,14 +259,10 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's line table as a Core Table on a private MetaData, with the bit map it was built from. A column t already
     holds is typed as STORED (the stored kind is what line_text reads). Assigns slots to new declared columns (the
     caller commits)."""
-    from sqlalchemy import inspect
-
     from .models import sql_type_of
 
-    stored = physical_kinds(db, table_name) if inspect(db.connection()).has_table(table_name) else {}
-    types = dict(table_cfg.get("column_types") or {})
-    types.update(stored)
-    table_cfg = {**table_cfg, "column_types": types}
+    table_cfg = _as_stored(db, table_name, table_cfg)
+    types = table_cfg["column_types"]
     declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
     bits = assign_bits(db, table_name, declared)
     chunks = chunk_count(db, table_name)
@@ -291,11 +287,29 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
-    # t itself on its own MetaData (ensure creates the lines only): declared columns typed as stored, plus won_by
-    table = Table(table_name, MetaData(), *_data_columns(table_cfg, sql_type_of, row_id_key=True),
-                  Column(WON_BY, won_by_type()))
+    table = current_table(db, table_name, table_cfg, won_by=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
     return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
+
+
+def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
+    """table_cfg with each column t already holds typed as STORED (the stored kind is what line_text reads)."""
+    from sqlalchemy import inspect
+
+    stored = physical_kinds(db, table_name) if inspect(db.connection()).has_table(table_name) else {}
+    return {**table_cfg, "column_types": {**(table_cfg.get("column_types") or {}), **stored}}
+
+
+def current_table(db, table_name: str, table_cfg: dict, won_by=None):
+    """t itself as a Core Table on its own MetaData - framework and declared columns typed as stored, plus won_by
+    when t carries it (won_by None: has_lines asks). THE answer to «t's columns and types»: shape and write_lines
+    (a table without lines too - no slots, no t__lines) bind to it."""
+    from .models import sql_type_of
+
+    if won_by is None:
+        won_by = has_lines(db, table_name)
+    cols = _data_columns(_as_stored(db, table_name, table_cfg), sql_type_of, row_id_key=True)
+    return Table(table_name, MetaData(), *cols, *([Column(WON_BY, won_by_type())] if won_by else []))
 
 
 def won_by_type():
