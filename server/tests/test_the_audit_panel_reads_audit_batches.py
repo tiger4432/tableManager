@@ -12,8 +12,7 @@ CELL_SOURCE_OVERHAUL.md «감사 로그», owner 11-10 «트랜잭션, 테이블
     merge    a later batch's group to the top, in slices, every batch once; a notification's `changed` at once,
              replaced by the merge's exact count
     behind   the read answers the projection it holds at once, `updating` while the walk runs
-    jump     ?table=&limit=1 is the input's first row (then row_id); every row of the table without it; 404 without
-             a batch
+    jump     ?table=&limit=1 is the first row written; every row of the table without it; 404 without a batch
     grid     the transaction filter is the rows of its lines; none in a relation without lines
 """
 import threading
@@ -60,21 +59,21 @@ def _knobs(monkeypatch, **knobs):
 
 
 def _seed(engine, bits):
-    """ab-a: r2 (input 1) and r1 (input 3) new by a file, its page 2 edits r1 by hand; ab-b: a ledger receipt (no
-    lines); ab-c: the chain edits r3 - the newest."""
+    """ab-a: r2 then r1 new by a file, its page 2 edits r1 by hand; ab-b: a ledger receipt (no lines); ab-c: the
+    chain edits r3 - the newest."""
     with engine.begin() as conn:
         line_tables.line(conn, TABLE, bits, "r2", at=T0 + timedelta(minutes=1), batch="ab-a", values={"a": "x"},
-                         input_row=1, business_key="K2")
+                         business_key="K2")
         line_tables.line(conn, TABLE, bits, "r1", at=T0 + timedelta(minutes=1), batch="ab-a", values={"a": "y"},
-                         input_row=3, business_key="K1")
+                         business_key="K1")
         line_tables.audit_batch(conn, "ab-a", TABLE, written_by="parser", kind="new", at=T0 + timedelta(minutes=1))
         page_2 = "ab-a" + event_constants.GROUP_PART + "2"
         line_tables.line(conn, TABLE, bits, "r1", at=T0 + timedelta(minutes=3), batch=page_2, values={"a": "z"},
-                         input_row=2, business_key="K1")
+                         business_key="K1")
         line_tables.audit_batch(conn, page_2, TABLE, written_by="person", kind="edit", at=T0 + timedelta(minutes=3))
         line_tables.audit_batch(conn, "ab-b", LEDGER, written_by="ledger", kind="receipt", at=T0)
         line_tables.line(conn, TABLE, bits, "r3", at=T0 + timedelta(minutes=4), batch="ab-c", values={"a": "w"},
-                         input_row=1, business_key="K3")
+                         business_key="K3")
         line_tables.audit_batch(conn, "ab-c", TABLE, written_by="chain", kind="edit", at=T0 + timedelta(minutes=4))
         for row_id, key in (("r1", "K1"), ("r2", "K2"), ("r3", "K3")):
             line_tables.now(conn, TABLE, row_id, key, {"k": key, "a": "v"})
@@ -213,7 +212,7 @@ def test_the_read_answers_at_once_and_walks_behind(panel, monkeypatch):
     assert (_keys(second["groups"]), second["updating"]) == (["ab-c", "ab-a", "ab-b"], False), second
 
 
-def test_a_panel_line_jumps_to_the_inputs_first_row_and_the_transaction_lists_its_rows(panel):
+def test_a_panel_line_jumps_to_the_first_row_written_and_the_transaction_lists_its_rows(panel):
     client, engine, bits = panel
     _seed(engine, bits)
     first = client.get("/audit_logs/transaction/ab-a", params={"table": TABLE, "limit": 1}).json()

@@ -298,7 +298,6 @@ def _line_table(table_name, bits):
                     sa.Column("line_id", sa.Integer), sa.Column("line_kind", sa.String),
                     sa.Column("source_name", sa.String), sa.Column("at", sa.DateTime(timezone=True)),
                     sa.Column("written_by", sa.String), sa.Column("batch", sa.String),
-                    sa.Column("input_row", sa.String),
                     sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
                     *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
                       for kind in ("written", "withdrawn")],
@@ -398,16 +397,15 @@ def group_line_rows(table_name, group):
 
 
 def group_rows(db, table_name, group, limit) -> list:
-    """The rows history group `group` changed in `table_name`, the input's first first (then row_id), each with its
-    first line in the group - who wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no
+    """The rows history group `group` changed in `table_name`, the first written first (its first line's line_id -
+    C 11-10), each with that line - who wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no
     value: owner 11-10 «바뀐 행 네비»). -> [entry fields]"""
     from admin.audit_cache import in_group
 
     t = _line_table(table_name, {})
-    first = sa.func.min(t.c.input_row)
-    picked = db.execute(sa.select(t.c.row_id, sa.func.min(t.c.line_id)).where(in_group(t.c.batch, group))
-                        .group_by(t.c.row_id).order_by(sa.nulls_last(first.asc()), t.c.row_id.asc())
-                        .limit(limit)).fetchall()
+    first = sa.func.min(t.c.line_id)
+    picked = db.execute(sa.select(t.c.row_id, first).where(in_group(t.c.batch, group))
+                        .group_by(t.c.row_id).order_by(first.asc()).limit(limit)).fetchall()
     if not picked:
         return []
     said = {row.line_id: row for row in db.execute(sa.select(

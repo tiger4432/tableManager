@@ -1608,7 +1608,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
 def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000,
                          table: str = None):
     """The rows a transaction changed (owner 11-10 «바뀐 행 네비») - one entry a row, in each table its audit batches
-    name that keeps lines, the input's first first (`audit_history.group_rows`). `table` narrows it to one table:
+    name that keeps lines, the first written first (`audit_history.group_rows`). `table` narrows it to one table:
     `?table=<t>&limit=1` is the row a panel line jumps to. A transaction with no batch is a 404."""
     from database import lines
 
