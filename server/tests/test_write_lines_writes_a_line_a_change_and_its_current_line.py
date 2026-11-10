@@ -230,3 +230,21 @@ def test_a_version_gated_table_takes_a_newer_version_and_refuses_an_older_one_af
     assert (older["lines"], older["gated"]) == (0, {crud.REASON_VERSION_OLDER: 1}), older
     assert (by_hand["lines"], by_hand["gated"]) == (1, {}), "a person's correction is not version-ordered"
     assert (newer["lines"], _lines(db)[-1]["a"]) == (1, "new"), newer
+
+
+def test_the_answer_says_each_item_s_row_work_and_columns_in_the_items_order(db, monkeypatch):
+    """A caller resolves its own items by `items` (a map's claimed rows, a dropped cell's row): a row that changed
+    nothing is still its row - "left_out", not absent."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(CFG, version_column="n"))
+    [a] = _write(db, {"key": {"k": "A"}, "values": {"k": "A", "a": "x", "n": 2}, "source_name": "f1"})["changed"]
+    out = _write(db, {"row_id": a, "line_kind": "withdraw", "columns": ["a"], "source_name": "f9"},
+                 {"key": {"k": "B"}, "values": {"k": "B", "a": "y"}, "source_name": "f1"},
+                 {"row_id": a, "values": {"a": "old", "n": 1}, "source_name": "f2"},
+                 {"row_id": "gone", "line_kind": "withdraw", "columns": ["a"], "source_name": "f1"},
+                 {"row_id": a, "values": {"k": "A", "a": "z", "n": 3}, "source_name": "f1"}, tx="tx2")
+    [b] = [row_id for row_id, change in out["changed"].items() if change["work"] == "new"]
+    assert out["items"] == [{"row_id": a, "work": "left_out", "columns": []},
+                            {"row_id": b, "work": "new", "columns": ["a", "k"]},
+                            {"row_id": a, "work": "gated", "columns": ["a", "n"]},
+                            {"row_id": None, "work": None, "columns": ["a"]},
+                            {"row_id": a, "work": "edit", "columns": ["a", "n"]}], out["items"]

@@ -70,8 +70,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
      "lines": lines written, "left_out": items that changed nothing,
      "audit": [{"transaction_id", "table_name", "changed_rows", "kind", "written_by"}] one an audit row - `kind` its work
      kind, `changed_rows` the distinct row_ids it wrote lines for in this write,
-     "gated": {reason: writes the version gate refused}} - `old` is the current line step 1
-    locked, `new` the one step 5 wrote (None: deleted), what the broadcast and the outbox read (one author)."""
+     "gated": {reason: writes the version gate refused},
+     "items": [{"row_id", "work", "columns"}] one an item, in the items' order - the row it was claimed as (None: a
+     withdraw, delete or mark of no current line), its work kind or "left_out" (changed nothing) or "gated", the
+     columns its line says (a write's after step 2)} - `old` is the current line step 1 locked, `new` the one step 5
+    wrote (None: deleted), what the broadcast and the outbox read (one author). `items` is what a caller resolves its
+    own items by - a map's rows claimed, a dropped cell's row."""
     _open(db)
     cfg = crud.TABLE_CONFIG[table]
     shape = lines.shape(db, table, cfg)
@@ -89,6 +93,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         raise RuntimeError("write_lines: the database gave no time for %r's lines" % table)
 
     targets, old, keys = _claim(db, table, cfg, now, items)
+    claimed = dict(targets)
     gated = _version_gate(table, cfg, items, targets, old)
     held = lines.value_types(db, table)            # a line's text by what t__now holds, not the declaration (C)
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
@@ -107,7 +112,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
     _stage(db, table, cfg, shape["view_columns"], changed, keys,
            {targets[i]: set(items[i].get("values") or ()) for i in kept if items[i]["line_kind"] == WRITE})
-    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated}
+    said = [{"row_id": claimed.get(i), "work": work[i] if i in kept else "gated" if i in claimed and i not in targets
+             else "left_out" if i in targets else None,
+             "columns": sorted(it.get("values") or ()) if it["line_kind"] == WRITE else list(it.get("columns") or ())}
+            for i, it in enumerate(items)]
+    return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated,
+            "items": said}
 
 
 def _open(db):
