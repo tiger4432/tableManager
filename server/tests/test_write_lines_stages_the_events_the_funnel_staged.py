@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """write_lines stages the outbox events today's funnel staged (lead 11-10: the chain and the mappers read them) - one
 event a write, in its transaction, the shapes the ORM flush hook gave (recorded 11-10 from crud.apply_batch_updates on
-a sqlite dynamic table: create, an edit, the same again, another source's edit; per row and collapsed). One letter
-differs: a new row's number reads back from its line - 2.0 where the hook's pending object held the cast 2."""
-import contextlib
+a sqlite dynamic table: create, an edit, the same again, another source's edit; per row and collapsed), compared as
+JSON letters. One differs, by ruling: a whole number reads back from its line as 2 (crud.line_value, lead 11-11) -
+the hook's CREATE held the cast 2 and its EDIT read 2.0 back from the Float column; now both are 2."""
+import json
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -43,6 +44,11 @@ def _events(db):
     return out
 
 
+def _text(events):
+    """Events as their JSON letters - 2 and 2.0 are equal in Python and two spellings on the wire."""
+    return json.dumps(events, sort_keys=True)
+
+
 def _write(db, source, **values):
     out = write_lines(db, TABLE, [{"key": {"k": values["k"]}, "values": values, "source_name": source,
                                    "written_by": "probe"}], kind="funnel", transaction_id="tx")
@@ -64,15 +70,16 @@ def test_per_row_events_are_today_s(db):
     create, edit, again, other = _four(db)
     [(kind, payload)] = create
     row_id = payload["row_id"]
-    assert (kind, payload) == ("CREATE", {"row_id": row_id, "business_key": "A", "data": {
-        "k": dict(SAID, value="A"), "n": dict(SAID, value="x"), "m": dict(SAID, value=2.0)},
-        "updated_by": "probe", "source_name": "f1"})
-    data = {"k": dict(SAID, value="A"), "n": dict(SAID, value="y"), "m": dict(SAID, value=2.0)}
-    assert edit == [("EDIT", {"row_id": row_id, "business_key": "A", "data": data, "updated_by": "probe",
-                              "source_name": "f1", "old": {"n": "x"}})]
+    assert _text(create) == _text([("CREATE", {"row_id": row_id, "business_key": "A", "data": {
+        "k": dict(SAID, value="A"), "n": dict(SAID, value="x"), "m": dict(SAID, value=2)},
+        "updated_by": "probe", "source_name": "f1"})])
+    data = {"k": dict(SAID, value="A"), "n": dict(SAID, value="y"), "m": dict(SAID, value=2)}
+    assert _text(edit) == _text([("EDIT", {"row_id": row_id, "business_key": "A", "data": data, "updated_by": "probe",
+                                           "source_name": "f1", "old": {"n": "x"}})])
     assert again == [], "a write that changes nothing stages nothing"
-    assert other == [("EDIT", {"row_id": row_id, "business_key": "A", "data": dict(data, n=dict(SAID, value="z")),
-                               "updated_by": "probe", "source_name": "f2", "old": {"n": "y"}})]
+    assert _text(other) == _text([("EDIT", {"row_id": row_id, "business_key": "A",
+                                            "data": dict(data, n=dict(SAID, value="z")), "updated_by": "probe",
+                                            "source_name": "f2", "old": {"n": "y"}})])
 
 
 def test_collapsed_events_are_today_s(db):
@@ -81,11 +88,11 @@ def test_collapsed_events_are_today_s(db):
     [(kind, payload)] = create
     [row_id] = payload["row_ids"]
     head = {"row_ids": [row_id], "row_count": 1, "table_name": TABLE, "updated_by": "probe"}
-    assert (kind, payload) == ("CREATE", dict(head, columns=["business_key_val", "k", "m", "n", "row_id"],
-                                              source_name="f1"))
-    assert edit == [("EDIT", dict(head, columns=["n"], source_name="f1", old=[{"n": "x"}]))]
+    assert _text(create) == _text([("CREATE", dict(head, columns=["business_key_val", "k", "m", "n", "row_id"],
+                                                   source_name="f1"))])
+    assert _text(edit) == _text([("EDIT", dict(head, columns=["n"], source_name="f1", old=[{"n": "x"}]))])
     assert again == []
-    assert other == [("EDIT", dict(head, columns=["n"], source_name="f2", old=[{"n": "y"}]))]
+    assert _text(other) == _text([("EDIT", dict(head, columns=["n"], source_name="f2", old=[{"n": "y"}]))])
 
 
 def test_a_rolled_back_write_leaves_no_event(db):
