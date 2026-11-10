@@ -196,14 +196,17 @@ def bit_map(db, table_name: str) -> dict:
 
 
 def has_lines(db, table_name: str) -> bool:
-    """Whether t's lines are BUILT (t__lines exists, so t carries won_by) - THE answer every read of won_by or
+    """Whether t's lines are BUILT - t__lines exists AND t carries won_by - THE answer every read of won_by or
     t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
-    unique business key index). Not the slots: those are assigned before building and outlive drop_line_table."""
+    unique business key index, an orphaned t__lines). Not the slots: those are assigned before building and outlive
+    drop_line_table."""
     from sqlalchemy import inspect
 
     if table_name_refusal(table_name):
         return False
-    return inspect(db.connection()).has_table(lines_relation(table_name))
+    insp = inspect(db.connection())
+    return (insp.has_table(lines_relation(table_name)) and insp.has_table(table_name)
+            and WON_BY in {c["name"] for c in insp.get_columns(table_name)})
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -331,12 +334,33 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
         conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
                              f'ON "{_checked(table_name)}" (business_key_val)')
+    if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)} and \
+            inspect(conn).has_table(lines_relation(table_name)):
+        raise ValueError(ORPHAN_REFUSAL % {"t": table_name, "lines": lines_relation(table_name)})
     s = shape(db, table_name, table_cfg)
     if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)}:
         conn.exec_driver_sql(f'ALTER TABLE "{_checked(table_name)}" ADD COLUMN "{WON_BY}" '
                              f'{won_by_type().compile(dialect=conn.dialect)}')
     s["lines"].metadata.create_all(conn, checkfirst=True)
     return s
+
+
+#: t was dropped and built again while its t__lines stayed: attaching it would show the old table's history as
+#: the new one's (lead 11-11) - refused, the operator decides
+ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again but %(lines)s still holds the history of the earlier "
+                  "%(t)s - drop %(lines)s to start its history afresh, or rebuild %(t)s from that history")
+
+
+def drop_every_line_table(engine) -> list:
+    """Drop every t__lines - what a whole-schema reset (setup/reset_db, the test fixtures' drop_all) does beside
+    Base.metadata.drop_all, which never sees them (each lives on shape's own MetaData). -> the names dropped."""
+    from sqlalchemy import inspect
+
+    names = [n for n in inspect(engine).get_table_names() if n.endswith(LINES_SUFFIX)]
+    with engine.begin() as conn:
+        for name in names:
+            conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{_checked(name)}"')
+    return names
 
 
 def key_index_missing(conn, table_name: str):
