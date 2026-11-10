@@ -131,6 +131,29 @@ def test_a_page_read_by_key_and_a_jump_to_a_row_follow_the_entered_order(grid):
     assert jump["target_offset"] == order.index(ids[2])
 
 
+def test_a_table_no_row_of_which_has_a_place_reads_by_row_id(grid, monkeypatch):
+    """lead 11-10 ①: no row of the table has a place - its entered order IS its row_id order, read without the place
+    lookup (a filtered page walks a (filter, row_id) index); a group's place is not a row's; a row's place brings the
+    lookup back. The pages, a page by key and a jump read the same either way."""
+    import main
+    from runtime import index_wants
+
+    client, ids = grid
+    orders = []
+    monkeypatch.setattr(index_wants, "read_keys", lambda query, order: orders.append([str(c) for c in order]))
+    _place(client, "group", _first(ids, ("L3", "W1", "c")), "0")
+    assert [row["row_id"] for row in _read(client, order_by="entered", limit=3)["data"]] == ids[:3]
+    assert orders == [["%s.row_id ASC" % TABLE]], orders
+    assert [row["row_id"] for row in _read(client, order_by="entered", limit=3, after=ids[2])["data"]] == ids[3:6]
+    assert _read(client, order_by="entered", limit=100, target_row_id=ids[4])["target_offset"] == 4
+    assert main._named_sort(models.DYNAMIC_TABLES[TABLE], TABLE, "entered", False) is not None, \
+        "read without a session (the index ask, the page's sort_index) - the place lookup, never None"
+    _place(client, "row", ids[5], "0")
+    orders.clear()
+    assert [row["row_id"] for row in _read(client, order_by="entered", limit=3)["data"]] == [ids[5]] + ids[:2]
+    assert "sys_looks" in orders[0][0] and orders[0][1] == "%s.row_id ASC" % TABLE, orders
+
+
 def test_the_schema_says_the_order_and_another_word_is_refused(grid, monkeypatch):
     import grid_order
 

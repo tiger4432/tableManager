@@ -2058,7 +2058,7 @@ def _order_by_clause(expr, keys, order_desc):
     return terms + [directed(key) for key in keys]
 
 
-def _named_sort(table_model, table_name, order_by, order_desc):
+def _named_sort(table_model, table_name, order_by, order_desc, db=None):
     keys = total_order_keys(table_model, table_name)
 
     def pair(expr):
@@ -2089,7 +2089,7 @@ def _named_sort(table_model, table_name, order_by, order_desc):
         # that has one renders byte-identical SQL.
         return pair(None)
     if order_by == grid_order.ENTERED:
-        return pair(grid_order.sort(table_model, table_name))
+        return pair(grid_order.sort(table_model, table_name, db))
     return None
 
 
@@ -2105,7 +2105,7 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc):
     읽는 시점에 계산되는 컬럼은 «없다»(S-283). 그래서 정렬할 수 있는 이름은 표가 선언한
     컬럼과 화면이 쓰는 이름 셋이 «전부»다.
     """
-    named = _named_sort(table_model, table_name, order_by, order_desc)
+    named = _named_sort(table_model, table_name, order_by, order_desc, getattr(query, "session", None))
     if named is not None:
         return query, named
 
