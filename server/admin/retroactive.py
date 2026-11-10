@@ -3949,6 +3949,12 @@ def unfilled(op: str, params: dict) -> list:
         ["one of: " + ", ".join(none_of)] if none_of else [])
 
 
+def _csv_values(raw) -> list:
+    """A csv parameter's values - a comma-joined text or a list - stripped, the blank ones out."""
+    return [c.strip() for c in str(raw).split(",") if c.strip()] if isinstance(raw, str) \
+        else [str(c).strip() for c in raw if str(c).strip()]
+
+
 def validate(op: str, params: dict, partial: bool = False) -> dict:
     """-> the normalized parameter dict, or raise `RetroactiveRefused`. `partial` (the admin help only, lead 10-29):
     the fields given are judged, a required one left blank is not refused, and the operation's own judgement runs once
@@ -3964,14 +3970,20 @@ def validate(op: str, params: dict, partial: bool = False) -> dict:
     out = {}
     for p in spec["params"]:
         raw = params.get(p["name"])
+        if p["type"] == "csv" and raw is not None and not partial and not _csv_values(raw):
+            # a selection SENT empty is not one left out: dropped, it ran on everything (lead 11-10, a data guard).
+            # A draft (`partial`, the admin help) keeps a blank field for the operator to fill.
+            from chain import replay
+
+            raise RetroactiveRefused(replay.EMPTY_SELECTION.format(
+                name=p["name"], whole="run %s on everything" % op, everything="run %s on everything" % op))
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             if p["required"] and not partial:
                 raise RetroactiveRefused(
                     f"'{op}' requires parameter '{p['name']}' ({p['help'] or p['type']})")
             continue
         if p["type"] == "csv":
-            value = [c.strip() for c in str(raw).split(",") if c.strip()] \
-                if isinstance(raw, str) else [str(c).strip() for c in raw if str(c).strip()]
+            value = _csv_values(raw)
             if not value:
                 continue
         elif p["type"] == "int":

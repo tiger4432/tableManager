@@ -111,6 +111,9 @@ R3_AUDIT_SOURCE = "resolution_recompute"
 DEFAULT_MAX_REPORT = 10000
 #: How many picked row ids a table does not hold a line names, before «and N more».
 NAMED_IDS = 20
+#: The one sentence for a selection sent empty - it would be everything, not nothing.
+EMPTY_SELECTION = ("{name} was given but empty; an empty selection would {whole} instead of nothing. "
+                   "Omit it to {everything}, on purpose.")
 
 # R1 never writes a blank value. See the module docstring: "the rule produces
 # nothing here" is R2's statement to make, not R1's.
@@ -300,8 +303,7 @@ def selected_row_ids(row_ids, whole: str, everything: str) -> list:
     name: it would be `whole` instead of nothing."""
     ids = [str(value).strip() for value in row_ids if str(value).strip()]
     if not ids:
-        raise ReplayRefused(f"row_ids was given but empty; an empty selection would {whole} instead of nothing. "
-                            f"Omit it to {everything}, on purpose.")
+        raise ReplayRefused(EMPTY_SELECTION.format(name="row_ids", whole=whole, everything=everything))
     return ids
 
 
@@ -486,9 +488,8 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             # An empty selection would scan the whole table and replay ALL of it, which is
             # the opposite of what the caller asked for. Refused by name rather than
             # treated as "no filter".
-            raise ReplayRefused(
-                "business_keys was given but empty; an empty selection would replay the "
-                "whole rule instead of nothing. Omit it to replay everything, on purpose.")
+            raise ReplayRefused(EMPTY_SELECTION.format(name="business_keys", whole="replay the whole rule",
+                                                       everything="replay everything"))
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
     # ⚰️ [총괄 2026-09-23] `hands_row_ids` AND `stats["self_writing_kind"]` STOOD HERE, both

@@ -46,3 +46,18 @@ def test_an_empty_pick_is_refused_not_read_as_the_whole_table(env, tmp_path, mon
                                                    "whole table instead of nothing"):
         replay.fold_written_notation(env, PLAIN, apply=True, row_ids=[" "])
     assert _shown(env) == [("K-01", "wafer.1"), ("K-02", "wafer.2")]
+
+
+@pytest.mark.parametrize("op, params", [("fold_written_notation", {"table": PLAIN}), ("chain_replay", {"rule": "r"})])
+@pytest.mark.parametrize("sent", [[], "", " , "])
+def test_a_pick_sent_empty_is_refused_where_the_route_reads_it(env, op, params, sent):
+    """Lead 11-10, a data guard: the route dropped an empty csv, so a screen that sent no rows ran on everything."""
+    with pytest.raises(retroactive.RetroactiveRefused, match="row_ids was given but empty; an empty selection would "
+                                                             "run %s on everything instead of nothing" % op):
+        retroactive.validate(op, dict(params, row_ids=sent))
+
+
+def test_a_pick_not_sent_is_the_whole_table_and_a_draft_keeps_a_blank_field(env):
+    assert retroactive.validate("fold_written_notation", {"table": PLAIN}) == {"table": PLAIN}
+    # a draft (the admin help) keeps the blank field for the operator to fill
+    assert retroactive.validate("fold_written_notation", {"table": PLAIN, "row_ids": ""}, partial=True) ==         {"table": PLAIN}
