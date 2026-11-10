@@ -74,10 +74,10 @@ def test_alter_columns_changes_t_and_its_lines(db):
     db.commit()
     lines.alter_columns(db, "lt", {"column_types": {"qty": "number"}}, drop=["lot"])
     db.commit()
-    for rel in ("lt", "lt__lines"):
+    for rel, lot, qty in (("lt", "lot", "qty"), ("lt__lines", "v_lot", "v_qty")):
         cols = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = :t "
                                "AND table_schema = current_schema()"), {"t": rel}).scalars().all()
-        assert "lot" not in cols and "qty" in cols, rel
+        assert lot not in cols and qty in cols, rel
 
 
 def test_ensure_twice_is_quiet(db):
@@ -121,8 +121,9 @@ def test_retype_changes_t_only(db):
     cfg = {"column_types": {"lot": "number", "qty": "number"}}
     lines.alter_columns(db, "lt", cfg, retype={"lot": '"lot"::double precision'})
     db.commit()
-    kinds = dict(db.execute(text("SELECT table_name, data_type FROM information_schema.columns WHERE column_name = 'lot' "
-                                 "AND table_schema = current_schema() AND table_name IN ('lt', 'lt__lines')")).all())
+    kinds = dict(db.execute(text("SELECT table_name, data_type FROM information_schema.columns WHERE table_schema = "
+                                 "current_schema() AND ((table_name = 'lt' AND column_name = 'lot') OR "
+                                 "(table_name = 'lt__lines' AND column_name = 'v_lot'))")).all())
     assert kinds == {"lt": "double precision", "lt__lines": "character varying"}
 
 

@@ -35,7 +35,7 @@ def put(db, row, source, at, value=None, withdraw=False, column="lot"):
     lines.note_sources(db, [source])
     db.execute(s["lines"].insert().values(
         line_kind="withdraw" if withdraw else "write", source_name=source, at=at, row_id=row,
-        **{column: None if withdraw else value, f"written_{chunk}": mask, f"head_{chunk}": mask,
+        **{lines.value_column(column): None if withdraw else value, f"written_{chunk}": mask, f"head_{chunk}": mask,
            f"withdrawn_{chunk}": mask if withdraw else 0}))
 
 
