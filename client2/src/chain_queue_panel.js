@@ -243,7 +243,8 @@ export function chainStateWhy(chainState) {
   const attempt = isCount(w.attempt) ? `attempt ${w.attempt}${isCount(w.cap) ? `/${w.cap}` : ''}` : '';
   const parts = {
     running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],
-    waiting_for_table: [w.table && `waiting for ${w.table}`],
+    // who holds that table, as the server words it (B's held_by, «slot 2 · r9 · 12 s»); null says nothing
+    waiting_for_table: [w.table && `waiting for ${w.table}`, w.held_by && `held by ${w.held_by}`],
     stalled: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), w.stalled_on && `on ${w.stalled_on}`],
     // the stage a retry or a failure broke in - the claim's word, the one a running line says (3de34d292)
     retrying: [attempt, w.stage, w.last_failure],
