@@ -1593,6 +1593,7 @@ class VirtualEvidenceLookup:
         current = self.current_only if current is None else current
         listed = ["w.row_id", *(leg.key(spec) for arm in ("outgoing", "incoming") for _key, spec in leg.columns_of(arm)),
                   *(f"w.{_quoted(spec['column'])}" for _name, spec in sorted(leg.qualifiers.items()) if "column" in spec),
+                  *([f"w.{_quoted(leg.value['column'])}"] if leg.value and "column" in leg.value else []),
                   leg.at()]
         aliases = ["rid", *(f"c{index}" for index in range(1, len(listed) - 1)), "at"]
         named = ", ".join(f"{cell} AS {alias}" for cell, alias in zip(listed, aliases))
@@ -1660,6 +1661,9 @@ class VirtualEvidenceLookup:
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
         object_kind, payload = self._object(object_type, object_keys)
+        if leg.value is not None:               # a value object: the value is the object (`roleframe`)
+            said = leg.value["constant"] if "constant" in leg.value else roleframe._plain(next(values))
+            object_kind, payload = "value", {"value": said}
         if qualifiers:
             payload = dict(payload, qualifiers=qualifiers)
         return EvidenceAtom(

@@ -1040,12 +1040,12 @@ class OntologyExplorerService:
         payload["vocabulary"] = {}
         for name, item in vocabulary.items():
             try:
-                roles = predicate_claim(name, item, entities)["roles"]
+                claim = predicate_claim(name, item, entities)
             except Exception:                          # noqa: BLE001 - a broken entry is the validator's to name
                 continue
             spoken = item.get("object") if isinstance(item.get("object"), Mapping) else {}
             payload["vocabulary"][name] = {
-                "qualifiers": [role for role, spec in roles.items() if spec.get("kind") == "attribute"],
+                "qualifiers": list(claim["emit"]["object"].get("qualifiers") or ()),
                 # what a sentence's far end is - a node of these types, a value, or nothing (총괄 10-14)
                 "object": {"kind": spoken.get("kind") or "none", "types": list(spoken.get("types") or ())}}
         # the names a `ref` leaf's `section` picks from (총괄 f3639d4a2) - a `columns` section reads `tables` above

@@ -1,13 +1,17 @@
 # 지금 돌리면 되는 것
 
-> ## [11-11] **값 객체 문장(object.kind value)이 그 소스 전부를 가상 걷기에서 빼지 않는다 — 그 문장만 «not read»** — git pull · API 재기동
+> ## [11-11] **값 객체(object.kind value)를 가상 걷기가 원장과 같은 값으로 읽고, 원장도 글자 · 참거짓 값을 다시 받는다** — git pull · API 재기동
 >
 > ```
-> 무엇     전: 소스 안 문장 하나가 값 객체(예: macro 의 series-observed)면 그 소스의 엣지까지 전부 빠졌다
->          지금: 그 문장만 빠지고 같은 소스의 다른 문장(노드 · 엣지)은 걷는다
-> 볼 것    걷기 답 engine.left_out 에 «<문장>: a value object not read» (소스 빠짐이 아니라 문장 하나)
-> 답의 뜻  값 자체는 다음 착지(값 객체 2단) 몫 — 필요하면 engine=stored
-> 끄기     없음
+> 무엇     원장: 값 종류가 string · boolean 인 술어는 값 칸이 «필수 한정어»로 잘못 세어져
+>          그 문장을 쓰는 소스의 행이 전부 «predicate requires qualifier 'value'» 로 거절됐다 -> 이제 번역된다
+>          가상 걷기: 값 객체 문장을 «not read» 로 빼지 않고 원장과 같은 꼴(object_kind value, {"value": 값})로 읽는다
+>          값 칸이 빈 행은 원장이 그 행을 «통째로» 거절한다(그 행의 엣지까지) — 가상 걷기도 같게 그린다
+> 볼 것    걷기 답 engine.left_out 에서 «<문장>: a value object not read» 가 사라짐
+>          api 로그의 «[LedgerFollowUp] ... column '<칸>' contains a missing value» = 값이 빈 행이 거절된 것(엣지도 같이 빠짐)
+> 답의 뜻  재기동 «뒤» 들어오는 행부터 원장에 값이 찬다. 지난 거절 행이 다시 번역되는지는 안 쟀다 —
+>          원장 걷기(engine=stored)에서 값이 비어 보이면 소급 화면에서 그 소스를 다시 읽힌다
+> 끄기     없음 (가상 걷기가 이상하면 engine=stored)
 > ```
 >
 > ---
