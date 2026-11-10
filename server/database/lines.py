@@ -766,3 +766,17 @@ def stamped_by(db, table_name: str, origin_row_ids) -> list:
             cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
             out.extend((r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
     return out
+
+
+def built_lines(db, table_name: str):
+    """(t__lines as BUILT - a Core Table of the columns it holds, column -> bit) for a reader: no slots assigned,
+    nothing written (shape assigns slots to new declared columns - a write)."""
+    from sqlalchemy import inspect
+
+    types = {"at": DateTime(timezone=True), "line_id": BigInteger()}
+    cols = [Column(c["name"], types.get(c["name"], BigInteger() if c["name"].split("_")[0] in BIT_FAMILIES
+                                        and c["name"].rsplit("_", 1)[-1].isdigit() else String()))
+            for c in inspect(db.connection()).get_columns(lines_relation(table_name))]
+    built = {c.name for c in cols}
+    bits = {col: bit for col, bit in bit_map(db, table_name).items() if value_column(col) in built}
+    return Table(lines_relation(table_name), MetaData(), *cols), bits

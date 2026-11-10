@@ -54,12 +54,11 @@ PROTECTED_SOURCES = frozenset({"user"})
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
 
-def claimed_lines(db, table_name: str, table_cfg=None):
-    """(t__lines Core Table, column -> bit) the claim filter is built over - read, no slots."""
-    from database import crud, lines
+def claimed_lines(db, table_name: str):
+    """(t__lines Core Table, column -> bit) the claim filter is built over - read, no slots (lines.built_lines)."""
+    from database import lines
 
-    s = lines.shape(db, table_name, table_cfg if table_cfg is not None else crud.TABLE_CONFIG.get(table_name) or {})
-    return s["lines"], s["bits"]
+    return lines.built_lines(db, table_name)
 
 
 def _claimed_filter(lt, bits: dict, source_name: str, columns: list = None, written_by=None, batch=None):
