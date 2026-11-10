@@ -3,7 +3,9 @@
 said about the core wafer while its step is unlisted; a person lists the step as DT in
 step_phase, the join copies DT onto the row, the ledger follows that edit, and the row's atom
 moves to the dtwafer - the old one gone, not superseded. Emptying the step's mat_type moves it
-back; deleting the step_phase row does not reach the rows it filled.
+back; deleting the step_phase row takes its value back too, and the atom goes back to the core wafer (owner 11-06
+step 2: «a deletion wakes every rule but an AI's» · «incremental = recompute» - 83de1715e; before, 09-30, the join
+took no deletion and the value stayed).
 
 Every seat is the product's: `crud` writes, the chain's own transaction-group body (which is
 also where the ledger follow-up is queued), `followup.drain_once` with the sample setup.
@@ -177,7 +179,7 @@ def test_a_step_listed_as_dt_moves_the_rows_atom_and_emptying_it_moves_it_back(w
     assert _said(world) == [("wafer", "W1")]
 
 
-def test_deleting_the_step_phase_row_does_not_reach_the_rows_it_filled(world):
+def test_deleting_the_step_phase_row_takes_back_the_value_it_filled(world):
     _write(world, "wafer_process", [{"proc_id": "P1", "wafer_id": "W1", "step": "S9",
                                      "recipe_id": "RCP-1", "eventtime": EVENT_TIME}])
     _write(world, "step_phase", [{"step": "S9", "mat_type": "DT"}])
@@ -188,5 +190,6 @@ def test_deleting_the_step_phase_row_does_not_reach_the_rows_it_filled(world):
     crud.delete_rows_batch(db, "step_phase", [row_id], "probe")
     db.commit()
     _settle(world)
-    assert _mat_type(world) == "DT"
-    assert _said(world) == [("dtwafer", "W1")]
+    # answered again from scratch, no step_phase row lists S9: the join's mat_type is not there (owner 11-06 step 2)
+    assert _mat_type(world) in (None, "")
+    assert _said(world) == [("wafer", "W1")]
