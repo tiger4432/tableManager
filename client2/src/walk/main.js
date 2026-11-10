@@ -2002,7 +2002,10 @@ export function boot(doc, host, deps) {
         box.append(dist);
       }
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
-      if (!r.nodes.length && !r.message) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
+      //    A source the read could not read says so, and says why - with no node, it stands where «No node reached» would.
+      const notRead = r.notRead || [];
+      for (const line of notRead) box.append(el(doc, 'div', 'wk-note', line));
+      if (!r.nodes.length && !r.message && !notRead.length) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
       renderTable(box, r, askedStarts(askedOf), shown.resultB);
     }

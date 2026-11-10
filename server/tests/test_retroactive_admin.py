@@ -349,6 +349,27 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
             assert gone not in body["extra"], (
                 "%r is still on the screen with nothing behind it" % gone)
 
+    def test_picked_rows_are_counted_from_a_body_as_from_the_address(self, client, retro_env):
+        """Ops 11-10: the preview of a few thousand picked rows put them in the address - 414, «read fail». The same
+        count takes `{"params": {...}}` as a POST body (the run's own body), and answers alike."""
+        db = retro_env
+        _seed(db, "retro_test_trigger", [
+            {"src_key": "S1", "part_no": "P1", "qty": 3},
+            {"src_key": "S2", "part_no": "P2", "qty": 4}])
+        model = models.DYNAMIC_TABLES["retro_test_trigger"]
+        picked = [row.row_id for row in db.query(model).all()][:1]
+        address = client.get("/admin/retroactive/chain_replay/count",
+                             params={"rule": "retro_mixed", "row_ids": ",".join(picked)})
+        body = client.post("/admin/retroactive/chain_replay/count",
+                           json={"params": {"rule": "retro_mixed", "row_ids": picked}})
+        assert address.status_code == body.status_code == 200, (address.text, body.text)
+        assert address.json() == body.json()
+        assert body.json()["affected"] == 1, "canary: one picked row of two"
+
+        many = client.post("/admin/retroactive/chain_replay/count",
+                           json={"params": {"rule": "retro_mixed", "row_ids": picked + ["r%05d" % i for i in range(5000)]}})
+        assert many.status_code == 200, many.text
+
     def test_every_string_this_screen_renders_is_english(self, client, retro_env):
         """🔴 소유자 2026-08-31 「UI 무조건 영어로」 · 2026-09-23 「UI에 한국어 쓰지 말라고」.
 

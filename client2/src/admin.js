@@ -86,7 +86,7 @@ import { planDryRunView } from './plan_dry_run.js';
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView, runsPollBusy,
-  buildConfirmActions, groupExtras, retroCountUrl,
+  buildConfirmActions, groupExtras, retroCountRequest,
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
 import { collectorBackfillView, BACKFILL_OP } from './collector_backfill.js';
@@ -3672,7 +3672,8 @@ async function runRetroactiveCount(op) {
   renderRetroOperation(op.op);
   let failure = null;
   try {
-    const res = await adminFetch(retroCountUrl(API_BASE, op.op, entries));
+    const asked = retroCountRequest(API_BASE, op.op, entries);
+    const res = await adminFetch(asked.url, asked.init);
     failure = failureFactOf(res);
     if (!res.ok) {
       state.count = {

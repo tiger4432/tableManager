@@ -345,9 +345,15 @@ async function suite(source) {
     'count: dropping the number must not drop the sentence that contains it');
   ok(view.buildCountView({}).affected === null, 'count: an empty payload yields no number');
   // the count's one address (the admin's tab and the grid's banner both ask it, owner 11-10 «노테이션 소급 ㄱ»)
-  ok(view.retroCountUrl('B', 'fold written', [{ key: 'table', value: 'dt log' }, { key: 'row_ids', value: 'a,b' }])
-    === 'B/admin/retroactive/fold%20written/count?table=dt%20log&row_ids=a%2Cb', 'count url: the op and every parameter encoded');
-  ok(view.retroCountUrl('B', 'op', []) === 'B/admin/retroactive/op/count', 'count url: no parameter, no «?»');
+  const asked = view.retroCountRequest('B', 'fold written', [{ key: 'table', value: 'dt log' }, { key: 'row_ids', value: 'a,b' }]);
+  ok(asked.url === 'B/admin/retroactive/fold%20written/count', 'count: the op encoded, no parameter in the address');
+  ok(asked.init.method === 'POST' && asked.init.body === '{"params":{"table":"dt log","row_ids":"a,b"}}',
+    'count: every parameter in the run\'s own body {"params"} (ops 414, lead 11-10)');
+  const many = view.retroCountRequest('B', 'op', [{ key: 'row_ids', value: Array.from({ length: 5000 }, (_, i) => `r${i}`).join(',') }]);
+  ok(many.url === 'B/admin/retroactive/op/count', 'count: 5,000 picked rows leave the address as short as none');
+  const limited = view.retroCountRequest('B', 'op', [{ key: 'scan_limit', value: 50 }, { key: 'rule', value: 'x' }]);
+  ok(limited.url === 'B/admin/retroactive/op/count?scan_limit=50' && limited.init.body === '{"params":{"rule":"x"}}',
+    'count: scan_limit stays in the query and out of the params, as the server reads it');
 
   // The second labelled number travels separately and is never folded into `affected`.
   ok(sampled.extras.length === 1 && sampled.extras[0].count.value === 4,

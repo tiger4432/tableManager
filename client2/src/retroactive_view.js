@@ -339,11 +339,21 @@ export function groupExtras(extras) {
   return places;
 }
 
-/** `GET /admin/retroactive/{op}/count`'s address with its parameters (`entries` [{key, value}]) - the one spelling;
- *  the admin's Retroactive tab and the grid's redo banner both ask it. */
-export function retroCountUrl(base, op, entries) {
-  const query = (entries || []).map((e) => `${encodeURIComponent(e.key)}=${encodeURIComponent(e.value)}`).join('&');
-  return `${base}/admin/retroactive/${encodeURIComponent(op)}/count${query ? `?${query}` : ''}`;
+/** `POST /admin/retroactive/{op}/count` with its parameters (`entries` [{key, value}]) as the run's own body
+ *  `{"params": {...}}` - picked row_ids no longer go in the address (ops 414, lead 11-10); `scan_limit` stays in the
+ *  query. The one spelling: the admin's Retroactive tab and the grid's redo banner both ask it. -> {url, init} */
+export function retroCountRequest(base, op, entries) {
+  const params = {};
+  let scanLimit = null;
+  for (const e of entries || []) {
+    if (e.key === 'scan_limit') scanLimit = e.value;
+    else params[e.key] = e.value;
+  }
+  const query = scanLimit == null ? '' : `?scan_limit=${encodeURIComponent(scanLimit)}`;
+  return {
+    url: `${base}/admin/retroactive/${encodeURIComponent(op)}/count${query}`,
+    init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }) },
+  };
 }
 
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.

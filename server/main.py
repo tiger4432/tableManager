@@ -7283,8 +7283,8 @@ def list_retroactive_operations():
     return {"operations": retroactive.inventory()}
 
 
-@app.get("/admin/retroactive/{op}/count", dependencies=[Depends(require_admin_token)])
-def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
+@app.api_route("/admin/retroactive/{op}/count", methods=["GET", "POST"], dependencies=[Depends(require_admin_token)])
+def get_retroactive_count(op: str, request: Request, scan_limit: int = None, payload: dict = Body(default=None),
                           db: Session = Depends(get_db)):
     """「이 연산은 몇 건에 영향을 주는가」 — 쓰기 없는 계기.
 
@@ -7299,10 +7299,13 @@ def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
     행을 훑은 연산에서만 숫자이고, 나머지는 `null`이다.
 
     `apply`류 파라미터는 여기 존재하지 않는다 — 이 라우트는 구조적으로 rollback한다.
+    POST 는 run 과 같은 본문 `{"params": {...}}` — 수천 개 row_ids 는 주소에 안 들어간다(운영 414, 총괄 11-10).
     """
     from admin import retroactive
 
-    params = {k: v for k, v in request.query_params.items() if k != "scan_limit"}
+    body = payload if isinstance(payload, dict) else {}
+    params = (body["params"] if isinstance(body.get("params"), dict)
+              else {k: v for k, v in request.query_params.items() if k != "scan_limit"})
     try:
         return retroactive.count(db, op, params,
                                  scan_limit=retroactive.clamp_scan_limit(scan_limit))

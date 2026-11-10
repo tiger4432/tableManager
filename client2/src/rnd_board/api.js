@@ -559,6 +559,13 @@ function intervalExcluded(raw) {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
+/** The sources the walk's virtual read could not read, each with the server's why (`engine.left_out`; owner 11-10
+ *  «아무것도 안 나옴» - a walk that read nothing said nothing) - one line each, [] when every source was read. */
+export function notReadOf(body) {
+  const out = body && body.engine && Array.isArray(body.engine.left_out) ? body.engine.left_out : [];
+  return out.map((item) => `Not read: ${String((item && item.source) ?? '?')} — ${String((item && item.why) ?? '')}`);
+}
+
 export function subgraphModel(result) {
   const failed = !result || result.ok === false;
   const body = (result && result.body) || null;
@@ -644,6 +651,7 @@ export function subgraphModel(result) {
     //    「안 물었다」와 「물었는데 무리가 없다」(빈 배열)는 다른 답이고, 읽는 쪽이 그 둘을
     //    갈라야 「아직 안 셌다」를 「없다」로 안 그립니다.
     groups: Array.isArray(body && body.groups) ? body.groups : null,
+    notRead: notReadOf(body),
     nodes: Array.isArray(body.nodes) ? body.nodes : [],
     edges: Array.isArray(body.edges) ? body.edges : [],
     contrast: prop.contrast || null,
@@ -2054,7 +2062,7 @@ export function createWalkBoxWalk(deps) {
       const truncated = body.truncated || null;
       const cutAxes = truncationAxes(truncated, { hopsChosen: hops !== undefined && hops !== null });
       return {
-        ok: true, nodes, edges, truncated,
+        ok: true, nodes, edges, truncated, notRead: notReadOf(body),
         // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,

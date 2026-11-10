@@ -639,7 +639,11 @@ export class WalkBoxPanel extends Panel {
       return (this.result && this.result.message) || SERVER_REFUSED;
     }
     // ③ 걸었는데 없다.
-    if (this.walkState === 'ready') return 'Walked, reached nothing';
+    //    unless a source was not read - then that, and why (engine.left_out, owner 11-10)
+    if (this.walkState === 'ready') {
+      const notRead = (this.result && this.result.notRead) || [];
+      return notRead.length ? notRead.join(' · ') : 'Walked, reached nothing';
+    }
     // ① 아직 안 골랐다 / 안 걸었다.
     // C-99 ③. 두 문장이 한 값으로. 다음 행동은 «누를 수 있는 버튼»이 이미 말합니다.
     return UNPICKED;
