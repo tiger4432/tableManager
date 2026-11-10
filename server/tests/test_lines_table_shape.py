@@ -89,6 +89,13 @@ def test_current_table_of_a_table_without_lines_has_no_won_by_and_takes_no_slots
     assert "won_by" in lines.current_table(db, "t", CFG).c
 
 
+def test_on_sqlite_ensure_gives_t_the_unique_key_the_claim_needs(db):
+    ensure(db, "t", CFG)
+    db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('a', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
+    db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('b', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
+    assert db.execute(text("SELECT row_id FROM t")).scalars().all() == ["a"]
+
+
 def test_a_column_added_lands_on_t_and_its_lines(db):
     ensure(db, "t", CFG)
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
