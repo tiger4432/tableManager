@@ -25,15 +25,16 @@
 | cell_overwrites | 고정 | 14 만 행 |
 | audit_logs | 보이는 값 바뀜 + 데이터 아닌 기록 | 753 만 행 · 2.8 GB |
 
-(셈: wl/box_sizes.py — pg_class.reltuples · relpages, 박스 읽기 전용)
+(셈: C 의 scratchpad wl/box_sizes.py — pg_class.reltuples · relpages, 박스 읽기 전용. 저장소에 없는 도구)
 
 바뀐 뒤, 표마다:
 
-- `t__lines`: t 의 칸 + line_id(PK) · 출처 · 언제 · 누가 · 묶음(= transaction_id) · 입력 행 · 규칙 주인 · 확정 · written_bits · head_bits · withdrawn_bits.
+- `t__lines`: t 의 칸 + line_id(PK, 늘어나기만 함) · 줄 종류 · 출처 · 언제 · 누가 · 묶음(= transaction_id) · 입력 행 · 규칙 주인 · 확정 · written_bits · head_bits · withdrawn_bits.
+  - 줄 종류: «write»(값을 말함 · 합치기 후보) · «withdraw»(말 없음) · «deleted»(행 지움) · «mark»(고정 걸기/풀기 · 순위 다시 합치기 — 네비용 표시, head_bits 0 · 합치기 후보 아님). old_exist 백업 줄은 그 출처 이름의 «write» 줄이다.
   - 쓰기 하나 = 줄 하나. 칸마다가 아니라 «행 × 쓰기»마다 한 줄이고, written_bits 가 어느 칸을 말했는지 적는다.
   - 층은 줄 그 자체다. 그 칸의 head_bits 가 선 줄 = 오늘의 cell_sources 한 칸 층.
 - `t__now`: t 의 칸 + won_by(jsonb 한 칸: 칸 → 이긴 line_id). 개체마다 한 줄.
-- 이름 t = `t__now` 의 선언된 칸 목록을 읽는 보기(won_by 는 빠짐). 쓰기는 거절한다(«보기» 절).
+- 이름 t = `t__now` 의 칸을 읽는 보기 — 오늘 t 의 칸 전부(row_id · business_key_val · updated_at 같은 시스템 칸 포함)이고 won_by 만 뺀다. 쓰기는 거절한다(«보기» 절).
 - 오늘 t 의 인덱스는 `t__now` 에 그대로 짓는다. 그리드 정렬 · 필터 · 개수 · 쪽 넘김이 오늘 인덱스 모양을 그대로 탄다.
 - `t__lines` 인덱스: (row_id, 언제) · (묶음) · 부분 인덱스 (row_id, 출처) WHERE head_bits ≠ 0.
 - 이름: `lines.now_relation(t)` = «t__now», `lines.lines_relation(t)` = «t__lines», 어느 스키마에서나 같다. PG 이름 한도(63 바이트)를 넘는 t 는 그 함수가 거절한다(오늘 선언된 이름 중 닿는 것이 있는지 — 짓는 날 센다).
@@ -45,7 +46,7 @@
 - withdrawn_bits: 그 원천이 그 칸에서 «말 없음». 사람이 비운 칸(값 NULL)과 구별한다.
 - 비트 칸의 표현은 표 크기와 무관하게 하나다(64 칸으로 가르지 않음). 무엇으로 할지는 생성기를 짓는 날 C 가 정한다.
 - 표기 소급(fold_written_notation): 새 줄을 쓰되 «언제»는 고친 줄의 것을 그대로 둔다. 머리는 옮고, 순위는 안 바뀌고, 옛 줄도 남는다. 고친 때는 묶음이 가진다.
-- 파일 층 접기: 같은 파일이 같은 내용을 다시 보냄(repeat)은 «쓰기» 2 단계에서 빠져 줄이 없다. 다른 파일이 같은 내용을 보냄(folded)은 줄을 남기고 앞선 파일 줄의 그 칸 머리 비트를 내린다 — 오늘 file_layer_fold 가 앞선 파일 층을 지우는 것과 같은 답이다.
+- 파일 층 접기: 같은 파일이 같은 내용을 다시 보냄(repeat)은 «쓰기» 2 단계에서 빠져 줄이 없다. 다른 파일이 같은 내용을 보냄(folded)은 줄을 남기고, «쓰기» 4 단계가 앞선 파일 원천 줄의 그 칸 머리 비트도 내린다 — 오늘 file_layer_fold 가 앞선 파일 층을 지우는 것과 같은 답이다.
 - 줄을 직접 읽거나 합치는 자리는 셋: C 의 cell_layer 칸 상태 읽기 · C 의 파이썬 합치기 · A 의 쓰기 5 단계. 둘째와 셋째는 같은 정렬 키 생성기에서 나온다. 체인의 나머지는 이 셋을 부르기만 한다. 거두기 줄을 쓰는 것은 C 의 withdraw seat 하나다.
 - 수식: 쓰기 5 단계가 두 겹이다 — 수식 아닌 칸을 먼저 합치고, 그 위에서 expression.to_sql 로 수식 칸. 수식의 수식은 오늘처럼 체인 연쇄가 다음 쓰기로 옮긴다(겹을 늘리지 않음). «방금 합친 값»과 오늘의 «저장된 값»이 갈리는 경우는 생성기 시험의 칸 하나로 잰다 (A).
 - won_by (D): 쓰기 5 단계의 같은 UPDATE 가 적는다. 그리드의 칸 주인 · 색 규칙 «누가 썼나»는 이것을 읽고 층을 다시 읽지 않는다.
@@ -56,15 +57,15 @@
 
 1. 잡기: 손댄 개체의 지금 줄을 잠근다.
    - 있는 개체: `SELECT … FROM t__now WHERE row_id IN (…) ORDER BY row_id FOR UPDATE`.
-   - 새 개체: `INSERT INTO t__now … ON CONFLICT (business_key_val) DO NOTHING` 뒤 그 키들을 같은 잠금으로 다시 읽는다. row_id 는 여기서 정해진다 — 줄은 그 뒤에만 쓴다. 같은 새 키를 두 쓰기가 동시에 내면 둘째는 첫째의 지금 줄을 기다렸다 같은 row_id 로 이어 쓴다(고아 줄 없음). 오늘 `_is_business_key_unique_violation` 재시도의 일을 이 단계가 맡는다.
-   - 지운 row_id(지금 줄 없음)로 온 항목은 거절한다 — 오늘 동작과 같은지는 A 가 확인한다.
-   - sqlite 에는 행 잠금이 없다(DB 쓰기 잠금 하나). SQLAlchemy 가 FOR UPDATE 를 sqlite 에서는 내지 않는다 — 방언 갈림은 이 잠금 문구 하나다.
+   - 새 개체: 키로 정렬해 `INSERT INTO t__now … ON CONFLICT (business_key_val) DO NOTHING`(정렬 — 두 쓰기가 새 키 둘을 반대 순서로 넣어 유일 인덱스 대기에서 교착하지 않게) 뒤 그 키들을 같은 잠금으로 다시 읽는다. row_id 는 여기서 정해진다 — 줄은 그 뒤에만 쓴다. 같은 새 키를 두 쓰기가 동시에 내면 둘째는 첫째의 지금 줄을 기다렸다 같은 row_id 로 이어 쓴다(고아 줄 없음). 오늘 `_is_business_key_unique_violation` 재시도의 일을 이 단계가 맡는다.
+   - 지금 줄이 없는 row_id(이미 지워짐)로 온 거두기 · 지움 항목은 말없이 빠진다(할 일이 없다). 값 쓰기 항목은 거절한다 — 오늘 동작과 같은지는 A 가 시험으로 확인하고, 다르면 오늘 쪽을 따른다.
+   - sqlite 에는 행 잠금이 없다(DB 쓰기 잠금 하나). SQLAlchemy 가 FOR UPDATE 를 sqlite 에서는 내지 않고, write_lines 의 트랜잭션은 sqlite 에서 BEGIN IMMEDIATE 로 연다(기다림이 SQLITE_BUSY 오류가 되지 않게 — 짓는 날 시험으로 확인). 방언 갈림은 이 잠금 둘이다.
 2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 SQL 로 뺀다(머리 줄 값 vs 들어온 값).
-   - 쓰기 항목에만 건다. 거두기는 «그 출처가 그 칸의 머리가 아님»일 때만, 지움은 «지금 줄 없음»일 때만 빠진다 — 값 견주기로 빠지지 않는다(NULL 머리 줄을 거둘 때 NULL = NULL 로 빠지면 거둔 줄이 계속 말한다).
+   - 쓰기 항목에만 건다. 거두기는 «그 출처가 그 칸의 머리가 아님»일 때만 빠진다 — 값 견주기로 빠지지 않는다(NULL 머리 줄을 거둘 때 NULL = NULL 로 빠지면 거둔 줄이 계속 말한다). 지움은 1 에서만 빠진다.
    - 정답지: s4(착지 안 함, 소유자 11-10 ㄱ)의 crud.file_cell_verdict 판정과 시험 test_a_files_unchanged_rows_are_left_out_before_the_lock (C 작업 트리, 커밋 안 함). 까닭 — s4 판(박스 10 만 행 · 층 300 만 · 1,000 행 × 30 칸, wl/run_s4_board.sh): 같은 내용 묶음 2.962 → 2.732 s, 그중 파이썬 칸마다 판정 2.66 s(DB 읽기 0.07 s).
    - «보인 값이 바뀜» 판정은 오늘의 crud.values_differ 와 같은 답이어야 한다. 정렬 키처럼 생성기 한 곳에서 SQL · 파이썬을 짓고 같은 픽스처로 견준다.
 3. 줄: 남은 항목마다 `t__lines` 에 줄 하나 INSERT(written_bits · withdrawn_bits · 값 · 출처 · 언제 · 누가 · 묶음 · 입력 행 · 주인).
-4. 머리 비트: 같은 (개체, 원천)의 앞선 줄들의 head_bits 에서 새 줄의 written_bits 를 내린다(UPDATE 한 문장).
+4. 머리 비트: 같은 (개체, 원천)의 앞선 줄들 — 그리고 folded 판정이 가리킨 앞선 파일 원천의 줄들 — 의 head_bits 에서 새 줄의 written_bits 를 내린다(UPDATE 한 문장).
 5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
 6. 감사: 감사 로그 한 행 INSERT.
 
@@ -77,12 +78,13 @@
 
 ## 감사 로그 (소유자 11-10 «감사로그 그냥 트랜잭션, 테이블별, 누가 바꿨는지, 바뀐 행수, 바뀐 작업 타입 이것만 있으면 됨»)
 
-- 한 행 = 쓰기 문장 묶음 하나. 칸은 다섯: 트랜잭션 · 표 · 누가 · 바뀐 행 수 · 작업 종류. 값은 넣지 않는다.
+- 한 행 = 쓰기 문장 묶음 하나. 저장하는 칸은 넷: 트랜잭션 · 표 · 누가 · 작업 종류. 다섯째 «바뀐 행 수»는 저장하지 않고 패널이 줄에서 센다(아래). 값은 넣지 않는다.
 - «언제»(기록 시각)는 네비 정렬용 배관이다 — 다섯 칸에 값을 더하는 것이 아니다 (총괄 11-10).
 - 작업 종류 = 그 쓰기를 낸 일의 이름(적재 · 손 편집 · 체인 · 소급 · 핀 · 지움 · 병합). 낱말은 오늘 있는 출처 낱말에서 고르고 새로 짓지 않는다.
-- 바뀐 행 수 = 그 트랜잭션 · 그 표에서 서로 다른 row_id 수 (총괄 11-10, 소유자 낱말 그대로의 뜻). 패널이 `t__lines` 의 (묶음) 인덱스로 그 트랜잭션의 줄에서 센다 — 트랜잭션 크기에 묶인다. 쓰기마다 적는 수를 더하지 않는다(같은 행을 두 번 셈).
+- 바뀐 행 수 = 그 트랜잭션 · 그 표에서 서로 다른 row_id 수 (총괄 11-10, 소유자 낱말 그대로의 뜻). 패널이 `t__lines` 의 (묶음) 인덱스로 그 트랜잭션의 줄에서 센다 — 트랜잭션 크기에 묶인다. 저자가 하나라 쓰기마다 적은 수와 갈라질 일이 없다.
+  - 키 병합이 옛 줄의 row_id 를 키 주인으로 바꾸므로, 지난 트랜잭션의 수가 병합 뒤에 줄 수 있다(두 행이 한 행이 됨). 지금의 개체 기준으로 센 수다 — 그 트랜잭션 당시의 수가 아니다.
 - 목적은 네비게이션이다: 패널 클릭 → 그 트랜잭션의 줄(`t__lines` (묶음) 인덱스) → row_id → 행. 오늘의 행 점프(timeline.js navigator)가 끊기지 않는 것이 게이트다.
-- 순위 선언 바뀜의 다시 합치기와 고정 걸기/풀기도 쓰기다 — 감사 행이 남고(종류 = 소급 · 핀), 그 트랜잭션이 쓴 줄(고정은 «고정» 줄, 다시 합치기는 그 소급의 묶음)로 점프가 닿는다.
+- 순위 선언 바뀜의 다시 합치기와 고정 걸기/풀기도 쓰기다 — 감사 행이 남고(종류 = 소급 · 핀), 지금 줄이 바뀐 행마다 «mark» 줄 하나를 써서 점프가 닿는다. 고정 자체는 이 착지 밖이라 cell_overwrites 에 있다 — «mark» 줄은 합치기 후보가 아니다.
 - 인덱스: 감사 로그 (표, 언제) · (트랜잭션).
 - 깊이 판에서 잴 것: 뜨거운 행의 행 이력 한 쪽 초 · «트랜잭션 → 줄» 읽기 초(큰 적재 한 트랜잭션) · 하루에 몇 줄 · 몇 MB.
 
@@ -106,7 +108,7 @@
 
 - 판정: 소유자 11-10 ㄴ «ㄴ 이 낫지 직관적이고» — 두 보통 표 `t__now` · `t__lines`. PG 부모 · 분할 · ATTACH · is_now 칸은 없다(앞의 분할 ㄱ 을 뒤집음). 두 방언의 DDL 이 같다.
 - 까닭(총괄 11-10 물음 — A 의 노테이션 판, A 가 잰 수): 한 heap 에 지금 줄과 이력 줄이 섞이면 이력이 쌓일수록 지금 줄이 묽어져 그리드 읽기가 나빠진다. `t__now` 는 오늘 t 처럼 개체당 한 줄로 촘촘하다.
-- 줄이 표를 넘어 옮겨지는 일은 없다(A 11-10): 줄은 `t__lines` 에 INSERT, 지금 줄은 `t__now` 에서 제자리 UPDATE, 지움은 «지워짐» 줄 INSERT + 지금 줄 DELETE, 키 병합의 줄 옮기기는 `t__lines` 안의 UPDATE.
+- 줄이 표를 넘어 옮겨지는 일은 없다(A 11-10): 줄은 `t__lines` 에 INSERT, 지금 줄은 `t__now` 에서 제자리 UPDATE, 지움은 «deleted» 줄 INSERT + 지금 줄 DELETE, 키 병합의 줄 옮기기는 `t__lines` 안의 UPDATE.
 - `t__lines` 의 머리 줄 합치기 · 행 이력 읽기는 오늘 cell_sources 와 같은 흩어짐이다. 그 순서(CLUSTER (row_id, 언제) · row_id 정렬로 읽기)는 다음 라운드이고, 깊이 판에서 차가운 캐시로 잰다.
 
 ## 칸 DDL — 한 함수
@@ -127,8 +129,8 @@
 - PG 단순 보기는 쓰기가 되고 sqlite 보기는 안 된다 — 그대로 두면 직접 쓰기가 PG 에서는 줄 구조를 조용히 건너뛰고 sqlite 에서는 터진다.
 - 두 방언 모두 보기 t 에 INSTEAD OF 트리거를 두어 쓰기를 거절한다. 오류 문장: «write_lines 를 지나라». 트리거가 줄 쓰기를 대신하지 않는다.
 - t 에 직접 쓰는 자리 — A 셈(origin/main 9fb1d6907, AST, 카나리아 apply_row_update_internal 의 setattr · _get_or_create_row 의 db.add): 제품 25 자리(4 파일) · 시험 290 자리(114 파일) · 스크립트 8 자리. 제품은 write_lines 를 직접 부른다.
-- 시험: flush 훅(database.write_changed_rows_by_shape)이 «씨앗 문맥» 안에서만 동적 모델의 add · 속성 대입 · session.delete 를 write_lines 로 넘긴다(종류 «seed», 출처는 행의 source 칸). 문맥 밖이면 «write_lines 를 지나라»로 거절한다 — 제품의 놓친 직접 쓰기가 조용히 줄이 되지 않게 (총괄 11-10). query().update/.delete · 원문 SQL 은 손으로 옮긴다. 시험 본문 118 의 심는 줄 감싸기는 A 의 레인 에이전트(시험 파일만).
-- PG 시험 44 파일은 한 DB 를 같이 쓰고 손으로 치운다 — 정리 자리는 «DROP TABLE t» 대신 `lines.drop_line_table` 을 부른다. 놓친 «DROP TABLE t» 는 보기라서 터진다.
+- 시험: flush 훅(database.write_changed_rows_by_shape)이 «씨앗 문맥» 안에서만 동적 모델의 add · 속성 대입 · session.delete 를 write_lines 로 넘긴다(종류 «seed», 출처는 행의 source 칸). 문맥 밖이면 «write_lines 를 지나라»로 거절한다 — 제품의 놓친 직접 쓰기가 조용히 줄이 되지 않게 (총괄 11-10). query().update/.delete · 원문 SQL 은 손으로 옮긴다. 시험 본문(test_* 함수 자체가 직접 쓰는 것 118 개 · 73 파일 — A 셈, 같은 AST 셈의 갈래)의 심는 줄 감싸기는 A 의 레인 에이전트(시험 파일만).
+- PG 시험 44 파일(A 셈: 직접 쓰는 114 파일 중 mark.pg 가 붙은 파일, pg_engine 고정물 scope="session")은 한 DB 를 같이 쓰고 손으로 치운다 — 정리 자리는 «DROP TABLE t» 대신 `lines.drop_line_table` 을 부른다. 놓친 «DROP TABLE t» 는 보기라서 터진다.
 
 ## 들어온 철자 (소유자 11-10 «ㄱ»)
 
@@ -137,20 +139,21 @@
 
 ## 지움 · 거두기 (소유자 11-10 «지우기는 ㄱ»)
 
-- 사람이 그리드에서 지우는 행 지우기 = «지워짐» 줄 INSERT + `t__now` 의 지금 줄 DELETE. 이름 t 에서 바로 사라지고, 이력 · 감사 점프는 남는다.
+- 사람이 그리드에서 지우는 행 지우기 = «deleted» 줄 INSERT + `t__now` 의 지금 줄 DELETE. 이름 t 에서 바로 사라지고, 이력 · 감사 점프는 남는다.
 - 같은 business_key 가 다시 오면 새 row_id 로 지금 줄이 선다. 오늘 «DELETE 뒤 INSERT»와 같은 결과다.
 - 표 행 DELETE 와 delete_row_layers 의 cell_sources 지우기는 없어진다. 고정(이 착지 밖)은 오늘처럼 cell_overwrites 에서 지운다.
-- deleted_rows(«지워졌나»)는 «지워짐» 줄을 읽는다 (D). 감사 행 = 종류 «지움» · 바뀐 행 N. 체인 대기열의 DELETE 사건은 오늘 그대로 (A).
-- 거두기 = 그 출처의 «거둠» 줄(withdrawn_bits) + 지금 줄 다시 합침.
+- deleted_rows(«지워졌나»)는 줄 종류 «deleted» 를 읽는다 (D). 감사 행 = 종류 «지움» · 바뀐 행 N. 체인 대기열의 DELETE 사건은 오늘 그대로 (A).
+- 거두기 = 그 출처의 «withdraw» 줄(withdrawn_bits) + 지금 줄 다시 합침.
 - 체인 줄의 거두기 단위 = 규칙 + 입력 행 (소유자 11-10 «체인 규칙 + 낸 행으로»). 원천 행 S1 이 사라지면 «규칙 R · 입력 행 S1» 인 머리 줄만 거둔다. 같은 규칙이 S2 로 그 칸을 이미 다시 썼으면 거둘 것이 없다. 오늘의 cell_layer.cells_stamped_by(그 입력 행이 먹인 칸 중 그 출처의 최신이 아직 그 입력 행인 것)와 같은 답이다.
-- 체인이 자기가 낸 행을 거둘 때(소유자 11-10 «체인이 낸 행 부분만 없애면 됨»): 그 체인 출처의 줄만 거두고, 행이 «껍데기»일 때만 «지워짐» 줄 + 지금 줄 DELETE. 껍데기 판정은 오늘의 chain.cell_layer.shells · delete_shells 를 줄로 옮긴 것 하나다(원천 없어진 키는 ingestion_worker._settle + cell_layer.person_rows): 키 밖 칸에 값 있는 머리 줄 없음 · 키 칸 머리 줄은 전부 체인 것 · 사람(출처 user) 줄은 빈 것이라도 없음 · 핀 없음 · 지금 줄이 키 밖에 보이는 값 없음. 핀만 있는 칸도 «사람 몫이 남음» — cell_layer.person_rows 한 함수가 «사람 줄 또는 핀»을 세고 shells · _settle 이 둘 다 부른다 (A 11-10).
+- 체인이 자기가 낸 행을 거둘 때(소유자 11-10 «체인이 낸 행 부분만 없애면 됨»): 그 체인 출처의 줄만 거두고, 행이 «껍데기»일 때만 «deleted» 줄 + 지금 줄 DELETE. 껍데기 판정은 오늘의 chain.cell_layer.shells · delete_shells 를 줄로 옮긴 것 하나다(원천 없어진 키는 ingestion_worker._settle + cell_layer.person_rows): 키 밖 칸에 값 있는 머리 줄 없음 · 키 칸 머리 줄은 전부 체인 것 · 사람(출처 user) 줄은 빈 것이라도 없음 · 핀 없음 · 지금 줄이 키 밖에 보이는 값 없음. 핀만 있는 칸도 «사람 몫이 남음» — cell_layer.person_rows 한 함수가 «사람 줄 또는 핀»을 세고 shells · _settle 이 둘 다 부른다 (A 11-10). old_exist 백업 줄(출처 이름이 user 가 아님)을 사람 몫으로 세는지는 오늘 person_rows 의 답을 따른다 — A 가 시험으로 확인한다.
 - 오래된 줄 정리: 이번 착지 밖 — 다 남긴다. 운영 크기를 잰 뒤 다시 본다.
 
 ## 읽기 — D 분야
 
-- 그리드 · 걷기 · 원장 번역 · 체인 읽기: 보기 t 를 그대로 읽는다. row_id 를 부르는 함수는 지금 줄이 개체당 하나라서 뜻이 그대로다(셈: wl/row_id_census.py, origin/main 018babf90).
+- 그리드 · 걷기 · 원장 번역 · 체인 읽기: 보기 t 를 그대로 읽는다. row_id 를 부르는 함수는 지금 줄이 개체당 하나라서 뜻이 그대로다(셈: C 의 scratchpad wl/row_id_census.py, origin/main 018babf90 — 저장소에 없는 도구).
 - 층 표시 · 행 이력 · 칸 이력: `t__lines` 를 (row_id, 언제) 인덱스로 읽는다. 보이는 행 수에 묶인다.
-- 이력은 줄이 적은 값만 보인다. «전 값» 셈은 짓지 않는다(소유자). 이력 봉투(schemas.AuditLogResponse)에서 old_value 칸을 지운다(총괄 11-10 — 소유자 «감사로그에 값을 넣지마 · 줄이려는데 왜 키워»). 그 칸을 읽는 클라 자리는 클라2 몫이다: client2/src/timeline.js 295 · 454 · 588 · 612(454 · 588 은 감사 종류 판정 auditKind 가 old_value 로 OVERWRITE 를 가른다 — 판정의 새 근거가 필요) · 278 주석, client2/src/look_panel.js 155 (origin/main e31816d34 git grep «old_value», 카나리아 new_value = 3 파일).
+- 이력은 줄이 적은 값만 보인다. «전 값» 셈은 짓지 않는다(소유자). 이력 봉투(schemas.AuditLogResponse)에서 old_value 칸을 지운다(총괄 11-10 — 소유자 «감사로그에 값을 넣지마 · 줄이려는데 왜 키워»). 그 칸을 읽는 클라 자리는 클라2 몫이다: client2/src/timeline.js 에서 old_value 를 읽는 자리 넷(값 그리기 둘 · 감사 종류 판정 auditKind 둘)과 주석 하나, client2/src/look_panel.js 하나 (origin/main e31816d34, git grep «old_value» client2/src, 카나리아 new_value = 3 파일).
+  - auditKind 는 old_value 로 MANUAL 과 OVERWRITE 를 갈랐다. 감사 행이 트랜잭션 단위가 되면 종류는 감사 행의 «작업 종류»를 읽는다. 작업 종류에 «덮어씀»이 따로 없으니 OVERWRITE 알약은 사라진다 — 총괄께 «사라짐» 확인을 여쭌다.
 - 방송 · outbox 의 옛 값(쓰기 1 의 옛 지금 줄)은 체인이 «바뀌었나»를 판단하는 기계 계약이라 그대로 둔다 (총괄 11-10). 이력 화면의 값이 아니다.
 
 ## 순위로 합치는 법
@@ -187,18 +190,19 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 
 ## 이주
 
-표마다 소급 일 하나(`migrate_to_lines`, 인자 table — B 안 ㄱ). 단계 여섯:
+표마다 소급 일 하나(`migrate_to_lines`, 인자 table — B 안 ㄱ). 단계 여덟(0~7):
 
 1. create — `t__now` · `t__lines` 를 만든다.
-2. now rows — 옛 t 의 행을 `t__now` 로. won_by 는 «합치기 생성기»로 머리 줄에서 다시 합쳐 채운다(3 뒤에 표마다 한 번).
-3. old lines — cell_sources 를 (표, 행, 출처, 시각)마다 줄 하나로 `t__lines` 에. 칸마다 다른 시각을 지켜 순위(«시각 desc»)가 안 바뀐다. 각 줄의 head_bits = 그 층이 선 칸들.
-4. indexes — `t__now` · `t__lines` 의 인덱스를 «임시 이름»으로 짓는다(옛 t 의 인덱스와 이름이 부딪히지 않게). swap 에서 이름을 바꾼다.
-5. catch-up — «since 이후 바뀜»을 옮긴다. 바뀐 행은 옛 t 의 updated_at > since(idx_<t>_updated), 바뀐 층은 cell_sources 의 시각 > since, 지운 행은 audit_logs 의 DELETE 줄 > since(지운 행이 `t__now` 에서 되살아나지 않게). 줄어들 때까지 되풀이.
-6. swap — 마지막 따라잡기 + 인덱스 이름 바꾸기 + t 를 `t__old` 로 + 보기 t · 트리거. 한 트랜잭션 · 표 잠금(lock_timeout). 못 잡으면 `SwapLockBusy` → B 가 물러났다 재시도.
-
-- 게이트: «이주한 지금 줄 = 줄에서 다시 합친 지금 줄 = 옛 t 값». 어긋나면 그 표에서 멈추고 한 줄로 말한다 — 이주 뒤 첫 쓰기가 쓰지 않은 칸 값을 조용히 바꾸지 않게.
-- 단계 함수(database/line_migration.py, C 11-11 · B 가 부름): `plan(db, table) -> {"stage", "after", "since", "total"}` · `create` · `now_rows(db, table, after) -> (moved, next_after)` · `old_lines(db, table, after)` · `indexes` · `catch_up(db, table, since) -> (moved, next_since)` · `swap(db, table, since, lock_timeout)`. after 는 row_id 커서다.
-- 진행: 단계는 run 행의 phase 칸(RunControl.say «Stage k/6: …»), 옮긴 줄은 쪽마다 progress(processed_rows / total_rows). 일 트랜잭션 밖이다 (B).
+0. 표시 — 이주 창을 연다: 옛 t 와 그 표의 cell_sources 행에 AFTER INSERT/UPDATE/DELETE 트리거를 걸어, 바뀐 row_id 를 이주 기록 표에 남긴다. 그 표를 바꾸는 모든 길(지움 · 층 지우기 · file_layer_fold · replay 의 DELETE 포함)이 같은 트리거를 지나므로 «어느 길이 기록을 쓰나»에 기대지 않는다. PG 전용(운영 이주) — sqlite 시험은 새 구조로 처음부터 짓는다.
+1. create — `t__now` · `t__lines` 를 만든다.
+2. now rows — 옛 t 의 행을 `t__now` 로(값 그대로).
+3. old lines — cell_sources 를 (표, 행, 출처, 시각)마다 «write» 줄 하나로 `t__lines` 에. 칸마다 다른 시각을 지켜 순위(«시각 desc»)가 안 바뀐다. 각 줄의 head_bits = 그 층이 선 칸들.
+4. merge check — 합치기 생성기로 머리 줄에서 다시 합쳐 won_by 를 채우고, 게이트 «다시 합친 지금 줄 = 옮긴 지금 줄 = 옛 t 값»을 잰다. 어긋나면 그 표에서 멈추고 한 줄로 말한다 — 이주 뒤 첫 쓰기가 쓰지 않은 칸 값을 조용히 바꾸지 않게.
+5. indexes — `t__now` · `t__lines` 의 인덱스를 «임시 이름»으로 짓는다(옛 t 의 인덱스와 이름이 부딪히지 않게). swap 에서 이름을 바꾼다.
+6. catch-up — 이주 기록 표의 row_id 를 «통째로» 다시 옮긴다: 그 행의 `t__now` · `t__lines` 줄을 지우고 옛 t · cell_sources 에서 2 · 3 · 4 를 그 행만 다시. 옛 t 에서 사라진 행은 `t__now` 에서도 지운다(되살아나지 않게). 기록이 줄어들 때까지 되풀이.
+7. swap — 표 잠금(lock_timeout)을 쥐고 마지막 catch-up + 인덱스 이름 바꾸기 + t 를 `t__old` 로 + 보기 t · 트리거 + 이주 트리거 지움 + «이주 마지막 line_id» 기록. 한 트랜잭션. 못 잡으면 `SwapLockBusy` → B 가 물러났다 재시도.
+- 단계 함수(database/line_migration.py, C 11-11 · B 가 부름): `plan(db, table) -> {"stage", "after", "total"}` · `open_window` · `create` · `now_rows(db, table, after) -> (moved, next_after)` · `old_lines(db, table, after)` · `merge_check(db, table, after)` · `indexes` · `catch_up(db, table) -> moved` · `swap(db, table, lock_timeout)`. after 는 row_id 커서다. catch-up 은 since 대신 이주 기록 표를 읽는다.
+- 진행: 단계는 run 행의 phase 칸(RunControl.say «Stage k/8: …» — 0 부터 7), 옮긴 줄은 쪽마다 progress(processed_rows / total_rows). 일 트랜잭션 밖이다 (B).
 - 쓰기는 swap 순간에만 멈춘다.
 - 이주 시간은 안 쟀다. 박스 리허설 시간 × 운영과 박스의 크기 비로 말한다.
 
@@ -206,13 +210,13 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 
 - `t__old` 와 cell_sources 를 지우지 않고 남긴다.
 - 되돌리기 = `line_migration.write_back(db, table)` 뒤 보기 t 지우기 + `t__old` 를 t 로 이름 되돌리기.
-- write_back: 이주 뒤 바뀐 개체(묶음이 이주 시각 뒤인 줄의 row_id)의 `t__now` 값으로 옛 t 행을 다시 쓰고, 그 머리 줄로 cell_sources 층을 다시 쓴다. 이주 뒤 지운 행은 옛 t 에서 지운다. 리허설에서 시간을 잰다.
+- write_back: swap 이 기록한 «이주 마지막 line_id» 보다 큰 line_id 의 줄을 가진 row_id 들(표기 소급처럼 «언제»를 옛것으로 둔 줄도 line_id 는 새것이라 빠지지 않는다)의 `t__now` 값으로 옛 t 행을 다시 쓰고, 그 머리 줄로 cell_sources 층을 다시 쓴다. «deleted» 줄의 row_id 는 옛 t 에서 지운다. 리허설에서 시간을 잰다.
 
 ## 시간표
 
 날 수는 안 잰 추정이다. 근거: 2 일 뼈대가 체인 밖 함수 50 개를 덮고, 체인 34 가 그와 같은 크기라서 2 일을 더한다.
 
-- 11-10 밤: C `lines.py`(이름 · 표 만들기 · 지우기 · alter_columns) + 씨앗 문맥 — 검수 판정 붙여 준비 SHA
+- 11-10 밤: C `lines.py`(이름 · 표 만들기 · 지우기 · alter_columns) + 씨앗 문맥 — 검수 판정 붙여 준비 SHA. 이주 단계가 여덟(0~7)이 되어 B 의 단계 이름표를 고친다
 - 11-11: C 정렬 키 생성기(SQL · 파이썬) · 이주 · 되돌리기, A write_lines, D 읽기, B 이주 진행, 각자 호출자 × 갈래 시험 표. 밤 통합(기계 차례)
 - 11-12 ~ 11-13: 체인 34 를 줄로 — A(replay · ingestion_worker · enrichment · rule_run · dt_map · frame_confirmation · retroactive 셈) · C(cell_layer 거두기 seat). 거두기 · 도장 판
 - 11-13 밤: 통합 다시, cell_sources 쓰기 0 확인
