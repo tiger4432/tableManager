@@ -30,3 +30,22 @@ def report_line(differences: list):
         return None
     listed = ", ".join(f"{t}.{c} (declared {d}, stored {s})" for t, c, d, s in differences)
     return f"Columns migrated as stored: {listed} - retyping them is a separate step"
+
+
+def key_index_missing(db, tables) -> list:
+    """(table, why) for every table that lacks the unique business_key_val index keeping lines needs - the pre-check
+    REPORTS these before landing so the operator builds them first; ensure_line_table refuses them on the day."""
+    conn = db.connection()
+    if conn.dialect.name != "postgresql":
+        return []
+    found = ((name, lines.key_index_missing(conn, name)) for name in tables)
+    return [(name, why) for name, why in found if why]
+
+
+def key_index_line(missing: list):
+    """The operator line the pre-check prints, or None."""
+    if not missing:
+        return None
+    listed = ", ".join(f"{t} ({why})" for t, why in missing)
+    return (f"Tables without a unique business key index: {listed} - "
+            f"first run {lines.key_index_command([t for t, _ in missing])}")
