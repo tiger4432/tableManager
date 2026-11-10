@@ -400,6 +400,8 @@ def key_index_missing(conn, table_name: str):
 
 
 KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
+#: not read: a screen that asks on every open asks key_index_standing only - the census reads the whole table (A 11-11)
+KEY_UNKNOWN = "unknown"
 
 
 def key_index_next(missing) -> str:
@@ -411,6 +413,10 @@ def key_index_next(missing) -> str:
         if kind == KEY_FOLD:
             said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
                         f"rows on {t}; it builds the index after the merge")
+        elif kind == KEY_UNKNOWN:
+            said.append(f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; "
+                        f"if it cannot, auto_update.log says why (keys held by more than one row: in the Retroactive "
+                        f"tab run Fold duplicate rows on {t})")
         elif kind == KEY_INVALID:
             said.append(f"{t} (an INVALID index holds the name) - drop it with python "
                         f"server/migrations/add_business_key_unique_index.py, an operator watching")
