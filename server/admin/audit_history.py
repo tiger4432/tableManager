@@ -305,7 +305,7 @@ def line_table(table_name, bits):
 
 
 def line_cell(types, row, name):
-    """A line's value of `name` as its table holds it - `types` is `lines.value_types` (t__now's physical types, the
+    """A line's value of `name` as its table holds it - `types` is `lines.value_types` (t's physical types, the
     write's own, C 1986aa74b), read once a request - through `crud.line_value`, the one read-side cast."""
     from database import crud
 
@@ -426,13 +426,16 @@ def group_rows(db, table_name, group, limit) -> list:
 
 
 def winners(db, table_name, row_ids) -> dict:
-    """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of `t__now`
+    """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of t
     (the merge at write time, pins included), each line by its id: what a grid cell's colour and writer ask, no
-    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10)."""
-    from database import lines
+    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10). A table that keeps
+    no lines (`lines.keeps_lines` - a shipped table, a view) has no won_by: none."""
+    from database import crud, lines
 
+    if not lines.keeps_lines(table_name, crud.TABLE_CONFIG.get(table_name)):
+        return {}
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    now = sa.Table(lines.now_relation(table_name), sa.MetaData(), sa.Column("row_id", sa.String),
+    now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String),
                    sa.Column("won_by", sa.JSON))
     won = {}
     for i in range(0, len(ids), 1000):
@@ -452,9 +455,11 @@ def winners(db, table_name, row_ids) -> dict:
 def head_lines(db, table_name, row_ids, columns=None) -> dict:
     """{(row_id, column): {source: {"value", "at", "written_by"}}} - each source's newest line of the cell (its head
     bit), a withdrawn one left out (the source says nothing): the layers a Sources window shows. The head index -
-    (row_id, source_name) WHERE a head bit is set."""
-    from database import lines
+    (row_id, source_name) WHERE a head bit is set. A table that keeps no lines has none."""
+    from database import crud, lines
 
+    if not lines.keeps_lines(table_name, crud.TABLE_CONFIG.get(table_name)):
+        return {}
     bits = line_bits(db, table_name)
     if columns is not None:
         bits = {name: bit for name, bit in bits.items() if name in set(columns)}

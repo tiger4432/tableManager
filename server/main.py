@@ -1510,8 +1510,7 @@ def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: l
 
 from admin.audit_cache import audit_cache, in_group
 from database.lines import index_name as lines_index_name  # noqa: E402 - the person index the figures read
-from database.lines import value_types as lines_value_types  # noqa: E402 - a line value's type: t__now's physical
-from database.lines import stored_relation as lines_stored_relation  # noqa: E402 - t__now: where its indexes live
+from database.lines import value_types as lines_value_types  # noqa: E402 - a line value's type: its table's physical
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
@@ -2253,7 +2252,7 @@ def filter_index_states(bind, table_name, columns):
     """Each equal or range filter column of a page -> «built» when a valid index leads with it, whoever built it
     (`models.column_index_kinds`), else «not built» - with what the last ask on it came to in this process
     (`index_wants.last_word`; another grid process may have asked it)."""
-    kinds = models.column_index_kinds(bind, lines_stored_relation(table_name, crud.TABLE_CONFIG.get(table_name)))
+    kinds = models.column_index_kinds(bind, table_name)
     states = {}
     for column in columns:
         state = "built" if models.INDEX_SERVES_EQUAL in kinds.get(column, ()) else "not built"
@@ -3287,8 +3286,7 @@ def get_table_schema(table_name: str, world: str = None, db: Session = Depends(g
         # seed of a fallback that outlives the server it was written for.
         "join_resolved_columns": join_resolved_columns,
         # each column's built index - an equal value, a part of a word - for the header's mark (소유자 10-15)
-        "column_indexes": {} if world else models.column_index_kinds(
-            db.get_bind(), lines_stored_relation(table_name, crud.TABLE_CONFIG.get(table_name))),
+        "column_indexes": {} if world else models.column_index_kinds(db.get_bind(), table_name),
     }
 
 

@@ -461,10 +461,7 @@ def _skipped_values(db, table_model, column, is_numeric):
     raw = table.columns[column]
     if not (is_numeric or isinstance(raw.type, String)):
         return None
-    from database import lines
-
-    held = models.catalogue_indexes(db.connection().connection.dbapi_connection,
-                                    lines.stored_relation(table.name, crud.TABLE_CONFIG.get(table.name)))
+    held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table.name)
     if not any(models.orders_rows_by(index, [column]) for index in held):
         return None
     prep = bind.dialect.identifier_preparer
@@ -489,7 +486,7 @@ from utils.wire_format import wire_text  # noqa: E402
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
     """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
-    priority_source}` a cell: the line t__now.won_by names (`audit_history.winners`) - its source the winner, its
+    priority_source}` a cell: the line t.won_by names (`audit_history.winners`) - its source the winner, its
     writer `updated_by` (None when no line won it: before the landing, nobody is known - lead 11-11) -, the pins from
     cell_overwrites, and with `include_sources` each source's head line (`audit_history.head_lines`)."""
     if not rows:
@@ -562,7 +559,7 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     for row_id, column_name, is_ow, manual_priority_source in overwrites:
         overwrites_map[(row_id, column_name)] = (is_ow, manual_priority_source)
         
-    # 2. the winners (t__now.won_by) and, for the sources, each source's head line (cell-source overhaul)
+    # 2. the winners (t.won_by) and, for the sources, each source's head line (cell-source overhaul)
     from admin import audit_history
 
     won = audit_history.winners(db, table_name, row_ids)

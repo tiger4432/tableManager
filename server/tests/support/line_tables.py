@@ -1,31 +1,32 @@
 """The cell-source overhaul's line tables for the read share's tests (lead 11-10 안 1): built by C's
-`lines.ensure_line_table` (t__now · t__lines · the view t), lines and audit batches written by hand until the write
-share writes them.
+`lines.ensure_line_table` (t stays the current-values table with `won_by`; history is t__lines - owner/lead 11-11),
+lines and audit batches written by hand until the write share writes them.
 
 `build(engine, table)` makes them for a declared table (its entry in crud.TABLE_CONFIG); `line(conn, table, ...)`
-writes one line with its bits; `now(conn, table, ...)` writes a current line; `audit_batch(conn, ...)` one batch."""
+writes one line with its bits; `now(conn, table, ...)` writes t's row and its won_by; `audit_batch(conn, ...)` one
+batch."""
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import MetaData, Table, text
 from sqlalchemy.orm import Session
 
-from database import crud, lines
+from database import crud, lines, models
 
-#: table -> its shape as `lines.ensure_line_table` made it - a line's values go in as text (`crud.line_text`), the
-#: current line's typed
+#: table -> its shape as `lines.ensure_line_table` made it - a line's values go in as text (`crud.line_text`), t's
+#: typed
 _BUILT = {}
 
 
 def build(engine, table):
-    """`table`'s line tables and its view - t itself dropped first when it is a table. -> {column: bit}"""
+    """`table` (its model's table, emptied) with `won_by` and its line table. -> {column: bit}"""
+    models.DYNAMIC_TABLES[table].__table__.create(bind=engine, checkfirst=True)
     with engine.begin() as conn:
-        if conn.dialect.name == "postgresql":
-            kind = conn.execute(text("SELECT c.relkind FROM pg_class c WHERE c.oid = to_regclass(:t)"),
-                                {"t": table}).scalar()
-        else:
-            kind = conn.execute(text("SELECT type FROM sqlite_master WHERE name = :t"), {"t": table}).scalar()
-        if kind in ("r", "table"):
-            conn.execute(text('DROP TABLE "%s"' % table))
+        conn.execute(text('DELETE FROM "%s"' % table))
+        if conn.dialect.name == "postgresql":         # the key's unique index ensure_line_table asks for (C)
+            import migrations.add_business_key_unique_index as bk
+
+            conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" (business_key_val)'
+                              % (bk.unique_index_name(table), table)))
     with Session(bind=engine) as session:
         shape = lines.ensure_line_table(session, table, crud.TABLE_CONFIG[table])
         session.commit()
@@ -75,10 +76,10 @@ def line(conn, table, bits, row_id, *, kind="write", source="probe.csv", at=None
 
 
 def now(conn, table, row_id, business_key, values=None, won_by=None):
-    """The current line of `row_id` - its values and won_by {column: line_id}."""
+    """t's row `row_id` - its values and won_by {column: line_id}."""
     row = dict({"row_id": row_id, "business_key_val": business_key}, **(values or {}))
     row["won_by"] = won_by or {}
-    conn.execute(_BUILT[table]["now"].insert().values(row))
+    conn.execute(Table(table, MetaData(), autoload_with=conn).insert().values(row))
 
 
 def audit_batch(conn, transaction_id, table, *, written_by="probe", kind="edit", at=None):
