@@ -1,10 +1,14 @@
 """The one line a freeze of this server leaves (owner 10-29 «파일 인제션하면 서버가 굳네 여전히» · «원인 파악하게
 로그를 구성해봐 · 폰으로 쳐서 보내야 하니 구성 잘해», lead ㄴ):
 
-    STALL 14s P /dashboard/summary L12 T40/40 G6 D9/11s INSERT cell_sources B3 AUTOVACUUM public.x X412s/18234 UPDATE
+    STALL 14s P /dashboard/summary SELECT cell_sources 9s IO:DataFileRead L12 T40/40 G6 D9/11s INSERT cell_sources
+    B3 AUTOVACUUM public.x X412s/18234 UPDATE
     pfab_metro C97 ours:66 api:4 grid:61 pg:30 AUTOANALYZE public.x other:2 IO r180w420MB/s 950iops pgIO7 ING dt_log
 
-D: active statements / the longest one's seconds and head; B: sessions held up by another / the head of the one
+P: the path of the request open longest and, while it runs a query - here, or in the pool process it was handed to -,
+that query's head, seconds and what it waits for («cpu»: nothing - it runs) at the longest such reading
+(lead 11-10: D named the autovacuum, the stalled count was nowhere); D: active statements / the longest one's seconds
+and head; B: sessions held up by another / the head of the one
 holding up the most (owner 11-09 «거의 모든 stall 에 autovacuum» - an autovacuum worker named with its table); X: the
 oldest open transaction's seconds / its snapshot's xmin age in transactions (what vacuum cannot clean past) and its
 statement's head - «X0» none open (lead 11-09). C: the machine's CPU % and, on that one scale, this product's named
@@ -16,7 +20,8 @@ CPU-low stall is IO, a lock or a pool start - lead).
 
 A thread of the API process looks once a second. A freeze is a request open longer than `STALL_SECONDS`, or the event
 loop not answering that long. While one lasts the readings' highest values are kept; its end writes the line, and one
-more every `MID_EVERY` seconds while it goes on («+» after the seconds). The last line rides on /health.
+more every `MID_EVERY` seconds while it goes on («+» after the seconds). The last line rides on /health, with the
+[Slow] line its P request left when it ended (`request_timing.slow_line`, owner 11-10 «노란 띠에는 없음»).
 
 The watch only watches (CLAUDE.md 계측): each reading is its own try and a failed one prints «?» in its cell; the
 database is asked on a connection of its own with a one-second statement limit, never one of the server's pools.
@@ -44,8 +49,11 @@ ACTIVE_STATEMENTS = ("SELECT count(*) OVER (), extract(epoch FROM now() - query_
                      "count(*) FILTER (WHERE wait_event_type = 'IO') OVER () "
                      "FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid() "
                      "AND datname = current_database() ORDER BY query_start LIMIT 1")
-#: What one PostgreSQL process runs - any database's, a background one's too (its kind then).
-PG_DOING = "SELECT query, backend_type FROM pg_stat_activity WHERE pid = :pid"
+#: What one PostgreSQL process runs - any database's, a background one's too (its kind then) - by its pid, or by its
+#: connection's name (a pool process's), the active one first.
+PG_DOING = ("SELECT query, backend_type, extract(epoch FROM now() - query_start), state, wait_event_type, wait_event "
+            "FROM pg_stat_activity WHERE pid = :pid OR application_name = :name "
+            "ORDER BY state = 'active' DESC, query_start DESC NULLS LAST LIMIT 1")
 #: A PostgreSQL process, by its image name - the C cell's «pg».
 _PG_IMAGE = re.compile(r"postgres", re.I)
 _NOT_NAMES = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)      # literals and comments - never on the line
@@ -261,18 +269,24 @@ def oldest_transaction():
     return None if row is None else (float(row[0] or 0), None if row[1] is None else int(row[1]), statement_head(row[2]))
 
 
-def pg_doing(pid):
-    """What PostgreSQL process `pid` runs: its statement's head, or its kind when it has none («checkpointer») - on
-    the watch's own connection; None when the process is not in pg_stat_activity (the postmaster)."""
+def pg_doing(who):
+    """(head, seconds, waits) of PostgreSQL process `who` - a pid, or a connection name: its statement's head, or its
+    kind when it has none
+    («checkpointer»); the seconds since that statement began; «Lock:transactionid» - what it waits for, «cpu» when
+    it runs, its state when not active («idle-in-transaction»). On the watch's own connection; None when the process
+    is not in pg_stat_activity (the postmaster)."""
     from sqlalchemy import text
     engine = _kept()
     if engine is None:
         return None
     with engine.connect() as conn:
-        row = conn.execute(text(PG_DOING), {"pid": pid}).first()
+        named = isinstance(who, str)
+        row = conn.execute(text(PG_DOING), {"pid": None if named else who, "name": who if named else None}).first()
     if row is None:
         return None
-    return statement_head(row[0]) if (row[0] or "").strip() else (row[1] or "").replace(" ", "-") or None
+    head = statement_head(row[0]) if (row[0] or "").strip() else (row[1] or "").replace(" ", "-") or None
+    waits = "%s:%s" % (row[4], row[5]) if row[4] else "cpu" if row[3] == "active" else (row[3] or "?").replace(" ", "-")
+    return head, float(row[2] or 0), waits
 
 
 def statement_head(query):
@@ -329,6 +343,7 @@ class Watch:
         self.disk, self.pg_doing = disk, pg_doing
         self.say = say or logger.warning
         self.freeze, self.last, self._broke = None, None, set()
+        self.last_key = None                            # the P request of the last line - its [Slow] line rides with it
 
     def _read(self, cell, reader, *args):
         try:
@@ -341,7 +356,7 @@ class Watch:
 
     def tick(self, now):
         opened = self._read("P", self.open_requests)
-        open_s, path = (UNREAD, None) if opened == UNREAD else opened
+        open_s, path, key, pid = (UNREAD, None, None, None) if opened == UNREAD else opened
         lag = self._read("L", self.loop_lag, now)
         longest = max(v for v in (open_s, lag, 0.0) if v != UNREAD)
         if longest <= STALL_SECONDS:
@@ -354,9 +369,16 @@ class Watch:
             f = self.freeze = {"start": now - longest, "said": now, "L": 0.0, "T": None, "G": 0, "D": None, "B": None,
                                "X": None, "C": None, "top": None, "ING": None, "open": 0.0, "P": None,
                                "pg": None, "api": None, "ours": None, "other": None, "IO": None, "pgIO": None,
-                               "pg_top": 0.0, "pg_head": None}
+                               "pg_top": 0.0, "pg_head": None, "key": None, "Pdb": None}
         if open_s != UNREAD and path and open_s >= f["open"]:
+            if key != f["key"]:
+                f["key"], f["Pdb"] = key, None
             f["open"], f["P"] = open_s, path        # the path of the request open longest in this freeze
+            doing = self._read("P db", self.pg_doing, pid) if pid and self.pg_doing else None
+            if doing not in (None, UNREAD) and (f["Pdb"] in (None, UNREAD) or doing[1] >= f["Pdb"][1]):
+                f["Pdb"] = doing                    # its query read longest
+            elif doing == UNREAD and f["Pdb"] is None:
+                f["Pdb"] = UNREAD
         f["L"] = _most(f["L"], lag)
         threads = self._read("T", self.threads)
         if threads != UNREAD and (f["T"] in (None, UNREAD) or threads[0] > f["T"][0]):
@@ -402,7 +424,8 @@ class Watch:
             busiest = cpu[2].get("pg_top")
             if busiest and self.pg_doing and busiest[1] > f["pg_top"]:
                 f["pg_top"] = busiest[1]            # what the busiest PostgreSQL process ran at its busiest tick
-                f["pg_head"] = self._read("pg head", self.pg_doing, busiest[0])
+                doing = self._read("pg head", self.pg_doing, busiest[0])
+                f["pg_head"] = doing[0] if doing not in (None, UNREAD) else doing
         elif f["C"] is None:
             f["C"] = UNREAD
         disk = self._read("IO", self.disk)
@@ -419,7 +442,8 @@ class Watch:
         f = self.freeze
         cells = ["STALL", "%ds%s" % (round(now - f["start"]), "+" if going else "")]
         if f["P"]:
-            cells.append("P %s" % f["P"])
+            cells.append("P %s" % f["P"] + (" ?" if f["Pdb"] == UNREAD else "" if f["Pdb"] is None else " %s %ds %s" % (
+                f["Pdb"][0] or UNREAD, round(f["Pdb"][1]), f["Pdb"][2])))
         cells += ["L%s" % _int(f["L"]),
                  "T%s" % (UNREAD if f["T"] in (None, UNREAD) else "%d/%d" % f["T"]),
                  "G%s" % _int(f["G"]),
@@ -448,6 +472,7 @@ class Watch:
             cells.append("ING %s" % f["ING"])
         line = " ".join(cells)
         self.last = {"line": line, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        self.last_key = f["key"]
         self.say(line)
 
 
@@ -467,8 +492,12 @@ _watch = []
 
 
 def last():
-    """The last STALL line and when it was said - /health carries it; None before the first."""
-    return _watch[0].last if _watch else None
+    """The last STALL line, when it was said and the [Slow] line its P request left when it ended («slow», None while
+    it is open or when it was not slow) - /health carries it; None before the first."""
+    if not _watch or _watch[0].last is None:
+        return None
+    from runtime import request_timing
+    return dict(_watch[0].last, slow=request_timing.slow_line(_watch[0].last_key))
 
 
 def start(loop, limiter):

@@ -350,7 +350,7 @@ async def health_check():
         stale_after=_heartbeat_mod.DEFAULT_STALE_AFTER_SEC,
     )
     from runtime import stall_watch
-    payload["stall"] = stall_watch.last()       # {line, at} of the last freeze - said when it ENDS, null before one
+    payload["stall"] = stall_watch.last()       # {line, at, slow} of the last freeze - said when it ENDS, null before one
     return JSONResponse(status_code=http_status, content=payload,
                         headers={"Cache-Control": "no-store"})
 

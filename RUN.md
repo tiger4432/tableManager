@@ -29,7 +29,9 @@
 >          pg 몫이 크면 이 착지로는 안 풀림 — PostgreSQL 은 런처 자식이 아니라 우선순위를 안 받음
 > 끄기     launcher_specs.py 에서 priority=PRIORITY_BELOW_NORMAL 을 지우고 런처 재기동
 > ```
-
+>
+> ---
+>
 > ## [11-10] **받은 릴리스 묶음은 설치 폴더의 release 폴더에 넣기만 — 런처가 켜질 때 알아서 반영** — 이 기능이 든 첫 묶음만 노트대로 손으로 한 번
 >
 > ```
@@ -58,6 +60,27 @@
 >                                                                         = 이 사본에 따로 커밋이 있어 앞으로 못 감 — 그 줄을 총괄에게
 >          [Release] the release step failed: …                                 = 반영 단계가 터짐 — 런처는 원래 코드로 그대로 뜸
 > 끄기     release\ 를 비워 두면 아무 일도 안 함
+> ```
+>
+> ---
+>
+> ## [11-10] **STALL 줄 P 옆에 «그 요청이 DB 에서 지금 무엇을 하나», 노란 띠에 그 요청의 [Slow] 줄** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     P(가장 오래 열린 요청) 옆에 그 요청이 돌리던 문장의 머리 · 초 · 기다림 — API 안에서 돈 것도, 그리드 쪽 읽기처럼
+>          풀 프로세스에 넘긴 것도(그 프로세스의 DB 연결 이름 assy_gridpool:<pid> 로 찾음). 굳음 동안 가장 오래 돈 것을 남김
+>          /health 의 stall 에 slow 칸: 그 P 요청이 끝날 때 server.log 에 남긴 [Slow] 줄 그대로(아직 안 끝났으면 비어 있음)
+> 꼴       STALL 12s P /tables/dt_log/data SELECT cell_sources 9s Lock:relation L0 T6/40 G0 D3/9s SELECT cell_sources …
+>          [Slow] GET /tables/dt_log/data 200 - … · layers 8.10 s (SQL 8.02 s · …)
+> 볼 것    어드민 머리 노란 띠(두 줄) · API 로그의 STALL 줄
+> 답의 뜻  P 뒤 기다림  cpu = 문장이 도는 중(오래면 문장 자체가 무거움 — [Slow] 의 단계 중 SQL 이 큰 것을 봄)
+>                     Lock:… = 다른 세션의 자물쇠를 기다림 — B 칸(누가 쥐었나)을 같이 봄
+>                     IO:… = 디스크를 기다림 — IO 칸 MB/s · iops 를 같이 봄
+>                     LWLock:… · BufferPin:… = DB 안쪽 경합 — 같은 시각 pg 몫 · autovacuum 을 봄
+>          P 뒤에 아무것도 없음 = 그 굳음 동안 그 요청이 DB 문장을 안 돌림(파이썬 · 풀 기다림 — G · T 칸을 봄)
+>          P /… ? = 그 요청의 문장을 DB 에 못 물음
+>          slow 줄의 단계별 초 = 그 요청이 어디서 시간을 썼나 — SQL 이 크면 문장, Python 이 크면 서버 계산
+> 끄기     없음 — 되돌리기는 이 커밋 revert
 > ```
 >
 > ---

@@ -105,12 +105,18 @@ def connection_name(process_name=None):
     the script's own name when no process logger was set up. Read when a connection OPENS,
     not at import - `main.py` imports this module before it names its logger.
     `process_name` asks what ANOTHER process's connections are called (the chain's, from the
-    pause route)."""
+    pause route). A pool process's own carry its pid too - `assy_gridpool:1234`, what the API's
+    stall line finds the statement of the request it runs by (`process_pool.POOL_DB`, lead 11-10)."""
     import sys as _sys
     from utils.logger import active_process_name
     name = process_name or active_process_name() or os.path.splitext(
         os.path.basename(_sys.argv[0] if _sys.argv and _sys.argv[0] else "python"))[0]
-    return "assy_" + name.lower()
+    pid = os.environ.get(CONNECTION_PID_ENV) if process_name is None else None
+    return "assy_" + name.lower() + (":%d" % os.getpid() if pid else "")
+
+
+#: Set in a process whose connections' name carries its pid - a pool process.
+CONNECTION_PID_ENV = "ASSY_CONNECTION_PID"
 
 
 # Every PostgreSQL connection a process opens carries that name - the pool above, a

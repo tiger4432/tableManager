@@ -4,6 +4,7 @@
 dt_log` - when it ends, one more every 30 s while it goes on, none without one; a reading that fails says «?» in its
 own cell only. The cells' sources: the open-request table, the grid pool's waiting count, /health's stall."""
 import os
+import re
 import sys
 import threading
 import time
@@ -24,6 +25,7 @@ class Readings:
 
     def __init__(self):
         self.open, self.path, self.lag, self.threads, self.grid = 0.0, None, 0.0, (3, 40), 0
+        self.key, self.pid, self.doing = 1, None, {}
         self.statements, self.pids, self.table = (1, 0.1, None, 0), {1: "api"}, None
         self.cpu = (5.0, None, PARTS)
         self.blocked = (0, None)
@@ -35,11 +37,13 @@ class Readings:
             if isinstance(value, Exception):
                 raise value
             return value
-        return stall_watch.Watch(lambda: fail_or((self.open, self.path)), lambda now: fail_or(self.lag),
+        return stall_watch.Watch(lambda: fail_or((self.open, self.path, self.key, self.pid)),
+                                 lambda now: fail_or(self.lag),
                                  lambda: fail_or(self.threads), lambda: fail_or(self.grid),
                                  lambda: fail_or(self.statements), lambda pids: fail_or(self.cpu),
                                  lambda: fail_or((self.pids, self.table)), lambda: fail_or(self.blocked),
-                                 lambda: fail_or(self.oldest), lambda: fail_or(self.disk), say=said.append)
+                                 lambda: fail_or(self.oldest), lambda: fail_or(self.disk), say=said.append,
+                                 pg_doing=lambda pid: fail_or(self.doing[pid]))
 
 
 def test_no_freeze_says_nothing():
@@ -174,12 +178,12 @@ def test_the_line_says_ours_and_what_the_busiest_postgres_process_ran_at_its_bus
     """Lead 11-10 (a)(b): «C83 ours:23 api:17 chain.slot.1:6 pg:61 AUTOANALYZE public.database_outbox other:12» - the
     product's processes together, and pg's CPU named by what its busiest process ran (its kind when no statement)."""
     r, said, asked = Readings(), [], []
-    doing = {8: "AUTOANALYZE public.database_outbox", 9: "checkpointer"}
+    doing = {8: ("AUTOANALYZE public.database_outbox", 3.0, "cpu"), 9: ("checkpointer", 0.0, "cpu")}
 
     def pg_doing(pid):
         asked.append(pid)
         return doing[pid]
-    w = stall_watch.Watch(lambda: (r.open, r.path), lambda now: 0.0, lambda: (3, 40), lambda: 0,
+    w = stall_watch.Watch(lambda: (r.open, r.path, 1, None), lambda now: 0.0, lambda: (3, 40), lambda: 0,
                           lambda: (1, 0.1, None, 0), lambda pids: r.cpu, lambda: ({1: "api"}, None),
                           lambda: (0, None), lambda: None, lambda: (1.0, 2.0, 3.0), say=said.append, pg_doing=pg_doing)
     r.open = 8.0
@@ -199,7 +203,7 @@ def test_a_failed_pg_head_says_question_mark_after_pg_only(caplog):
 
     def pg_doing(pid):
         raise RuntimeError("no database")
-    w = stall_watch.Watch(lambda: (r.open, None), lambda now: 0.0, lambda: (3, 40), lambda: 0,
+    w = stall_watch.Watch(lambda: (r.open, None, 1, None), lambda now: 0.0, lambda: (3, 40), lambda: 0,
                           lambda: (1, 0.1, None, 0), lambda pids: r.cpu, lambda: ({1: "api"}, None),
                           lambda: (0, None), lambda: None, lambda: (1.0, 2.0, 3.0), say=said.append, pg_doing=pg_doing)
     r.open, r.cpu = 8.0, (50.0, None, {"pg": 30.0, "api": 5.0, "ours": 5.0, "other": 15.0, "pg_top": (8, 30.0)})
@@ -294,10 +298,157 @@ def test_the_path_is_the_request_open_longest_not_the_last_one_seen():
 def test_an_open_request_is_counted_until_it_ends():
     began = request_timing.begin("/x")
     time.sleep(0.05)
-    seconds, path = request_timing.oldest_open()
-    assert seconds >= 0.05 and path == "/x"
+    seconds, path, key, pid = request_timing.oldest_open()
+    assert seconds >= 0.05 and path == "/x" and key == began[2] and pid is None
     request_timing.end(began, "GET", "/x", None)
-    assert request_timing.oldest_open() == (0.0, None)
+    assert request_timing.oldest_open() == (0.0, None, None, None)
+
+
+class _Driver:
+    """A connection whose driver tells its database pid, as psycopg2's does."""
+
+    def __init__(self, pid):
+        self.info = {}
+        self.connection = type("Fairy", (), {"dbapi_connection": type("Dbapi", (), {
+            "get_backend_pid": lambda _self: pid})()})()
+
+
+def test_a_request_s_database_pid_is_known_while_its_query_runs_and_only_then():
+    """Lead 11-10: the stalled request's own statement - the cursor hooks that count its database time note the pid
+    its query runs on, and forget it when the query ends (the connection may serve another request next)."""
+    began = request_timing.begin("/tables/t/columns")
+    conn = _Driver(4242)
+    try:
+        assert request_timing.oldest_open()[3] is None
+        request_timing._query_started(conn, None, "SELECT 1", None, None, False)
+        assert request_timing.oldest_open()[2:] == (began[2], 4242)
+        request_timing._query_ended(conn, object(), "SELECT 1", None, None, False)
+        assert request_timing.oldest_open()[3] is None
+    finally:
+        request_timing.end(began, "GET", "/x", None)
+    request_timing._query_started(conn, None, "SELECT 1", None, None, False)       # outside a request: nothing
+    assert request_timing.oldest_open() == (0.0, None, None, None)
+
+
+def test_p_says_what_its_request_s_query_waits_for_at_its_longest_reading():
+    """«P /tables/t/columns SELECT cell_sources 9s Lock:relation»: the longest reading of the P request's own query is
+    kept - a tick where it runs Python (no pid) does not wipe it; another request becoming P starts over."""
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.doing = {7: ("SELECT cell_sources", 4.2, "IO:DataFileRead"), 8: ("SELECT cell_sources", 9.4, "Lock:relation"),
+               9: ("UPDATE x", 1.0, "cpu")}
+    r.open, r.path, r.key, r.pid = 6.0, "/tables/t/columns", 5, 7
+    w.tick(1.0)
+    r.open, r.pid = 7.0, 8
+    w.tick(2.0)
+    r.open, r.pid = 7.5, 7                              # a shorter reading later
+    w.tick(2.5)
+    r.open, r.pid = 8.0, None                           # back in Python
+    w.tick(3.0)
+    r.open = 0.0
+    w.tick(4.0)
+    assert said[0].startswith("STALL 9s P /tables/t/columns SELECT cell_sources 9s Lock:relation L0 "), said
+    r.open, r.path, r.key, r.pid = 6.0, "/a", 6, 9
+    w.tick(10.0)
+    r.open, r.path, r.key, r.pid = 7.5, "/b", 7, None   # another request is open longest now
+    w.tick(11.0)
+    r.open = 0.0
+    w.tick(12.0)
+    assert said[1].startswith("STALL 8s P /b L0 "), said
+
+
+def test_a_failed_p_reading_says_question_mark_after_the_path_only(caplog):
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.path, r.pid, r.doing = 6.0, "/x", 7, {}
+    w.tick(1.0)
+    r.open = 0.0
+    w.tick(2.0)
+    assert said[0].startswith("STALL 7s P /x ? L0 "), said
+    assert sum("the P db reading failed" in m for m in caplog.messages) == 1
+
+
+def test_health_s_stall_carries_the_slow_line_its_p_request_left(monkeypatch, caplog):
+    """Owner 11-10 «노란 띠에는 없음»: the [Slow] line of the freeze's P request rides with the STALL line - the same
+    sentence the log has; none while the request is open."""
+    import logging
+    monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
+    monkeypatch.setattr(stall_watch, "STALL_SECONDS", 0.0)
+    said = []
+    w = stall_watch.Watch(request_timing.oldest_open, lambda now: 0.0, lambda: (1, 40), lambda: 0, lambda: None,
+                          lambda pids: (5.0, None, PARTS), lambda: ({}, None), lambda: None, lambda: None,
+                          lambda: None, say=said.append)
+    monkeypatch.setattr(stall_watch, "_watch", [w])
+    began = request_timing.begin("/tables/t/columns")
+    w.tick(time.perf_counter() + 6.0)                    # six seconds on
+
+    class Answered:
+        status_code, headers = 200, {"content-length": "12"}
+    w.tick(time.perf_counter() + 36.0)                   # a mid line: the request is still open
+    assert said and stall_watch.last()["slow"] is None
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        request_timing.end(began, "GET", "/tables/t/columns", Answered)
+    w.tick(time.perf_counter() + 37.0)
+    slow = [m for m in caplog.messages if m.startswith("[Slow] GET /tables/t/columns 200 - ")]
+    assert len(slow) == 1 and stall_watch.last() == dict(w.last, slow=slow[0])
+    assert stall_watch.last()["line"].startswith("STALL ") and " P /tables/t/columns " in stall_watch.last()["line"]
+
+
+def test_the_slow_lines_kept_are_the_last_ones(monkeypatch):
+    monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
+    monkeypatch.setattr(request_timing, "_slow_said", type(request_timing._slow_said)())
+
+    class Answered:
+        status_code, headers = 200, {"content-length": "1"}
+    keys = []
+    for _ in range(request_timing.SLOW_KEPT + 2):
+        began = request_timing.begin("/x")
+        keys.append(began[2])
+        request_timing.end(began, "GET", "/x", Answered)
+    assert request_timing.slow_line(keys[0]) is None and request_timing.slow_line(keys[1]) is None
+    assert request_timing.slow_line(keys[2]).startswith("[Slow] GET /x 200 - ")
+    assert len(request_timing._slow_said) == request_timing.SLOW_KEPT
+
+
+@pytest.mark.pg
+def test_on_postgresql_p_names_the_stalled_request_s_own_statement_and_its_wait(pg_engine, monkeypatch, caplog):
+    """The board the lead asked (11-10): a request whose query sleeps on PostgreSQL - the line's P names its statement,
+    its seconds and «Timeout:PgSleep», read off pg_stat_activity by the pid the cursor hook noted; then its [Slow]
+    line rides with it."""
+    import contextvars
+    import logging
+    from sqlalchemy import text
+    monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
+    monkeypatch.setattr(stall_watch, "_engine", [pg_engine])
+    monkeypatch.setattr(stall_watch, "STALL_SECONDS", 0.0)
+    said = []
+    w = stall_watch.Watch(request_timing.oldest_open, lambda now: 0.0, lambda: (1, 40), lambda: 0, lambda: None,
+                          lambda pids: (5.0, None, PARTS), lambda: ({}, None), lambda: None, lambda: None,
+                          lambda: None, say=said.append, pg_doing=stall_watch.pg_doing)
+    monkeypatch.setattr(stall_watch, "_watch", [w])
+    began = request_timing.begin("/tables/t/columns")
+
+    def query():
+        with pg_engine.connect() as conn:
+            conn.execute(text("SELECT pg_sleep(3)"))
+    worker = threading.Thread(target=contextvars.copy_context().run, args=(query,))
+    worker.start()
+    for _ in range(40):                                  # until the hook has noted its pid
+        if request_timing.oldest_open()[3]:
+            break
+        time.sleep(0.05)
+    time.sleep(1.2)
+    w.tick(time.perf_counter() + 6.0)
+    worker.join()
+
+    class Answered:
+        status_code, headers = 200, {"content-length": "2"}
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        request_timing.end(began, "GET", "/tables/t/columns", Answered)
+    w.tick(time.perf_counter() + 7.0)
+    assert re.match(r"^STALL \d+s P /tables/t/columns SELECT [12]s Timeout:PgSleep L0 ", said[0]), said
+    slow = [m for m in caplog.messages if m.startswith("[Slow] GET /tables/t/columns 200 - ")]
+    assert stall_watch.last()["slow"] == slow[0]
 
 
 def test_a_request_waiting_for_a_grid_process_is_counted_while_it_waits():
@@ -325,7 +476,7 @@ def test_health_carries_the_last_stall_line(client, monkeypatch):
     w.tick(2.0)
     monkeypatch.setattr(stall_watch, "_watch", [w])
     body = client.get("/health").json()
-    assert body["stall"] == {"line": said[0], "at": w.last["at"]}
+    assert body["stall"] == {"line": said[0], "at": w.last["at"], "slow": None}
     monkeypatch.setattr(stall_watch, "_watch", [])
     assert client.get("/health").json()["stall"] is None
 
@@ -346,14 +497,14 @@ def test_a_pool_child_busiest_names_its_pool(monkeypatch):
     assert names == {os.getpid(): "api", 515151: "grid", 424242: "walk"}
 
     said = []
-    w = stall_watch.Watch(lambda: (8.0, "/tables/split_table/data"), lambda now: 0.0, lambda: (1, 40), lambda: 0,
+    w = stall_watch.Watch(lambda: (8.0, "/tables/split_table/data", 1, None), lambda now: 0.0, lambda: (1, 40), lambda: 0,
                           lambda: (1, 0.0, None, 0), lambda pids: (41.0, (pids[515151], 38.0), {
                               "pg": 0.0, "api": 1.0, "other": 2.0}), stall_watch.workers,
                           lambda: (0, None), lambda: None, lambda: None, say=said.append)
     w.tick(1.0)
     w.tick(2.0)
     assert said == [] and w.freeze is not None
-    w.open_requests = lambda: (0.0, None)
+    w.open_requests = lambda: (0.0, None, None, None)
     w.tick(3.0)
     assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s B0 X0 C41 api:1 grid:38 pg:0 other:2 "
                     "pgIO0"], "no disk reading yet: no IO cell"
