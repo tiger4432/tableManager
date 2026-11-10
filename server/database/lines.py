@@ -293,6 +293,9 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
+    # «the cells these source rows fed» (cells_stamped_by) - only a line that carries its source row is in it
+    Index(index_name(table_name, "i"), lines.c.input_row,
+          postgresql_where=text("input_row IS NOT NULL"), sqlite_where=text("input_row IS NOT NULL"))
     table = current_table(db, table_name, table_cfg, won_by=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
     return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
@@ -730,3 +733,36 @@ def ensure_declared(engine, tables=None) -> dict:
                              f"tries again")
             log.error("[Lines] %s", refused[name], exc_info=None if held else err)
     return refused
+
+
+def stamped_by(db, table_name: str, origin_row_ids) -> list:
+    """[(row_id, column, source_name, input_row)] - the cells of t these source rows feed now: each line carrying one
+    of them as its input_row, its head columns it did not withdraw (the index t__lines_i). Reads only."""
+    from sqlalchemy import or_
+
+    ids = list(dict.fromkeys(str(i) for i in origin_row_ids or () if i))
+    if not ids or not has_lines(db, table_name):
+        return []
+    chunks = _built_chunks(db.connection(), table_name)
+    heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
+    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
+    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
+               Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+    postgres = db.get_bind().dialect.name == "postgresql"
+    out = []
+    for i in range(0, len(ids), 1000):
+        if postgres:
+            # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
+            #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
+            picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
+            rows = db.execute(text(
+                f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
+                f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
+                f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
+        else:
+            rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
+                                               or_(*[lt.c[h] != 0 for h in heads]))).mappings()
+        for r in rows:
+            cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
+            out.extend((r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
+    return out

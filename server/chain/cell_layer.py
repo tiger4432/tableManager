@@ -273,43 +273,19 @@ def unowned_layers(db, after_id, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
     return found, (rows[-1][0] if rows else after_id), len(rows)
 
 
-def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
+def cells_stamped_by(db, table_name, origin_row_ids) -> list:
     """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - the layers these rows fed.
 
-    🔴 [S-280 · 판정 434] THE NOTE READ BACK. `origin_row_id` was written while the input
-    row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is
-    gone — which is the one question a deleted row cannot be asked itself.
-
-    READ ONLY, one layer a tuple: a (columns x rows) group per layer name also named cells
-    another row fed under a shared name (`chain_ingestion`).
+    🔴 [S-280 · 판정 434] THE NOTE READ BACK. The line carries its source row (`input_row`), written while the input
+    row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is gone — the one question a
+    deleted row cannot be asked itself. `table_name` None: every declared table whose lines are built (a caller
+    that does not know which tables the rows fed). READ ONLY, one layer a tuple.
     """
-    from database import models
+    from database import crud, lines
 
-    # Each origin once, in order: per origin, a repeat would be answered twice (QA c762f6820 · 총괄 ③).
-    ids = list(dict.fromkeys(str(item) for item in (origin_row_ids or ()) if item))
-    one_at_a_time = db.get_bind().dialect.name == "postgresql"
-    found = []
-    for i in range(0, len(ids), chunk_size):
-        chunk = ids[i:i + chunk_size]
-        found.extend(tuple(row) for row in (
-            db.execute(STAMPED_BY_EACH_ORIGIN, {"ids": chunk}) if one_at_a_time else
-            db.query(models.CellSource.table_name, models.CellSource.row_id,
-                     models.CellSource.column_name, models.CellSource.source_name,
-                     models.CellSource.origin_row_id)
-            .filter(models.CellSource.origin_row_id.in_(chunk)).all()))
-    return found
-
-
-#: `cells_stamped_by` on PostgreSQL: each origin asked through `idx_sources_by_origin` on its own.
-#: 🔴 OFFSET 0 KEEPS THE LATERAL FROM BEING FOLDED (총괄 d28171060 - 운영에서 그 인덱스의 scans 가 안
-#:    늘었다). As one `IN (1,000)` the planner sizes the batch from the statistics - believing an
-#:    origin feeds thousands of cells (a join's value row feeds many), it read the whole table:
-#:    measured on 3M rows, 1,000 origins not stamped yet, a Seq Scan 370 ms; this, an index
-#:    probe per origin, 10 ms.
-STAMPED_BY_EACH_ORIGIN = text(
-    "SELECT c.table_name, c.row_id, c.column_name, c.source_name, c.origin_row_id"
-    "  FROM unnest(CAST(:ids AS varchar[])) AS o(id)"
-    "  CROSS JOIN LATERAL (SELECT * FROM cell_sources s WHERE s.origin_row_id = o.id OFFSET 0) c")
+    tables = [table_name] if table_name else [t for t, cfg in (crud.TABLE_CONFIG or {}).items()
+                                               if isinstance(cfg, dict) and lines.keeps_lines(t, cfg)]
+    return [(t, *cell) for t in tables for cell in lines.stamped_by(db, t, origin_row_ids)]
 
 
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE,
@@ -367,7 +343,7 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
     `lost_a_layer` is {table: (columns, row ids)} of the layers withdrawn - what the delete path
     tells the rules (총괄 e11bb4de0 (나)).
     """
-    return withdraw_layers(db, cells_stamped_by(db, origin_row_ids), apply, log, table, columns, keep)
+    return withdraw_layers(db, cells_stamped_by(db, table, origin_row_ids), apply, log, table, columns, keep)
 
 
 def withdraw_layers(db, layers, apply: bool = False, log=logger.info, table: str = None, columns=None,
