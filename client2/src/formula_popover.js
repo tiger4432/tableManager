@@ -10,7 +10,7 @@ import { setDisabledReason } from './disabled_reason.js';
 import { placeUnder, watchForDismiss } from './dropdown.js';
 import { ReadBoard } from './latest_read.js';
 import { countNumberText, countOf, COUNT_FAILED, COUNTING_ROWS } from './match_count.js';
-import { FormulaInput } from './formula_input.js';
+import { FormulaInput, FORMULA_MARK } from './formula_input.js';
 import { localStamp } from './server_time.js';
 import { unitText } from './ui_words.js';
 
@@ -341,7 +341,7 @@ export class FormulaHeader {
     this.mark = doc.createElement('button');
     this.mark.type = 'button';
     this.mark.className = 'formula-mark';
-    this.mark.textContent = 'fx';
+    this.mark.textContent = FORMULA_MARK;
     const stop = (e) => { if (e && e.stopPropagation) e.stopPropagation(); };
     this.mark.addEventListener('mousedown', stop);
     this.mark.addEventListener('click', (e) => {

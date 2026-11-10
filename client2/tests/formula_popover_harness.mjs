@@ -15,6 +15,7 @@
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import * as BASELINE from '../src/formula_popover.js';
+import { FORMULA_MARK } from '../src/formula_input.js';
 
 const SRC_PATH = fileURLToPath(new URL('../src/formula_popover.js', import.meta.url));
 let passed = 0;
@@ -340,6 +341,8 @@ console.log('\n── F. THE HEADER\'S fx MARK ───────────
   head.refresh({ doc, displayName: 'C2', formula: '=[a]', open: (anchor) => opened.push(anchor) });
   ok('F5 a refresh keeps the mark and says the new formula', head.getGui().textContent === 'C2fx' && mark.title === '=[a]'
     && find(head.getGui(), 'formula-mark') === mark);
+  ok('F6 the header\'s mark is the formula field\'s one word (formula_input.FORMULA_MARK)', mark.textContent === FORMULA_MARK,
+    mark.textContent);
 }
 
 console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────────────────────');
@@ -427,6 +430,7 @@ const swap = (from, to) => (src) => {
   return src.replace(from, to);
 };
 const DEFECTS = [
+  ['M0 the header says a mark word of its own', swap('    this.mark.textContent = FORMULA_MARK;', "    this.mark.textContent = 'ƒ';")],
   ['M1 typing leaves Apply on for a text never previewed',
     swap("    this.previewed = null;\n    setDisabledReason(this.applyBtn, NEEDS_PREVIEW);\n    if (this.rest)", "    if (this.rest)")],
   ['M2 an older preview\'s answer is drawn over the newer',
@@ -531,6 +535,7 @@ async function verdict(M) {
   label.appendChild(head.getGui());
   find(head.getGui(), 'formula-mark').click();
   if (sorted.length) return true;
+  if (find(head.getGui(), 'formula-mark').textContent !== FORMULA_MARK) return true;
   return false;
 }
 

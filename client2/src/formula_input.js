@@ -34,9 +34,9 @@ function scan(text, caret) {
 
 /** What the caret stands in, for the list under the formula: a column's name after an open «[», or a function's name -
  *  {kind: 'column' | 'function', from, prefix}, `from` where the name begins; null in a text in quotes or elsewhere. */
-/** The one «this is a formula» mark (lead 11-10): every formula field wears it, and a folded line that shows a formula
- *  wears the same - a formula beside its column's name read as a plain word. */
-export const FORMULA_MARK = 'ƒ';
+/** The one «this is a formula» mark, the owner's word since 10-28 (the grid header's «fx», option A): the header's
+ *  button, every formula field, and a folded line or a read-only leaf that shows a formula all say it (lead 11-10). */
+export const FORMULA_MARK = 'fx';
 export function formulaMark(doc) {
   const mark = doc.createElement('span');
   mark.className = 'formula-mark';
