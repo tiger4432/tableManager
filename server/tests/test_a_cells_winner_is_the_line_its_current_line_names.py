@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Cell-source overhaul, D's read share - a grid cell's metadata from the lines (docs/design/CELL_SOURCE_OVERHAUL.md
-«읽기 — D 분야»): its winner is the source of the line `t__now.won_by` names (the merge at write time - nothing ranks
+«읽기 — D 분야»): its winner is the source of the line `t.won_by` names (the merge at write time - nothing ranks
 again on a read); its sources are each source's head line, a withdrawn one left out.
 
     page read     priority_source from won_by with or without the sources; sources = the head lines' values;
