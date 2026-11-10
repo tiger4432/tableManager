@@ -54,6 +54,7 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView, ruleStateView } from './rule_outcome.js';
+import { ChainRuleGroups } from './chain_rule_groups.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
 import { countNumberText, countOf } from './match_count.js';
@@ -1995,6 +1996,66 @@ function chainRuleNarrative(rule) {
   return lines.join('\n');
 }
 
+// One rule's row in the Chain Rules list - the groups part (chain_rule_groups.js) places it under its table.
+function chainRuleRow(rule) {
+  const row = document.createElement('tr');
+  row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
+  row.dataset.name = rule.name;
+
+  const ruleState = ruleStateView(rule);
+  const stateBadge = `<span class="badge ${ruleState.badge}">${escapeHtml(ruleState.state)}</span>`;
+  // The server's why is a sentence, so it lives where the table's long text does - not in the State cell (lead 10-28 ㄴ).
+  const stateDetail = ruleState.detail ? `<div class="meta">${escapeHtml(ruleState.detail)}</div>` : '';
+  // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
+  //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 running 이면서 `skipped:disabled` 입니다 —
+  //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
+  const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
+  const outcomeBadge = outcome.read
+    ? `<span class="badge ${outcome.badge}">${escapeHtml(outcome.outcome)}</span>` : '';
+  // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
+  // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
+  //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
+  const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
+    .filter(Boolean).map(escapeHtml);
+  const outcomeNote = outcomeBits.length
+    ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
+  const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
+  const source = rule.trigger_table || '-';
+  const target = rule.target_table || '-';
+  const sourceNote = rule.source_table && rule.source_table !== source
+    ? `reads ${rule.source_table}` : 'uses trigger rows';
+
+  row.innerHTML = `
+    <td>${escapeHtml(rule.kind || ABSENT)}</td>
+    <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
+    <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
+    <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
+    <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
+    <td><div class="chain-capabilities">${[
+      rule.allow_map_metadata_upsert ? '<span class="badge badge-warning">META UPSERT</span>' : '',
+      rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
+      !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
+    ].join('')}</div></td>
+  `;
+
+  row.addEventListener('click', () => {
+    selectChainRow(rule);
+  });
+
+
+  return row;
+}
+
+// The Chain Rules list folded by a table, with its filter (owner 11-11, lead).
+let chainGroupsPart = null;
+function chainGroups() {
+  if (!chainGroupsPart) {
+    chainGroupsPart = new ChainRuleGroups(byId('chain-rule-groups-mount'), { doc: document, body: chainListBody,
+      rowOf: chainRuleRow, columns: 6, key: 'admin.chainRules' });
+  }
+  return chainGroupsPart;
+}
+
 function renderChainTable() {
   chainListBody.innerHTML = '';
   const runningCount = chainData.filter(rule => ruleStateView(rule).running).length;
@@ -2008,53 +2069,7 @@ function renderChainTable() {
 
   chainEmptyState.style.display = 'none';
 
-  chainData.forEach(rule => {
-    const row = document.createElement('tr');
-    row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
-    row.dataset.name = rule.name;
-
-    const ruleState = ruleStateView(rule);
-    const stateBadge = `<span class="badge ${ruleState.badge}">${escapeHtml(ruleState.state)}</span>`;
-    // The server's why is a sentence, so it lives where the table's long text does - not in the State cell (lead 10-28 ㄴ).
-    const stateDetail = ruleState.detail ? `<div class="meta">${escapeHtml(ruleState.detail)}</div>` : '';
-    // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
-    //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 running 이면서 `skipped:disabled` 입니다 —
-    //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
-    const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
-    const outcomeBadge = outcome.read
-      ? `<span class="badge ${outcome.badge}">${escapeHtml(outcome.outcome)}</span>` : '';
-    // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
-    // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
-    //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
-    const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
-      .filter(Boolean).map(escapeHtml);
-    const outcomeNote = outcomeBits.length
-      ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
-    const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
-    const source = rule.trigger_table || '-';
-    const target = rule.target_table || '-';
-    const sourceNote = rule.source_table && rule.source_table !== source
-      ? `reads ${rule.source_table}` : 'uses trigger rows';
-
-    row.innerHTML = `
-      <td>${escapeHtml(rule.kind || ABSENT)}</td>
-      <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
-      <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
-      <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
-      <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
-      <td><div class="chain-capabilities">${[
-        rule.allow_map_metadata_upsert ? '<span class="badge badge-warning">META UPSERT</span>' : '',
-        rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
-        !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
-      ].join('')}</div></td>
-    `;
-
-    row.addEventListener('click', () => {
-      selectChainRow(rule);
-    });
-
-    chainListBody.appendChild(row);
-  });
+  chainGroups().render(chainData, chainRuleOutcomes || {});
 
   if (selectedChainName && !isInlineEditorActive) {
     const exists = chainData.find(c => c.name === selectedChainName);

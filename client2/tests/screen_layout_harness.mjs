@@ -1808,11 +1808,11 @@ CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, an imported node', 
 })()` });
 // lead 10-28: the Chain table's header is admin.html's and its cells are admin.js's - each header's column holds that
 // header's cells, and every rule's state badge is inside the box when the tab opens (it was past it at every size).
-CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'chain columns', at: 'chain-list-body', expr: `(() => {
+CELLS.push({ entry: 'admin.html', after: 'Chain, every rule group open', rule: 'chain columns', at: 'chain-list-body', expr: `(() => {
   const table = document.querySelector('#chain-list-body').closest('table');
   const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
   const mark = { 'Rule / Mapper': '.chain-rule-name', 'Data Flow': '.chain-flow', 'State': '.chain-state' };
-  const rows = [...document.querySelectorAll('#chain-list-body tr')];
+  const rows = [...document.querySelectorAll('#chain-list-body tr.table-row')];
   if (!rows.length) return 'no rule rows';
   for (const tr of rows) for (const [head, sel] of Object.entries(mark)) {
     const cell = tr.children[heads.indexOf(head)];
@@ -4084,6 +4084,27 @@ const DRIVE = {
       await until(c, "!!document.querySelector('[data-path=\"target_table\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="target_columns"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // The rule list folded by a table (owner 11-11 «많아지니 안 보이더라»): shut by default, every group opened here.
+    ['Chain, every rule group open', async (c) => {
+      await evaluate(c, "Object.keys(localStorage).filter((k) => k.startsWith('admin.chainRules:')).forEach((k) => localStorage.removeItem(k)); true");
+      await evaluate(c, "location.hash = '#overview'; true");
+      await until(c, "!!document.querySelector('#overview-status-mount .ov-row')");
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "document.querySelectorAll('#chain-list-body .chain-group__toggle').length > 0");
+      await evaluate(c, `(() => { for (let i = 0; i < 100; i += 1) {
+        const shut = document.querySelector('#chain-list-body .chain-group__toggle[aria-expanded="false"]');
+        if (!shut) return true; shut.click(); } return false; })()`);
+      await until(c, "!document.querySelector('#chain-list-body .chain-group__toggle[aria-expanded=\"false\"]')"
+        + " && document.querySelectorAll('#chain-list-body tr.table-row').length > 0");
+    }],
+    // ...by the table each rule writes, filtered by a table's name: how many of how many
+    ['Chain, rules filtered and grouped by the table written', async (c) => {
+      await evaluate(c, `(() => { const by = document.querySelector('#chain-rule-groups-mount select');
+        by.value = 'writes'; by.dispatchEvent(new Event('change'));
+        const q = document.querySelector('#chain-rule-groups-mount .chain-groups__filter');
+        q.value = 'dt_map'; q.dispatchEvent(new Event('input')); return true; })()`);
+      await until(c, "/ of \\d+ rules$/.test((document.querySelector('.chain-groups__shown') || {}).textContent || '')");
     }],
     // The chain editor opened by its address (owner 11-10 «플로우 ㄱ»: the grid's Flow box opens it in a new tab), the
     // address admin_route.js builds: the rule open, nothing picked by hand.

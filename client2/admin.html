@@ -818,6 +818,18 @@
 
     /* Chain rules are a directed graph, not merely a source/target list. */
     .chain-rule-name { font-weight: 650; color: var(--color-primary); }
+    /* the Chain Rules list folded by a table (chain_rule_groups.js) */
+    .chain-groups { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); }
+    .chain-groups__by { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-label); color: var(--text-muted); }
+    .chain-groups__filter { flex: 1 1 240px; min-width: 0; }
+    .chain-groups__shown { font-size: var(--fs-label); color: var(--text-muted); }
+    .chain-group td { padding: 0; background: var(--bg-inset); }
+    .chain-group__toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-4);
+      border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+    .chain-group__name { font-family: var(--font-mono); font-weight: 650; }
+    .chain-group__counts { margin-left: auto; font-size: var(--fs-label); color: var(--text-muted); }
+    .chain-group__counts[data-failing="true"] { color: var(--danger); }
+    .chain-groups__none { padding: var(--space-3) var(--space-4); color: var(--text-muted); }
     .chain-rule-mapper, .chain-flow, .chain-flow-note {
       font-family: var(--font-mono);
       font-size: var(--fs-label);
@@ -2036,6 +2048,7 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
+              <div id="chain-rule-groups-mount"></div>
               <table class="table-container">
                 <thead class="table-header">
                   <tr>
