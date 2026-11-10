@@ -101,6 +101,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         unknown = [c for c in list(it.get("values") or ()) + list(it.get("columns") or ()) if c not in data]
         if unknown:
             raise ValueError("write_lines: %r is not a column of %r" % (unknown[0], table))
+        if it["line_kind"] in (WRITE, WITHDRAW) and it.get("source_name") is None:   # a head with no source (C 11-11)
+            raise ValueError("write_lines: a %s line of %r names no source" % (it["line_kind"], table))
     at = _instant(db, table)
     targets, old, keys = _claim(db, table, cfg, now, items)
     claimed = dict(targets)
@@ -656,7 +658,8 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
     blank never wins. The layers left are today's, as head lines: the shell's lines move to the holder under
     `merged_layer_name(source, key_rowid)`; where both rows' cells are a person's the holder's «user» value stays as
     «user (old_exist_…)» and the shell's is «user»; a shell value no line said is a line of the writer's; a value
-    that wins is a «collision_merge» line its pin shows; a cell this write made a person's that the holder has no
+    that wins is a «collision_merge» line its pin shows, and one «mark» line says the merge on the holder whatever
+    moved; a cell this write made a person's that the holder has no
     mark on is marked a person's there. The shell's current line and marks go; the holder is merged
     again - a moved line may show at once (lead 11-11 ㄱ). -> (shell's line, holder's before, holder's after)."""
     from datetime import datetime
@@ -747,6 +750,9 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                          "values": text(wins)})
         for it in said:
             it["line_kind"] = WRITE
+        # one mark line on the holder, always: the merge's own new line - the migration's write_back finds a row by a
+        # line newer than the copy, and moved lines keep their old line_id (C · lead 11-11)
+        said.append({"line_kind": MARK, "source_name": crud.COLLISION_SOURCE, "written_by": written_by or "system"})
         lines.note_sources(db, set(renamed.values()) | {it["source_name"] for it in said})
         if said:
             every = set(range(len(said)))

@@ -309,3 +309,32 @@ def test_a_key_column_written_blank_keeps_the_key(one_key):
     row = rows()["C2"][0]
     write({"code": None, "a": "x"}, row_id=row)
     assert rows()["C2"][0] == row
+
+
+def test_a_merge_that_writes_no_value_leaves_a_mark_line_on_the_holder(db):
+    """The migration's write_back finds a row by a line newer than its copy; moved lines keep their line_id."""
+    _write(db, "f1.csv", {"k": "K1", "a": "same"})
+    _write(db, "f2.csv", {"k": "K2", "a": "same"})
+    rows = _rows(db)
+    holder, shell = rows["K1"][0], rows["K2"][0]
+    model = models.DYNAMIC_TABLES[TABLE]
+    db.query(model).filter_by(row_id=shell).update({"k": "K1"})       # its cells spell the holder's key, as a pair does
+    db.commit()
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    before = db.execute(select(ln.c.line_id).order_by(ln.c.line_id.desc())).scalars().first()
+    crud.merge_into_key_holders(db, TABLE, [(shell, holder)], source_name="notation", updated_by="op",
+                                transaction_id="tx-same")
+    db.commit()
+    got = db.execute(select(ln.c.line_kind, ln.c.line_id).where(ln.c.row_id == holder, ln.c.batch == "tx-same")).all()
+    assert [kind for kind, _id in got] == ["mark"] and got[0][1] > before, got
+
+
+def test_a_write_or_withdraw_line_naming_no_source_is_refused(db):
+    from database.write_lines import write_lines
+
+    holder, _shell = _two(db)
+    for kind, said in (("write", {"values": {"a": "x"}}), ("withdraw", {"columns": ["a"]})):
+        with pytest.raises(ValueError, match="names no source"):
+            write_lines(db, TABLE, [{"row_id": holder, "line_kind": kind, "source_name": None, **said}],
+                        kind="funnel", transaction_id="tx-none")
+        db.rollback()
