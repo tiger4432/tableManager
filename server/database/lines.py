@@ -578,9 +578,9 @@ def layers(db, table_name: str, row_ids, columns=None) -> dict:
     if not row_ids or not has_lines(db, table_name):
         return {}
     conn = db.connection()
-    chunks = _built_chunks(conn, table_name)
+    built = {c["name"] for c in inspect(conn).get_columns(lines_relation(table_name))}       # one catalogue read
+    chunks = sum(1 for i in range(len(built)) if f"head_{i}" in built)
     by_bit = {bit: col for col, bit in bit_map(db, table_name).items() if columns is None or col in columns}
-    built = {c["name"] for c in inspect(conn).get_columns(lines_relation(table_name))}
     cells = [c for c in by_bit.values() if value_column(c) in built]
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     own = ("line_id", "source_name", "at", "written_by", "owner_rule", "owner_key", "input_row")
