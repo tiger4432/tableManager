@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy import event
@@ -141,7 +142,8 @@ def _settings():
 
 _open = {}                      # this process's requests not ended: key -> [perf_counter at begin, path, where it runs]
 _keys = itertools.count()
-#: The last slow requests' lines by their `_open` key - what the freeze's line carries (`slow_line`).
+#: The last slow requests' (when, line) by their `_open` key - what the freeze's line carries (`slow_line`) and the
+#: help's operations answer reads (`slow_lines`).
 _slow_said = collections.OrderedDict()
 SLOW_KEPT = 50
 
@@ -172,7 +174,13 @@ def oldest_open():
 
 def slow_line(key):
     """The [Slow] line request `key` left when it ended - None when it was not slow, is not over, or is long gone."""
-    return _slow_said.get(key)
+    said = _slow_said.get(key)
+    return said and said[1]
+
+
+def slow_lines(count):
+    """[(when, line)] of the last `count` slow requests, newest last."""
+    return list(_slow_said.values())[-count:] if count > 0 else []
 
 
 def spent():
@@ -228,7 +236,7 @@ def end(began, method, path, response):
         line = "[Slow] %s %s %d - %s · db %d ms · %d queries%s" % (
             method, path, status, event_constants.slow_sentence(total_ms, budget), db_ms, queries,
             "".join(" · " + part for part in _parts(rows, untold, headers, stages)))
-        _slow_said[key] = line
+        _slow_said[key] = (datetime.now(timezone.utc).isoformat(timespec="seconds"), line)
         while len(_slow_said) > SLOW_KEPT:
             _slow_said.popitem(last=False)
         logger.warning("%s", line)

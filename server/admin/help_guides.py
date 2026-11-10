@@ -55,6 +55,20 @@ SYSTEM = ("You write ONE declaration that answers an operator's question, from t
           'name, or for the ledger the declaration\'s path such as sources.<id>, "declaration": the JSON object to '
           'save under that name, "why": one short English sentence, "sections": the names of the sections you used, '
           "copied exactly as they are given}. Use only cells the sections show.")
+#: The operations answer (lead 11-10): from the server's own readings and the guide sections only; no reading that
+#: bears on it - «not known from the readings», and where to look.
+OPERATIONS_SYSTEM = (
+    "You answer an operator's question about why the server or a screen is slow or stuck, what a log line means, or "
+    "which setting to change - from the server's readings and the guide sections below only. Answer one JSON object: "
+    '{"answer": a few short sentences in the language of the question - what the readings show, the cause they '
+    'point to and what to do, "lines": the numbers of the readings you used, "sections": the names of the sections '
+    'you used, copied exactly as they are given, "why": one short English sentence}. When no reading bears on the '
+    "question, say it is not known from the readings and what the sections say to look at; never name a cause no "
+    "reading shows.")
+#: How each answer from the guides is asked - the help tool's `answer` names one: its system sentence, the cells it
+#: answers, and whether the save's own judgement checks it.
+FORMS = {"declaration": {"system": SYSTEM, "cells": ("kind", "name", "declaration"), "check": True},
+         "operations": {"system": OPERATIONS_SYSTEM, "cells": ("answer",), "check": False}}
 
 
 def estimated_tokens(text):
@@ -106,8 +120,9 @@ def sections(text):
 
 
 def cut(guide, text):
-    """[{"name", "text"}] of one guide's text - its sections cut again at bold numbered items, the history sentences
-    out, a long one split."""
+    """[{"name", "file", "path", "text"}] of one guide's text - its sections cut again at bold numbered items, the
+    history sentences out, a long one split. `file` and `path` are the Guide reader's (`reader`): where a cited piece
+    opens."""
     out = []
     for section in sections(text):
         item, body, fence = None, [], False
@@ -119,7 +134,8 @@ def cut(guide, text):
             name = "%s: %s" % (os.path.basename(guide), " > ".join(section["path"] + ([item] if item else [])))
             pieces = _split(joined) if len(joined) > CAP else [joined]
             for k, piece in enumerate(pieces):
-                out.append({"name": name + ("" if len(pieces) == 1 else " (part %d)" % (k + 1)), "text": piece})
+                out.append({"name": name + ("" if len(pieces) == 1 else " (part %d)" % (k + 1)),
+                            "file": os.path.basename(guide), "path": section["path"], "text": piece})
 
         for line in section["text"].split("\n"):
             if line.startswith("```"):
@@ -286,8 +302,11 @@ def nearest(search, retrieval=None):
     return out, how
 
 
-def prompt_of(question, pieces):
+def prompt_of(question, pieces, lines=()):
+    """The sections, the server's readings numbered from 1 (an operations answer's), then the question."""
     return ("Guide sections:\n\n" + "\n\n".join("## %s\n%s" % (p["name"], p["text"]) for p in pieces)
+            + ("\n\nServer readings:\n" + "\n".join("[%d] %s" % (n, line) for n, line in enumerate(lines, 1))
+               if lines else "")
             + "\n\nQuestion: " + question)
 
 
@@ -338,25 +357,34 @@ def _ledger_check(target, declaration):
     return {"ok": False, "said": " | ".join(str(error.get("message")) for error in preview.errors)}
 
 
-def answer(question, search, ask_json, retrieval=None):
-    """One declaration for `question` -> {"kind", "name", "declaration", "why", "sections", "dropped_sections",
-    "check", "refused", "retrieval"}. `search` is the model's guide-worded search from the help's first ask."""
+def answer(question, search, ask_json, retrieval=None, form="declaration", lines=()):
+    """One answer of `form` (FORMS) for `question` -> its cells, "why", "sections", "cited_sections" (each {"name",
+    "file", "path"} - where the Guide reader opens it), "dropped_sections", "lines" (the
+    readings it cited, as given), "dropped_lines", "refused", "retrieval", and a declaration's "check". `search` is the
+    model's guide-worded search from the help's first ask; `lines` the server's readings an operations answer may cite.
+    A section or a reading the answer names that it was not given is dropped and counted."""
     from utils import llm
 
+    spec = FORMS[form]
+    refused = {"sections": [], "cited_sections": [], "dropped_sections": 0, "lines": [], "dropped_lines": 0}
     try:
         pieces, how = nearest(search or question, retrieval)
     except LookupError as missing:
-        return {"refused": str(missing), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(missing)},
-                "retrieval": None}
+        return dict(refused, refused=str(missing), retrieval=None,
+                    **({"check": {"not_checked": str(missing)}} if spec["check"] else {}))
     try:
-        said = ask_json(prompt_of(question, pieces), system=SYSTEM)
+        said = ask_json(prompt_of(question, pieces, lines), system=spec["system"])
     except llm.LlmRefused as e:                                    # not JSON, or the call failed - said
-        return {"refused": str(e), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(e)},
-                "retrieval": how}
-    names = {p["name"] for p in pieces}
+        return dict(refused, refused=str(e), retrieval=how, **({"check": {"not_checked": str(e)}} if spec["check"] else {}))
+    names = {p["name"]: p for p in pieces}
     cited = list(dict.fromkeys(s for s in said.get("sections") or () if isinstance(s, str)))
     kept = [s for s in cited if s in names]
-    return {"kind": said.get("kind"), "name": said.get("name"), "declaration": said.get("declaration"),
-            "why": said.get("why"), "sections": kept, "dropped_sections": len(cited) - len(kept),
-            "check": check(said.get("kind"), said.get("name"), said.get("declaration")), "refused": None,
-            "retrieval": how}
+    numbers = list(dict.fromkeys(n for n in said.get("lines") or () if isinstance(n, int) and not isinstance(n, bool)))
+    read = [n for n in numbers if 1 <= n <= len(lines)]
+    out = {cell: said.get(cell) for cell in spec["cells"]}
+    out.update(why=said.get("why"), sections=kept, dropped_sections=len(cited) - len(kept),
+               cited_sections=[{"name": s, "file": names[s]["file"], "path": names[s]["path"]} for s in kept],
+               lines=[lines[n - 1] for n in read], dropped_lines=len(numbers) - len(read), refused=None, retrieval=how)
+    if spec["check"]:
+        out["check"] = check(said.get("kind"), said.get("name"), said.get("declaration"))
+    return out
