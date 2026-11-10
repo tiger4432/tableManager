@@ -1330,15 +1330,17 @@
 }
 
 /* 🔴 THE VALUE BOX (lead 10-21, skill §0-bis). Every box a tree row's value cell holds - an input, a picker, a folded
-   value, a value read, a name to add - carries .oe-box, and this rule alone sizes it: one width, the small height, a
-   step of padding, a hairline edge. As wide as its cell up to that width - a table's cell is narrower. After the
+   value, a value read, a name to add - carries .oe-box, and this rule alone sizes it: one width, the small height (a
+   formula's box grows with its lines up to eight, owner 11-11), a step of padding, a hairline edge. As wide as its cell up to that width - a table's cell is narrower. After the
    controls' own rules, which it outranks in the tree. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-box {
   display: inline-block; box-sizing: border-box; flex: 0 1 auto; width: 100%; max-width: var(--oe-box-w); min-width: 0;
-  height: var(--control-h-small); min-height: var(--control-h-small); padding: 0 var(--space-3);
+  height: auto; min-height: var(--control-h-small); max-height: 8lh; padding: 0 var(--space-3);
   border-width: 1px; border-style: solid;
   line-height: calc(var(--control-h-small) - 2px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* A formula's box keeps its lines (owner 11-11 «1 ㄱ», formula_input.js) - the one value box that is not one line. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-box.formula-input__input { white-space: pre-wrap; overflow-y: auto; }
 /* A value read, or the one choice there is, has no edge to press. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; }
 

@@ -278,6 +278,8 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-pop__edit { grid-column: 1 / -1; padding: 6px 0 0 0; border-top: 1px solid var(--sf-panel-line-2); }
 .sf-pop__line { display: flex; gap: 8px; padding: 0 16px; }
 .sf-pop__line > .formula-input { flex: 1; min-width: 0; }
+/* the expression grows with its lines (owner 11-11), from the pill's height */
+.sf-pop__expr.formula-input__input { height: auto; min-height: var(--sf-pill-h); }
 .sf-pop__expr { flex: 1; min-width: 0; box-sizing: border-box; height: var(--sf-pill-h); padding: 1px 6px; border: 1px solid var(--sf-panel-line);
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
 

@@ -50,7 +50,7 @@ function makeDoc() {
         setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; },
         // bubbles from here up its parents until a listener stops it
         dispatch(type, init = {}) {
-          const event = { type, target: this, key: init.key, stopped: false, prevented: false,
+          const event = { type, target: this, key: init.key, ctrlKey: !!init.ctrlKey, metaKey: !!init.metaKey, stopped: false, prevented: false,
             stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } };
           for (let node = this; node && !event.stopped; node = node.parentNode) {
             (node.listeners[type] || []).slice().forEach((fn) => fn(event));
@@ -217,9 +217,9 @@ console.log('\n── C. THE PREVIEW ──────────────�
   await race.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   const rin = find(race.pop.panel, 'formula-pop__input');
   rin.value = '=[a]';
-  rin.fire('keydown', { key: 'Enter' });
+  rin.fire('keydown', { key: 'Enter', ctrlKey: true });
   rin.value = '=[a]+1';
-  rin.fire('keydown', { key: 'Enter' });
+  rin.fire('keydown', { key: 'Enter', ctrlKey: true });
   await tick();
   release({ ok: true, body: { ...PREVIEW, says: 'for =[a]' } });
   await tick();
@@ -362,8 +362,8 @@ console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────
   const sentBefore = m.sent.length;
   const enter = input.fire('keydown', { key: 'Enter' });
   await tick();
-  ok('G7 ↓ then Enter takes the lit row as «DatePart(» - no preview asked by that Enter, the list closed',
-    input.value === '=DatePart(' && input.selectionStart === 10 && enter.prevented && list.hidden
+  ok('G7 ↓ then Enter takes the lit row as «DatePart(, )» - no preview asked by that Enter, the list closed',
+    input.value === '=DatePart(, )' && input.selectionStart === 10 && enter.prevented && list.hidden
     && m.sent.length === sentBefore, [input.value, m.sent.length - sentBefore]);
   ok('G8 ...and its arguments stand under it, the first in bold', !sign.hidden && sign.textContent === 'DatePart(part, value)'
     && all(sign, 'B').map((b) => b.textContent).join() === 'part', sign.textContent);
@@ -388,7 +388,7 @@ console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────
     list.hidden && esc.stopped && m.pop.isOpen && input.value === '=Su');
   typeIn('=Ro');
   list.children[0].dispatch('mousedown');
-  ok('G14 a press on a row takes it', input.value === '=Round(' && list.hidden, input.value);
+  ok('G14 a press on a row takes it', input.value === '=Round(, )' && list.hidden, input.value);
   const typedEnter = mount(X);
   await typedEnter.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   await tick();
@@ -396,9 +396,9 @@ console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────
   tin.value = '=[a]+1';
   tin.setSelectionRange(6, 6);
   tin.fire('input');
-  tin.fire('keydown', { key: 'Enter' });
+  tin.fire('keydown', { key: 'Enter', ctrlKey: true });
   await tick();
-  ok('G15 with no list open, Enter still previews', posts(typedEnter.sent).some((r) => r.body.preview === true));
+  ok('G15 with no list open, Ctrl+Enter previews', posts(typedEnter.sent).some((r) => r.body.preview === true));
 
   // The arguments line hangs under the block of the field and its refusal (owner 11-07): after the refusal when one
   // stands, both read; with none, right under the field.
@@ -476,7 +476,7 @@ async function verdict(M) {
   const sentAt = g.sent.length;
   gin.fire('keydown', { key: 'Enter' });
   await tick();
-  if (gin.value !== '=Date(' || g.sent.length !== sentAt) return true;
+  if (gin.value !== '=Date()' || g.sent.length !== sentAt) return true;
   gtype('=DatePart("year", ');
   if (all(find(g.pop.panel, 'formula-input__signature'), 'B').map((b) => b.textContent).join() !== 'value') return true;
   gtype('=Su');
@@ -485,7 +485,7 @@ async function verdict(M) {
   if (find(g.pop.panel, 'formula-input__complete').children.map((r) => r.textContent).join() !== '[a]') return true;
   gtype('=[a]+1');
   const before = g.sent.length;
-  gin.fire('keydown', { key: 'Enter' });
+  gin.fire('keydown', { key: 'Enter', ctrlKey: true });
   await tick();
   if (!posts(g.sent.slice(before)).some((r) => r.body.preview === true)) return true;
 
@@ -506,9 +506,9 @@ async function verdict(M) {
   await race.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
   const rin = find(race.pop.panel, 'formula-pop__input');
   rin.value = '=[a]';
-  rin.fire('keydown', { key: 'Enter' });
+  rin.fire('keydown', { key: 'Enter', ctrlKey: true });
   rin.value = '=[a]+1';
-  rin.fire('keydown', { key: 'Enter' });
+  rin.fire('keydown', { key: 'Enter', ctrlKey: true });
   await tick();
   release({ ok: true, body: { ...PREVIEW, says: 'for =[a]' } });
   await tick();
