@@ -118,7 +118,7 @@ async function suite(M, loud) {
   say('H6 taken: a function as «Name(» over the rest of the word, a column as «name]» over a «]» already there',
     fn.text === '=DatePart(, )+1' && fn.caret === 10 && cl.text === '=Sum([dt_lot]+1' && cl.caret === 13, [fn, cl]);
   say('H8 a function taken comes as its call\'s skeleton: a slot for each argument it needs, none for «[…]» or «...»',
-    M.callSkeleton('If') === 'If(, , )' && M.callSkeleton('DatePart') === 'DatePart(, )' && M.callSkeleton('Sum') === 'Sum()'
+    M.callSkeleton('If') === 'If(, )' && M.callSkeleton('DatePart') === 'DatePart(, )' && M.callSkeleton('Sum') === 'Sum()'
     && M.callSkeleton('Count') === 'Count()' && M.callSkeleton('Find') === 'Find(, )', ['If', 'DatePart', 'Sum', 'Count', 'Find'].map(M.callSkeleton));
   const w = M.offerAt('uni', 3, [], ['unique_concat', 'spec_out.s_o']);
   const wt = w && M.acceptAt('uni', 3, w, w.items.find((i) => i.word).value, true);
