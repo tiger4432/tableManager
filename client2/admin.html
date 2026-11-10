@@ -1142,7 +1142,13 @@
     .help-card__decl-text { margin: 0; max-height: 320px; overflow: auto; padding: var(--space-2) var(--space-3);
       border: 1px solid var(--border); background: var(--bg-inset); font-family: var(--font-mono); font-size: var(--fs-tag);
       white-space: pre; color: var(--text); }
-    .help-card__sections { display: flex; flex-direction: column; gap: var(--space-1); }
+    .help-card__sections, .help-card__lines, .help-card__ops { display: flex; flex-direction: column; gap: var(--space-1); }
+    .help-card__ops { gap: var(--space-2); min-width: 0; }
+    /* the server's reading lines as written - one face, whole, typed from the screen */
+    .help-card__line { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text); overflow-wrap: anywhere;
+      padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); }
+    .help-card__section-open { align-self: flex-start; text-align: left; }
+    .help-card__uncited { color: var(--warning); }
     .help-card__section, .help-card__dropped, .help-card__check-note { font-family: var(--font-mono); font-size: var(--fs-tag);
       color: var(--text-muted); }
     .help-card__check-ok { font-weight: 600; color: var(--success); }

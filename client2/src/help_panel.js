@@ -22,6 +22,8 @@ export const UNTIL_RELOAD = 'until reload';
 export const NOTHING_ASKED = 'Nothing asked since this page opened';
 // the save's judgement passed - and nothing was saved (lead 10-29: said in the word)
 export const CHECKED = 'Checked - would save';
+// an operations answer that rests on no reading and no section - nothing to check it by
+export const UNCITED = 'Cites no reading and no guide section';
 
 /** The one request: the question as typed. */
 export function helpRequest(question) {
@@ -39,6 +41,17 @@ function checkOf(c) {
   return null;
 }
 
+const many = (n) => (Number(n) > 0 ? Number(n) : 0);
+
+/** The guide sections an answer rests on (B 191a50532): each its name, and where the Guide opens it when the server
+ *  says (`cited_sections` {name, file, path} beside the names) - a name alone is drawn, not opened. */
+function sectionsOf(d) {
+  const where = new Map((Array.isArray(d.cited_sections) ? d.cited_sections : [])
+    .filter((c) => c && c.file && Array.isArray(c.path)).map((c) => [shown(c.name), { file: String(c.file), path: c.path.map(String) }]));
+  return (Array.isArray(d.sections) ? d.sections : []).map(shown).filter(Boolean)
+    .map((name) => ({ name, at: where.get(name) || null }));
+}
+
 /** The help's answer on how to write a declaration: the example as text, the guide sections it rests on, its check. */
 function declarationOf(d) {
   if (!d || typeof d !== 'object') return null;
@@ -46,11 +59,28 @@ function declarationOf(d) {
   return {
     text: body === undefined || body === null ? '' : typeof body === 'string' ? body : JSON.stringify(body, null, 2),
     why: shown(d.why),
-    sections: (Array.isArray(d.sections) ? d.sections : []).map(shown).filter(Boolean),
-    dropped: Number(d.dropped_sections) > 0 ? Number(d.dropped_sections) : 0,
+    sections: sectionsOf(d),
+    dropped: many(d.dropped_sections),
     check: checkOf(d.check),
     refused: shown(d.refused),
     retrieval: shown(d.retrieval),
+  };
+}
+
+/** The help's answer to «why is it slow · what to do» (B 191a50532, owner 11-10 «도우미 ㄴ»): the model's sentences, and
+ *  what they rest on - the server's own reading lines as written and the guide sections. The model can be wrong, so its
+ *  sources stand under it (lead): a line or a section it named that was not there is dropped and counted. */
+function operationsOf(o) {
+  if (!o || typeof o !== 'object') return null;
+  return {
+    answer: shown(o.answer),
+    why: shown(o.why),
+    lines: (Array.isArray(o.lines) ? o.lines : []).map(shown).filter(Boolean),
+    droppedLines: many(o.dropped_lines),
+    sections: sectionsOf(o),
+    dropped: many(o.dropped_sections),
+    refused: shown(o.refused),
+    retrieval: shown(o.retrieval),
   };
 }
 
@@ -70,9 +100,11 @@ export function answerView(answer, forms = {}) {
   const params = a.params && typeof a.params === 'object' ? a.params : {};
   const count = a.count ? buildCountView(a.count) : null;
   const declaration = declarationOf(a.declaration);
+  const operations = operationsOf(a.operations);
   return {
-    // a declaration's own why takes the why's seat (lead 10-29: every card draws it in the same place)
-    ...base, why: (declaration && declaration.why) || base.why, declaration, kind: 'tool', op: a.op, title: a.label || forms[a.op] || a.op, form: a.op in forms, params,
+    // a declaration's or an operations answer's own why takes the why's seat (lead 10-29: every card draws it in the same place)
+    ...base, why: (declaration && declaration.why) || (operations && operations.why) || base.why, declaration, operations,
+    kind: 'tool', op: a.op, title: a.label || forms[a.op] || a.op, form: a.op in forms, params,
     fields: Object.keys(params).map((name) => ({ name, value: shown(params[name]) })),
     // the required fields the question left blank, the server's words - the form opens with them blank (B 7c326a296)
     unfilled: (Array.isArray(a.unfilled) ? a.unfilled : []).map(shown).filter(Boolean),
@@ -126,12 +158,13 @@ export class HelpPanel {
     else if (this.input.focus) this.input.focus();
   }
 
-  /** Opens on the Guide - `tab`'s guides, `file` when given (a declaration window's «?»). */
-  openGuide(tab, file = null) {
+  /** Opens on the Guide - `tab`'s guides, `file` when given (a declaration window's «?»), at the section whose heading
+   *  path is `at` (a section an answer cites). */
+  openGuide(tab, file = null, at = null) {
     if (!this.root) this.build();
     this.root.hidden = false;
     this.setView('guide');
-    this.reader.show(tab, file);
+    this.reader.show(tab, file, at);
   }
 
   setView(view) {
@@ -345,6 +378,7 @@ export class HelpPanel {
     // « · » between items: an item can hold commas itself («one of: tables, rules, transactions»)
     if (v.unfilled.length) box.appendChild(this.el('div', 'help-card__needs', `needs: ${v.unfilled.join(' · ')}`));
     if (v.declaration) box.appendChild(this.declarationBox(v.declaration));
+    if (v.operations) box.appendChild(this.operationsBox(v.operations));
     if (v.count) {
       const line = this.el('div', 'help-card__count');
       line.appendChild(this.el('span', 'help-card__count-value', v.count.value));
@@ -375,6 +409,44 @@ export class HelpPanel {
     return box;
   }
 
+  /** The guide sections an answer rests on - one opens in the Guide at that section when the server said where -, how
+   *  they were picked, and how many names the model made up. */
+  sectionsInto(box, d) {
+    if (d.sections.length) {
+      const list = this.el('div', 'help-card__sections');
+      d.sections.forEach((s) => list.appendChild(s.at
+        ? this.button('btn-quiet help-card__section help-card__section-open', s.name, () => this.openGuide(this.tab(), s.at.file, s.at.path))
+        : this.el('div', 'help-card__section', s.name)));
+      box.appendChild(list);
+    }
+    // how the sections were picked - the server's word; a failed embedding's sentence rides in it
+    if (d.retrieval) box.appendChild(this.el('div', 'help-card__meta help-card__retrieval', `via ${d.retrieval}`));
+    if (d.dropped) {
+      box.appendChild(this.el('div', 'help-card__dropped',
+        `${d.dropped} section name${d.dropped === 1 ? '' : 's'} the model made up ${d.dropped === 1 ? 'was' : 'were'} dropped`));
+    }
+  }
+
+  /** «Why is it slow»: the model's sentences, then what they rest on - the server's reading lines as written, the guide
+   *  sections; an answer that cites neither says so (the owner checks it by its sources). */
+  operationsBox(o) {
+    const box = this.el('div', 'help-card__ops');
+    if (o.refused) box.appendChild(this.el('div', 'help-card__refused', o.refused));
+    if (o.answer) box.appendChild(this.el('div', 'help-card__answer', o.answer));
+    if (o.lines.length) {
+      const list = this.el('div', 'help-card__lines');
+      o.lines.forEach((l) => list.appendChild(this.el('div', 'help-card__line', l)));
+      box.appendChild(list);
+    }
+    if (o.droppedLines) {
+      box.appendChild(this.el('div', 'help-card__dropped',
+        `${o.droppedLines} reading${o.droppedLines === 1 ? '' : 's'} the model made up ${o.droppedLines === 1 ? 'was' : 'were'} dropped`));
+    }
+    this.sectionsInto(box, o);
+    if (!o.refused && !o.lines.length && !o.sections.length) box.appendChild(this.el('div', 'help-card__uncited', UNCITED));
+    return box;
+  }
+
   /** The example to paste (its Copy beside it), the guide sections it rests on, and what the save would say of it. */
   declarationBox(d) {
     const box = this.el('div', 'help-card__decl');
@@ -391,17 +463,7 @@ export class HelpPanel {
       acts.appendChild(copy);
       box.appendChild(acts);
     }
-    if (d.sections.length) {
-      const list = this.el('div', 'help-card__sections');
-      d.sections.forEach((s) => list.appendChild(this.el('div', 'help-card__section', s)));
-      box.appendChild(list);
-    }
-    // how the sections were picked - the server's word; a failed embedding's sentence rides in it
-    if (d.retrieval) box.appendChild(this.el('div', 'help-card__meta help-card__retrieval', `via ${d.retrieval}`));
-    if (d.dropped) {
-      box.appendChild(this.el('div', 'help-card__dropped',
-        `${d.dropped} section name${d.dropped === 1 ? '' : 's'} the model made up ${d.dropped === 1 ? 'was' : 'were'} dropped`));
-    }
+    this.sectionsInto(box, d);
     // a refused second call carries the same sentence as its not_checked - said once, as the refusal
     const c = d.refused ? null : d.check;
     if (c && c.state === 'ok') {
