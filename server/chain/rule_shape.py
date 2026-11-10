@@ -529,14 +529,15 @@ def companion_rules(internal: dict) -> list:
     into = internal.get("into") or {}
     name = internal.get("name")
     spec = derive.get(str(derive.get("kind") or ""))
-    memory = (spec.get("memory") if isinstance(spec, dict) else None) or {}
-    if isinstance(memory, dict) and memory.get("table") and "table" in into and name:
+    from chain import ask_rule
+
+    rule = as_chain_rule(internal) if "table" in into and name else {}
+    if rule.get("mapper") in (ask_rule.ASK_MAPPER, report_shape.REPORT_MAPPER):
         # an AI rule's second half (lead 10-28 A-3, a report's too): a person's edit on its output table wakes it - the
         # chain's own writes do not (no allow_chain_trigger) - and `ask_rule.remember` writes the correction into the
-        # memory table
-        from chain import ask_rule
-
-        companion = dict(as_chain_rule(internal))
+        # memory table, `sys_ai_memory` unless its `memory` names one (owner 11-10)
+        memory = ask_rule.memory_of(spec)
+        companion = dict(rule)
         companion["name"] = str(name) + COMPANION_SUFFIX
         companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
         companion[COMPANION_MAPPER], companion["mapper"] = companion.get("mapper"), ask_rule.ASK_MAPPER

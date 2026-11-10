@@ -44,14 +44,29 @@ MEMORY_HEADING = "Past corrections - a person fixed these answers of yours; answ
 #: `memory.comment` - the report table column a person writes a comment in (owner 10-29 «코멘트 보고 다시 하게»): kept
 #: in the memory table as written, its `cell` the column's name, no AI value.
 MEMORY_COMMENT = "comment"
+#: the memory of a rule whose `memory` names no table, and how a prompt reads it when `prompts.memory` is not written
+#: (owner 11-10 «AI 메모리 설정은 내가 해야하나?» - no): the shipped table, its columns by role
+MEMORY_TABLE = "sys_ai_memory"
+MEMORY_COLUMNS = {"purpose": "purpose", "key": "situation", "cell": "cell", "ai": "ai", "right": "right",
+                  "memo": "memo", "who": "who", "when": "at"}
+MEMORY_READING = {"limit": 5}
+
+
+def memory_of(spec) -> dict:
+    """`spec`'s memory - its `memory` as written when it names a table, else `MEMORY_TABLE` with `MEMORY_COLUMNS`, the
+    columns or `comment` it writes on top. The one reading of the block."""
+    memory = (spec or {}).get("memory")
+    memory = memory if isinstance(memory, dict) else {}
+    if memory.get("table"):
+        return memory
+    return {**memory, "table": MEMORY_TABLE, "columns": {**MEMORY_COLUMNS, **(memory.get("columns") or {})}}
 
 
 def comment_column(spec):
     """The column `memory.comment` names, or None."""
     from database import crud
 
-    memory = (spec or {}).get("memory")
-    said = memory.get(MEMORY_COMMENT) if isinstance(memory, dict) else None
+    said = memory_of(spec).get(MEMORY_COMMENT)
     return None if crud.is_blank_value(said) else str(said).strip()
 
 
@@ -113,14 +128,17 @@ def memory_nodes(comment=False):
     import chain_bindings
 
     leaf = {"kind": "leaf", "hint": "free"}
+    # `default`: what a blank leaf means - the form shows it in the empty box (owner 11-10)
     return ({"key": "memory", "required": False, "node": {"kind": "record", "fields": [
-                {"key": "table", "required": True, "node": leaf},
-                {"key": "columns", "required": True, "node": {"kind": "record", "fields": [
-                    {"key": role, "required": False, "node": leaf} for role in MEMORY_ROLES]}}]
+                {"key": "table", "required": False, "node": dict(leaf, default=MEMORY_TABLE)},
+                {"key": "columns", "required": False, "node": {"kind": "record", "fields": [
+                    {"key": role, "required": False, "node": dict(leaf, default=MEMORY_COLUMNS[role])}
+                    for role in MEMORY_ROLES]}}]
                 + ([{"key": MEMORY_COMMENT, "required": False, "node": leaf}] if comment else [])}},
             {"key": "memory", "required": False, "node": {"kind": "record", "fields": [
                 {"key": "scope", "required": False, "node": chain_bindings.list_node("column", leaf)},
-                {"key": "limit", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}})
+                {"key": "limit", "required": False,
+                 "node": {"kind": "leaf", "hint": "number", "default": MEMORY_READING["limit"]}}]}})
 
 
 def memo_node():
@@ -155,7 +173,7 @@ def written_columns(rule) -> list:
     from chain import rule_shape
 
     if (rule or {}).get(rule_shape.COMPANION_CELL):
-        named = (_spec(rule).get("memory") or {}).get("columns") or {}
+        named = memory_of(_spec(rule)).get("columns") or {}
         return ([named[role] for role in MEMORY_ROLES if role != "memo" and named.get(role)]
                 + _scope_cells(_spec(rule), rule.get("target_table")))
     out = _spec(rule).get("output") or {}
@@ -375,7 +393,7 @@ def remember(db, rule, row_ids):
     from database import crud
 
     spec = _spec(rule)
-    named = (spec.get("memory") or {}).get("columns") or {}
+    named = memory_of(spec).get("columns") or {}
     out_spec = spec.get("output") or {}
     table, asker = rule.get("trigger_table"), str(rule.get(rule_shape.COMPANION_CELL) or "")
     model = _model(table)
@@ -421,9 +439,10 @@ def memory_lines(db, spec, purpose, situation):
     this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it.
     A scope column the situation or the remembered key does not hold matches nothing (lead 10-28): a column held on
     neither side is a declaration slip, and «all match» would carry another wafer's corrections."""
-    memory, reading = spec.get("memory") or {}, (spec.get("prompts") or {}).get("memory")
+    memory, reading = memory_of(spec), (spec.get("prompts") or {}).get("memory")
+    reading = reading if isinstance(reading, dict) else MEMORY_READING
     named = memory.get("columns") or {}
-    if not memory.get("table") or not isinstance(reading, dict) or not purpose:
+    if not purpose:
         return ""
     model = _model(memory["table"])
     roles = [r for r in ("key", "cell", "ai", "right", "memo", "when") if named.get(r)]

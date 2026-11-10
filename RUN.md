@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11] **AI 규칙이 설정 없이 사람 교정을 기억하고 다음 물음에 싣는다 · AI 표 넷은 «AI» 그룹** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
+>          prompts.memory 를 안 적었으면 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
+>          운영에서 이미 memory 블록을 적은 규칙은 그대로, 안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
+>          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
+>          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
+>          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
+> 볼 것    AI 출력 칸을 사람이 고치면 sys_ai_memory 에 행 하나 · 그 규칙의 Test run 프롬프트에 «Past corrections»
+>          체인 규칙 목록에 memory 를 안 적은 AI 규칙의 반쪽 규칙 «<규칙 이름>:target» 이 새로 보임
+> 이 박스  샘플 ask/report 4 중 memory 없던 것 1 · 박스 설정 1 중 0 (박스 수 — 운영 주장 아님)
+> 끄기     없음 (다른 표에 쓰려면 그 규칙의 memory.table 에 적음)
+> ```
+>
+> ---
+>
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```
