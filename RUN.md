@@ -3,12 +3,14 @@
 > ## [11-10] **읽기 뒤에서 세는 일이 한 기제 — 컬럼 고르기는 바로 답하고, 어드민 결손 수는 서버가 쥔 수** — git pull · 런처 재기동(전부)
 >
 > ```
-> 무엇     그리드 전체 행 수 · 최근 이력 따라잡기 · 컬럼 고르기의 정확한 셈 · 자동 확정 결손 수가 한 기제(runtime.behind)
->          일꾼은 넷 따로: whole-counter · queue-counter · audit-recent · column-counts — 하나가 길어도 다른 것을 안 묶음
+> 무엇     그리드 전체 행 수 · 최근 이력 따라잡기 · 컬럼 고르기의 정확한 셈 · 자동 확정 결손 수 · Overview 재교정률 · 공수 점수가 한 기제(runtime.behind)
+>          일꾼은 다섯 따로: whole-counter · queue-counter · audit-recent · column-counts · dashboard-figures — 하나가 길어도 다른 것을 안 묶음
+>          Overview 의 두 수: 어드민 둘이 동시에 열어도 audit_logs 셈은 한 번(60 초마다 다시), 요청은 최대 2 초 기다림
 > 새로 보임 컬럼 고르기(/columns): 바로 추정치(exact false, updating true) → 셈이 끝나면 exact true · counted_at
 >          GET /enrichment/rules: 규칙마다 missing{count, capped, counted_at, failed} · 최상위 missing{total, capped, counted_at, updating, unknown}
 >          Running(지금 도는 일)에 «column-counts · <표>» · «queue-counter · <표…>» — where api
 > 볼 줄    [Columns] the exact counts of <표> were not counted: … · [Count] the queue count of … was not counted: …
+>          Overview 의 재교정률 · 공수 칸이 «still being worked out» → 셈이 2 초를 넘어 아직 도는 중(Running 의 dashboard-figures 줄), 다음 열기에 값
 >          — 셈 실패. 지난 수는 남고 답에 failed
 > 답의 뜻  컬럼 고르기가 계속 추정치 + count_cut → 그 표 셈이 column_count_seconds(기본 120)를 넘어 끊김.
 >            적재가 끝난 뒤 recount=true 로 다시, 또는 설정을 올림. 끊긴 셈은 «스스로» 다시 세지 않음

@@ -102,6 +102,7 @@ def _the_whole_counts_are_forgotten():
     if main is not None:
         main.WHOLE_COUNTS.forget()
         main.QUEUE_COUNTS.forget()
+        main.FIGURES.forget()
     yield
 
 

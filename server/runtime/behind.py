@@ -5,6 +5,7 @@ when, and the work that makes it again runs on the worker threads of its own `Be
     the rules' queue counts     main.QUEUE_COUNTS     one worker, the same keys and pacing (owner 11-10 «1 ㄱ»)
     the recent history          audit_cache._behind   one worker, a catch-up at most every CATCH_UP_GAP_SECONDS
     the column picker's counts  column_stats.COUNTS   one worker, a key counted once - again only when asked
+    the summary's two figures   main.FIGURES          one worker, re-correction and effort, each again past its TTL
 
 A key asked is due; a worker takes a due key once `pacing()` seconds passed since its last run ended, runs `work()` and
 keeps what it returned with when (`at`, `seconds`) - a run that raised keeps the last result and says `failed`. Every run

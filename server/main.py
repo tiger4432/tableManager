@@ -1747,19 +1747,29 @@ def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get
 # [재교정률] 대시보드 로드마다 감사 테이블을 집계하지 않기 위한 TTL 캐시.
 # 값은 7일 창 집계라 초 단위로 변하지 않는다 — 60초 캐시로 충분하고, 이 캐시가
 # "대시보드를 열 때마다 GROUP BY"를 구조적으로 막는 1차 방어선이다.
-RECORRECTION_CACHE = {"value": None, "at": 0.0}
 RECORRECTION_CACHE_TTL = 60.0
+#: The summary's two audit figures (re-correction, effort) on one worker of their own (`runtime.behind`, lead 11-10):
+#: a figure is worked out once at a time - two admins past its TTL wait on the same run, not two reads of audit_logs
+#: side by side. A request waits this long for a run due now (the statement limit is 1.5 s), then answers what was kept.
+FIGURES = behind.Behind("dashboard-figures", lambda: 0.0, "[Dashboard] the %s figure was not worked out")
+FIGURE_WAIT_SECONDS = 2.0
 
 
-def _held(cache, ttl):
-    """A dashboard figure's cached value while younger than `ttl` seconds, else None."""
-    return cache["value"] if cache["value"] is not None and time.time() - cache["at"] < ttl else None
+def _figure(db, name, ttl, work, unworked):
+    """The figure `name` as `work(session)` last made it - asked again past `ttl` seconds - on a session of its own; a
+    run not ended within FIGURE_WAIT_SECONDS answers `unworked(reason)` (never run) or the last one kept."""
+    bind = db.get_bind()
 
+    def worked():
+        own = Session(bind=bind)
+        try:
+            return {"value": work(own)}
+        finally:
+            own.close()
 
-def _hold(cache, value, at):
-    """Keep `value` as the figure computed at `at`. -> value"""
-    cache["value"], cache["at"] = value, at
-    return value
+    kept = FIGURES.ask(name, worked, again=lambda kept: time.monotonic() - kept["began"] >= ttl,
+                       wait=FIGURE_WAIT_SECONDS)
+    return kept["value"] if kept and "value" in kept else unworked("still being worked out")
 # 2차 방어선: 인덱스(idx_audit_user_recorrection)가 아직 없는 운영 DB에서도 대시보드가
 # 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
 # (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
@@ -1767,11 +1777,15 @@ RECORRECTION_TIMEOUT_MS = 1500
 
 
 def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
-    """재교정률을 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    """재교정률 (`_figure`)."""
+    return _figure(db, "recorrection", RECORRECTION_CACHE_TTL, _recorrection_stat, lambda reason: schemas.RecorrectionStat(
+        window_days=crud.RECORRECTION_WINDOW_DAYS, measured_cells=0, recorrected_cells=0, rate_pct=None,
+        unavailable_reason=reason))
+
+
+def _recorrection_stat(db: Session) -> schemas.RecorrectionStat:
+    """재교정률을 타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
     import sqlalchemy as sa
-    now = time.time()
-    if _held(RECORRECTION_CACHE, RECORRECTION_CACHE_TTL) is not None:
-        return RECORRECTION_CACHE["value"]
 
     try:
         # SET LOCAL은 현재 트랜잭션에서만 유효하고 세션 종료(get_db의 db.close())에서 되돌아간다.
@@ -1802,25 +1816,30 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
             measured_cells=0, recorrected_cells=0, rate_pct=None,
             unavailable_reason=reason,
         )
-
-    return _hold(RECORRECTION_CACHE, result, now)
+    return result
 
 
 # [V1 계기] 상호작용 점수도 재교정률과 **완전히 같은 방어**를 쓴다(캐시 + statement_timeout).
 # 두 계기가 같은 무거운 엔드포인트에 얹혀 있으므로, 방어가 하나라도 빠지면 대시보드가
 # 지표 때문에 느려진다 — 그건 지표가 자기 목적을 배신하는 것이다.
-EFFORT_CACHE = {"value": None, "at": 0.0}
 EFFORT_CACHE_TTL = 60.0
 EFFORT_TIMEOUT_MS = 1500
 
 
 def _get_effort_stat(db: Session) -> schemas.EffortStat:
-    """상호작용 점수를 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
+    """상호작용 점수 (`_figure`)."""
+    import effort_metric
+
+    return _figure(db, "effort", EFFORT_CACHE_TTL, _effort_stat, lambda reason: schemas.EffortStat(
+        window_days=crud.EFFORT_WINDOW_DAYS, avg_score=None, tx_count=0, session_count=0,
+        weights=effort_metric.resolve_weights(effort_metric.load_config()), measured_ratio=None,
+        unavailable_reason=reason))
+
+
+def _effort_stat(db: Session) -> schemas.EffortStat:
+    """상호작용 점수를 타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
     import sqlalchemy as sa
     import effort_metric
-    now = time.time()
-    if _held(EFFORT_CACHE, EFFORT_CACHE_TTL) is not None:
-        return EFFORT_CACHE["value"]
 
     # 배점은 캐시하지 않는다 — config 핫리로드가 다음 집계부터 반영되어야 하고,
     # 파일 읽기 1회는 60초에 한 번뿐이다.
@@ -1853,8 +1872,7 @@ def _get_effort_stat(db: Session) -> schemas.EffortStat:
             weights=weights, measured_ratio=None,
             unavailable_reason=reason,
         )
-
-    return _hold(EFFORT_CACHE, result, now)
+    return result
 
 
 @app.get("/api/effort/config")
