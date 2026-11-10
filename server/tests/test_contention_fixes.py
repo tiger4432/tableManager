@@ -123,43 +123,30 @@ def test_legacy_server_parsers_import_shim(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_bulk_business_key_lookup_matches_per_row_semantics(db_session):
-    """get_deleted_rows_business_keys_bulk(벌크 IN 조회)가 기존 행별 get_deleted_row_business_key와
-    동일한 결과를 내야 한다 — ① business_key 직접 보유 로그(최신 우선), ② key_col 편집 로그
-    new_value fallback, ③ 로그 없음(None) 세 경로 모두."""
+    """get_deleted_rows_business_keys_bulk (one IN read per chunk) answers what the per-row
+    get_deleted_row_business_key answers - from the row's lines (cell-source overhaul, D 11-11): the newest line
+    naming a key wins; a row without lines has none. The audit-log leg «a log without a key falls back to the key
+    column's new value» retired: every line carries its row's key (write_lines)."""
     from datetime import timezone as _tz
-    from database import models
+
     import main as main_mod
+    from tests.support import line_tables
 
-    def add_log(row_id, column_name, new_value=None, business_key=None, ts_offset=0):
-        db_session.add(models.AuditLog(
-            table_name="raw_table_1",
-            row_id=row_id,
-            column_name=column_name,
-            old_value=None,
-            new_value=new_value,
-            source_name="system",
-            updated_by="tester",
-            transaction_id=str(uuid.uuid4()),
-            timestamp=datetime.now(_tz.utc) + timedelta(seconds=ts_offset),
-            business_key=business_key,
-        ))
+    table = "raw_table_1"
+    bits = line_tables.build(db_session.get_bind(), table)
+    t0 = datetime.now(_tz.utc)
+    with db_session.get_bind().begin() as conn:
+        line_tables.line(conn, table, bits, "row_direct", at=t0, business_key="BK_OLD", values={"EQP_ID": "E1"})
+        line_tables.line(conn, table, bits, "row_direct", at=t0 + timedelta(seconds=10), business_key="BK_NEW",
+                         values={"EQP_ID": "E2"})
 
-    # ① business_key 직접 보유 — 구값(BK_OLD) 이후 신값(BK_NEW): 최신값이 이겨야 한다
-    add_log("row_direct", "EQP_ID", business_key="BK_OLD", ts_offset=0)
-    add_log("row_direct", "EQP_ID", business_key="BK_NEW", ts_offset=10)
-    # ② business_key 미보유 -> key_col(EQP_ID) 편집 로그의 new_value fallback
-    add_log("row_fallback", "EQP_ID", new_value="FB_VALUE")
-    # ③ 로그가 전혀 없는 행 -> None
-    db_session.commit()
-
-    row_ids = ["row_direct", "row_fallback", "row_missing"]
-    bulk = main_mod.get_deleted_rows_business_keys_bulk(db_session, "raw_table_1", row_ids)
+    row_ids = ["row_direct", "row_missing"]
+    bulk = main_mod.get_deleted_rows_business_keys_bulk(db_session, table, row_ids)
 
     for r_id in row_ids:
-        expected = main_mod.get_deleted_row_business_key(db_session, "raw_table_1", r_id)
+        expected = main_mod.get_deleted_row_business_key(db_session, table, r_id)
         assert bulk.get(r_id) == expected, f"{r_id}: bulk={bulk.get(r_id)} != per-row={expected}"
     assert bulk["row_direct"] == "BK_NEW"
-    assert bulk["row_fallback"] == "FB_VALUE"
     assert "row_missing" not in bulk
 
 
