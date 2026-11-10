@@ -142,6 +142,32 @@ def test_a_sentence_with_no_object_is_read_as_the_ledger_holds_it(registering):
     assert _drawn(virtual) == _drawn(stored) and virtual["engine"]["left_out"] == []
 
 
+def test_a_source_with_entity_attributes_walks_its_edges_without_them(world):
+    """Lead 11-10 stage 1: a role carrying entity attributes no longer leaves its whole source out - the source's edges
+    are read (walk-shadow: no bin on its edge predicate), the attribute values and the registrations they make are
+    not, and the answer says which type's attributes it did not read."""
+    from test_ledger_worlds_are_independent_and_meet_in_a_walk import _registering
+
+    document = _registering("step")
+    document["sources"][KEPT] = _only(CHANGED, KEPT)["sources"][KEPT]
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert [(item["source"], item["why"]) for item in left_out] == [(CHANGED, "attributes of wafer not read")]
+    edges = sorted({leg.predicate for leg in legs if leg.source == CHANGED and leg.ends["incoming"][0]})
+    assert edges, "canary: the source's edge sentences are read"
+    _shadow_finds_no_difference(board, follow=edges)
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual)[1] == _drawn(stored)[1] and len(stored["edges"]) >= 3
+    labelled = [n for n in stored["nodes"] if n["type"] == "wafer" and (n.get("attributes") or {}).get("label")]
+    assert labelled, "canary: the stored walk draws the attribute"
+    assert not [n for n in virtual["nodes"] if (n.get("attributes") or {}).get("label")]
+
+
 def _shadow_finds_no_difference(board, follow=None):
     """walk-shadow over each source: the same atoms both ways, no bin - {source: what it said}."""
     out = {}
@@ -152,7 +178,7 @@ def _shadow_finds_no_difference(board, follow=None):
         names = schema.require_world(None)
         snapshot = load_setup(names.declaration_root).snapshot
         legs, left_out = trace_router._compiled(raw, (names,))
-        assert left_out == [] and {leg.source for leg in legs} == {CHANGED, KEPT}
+        assert [item for item in left_out if not item["why"].endswith(" not read")] == [] and {leg.source for leg in legs} == {CHANGED, KEPT}
         for source in (CHANGED, KEPT):
             mine = [leg for leg in legs if leg.source == source]
             others = {names.name: [other for other in snapshot.source_plans if other != source]}

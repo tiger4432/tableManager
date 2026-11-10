@@ -399,8 +399,6 @@ def _entity(relation, kinds, binding, why):
 
     if binding.get("kind") != "entity" or entity_type_column(binding):
         raise NotCompiled(f"{why}: an entity role bound by {binding.get('kind')!r} or a type read per row")
-    if binding.get("attributes"):
-        raise NotCompiled(f"{why}: entity attributes")
     return bare_name(binding["entity_type"]), {key: _key(relation, kinds, child, f"{why}.keys.{key}")
                                                 for key, child in (binding.get("keys") or {}).items()}
 
@@ -433,8 +431,12 @@ def _qualifier(kinds, binding, why) -> dict:
     return {"column": binding["column"], "kind": kind}
 
 
-def compile_source(snapshot, plan, kinds, world) -> list:
-    """`plan`'s legs - a sentence each, and each entity reference its entities carry - or `NotCompiled`."""
+def compile_source(snapshot, plan, kinds, world) -> tuple:
+    """(`plan`'s legs - a sentence each, and each entity reference its entities carry - , the bare types whose entity
+    attributes it does not read) or `NotCompiled`. An attribute is read by its key only (lead 11-10, stage 1): the
+    sentences' nodes and edges are walked, their attribute values and the registrations they make are not."""
+    from collections.abc import Mapping
+
     import map_overlay
 
     from .setup_bundle import NOT_AN_EVENT_BASIS, bare_name, is_event_time_role, is_registration
@@ -453,10 +455,10 @@ def compile_source(snapshot, plan, kinds, world) -> list:
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
     kept += [f"NOT ({_when(kinds, clause['when'], 'read.exclude_when')})"
              for clause in driver.exclude_when if clause.get("when") is not None]
-    legs, prefix = [], f"ledger-v2:{snapshot.snapshot_sha256}#"
+    legs, prefix, unread = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set()
     for sentence, mapping in sorted(plan.profile.mappings.items()):
-        if mapping.registered_roles:
-            raise NotCompiled(f"{sentence}: entity attributes")
+        unread.update(bare_name(binding["entity_type"]) for binding in mapping.bindings.values()
+                      if isinstance(binding, Mapping) and binding.get("attributes") and binding.get("entity_type"))
         emission_plan = roleframe._emission_plan(context, mapping.predicate_id, mapping.config_path)
         emission = emission_plan.emission
         # a sentence with no object (a registration) says its subject only - its object end is none (`NO_OBJECT`)
@@ -506,7 +508,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
-    return legs
+    return legs, sorted(unread)
 
 
 def _text_columns(keys, kinds):
@@ -522,9 +524,12 @@ def compile_world(snapshot, fetch, world) -> tuple:
     for source, plan in sorted(snapshot.source_plans.items()):
         try:
             kinds = column_kinds(fetch, plan.relation) if plan.runs else {}
-            for leg in compile_source(snapshot, plan, kinds, world):
+            read, unread = compile_source(snapshot, plan, kinds, world)
+            for leg in read:
                 leg.world_name = world
                 legs.append(leg)
+            left_out.extend({"source": source, "world": world, "why": f"attributes of {bare} not read"}
+                            for bare in unread)
         except NotCompiled as why:
             left_out.append({"source": source, "world": world, "why": str(why)})
     return legs, left_out

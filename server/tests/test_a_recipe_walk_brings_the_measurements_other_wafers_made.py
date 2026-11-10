@@ -214,10 +214,22 @@ def _events(body):
     return {n["keys"]["event"]: n for n in body["nodes"] if n["type"] == "measurement_event"}
 
 
-def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client):
-    wafer = _walk(client, WALKS["walk_fold_wafer"])
-    recipe = _walk(client, WALKS["walk_fold_recipe_step"])
-    lump = _walk(client, WALKS["walk_fold_process_lump"])
+#: «stored» names the ledger; None names no engine - the tables' own read (virtual), which reads an entity's attributes
+#: by its keys only yet (lead 11-10 stage 1): the same nodes and edges, no attribute value, and it says so
+ENGINES = ("stored", None)
+
+
+def _drawn(body):
+    return (sorted((n["type"], json.dumps(n["keys"], sort_keys=True)) for n in body["nodes"]),
+            sorted((e["source"], e["predicate"], e["target"]) for e in body["edges"]))
+
+
+@pytest.mark.parametrize("engine", ENGINES, ids=["stored", "no engine named"])
+def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client, engine):
+    named = [("engine", engine)] if engine else []
+    wafer = _walk(client, WALKS["walk_fold_wafer"] + named)
+    recipe = _walk(client, WALKS["walk_fold_recipe_step"] + named)
+    lump = _walk(client, WALKS["walk_fold_process_lump"] + named)
 
     # the start wafer's own; the static recipe keeps other wafers' out of this walk
     assert sorted(_events(wafer)) == ["M1", "M2"]
@@ -225,7 +237,14 @@ def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client):
     # one step from the recipe: every measurement that used it, its value and when it was measured
     events = _events(recipe)
     assert sorted(events) == ["M1", "M2", "M3", "M4"]
-    for name, node in events.items():
+    if engine is None:
+        stored = _walk(client, WALKS["walk_fold_recipe_step"] + [("engine", "stored")])
+        assert _drawn(recipe) == _drawn(stored)
+        assert all("value" not in (node.get("attributes") or {}) for node in events.values())
+        assert {(item["source"], item["why"]) for item in recipe["engine"]["left_out"]} == {
+            ("metro", "attributes of measurement_event not read"),
+            ("process_event", "attributes of process_event not read")}, recipe["engine"]
+    for name, node in events.items() if engine else ():
         said = node["attributes_by_world"]["value"][0]
         assert node["attributes"]["value"] == said["value"] and said["occurred_at"], (name, node)
     # the lump's members, through their wafer, to that wafer's measurements
@@ -240,8 +259,10 @@ def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client):
             "walk_fold_declaration": ("/api/ledger/declaration", [], declared.json())})
 
 
-def test_the_recipe_step_is_cut_by_its_window_and_capped_by_its_limit(client):
+@pytest.mark.parametrize("engine", ENGINES, ids=["stored", "no engine named"])
+def test_the_recipe_step_is_cut_by_its_window_and_capped_by_its_limit(client, engine):
     asked = [(k, v) for k, v in WALKS["walk_fold_recipe_step"] if k not in ("since", "node_limit")]
+    asked += [("engine", engine)] if engine else []
     cut = _walk(client, asked + [("since", "2026-10-01T10:30:00+09:00"), ("node_limit", "10")])
 
     assert sorted(_events(cut)) == ["M2", "M4"], "the window did not cut the earlier two"
