@@ -434,7 +434,8 @@ def _qualifier(kinds, binding, why) -> dict:
 
 def compile_source(snapshot, plan, kinds, world) -> tuple:
     """(`plan`'s legs - a sentence each, each entity reference its entities carry, each registration its roles'
-    attributes make - , the bare types whose entity attributes it cannot read) or `NotCompiled`. Attributes as the
+    attributes make - , what it does not read: «attributes of <type> not read», «<sentence>: a value object not read»,
+    each an engine.left_out line, its source still read) or `NotCompiled`. Attributes as the
     stored translator writes them (`roleframe`): a subject's attribute named as a qualifier of its sentence is that
     qualifier; a role the source registers (`registered_roles`) says «register» of its node with its attributes."""
     from collections.abc import Mapping
@@ -465,7 +466,8 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
         # a sentence with no object (a registration) says its subject only - its object end is none (`NO_OBJECT`)
         objectless = is_registration(emission.object_kind)
         if emission.object_kind != "entity_ref" and not objectless:
-            raise NotCompiled(f"{sentence}: a {emission.object_kind} object")
+            unread.add(f"{sentence}: a {emission.object_kind} object not read")     # the sentence alone, not its source
+            continue
         named = {role: mapping.bindings[reference.role_id]
                  for role, reference in (("subject", emission.subject), ("object", emission.object_role))
                  if not (objectless and role == "object")}
@@ -487,7 +489,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
             except NotCompiled:
                 if not attribute:
                     raise
-                unread.add(ends["subject"][0])          # an attribute it cannot read leaves its value out, not the source
+                unread.add(f"attributes of {ends['subject'][0]} not read")    # its value out, not the source
                 continue
             if attribute:
                 from_attributes.add(name)
@@ -507,7 +509,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                 specs = {name: _qualifier(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
                          for name, child in sorted((binding.get("attributes") or {}).items())}
             except NotCompiled:
-                unread.add(end[0])
+                unread.add(f"attributes of {end[0]} not read")
                 continue
             # its time rule is the naming sentence's (`runtime_v2._stamp_occurred_at_basis`); one registration of a
             # node per row, as the translator makes one per molecule: the same end and
@@ -573,8 +575,7 @@ def compile_world(snapshot, fetch, world) -> tuple:
             for leg in read:
                 leg.world_name = world
                 legs.append(leg)
-            left_out.extend({"source": source, "world": world, "why": f"attributes of {bare} not read"}
-                            for bare in unread)
+            left_out.extend({"source": source, "world": world, "why": why} for why in unread)
         except NotCompiled as why:
             left_out.append({"source": source, "world": world, "why": str(why)})
     return legs, left_out

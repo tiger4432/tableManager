@@ -191,6 +191,33 @@ def test_a_role_with_attributes_registers_its_node_once_a_row_and_only_with_a_va
     assert said[CHANGED]["atoms"]["stored"] == 3, "canary: W1 twice (P1, P2) and W2 once (P3) - P4 has no step"
 
 
+def test_a_value_object_sentence_leaves_only_itself_out(world):
+    """Lead 11-10 value objects stage 1: a sentence whose object is a value (macro's series-observed shape) is left out
+    alone - its source's edge sentences are read and walked, and the answer names the sentence."""
+    document = _only(CHANGED, KEPT, one=True)
+    document["vocabulary"]["has_netdie@1"]["subjects"] = ["wafer@1"]              # a value predicate the sample has
+    document["vocabulary"]["has_netdie@1"]["object"]["value_type"] = "string"
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-step-value"] = {"predicate": "has_netdie@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "value": {"kind": "column", "column": "step"}}}
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert [(item["source"], item["why"]) for item in left_out] == [
+        (CHANGED, "wafer-step-value: a value object not read")]
+    assert {leg.sentence for leg in legs if leg.source == CHANGED} >= {"wafer-processed-with-recipe"}
+    # the source's edges are walked - the stored translator refuses this board's value sentence row by row (its
+    # rows' facts are not in the ledger), so the edges are counted on the virtual walk itself
+    virtual = _walk(board, "virtual")
+    assert len([e for e in virtual["edges"] if e["predicate"] == "processed_with"]) >= 2, virtual["edges"]
+
+
 def _shadow_finds_no_difference(board, follow=None):
     """walk-shadow over each source: the same atoms both ways, no bin - {source: what it said}."""
     out = {}
