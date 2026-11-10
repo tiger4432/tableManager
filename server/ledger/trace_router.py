@@ -861,7 +861,7 @@ def _engine_reading(connection, engine, names, leave_out=None):
     from runtime import index_wants
 
     legs, left_out = _compiled(connection, names)
-    legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world, ())]
+    legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world_name, ())]
     ends = [(leg.relation, columns) for leg in legs for columns in leg.columns.values()]
     served = lambda table, columns: any((table, column) in _SERVED for column in columns)       # noqa: E731
     raw = connection.connection.dbapi_connection

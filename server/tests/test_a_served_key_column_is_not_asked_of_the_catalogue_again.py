@@ -12,7 +12,7 @@ INDEX = {"name": "ix_t1_a", "columns": ["a", "row_id"], "using": "btree", "where
 
 
 def _leg(relation, columns):
-    return SimpleNamespace(relation=relation, columns={"outgoing": columns}, source="s", world="w")
+    return SimpleNamespace(relation=relation, columns={"outgoing": columns}, source="s", world_name="w")
 
 
 def test_a_served_column_is_read_once_an_unserved_one_every_time_and_no_text_column_never(monkeypatch):

@@ -1450,14 +1450,14 @@ class VirtualEvidenceLookup:
         self.one, self.current_only = frozenset(one), current_only
         self.said = {} if said is None else said
         said_by = Counter((world, predicate) for world, predicate, _source in
-                          {(leg.world, leg.predicate, leg.source) for leg in legs if leg.predicate in self.one})
-        self.legs = tuple(leg for leg in legs if said_by.get((leg.world, leg.predicate), 0) < 2)
+                          {(leg.world_name, leg.predicate, leg.source) for leg in legs if leg.predicate in self.one})
+        self.legs = tuple(leg for leg in legs if said_by.get((leg.world_name, leg.predicate), 0) < 2)
         self.said.setdefault("left_out", []).extend(
             {"source": source, "world": world,
              "why": f"{predicate!r} is declared one and more than one source says it - its current fact is read "
                     f"in one"}
-            for source, world, predicate in sorted({(leg.source, leg.world, leg.predicate) for leg in legs
-                                                    if said_by.get((leg.world, leg.predicate), 0) > 1}))
+            for source, world, predicate in sorted({(leg.source, leg.world_name, leg.predicate) for leg in legs
+                                                    if said_by.get((leg.world_name, leg.predicate), 0) > 1}))
         self._census_of = {}
 
     def _execute(self, sql, params):
@@ -1540,7 +1540,9 @@ class VirtualEvidenceLookup:
         arms = []
         for arm, other in (("outgoing", "incoming"), ("incoming", "outgoing")):
             far_bare = leg.ends[other][0]
-            if direction not in (arm, "both") or (far_types and (far_bare in far_types[1]) != (far_types[0] == "in")):
+            # no far end (a registration's object) passes no far-type door, as the stored read spells it
+            if direction not in (arm, "both") or (far_types and (
+                    far_bare is None or (far_bare in far_types[1]) != (far_types[0] == "in"))):
                 continue
             step, groups = {"p": leg.predicate, "d": arm, "t": far_bare}, defaultdict(list)
             for item, texts in leg.named(arm, entities):
@@ -1607,7 +1609,7 @@ class VirtualEvidenceLookup:
         # its source's sentences of the predicate on the same subject - one table, one clock (across sources: refused)
         said = []
         for other in self.legs:
-            if (other.world, other.source, other.predicate, other.ends["outgoing"][0]) != (leg.world, leg.source, leg.predicate, bare)                     or set(other.ends["outgoing"][1]) != set(specs):
+            if (other.world_name, other.source, other.predicate, other.ends["outgoing"][0]) != (leg.world_name, leg.source, leg.predicate, bare)                     or set(other.ends["outgoing"][1]) != set(specs):
                 continue
             subject = [_literal(spec["constant"]) if "constant" in spec else other.key(spec)
                        for _key, spec in sorted(other.ends["outgoing"][1].items())]
@@ -1638,6 +1640,12 @@ class VirtualEvidenceLookup:
                                          for key, spec in sorted(leg.ends[arm][1].items())})
                      for arm in ("outgoing", "incoming"))
 
+    @staticmethod
+    def _object(object_type, object_keys):
+        """(object kind, payload) of an end - None and an empty payload for no object (`sql_translate.NO_OBJECT`), as
+        the stored read gives a registration's atom."""
+        return ("entity_ref", {"type": object_type, "keys": object_keys}) if object_type is not None else (None, {})
+
     def _atom(self, leg, row, moment):
         """A `_timed` row as an atom."""
         from ledger import roleframe
@@ -1650,13 +1658,15 @@ class VirtualEvidenceLookup:
             if value is not None:
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
+        object_kind, payload = self._object(object_type, object_keys)
+        if qualifiers:
+            payload = dict(payload, qualifiers=qualifiers)
         return EvidenceAtom(
             id=atom_id, subject_type=subject_type, subject_keys=subject_keys, predicate=leg.predicate,
-            object_kind="entity_ref", object_payload={"type": object_type, "keys": object_keys,
-                                                      **({"qualifiers": qualifiers} if qualifiers else {})},
+            object_kind=object_kind, object_payload=payload,
             occurred_at=moment, source_who=leg.source, source_translator_ver=leg.version,
             source_raw_ref=f"{leg.relation}:{row[0]}", supersedes=None, source_event_id=None, source_event_state=None,
-            not_current=bool(row[-1]), occurred_at_basis=leg.basis, world=leg.world)
+            not_current=bool(row[-1]), occurred_at_basis=leg.basis, world=leg.world_name)
 
     def _legs(self, follow=None, exclude=None):
         return [leg for leg in self.legs
@@ -1699,8 +1709,8 @@ class VirtualEvidenceLookup:
         out = []
         for _moment, leg, row in read:
             (subject_type, subject_keys), (object_type, object_keys) = self._ends(leg, row)
-            out.append(Reached(subject_type, subject_keys, "entity_ref", {"type": object_type, "keys": object_keys},
-                               leg.world, leg.source, f"{leg.relation}:{row[0]}"))
+            out.append(Reached(subject_type, subject_keys, *self._object(object_type, object_keys),
+                               leg.world_name, leg.source, f"{leg.relation}:{row[0]}"))
         return out, cut
 
     def count_far_ends(self, entities, direction, predicate, far_type):
