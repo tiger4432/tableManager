@@ -183,6 +183,15 @@ async function suite(M, loud) {
   b.f.input.fire('keydown', { key: 'Enter' });
   say('J3 a row taken in one changes that one alone', b.f.value === '=Sum([z]' && a.f.value === '=Da' && b.entered.length === 0
     && a.entered.length === 0, [a.f.value, b.f.value]);
+  if (loud) console.log('\n── F. THE FORMULA MARK ───────────────────────────────────────────────');
+  const marked = (x) => find(x.host, 'formula-input__field').children;
+  const mark = (x) => marked(x).filter((n) => has(n, 'formula-mark'));
+  say('F1 the field wears the formula mark once, before the box, in each field on the page',
+    mark(a).length === 1 && mark(b).length === 1 && marked(a)[0] === mark(a)[0] && mark(a)[0].textContent === M.FORMULA_MARK
+    && M.FORMULA_MARK === 'ƒ', marked(a).map((n) => n.className));
+  const own = M.formulaMark(makeDoc());
+  say('F2 the mark a folded line wears is the same one (one place)', has(own, 'formula-mark') && own.textContent === M.FORMULA_MARK
+    && own.getAttribute('aria-hidden') === 'true', own.className);
   return bad;
 }
 
@@ -214,6 +223,7 @@ const DEFECTS = [
   ['M9 a word taken as a call',
     swap("const piece = offer.kind === 'function' ? (word ? value : `${value}(`) : `${value}]`;", "const piece = offer.kind === 'function' ? `${value}(` : `${value}]`;")],
 ];
+DEFECTS.push(['M10 the field wears no formula mark', swap('    field.appendChild(formulaMark(this.doc));\n', '')]);
 const CONTROLS = [
   ['a local rename', (src) => src.replace(/\bscan\b/g, 'scanText')],
   ['comments stripped', (src) => src.split('\n').filter((l) => !l.trim().startsWith('//')

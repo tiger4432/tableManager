@@ -34,6 +34,17 @@ function scan(text, caret) {
 
 /** What the caret stands in, for the list under the formula: a column's name after an open «[», or a function's name -
  *  {kind: 'column' | 'function', from, prefix}, `from` where the name begins; null in a text in quotes or elsewhere. */
+/** The one «this is a formula» mark (lead 11-10): every formula field wears it, and a folded line that shows a formula
+ *  wears the same - a formula beside its column's name read as a plain word. */
+export const FORMULA_MARK = 'ƒ';
+export function formulaMark(doc) {
+  const mark = doc.createElement('span');
+  mark.className = 'formula-mark';
+  mark.textContent = FORMULA_MARK;
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
+}
+
 export function completionAt(text, caret) {
   const { before, quote, bracket } = scan(text, caret);
   if (quote) return null;
@@ -134,6 +145,7 @@ export class FormulaInput {
     this.sign.hidden = true;
     // the list hangs under the field itself, the arguments under the whole block
     const field = el('div', 'formula-input__field');
+    field.appendChild(formulaMark(this.doc));
     field.appendChild(this.input);
     field.appendChild(this.list);
     this.root.appendChild(field);

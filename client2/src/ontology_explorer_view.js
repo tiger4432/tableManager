@@ -1,6 +1,6 @@
 import { redoCostText } from './redo_cost.js';
 import { compile } from './expression.js';
-import { FormulaInput } from './formula_input.js';
+import { FormulaInput, formulaMark } from './formula_input.js';
 import { crossIcon } from './cross_icon.js';
 import { LOADING, UPDATING, approxText, unitText } from './ui_words.js';
 import { isDraftRevisionEditable, fieldOpensByDefault }
@@ -1571,7 +1571,7 @@ function renderUniqueness(row, stats) {
 }
 
 export function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
-                            stats = null) {
+                            stats = null, formula = notFormula) {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
                         + (bare ? ' is-bare' : ''));
@@ -1595,11 +1595,22 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // Form D: a list of words reads as its words, not as its JSON - in the one box (lead 10-21), not a chip in a box.
     const words = Array.isArray(row.value) && row.value.length
       && row.value.every((v) => typeof v === 'string' || typeof v === 'number') ? row.value : null;
-    const cells = !words && row.value && typeof row.value === 'object' && !Array.isArray(row.value)
-      ? Object.entries(row.value).filter(([, v]) => v !== null && typeof v !== 'object').map(([k, v]) => `${k} ${v}`).join(' · ')
-      : '';
+    const entries = !words && row.value && typeof row.value === 'object' && !Array.isArray(row.value)
+      ? Object.entries(row.value).filter(([, v]) => v !== null && typeof v !== 'object') : [];
+    const cells = entries.map(([k, v]) => `${k} ${v}`).join(' · ');
     const shown = h('code', 'oe-folded-value', words ? words.map(String).join(', ') : row.state === 'unanswered' && row.ground
       ? row.ground.text : cells || formatValue(row.value));
+    // A formula wears the formula field's own mark (lead 11-10) - «name text» read as a plain word.
+    const parts = entries.length ? entries : !words && row.state !== 'unanswered' ? [[null, row.value]] : [];
+    if (parts.some(([k, v]) => formula(v, k))) {
+      shown.textContent = '';
+      parts.forEach(([k, v], i) => {
+        if (i) shown.append(document.createTextNode(' · '));
+        if (k !== null) shown.append(document.createTextNode(`${k} `));
+        if (formula(v, k)) shown.append(formulaMark(document));
+        shown.append(document.createTextNode(String(v)));
+      });
+    }
     // One box high: a long value is cut, its whole one hover away.
     shown.title = shown.textContent;
     shown.setAttribute('data-clip-ok', '');
@@ -2465,6 +2476,21 @@ function renderMapTable(context, node, path, value, depth, cells, members, held)
   return wrap;
 }
 
+const notFormula = () => false;
+/** (value, key) -> whether that value of `node` is a formula: the node's own leaf (key null), a map's member or a record's
+ *  field (key) - the skeleton's `formula` leaf, through a oneOf picked by its shape. */
+export function formulaUnder(node, deref) {
+  const shape = node ? deref(node) : null;
+  if (!shape) return notFormula;
+  const under = (key) => (key === null ? shape : shape.kind === 'map' ? shape.of
+    : shape.kind === 'record' ? ((shape.fields || []).find((f) => f.key === key) || {}).node : null);
+  return (value, key = null) => {
+    let at = deref(under(key));
+    if (at && at.kind === 'oneOf' && at.pick === 'shape') at = deref((at.branches || {})[shapeBranch(at, value, deref)]);
+    return Boolean(at && at.hint === 'formula' && typeof value === 'string' && value !== '');
+  };
+}
+
 /** What a folded row says of what it holds: its filled cells and how many rows it folds (the owner's «a fold shows
  *  its count», lead 10-21), a list by its count - one line. */
 function foldSummary(shape, value, count) {
@@ -3071,7 +3097,7 @@ function renderAuthoring(state) {
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
     renderRow: (row, node, bare = false) => renderAuthoringRow(
-      row, state.expandedFields, editableFor(row, node), bare, columnStats),
+      row, state.expandedFields, editableFor(row, node), bare, columnStats, formulaUnder(node, context.deref)),
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
     // 🔴 「계획이 «아직 안 옴»」 and 「계획이 «비었음»」 are different answers and the

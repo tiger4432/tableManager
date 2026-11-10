@@ -2211,6 +2211,64 @@ function countsDrawn(renderAuthoringRow) {
   failed += scored.wrong;
 }
 
+// [16] lead 11-10 (owner «컬럼명에 맨 식만 붙는데 fn 이런 거 없이»): a folded line that shows a formula wears the formula
+//      field's own mark (formula_input.formulaMark) beside each formula - a decide's aggregations map, a record's
+//      formula field - and a plain word wears none.
+console.log('\n[16] a folded line marks its formulas');
+{
+  const FORMULA_LEAF = { kind: 'leaf', hint: 'formula' };
+  const AGGREGATIONS = { kind: 'map', keyed_by: 'name', member: 'column', of: { kind: 'oneOf', hint: 'choice', pick: 'shape',
+    branches: { expression: FORMULA_LEAF, record: { kind: 'record', fields: [{ key: 'fn', node: { kind: 'leaf' } }] } } } };
+  const TAKE = { kind: 'record', fields: [{ key: 'fn', node: FORMULA_LEAF }, { key: 'separator', node: { kind: 'leaf', hint: 'free' } }] };
+  const fold = (render, under, node, value) => {
+    const row = { path: 'bundle.x', label: 'x', state: 'answered', value, tier: 'free_input', candidates: null, refusals: [] };
+    const card = render(row, { [row.path]: false }, null, true, null, under(node, (n) => n));
+    return walkAll(card).find((n) => n._classes?.includes('oe-folded-value'));
+  };
+  const marks = (box) => (box ? walkAll(box).filter((n) => n._classes?.includes('formula-mark')).length : -1);
+  const suite16 = (M) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    const agg = fold(M.renderAuthoringRow, M.formulaUnder, AGGREGATIONS, { stack_height: 'UniqueCount([stack_height])', n: 'Count()' });
+    say('F1 a decide\'s aggregations, folded: each formula wears the mark, after its column\'s name',
+      marks(agg) === 2 && agg.textContent === 'stack_height ƒUniqueCount([stack_height]) · n ƒCount()', agg?.textContent);
+    const take = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { fn: 'Min([t])', separator: ', ' });
+    say('F2 a record: its formula field wears it, a plain word beside it none',
+      marks(take) === 1 && take.textContent === 'fn ƒMin([t]) · separator , ', take?.textContent);
+    const plain = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { separator: ', ' });
+    const none = fold(M.renderAuthoringRow, () => () => false, AGGREGATIONS, { n: 'Count()' });
+    say('F3 no formula, or a row the tree hands no skeleton: the line as before, no mark',
+      marks(plain) === 0 && plain.textContent === 'separator , ' && marks(none) === 0 && none.textContent === 'n Count()',
+      `${plain?.textContent} | ${none?.textContent}`);
+    const leaf = fold(M.renderAuthoringRow, M.formulaUnder, FORMULA_LEAF, 'Max([t])');
+    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'ƒMax([t])', leaf?.textContent);
+    return { ran: names.length, names, failures };
+  };
+  const base16 = suite16(await import('../src/ontology_explorer_view.js'));
+  ran += base16.ran;
+  failed += base16.failures.length;
+  const MUTANTS = [
+    { id: 'F-M1', what: 'the folded line draws no mark', catches: 'F1',
+      mutate: (text) => swap(text, '        if (formula(v, k)) shown.append(formulaMark(document));\n', '') },
+    { id: 'F-M2', what: 'a oneOf picked by its shape is not looked through', catches: 'F1',
+      mutate: (text) => swap(text, "    if (at && at.kind === 'oneOf' && at.pick === 'shape') at = deref((at.branches || {})[shapeBranch(at, value, deref)]);\n", '') },
+    { id: 'F-M3', what: 'every value is a formula', catches: 'F2',
+      mutate: (text) => swap(text, "at && at.hint === 'formula' && typeof value", 'at && typeof value') },
+    { id: 'F-M4', what: 'a record\'s field is not looked up', catches: 'F2',
+      mutate: (text) => swap(text, "shape.kind === 'record' ? ((shape.fields || []).find((f) => f.key === key) || {}).node : null", 'null') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => suite16((await loadWithProbe(VIEW, { mutate: m.mutate })).module),
+    { baselineRan: base16.ran, baselineNames: base16.names, title: '\n  [16] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);
