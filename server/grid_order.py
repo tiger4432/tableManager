@@ -44,10 +44,22 @@ def key(table_name, axis, first):
     return func.coalesce(place, first)
 
 
-def sort(table_model, table_name):
-    """The ORDER BY expression of `ENTERED` over a table's rows - None for a relation without row_id."""
+def sort(table_model, table_name, db=None):
+    """The ORDER BY expression of `ENTERED` over a table's rows - None for a relation without row_id, and, read with
+    `db`, for a table no row of which has a place: its entered order is then its row_id order (lead 11-10 ①), and a
+    filtered page walks a (filter, row_id) index to its end instead of looking up every matched row's place and sorting
+    them all (test PG: 6,000 matched rows 34 ms against row_id's 11 ms)."""
     row_id = getattr(table_model, "row_id", None)
-    return None if row_id is None else key(table_name, ROW, row_id)
+    if row_id is None or (db is not None and not placed(db, table_name, ROW)):
+        return None
+    return key(table_name, ROW, row_id)
+
+
+def placed(db, table_name, axis):
+    """Does any `axis` thing of the table have a place - a `LOOK_TABLE` row `key` would read."""
+    look = _looks()
+    return look is not None and db.query(look.look_key).filter(
+        look.look_table == table_name, look.look_axis == axis).first() is not None
 
 
 def row_keys(db, table_name, rows):
