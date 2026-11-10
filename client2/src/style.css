@@ -525,6 +525,7 @@ body.resizing-active .gallery-seat {
               font-size: var(--fs-tag); color: var(--text-dim); }
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
+.queue-waiting { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
 /* 옆 판이 여섯 칸보다 좁으면 머리와 행이 이 상자 안에서만 같이 가로로 굴립니다 — 칸은 접지 않고, 판 · 페이지는
    안 굴립니다(총괄 10-09). */
@@ -2819,6 +2820,9 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 .queue-state { padding-block: 5px; }
 /* 규칙이 «없는» 행(제어 행). 사실만 적는 칸이라 사유 색(경고)을 안 쓴다. */
 .queue-rule-none { font-size: var(--fs-tag); color: var(--text-dim); }
+/* A replay's run and pages - the row's whole width under its cells (lead 11-09: the 54 px Event cell cut it). */
+.queue-replay { grid-column: 1 / -1; padding: 0 var(--space-3) var(--space-2); font-size: var(--fs-meta);
+                color: var(--text); overflow-wrap: anywhere; }
 .queue-rule { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; }
 .queue-rule-name { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text);
                    flex: none; white-space: nowrap; }

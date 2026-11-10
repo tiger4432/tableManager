@@ -13,6 +13,144 @@
 >
 > ---
 >
+> ```
+>
+> ---
+>
+> ## [11-10] **뒤에서 도는 일은 «낮은 우선순위»로 — 화면 읽기가 먼저** (소유자 11-10 «c100을 고쳐야지»)
+>
+> ```
+> 하는 일  와처 · 체인 워커(와 그 슬롯) · 원장 워커 · 자동 갱신 스케줄러(와 소급 실행)는 BELOW_NORMAL 로 뜸
+>          API(와 그리드 풀 자식)는 보통. 어느 자식이 낮은지는 launcher_specs.py 의 priority= 칸 하나
+> 볼 줄    launcher.log 에 자식마다 한 줄:  Priority of Chained Ingestion Worker: below normal
+>                                         Priority of Backend FastAPI Server: normal
+> 확인     작업 관리자 > 세부 정보 > 해당 python.exe 우클릭 > 우선 순위 설정 = «보통 이하»
+> 답의 뜻  C100 일 때 STALL 줄의 api 몫이 예전보다 커지고 체인 · 원장 몫이 작아지면 의도대로
+>          pg 몫이 크면 이 착지로는 안 풀림 — PostgreSQL 은 런처 자식이 아니라 우선순위를 안 받음
+> 끄기     운영에서 끄지 않음 — 추적되는 .py 를 고치면 다음 릴리스 자동 반영이 멈춤. 되돌리기는 이 커밋 revert(다음 릴리스)
+> ```
+>
+> ---
+>
+> ## [11-10] **받은 릴리스 묶음은 설치 폴더의 release 폴더에 넣기만 — 런처가 켜질 때 알아서 반영** — 이 기능이 든 첫 묶음만 노트대로 손으로 한 번
+>
+> ```
+> 할 일    1. 받은 .bundle 파일(들)을 설치 폴더의 release\ 에 넣음(폴더가 없으면 만듦, 파일 이름 · 순서는 상관없음)
+>          2. 런처를 다시 켬(run_app.bat) — 또는 apply_release.bat 을 눌러 반영만 하고 런처를 다시 켬
+> 하는 일  묶음의 전제 커밋을 보고 순서를 스스로 찾음: 이미 들어간 것은 건너뜀 · 앞 묶음이 다 들어간 것을 얹고 다시 찾음
+>          (git bundle verify · fetch <묶음> release · merge --ff-only). 반영된 파일은 release\applied\ 로 옮김
+>          런처는 반영 뒤 «새 코드 전부»로 다시 떠서 자식들을 띄움
+> 창 닫기  다시 뜬 런처와 그 서버들은 처음 창에 묶여 있음 — 처음 창을 닫거나 그 프로세스가 죽으면 같이 내려감
+> 안 막음  추적 안 하는 파일(운영 config · 런처 옆에 둔 .bat 등)은 그대로 두고 반영함. 다만 묶음이 새로 가져오는
+>          파일과 같은 이름의 파일이 있으면 그 묶음에서 멈춤 — 줄에 그 파일 이름이 나옴
+> 볼 줄    launcher.log (apply_release.bat 은 화면)
+>          [Release] <파일>: <이전 커밋> -> <새 커밋> (back: git reset --hard <이전 커밋>)   = 반영됨, 되돌리려면 그 줄
+>          [Release] <파일>: already in (<커밋>)                                          = 이미 들어 있던 판, 옮기기만
+>          [Release] starting again on <커밋>                                             = 런처가 새 코드로 다시 뜸
+>          [Release] nothing to apply - …                                                = 넣은 묶음 없음
+> 답의 뜻  [Release] <파일> waits for <커밋>, which no bundle here brings        = 중간 판 묶음이 없음 — 그 앞 판 묶음을 받아 넣음
+>                                                                                  (거기까지는 반영됐고 런처는 그 판으로 뜸)
+>          [Release] not applied: N tracked file(s) changed in this copy (…)     = 설치 폴더의 추적 파일을 누가 고쳤음 —
+>                                                                                  아무것도 안 바뀜. 그 목록을 총괄에게
+>          [Release] <파일> left in the release folder: git cannot read it (…)   = 파일이 깨졌음 — 다시 받아 넣음
+>          [Release] <파일> not applied: N file(s) here outside git are files it brings (…) - move or delete them …
+>                                                                         = 묶음이 가져오는 파일과 같은 이름의 파일이 여기 있음 —
+>                                                                           그 파일들을 옮기거나 지우고 런처를 다시 켬
+>          [Release] <파일> not applied: … - this copy stays at <커밋>; send this line to the lead
+>                                                                         = 이 사본에 따로 커밋이 있어 앞으로 못 감 — 그 줄을 총괄에게
+>          [Release] the release step failed: …                                 = 반영 단계가 터짐 — 런처는 원래 코드로 그대로 뜸
+> 끄기     release\ 를 비워 두면 아무 일도 안 함
+> ```
+>
+> ---
+>
+> ## [11-10] **STALL 줄 P 옆에 «그 요청이 DB 에서 지금 무엇을 하나», 노란 띠에 그 요청의 [Slow] 줄** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     P(가장 오래 열린 요청) 옆에 그 요청이 돌리던 문장의 머리 · 초 · 기다림 — API 안에서 돈 것도, 그리드 쪽 읽기처럼
+>          풀 프로세스에 넘긴 것도(그 프로세스의 DB 연결 이름 assy_gridpool:<pid> 로 찾음). 굳음 동안 가장 오래 돈 것을 남김
+>          /health 의 stall 에 slow 칸: 그 P 요청이 끝날 때 server.log 에 남긴 [Slow] 줄 그대로(아직 안 끝났으면 비어 있음)
+> 꼴       STALL 12s P /tables/dt_log/data SELECT cell_sources 9s Lock:relation L0 T6/40 G0 D3/9s SELECT cell_sources …
+>          [Slow] GET /tables/dt_log/data 200 - … · layers 8.10 s (SQL 8.02 s · …)
+> 볼 것    어드민 머리 노란 띠(두 줄) · API 로그의 STALL 줄
+> 답의 뜻  P 뒤 기다림  cpu = 문장이 도는 중(오래면 문장 자체가 무거움 — [Slow] 의 단계 중 SQL 이 큰 것을 봄)
+>                     Lock:… = 다른 세션의 자물쇠를 기다림 — B 칸(누가 쥐었나)을 같이 봄
+>                     IO:… = 디스크를 기다림 — IO 칸 MB/s · iops 를 같이 봄
+>                     LWLock:… · BufferPin:… = DB 안쪽 경합 — 같은 시각 pg 몫 · autovacuum 을 봄
+>          P 뒤에 아무것도 없음 = 그 굳음 동안 그 요청이 DB 문장을 안 돌림(파이썬 · 풀 기다림 — G · T 칸을 봄)
+>          P /… ? = 그 요청의 문장을 DB 에 못 물음
+>          slow 줄의 단계별 초 = 그 요청이 어디서 시간을 썼나 — SQL 이 크면 문장, Python 이 크면 서버 계산
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
+> ## [11-09] **STALL 줄 C 칸이 «누가 CPU 를 먹나»를 한 눈금으로 — ours · api · 가장 바쁜 이름 · pg(와 그 일) · other, 새 IO 칸** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     C 칸 뒤에 같은 눈금(기계 전체 %)의 몫: ours(이 제품 프로세스 합 — API · 워커 · 슬롯 · 풀 자식) · api(API 자신)
+>          · 가장 바쁜 이름 있는 프로세스(풀 자식 · 워커) · pg(PostgreSQL 프로세스 전부 합 — autovacuum 작업자 포함)와
+>          그중 가장 바쁜 프로세스가 하던 일(문장 머리, 문장이 없으면 종류 — checkpointer 등) · other(나머지 전부)
+>          ours + pg + other = C (스냅샷으로 읽을 때)
+>          Windows 에서는 시스템 스냅샷 한 번으로 모든 프로세스를 읽음(박스 기계 프로세스 ~700 에 13~19 ms)
+>          새 칸 IO r<읽기>w<쓰기>MB/s <n>iops: 기계 디스크의 초당 MB 와 초당 IO 횟수 · pgIO<n>: IO 를 기다리는 DB 세션 수
+>          (칸마다 굳음 동안의 최댓값 — 다른 칸과 같음)
+> 꼴       STALL 43s P /dashboard/summary L0 T6/40 G0 D13/40s SELECT cell_sources B0 X0 C83 ours:23 api:17 chain.slot.1:6
+>          pg:61 AUTOANALYZE public.database_outbox other:12
+>          IO r180w420MB/s 950iops pgIO7
+> 볼 것    API 로그의 STALL 줄 · 어드민 머리 «LAST STALL …» — 그대로 폰으로 옮겨 보내 주시면 됩니다
+> 답의 뜻  C 가 높고 pg 가 큼 = DB 가 CPU 를 씀 — D 칸 머리(가장 긴 문장) · B 칸(autovacuum) 을 같이 봄
+>          pg 뒤 머리 = 그 굳음에서 가장 바빴던 DB 프로세스가 하던 일 — AUTO… 면 자동 청소 · 통계, 문장이면 그 요청,
+>            checkpointer · background-writer 면 디스크에 몰아 쓰는 중 · pg:61 ? = 그 프로세스를 DB 에 못 물음
+>          C 가 높고 ours 가 큼 = 이 제품이 CPU 를 씀 — api 와 가장 바쁜 이름으로 어느 쪽인지 봄
+>          C 가 높고 other 가 큼 = 이 제품 밖 프로그램(백신 · 백업 · 다른 앱)이 CPU 를 씀 — 작업 관리자에서 그 시각의 프로세스를 봄
+>          C 가 낮고 pgIO 가 여럿 = DB 가 디스크를 기다림 — 같은 시각 MB/s · iops 가 크면 디스크를 같이 쓰는 일(백업 · vacuum ·
+>            큰 적재)을, 작으면 디스크 자체가 느린 것을 봄
+>          C 낮고 pgIO 0 이고 B 큼 = 자물쇠 · C 낮고 pgIO 0 이고 G 큼 = 그리드 풀 대기
+>          pg:? = 프로세스 스냅샷을 못 읽어 이름 있는 프로세스만 읽는 중(첫 실패에 «[Stall] the process snapshot failed» 한 줄)
+>          IO? = 디스크 카운터를 못 읽음 · pgIO? = DB 에 못 물음(D? 와 같이 남)
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
+> ## [11-09] **걸어 둔 소급이 «기다리는 중»으로 보임 — 어드민 대기열 · 그리드 Queue 탭에 «queued · after <앞 실행>» 줄, 어드민 Refresh 는 머리줄로** — git pull · 런처 재기동(API) · 브라우저 새로고침(dist)
+>
+> ```
+> 무엇     체인이 맡는 소급(chain_replay)은 걸어도 아웃박스 행이 안 생겨, 앞 실행이 끝나기 전엔 어디에도 안 보였음
+>            (앞 실행을 × 하자 «예전에 걸어 놓은» 소급이 갑자기 나타남)
+>          이제 그 실행들이 두 대기열에 같은 줄로 섬 — 오래 기다린 것부터, 상태 «queued», 줄 밑에 «after <op> · <run id>»
+>          어드민 대기열: 그 줄에 × (기다리는 실행 취소)
+>          그리드 오른쪽 Queue 탭: 같은 줄, × 없음 — 이 탭은 로그인 없는 화면이라 취소는 어드민에서
+>          어드민 대기열의 Refresh 는 읽은 시각 옆 «머리줄»로 — 목록 · 실패 아래로 안 밀림
+> 볼 것    소급 하나가 도는 동안 하나 더 걸고 두 화면을 봄 — 둘째가 «queued · after chain_replay · <첫째 id>» 로 섬
+> 답의 뜻  queued 줄에 after 가 있음 = 그 실행이 끝나야 차례가 옴 — 정상
+>          queued 줄에 after 가 없음 = 앞에 도는 실행이 없는데 아직 안 시작됨 — 몇 분째 그대로면 체인 워커가 못 집는 중
+>            (어드민 Overview 의 체인 줄 · STALL 줄을 봄)
+>          queued 줄이 여럿 = 차례대로 하나씩 돎 — 순서는 건 시각
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
+> ## [11-09] **체인 소급이 «도는 중»을 보임 — 소급 줄 «Chain K / N pages · R rows waiting · F failed», 그리드 Queue 탭은 소급 한 번 = 한 줄** — git pull · 런처 재기동(API) · 브라우저 새로고침(dist)
+>
+> ```
+> 무엇     소급이 쪽을 다 올리면 실행 줄은 done 인데 체인은 그 뒤에 쪽을 돎 — 그 쪽 진행을 세 화면이 한 함수(replay.pages_of)로 그림
+>          소급 화면 줄 (Overview 최근 실행): done 옆 줄에 «Chain K / N pages · R rows waiting · F failed»
+>            쪽이 아직 기다리면 10 분이 지나도 줄이 남고 목록이 3 s 박자로 다시 읽음
+>          어드민 큐 줄: pages 에 waiting · rows_waiting · failed 가 더해짐(같은 함수)
+>          그리드 오른쪽 Queue 탭: 소급의 쪽 사건은 «한 줄» — Event 칸 «Replay» 밑에 «run <id> · Chain K / N pages …»
+> 볼 것    소급 하나를 걸고 소급 화면 · 오른쪽 Queue 탭을 열어 둠 — K 가 쪽 커밋마다 오르고 R 이 줄어듦
+> 답의 뜻  K / N 이 멈췄는데 failed 가 있음 = 그 쪽이 실패해 체인이 더 안 돎 — 어드민 실패 목록에서 사유를 봄
+>          K / N 이 멈췄고 failed 0 · waiting 그대로 = 체인이 그 쪽을 아직 도는 중 — 한 쪽은 한 커밋이라 쪽 «안»은 아직 안 보임
+>            (쪽 안 진행은 다음 착지). × 를 누르기 전에 어드민 큐 줄의 단계 · 규칙 rows_in 을 봄
+>          × 를 눌렀다면: 끝난 쪽은 남고 나머지는 안 돈 채 멈춤 — 어드민 대기열 그 줄의 Resume 이 멈춘 곳부터 메움
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-09] **Global 기록이 «안 뜸 · 늘 Loading» 대신 바로 뜬다 — 걷기 · 병합은 읽기 뒤에서** — git pull · API 재기동 · 화면 새로고침(dist 바뀜)
 >
 > ```

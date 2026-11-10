@@ -61,7 +61,6 @@ QUIET_KEPT = {
     "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 3},
     "server/run_watcher.py": {"import": 2},
     "server/runtime/process_supervisor.py": {"cleanup": 2, "logging": 4, "parse": 1, "probe": 5, "elsewhere": 1},
-    "server/runtime/running.py": {"probe": 1},
     "server/scripts/check_one_row_one_fact.py": {"stream": 1},
     "server/scripts/count_absent_null_layers.py": {"stream": 1},
     "server/scripts/dev_env/devenv.py": {"probe": 1},

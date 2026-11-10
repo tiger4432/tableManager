@@ -831,6 +831,29 @@ async function suite(source) {
     ok(view.runsPollBusy(view.buildRunsView({ runs: [ended('m1', 1), live], ingestions: [] }, NOW, {})) === true,
       'G11: a running row appears - the busy pace comes back');
     ok(view.runsPollBusy(null) === true, 'G11: not read yet is busy - one more try soon');
+
+    // ── G12. A DONE REPLAY SAYS ITS PAGES AS THE CHAIN RUNS THEM (owner 11-09 «도는 거 반응이 없어», lead ㄷ) ──
+    // The run is done once it staged its pages; the chain runs them after. Its line says «Chain K / N» beside done,
+    // stays past the ten minutes while pages wait, and keeps the busy pace - a failed page is said, so a K / N that
+    // stopped is not read as running.
+    const replay = (id, minutesAgo, pages) => ({ ...ended(id, minutesAgo), op: 'chain_replay', pages });
+    const hv = view.buildRunsView({ runs: [
+      replay('r1', 30, { done: 1, staged: 3, rows_done: 3, waiting: 2, rows_waiting: 2000, failed: 0 }),
+      replay('r2', 30, { done: 3, staged: 3, rows_done: 9, waiting: 0, failed: 0 }),
+      replay('r3', 1, { done: 1, staged: 3, rows_done: 3, waiting: 0, failed: 2 }),
+      replay('r4', 1, null)], ingestions: [] }, NOW, {});
+    const byId = Object.fromEntries(hv.rows.map((r) => [r.id, r]));
+    ok((byId.r1 && byId.r1.chain && byId.r1.chain.text) === 'Chain 1 / 3 pages · 2,000 rows waiting',
+      'G12: pages waiting - «Chain K / N pages · R rows waiting»');
+    ok((byId.r3 && byId.r3.chain && byId.r3.chain.text) === 'Chain 1 / 3 pages · 2 failed', 'G12: a failed page is said');
+    ok(byId.r1 && byId.r1.state === 'done', 'G12: the state word stays done');
+    ok(!('r2' in byId), 'G12: nothing waiting - it leaves after the ten minutes like any finished run');
+    ok(byId.r4 && byId.r4.chain === null, 'G12: no pages from the server - no chain words');
+    ok(hv.liveCount === 0 && hv.handed === 1, 'G12: a handed replay is not counted as running here');
+    ok(view.runsPollBusy(hv) === true, 'G12: pages waiting keep the busy pace');
+    ok(view.chainPagesLine({ done: 0, staged: 1, waiting: 1, rows_waiting: 1, failed: 0 }) === 'Chain 0 / 1 page · 1 row waiting',
+      'G12: one page is a page');
+    ok(view.chainPagesLine(null) === '', 'G12: no pages - no words');
   }
 
   // ── W. WHO QUEUED IT — THE SAME ANSWER ON BOTH SCREENS ────────
@@ -952,15 +975,21 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['G12: a done replay with pages waiting leaves after the ten minutes',
+    swap('    else if (now - stopped < FINISHED_STAYS_MS || chainWaits(run)) recent.push(row);',
+      '    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);')],
+  ['G12: pages waiting do not keep the busy pace',
+    swap('(view) => !view || view.liveCount > 0 || view.handed > 0;', '(view) => !view || view.liveCount > 0;')],
+  ['G12: a failed page is not said', swap("n(p.failed) ? `${localeCountText(p.failed)} failed` : ''", "''")],
   ['G10: a finished run stays however long ago it ended',
-    swap('    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);', '    else recent.push(row);')],
+    swap('    else if (now - stopped < FINISHED_STAYS_MS || chainWaits(run)) recent.push(row);', '    else recent.push(row);')],
   ['G10: a finished run leaves the moment it ends',
-    swap('    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);', '')],
+    swap('    else if (now - stopped < FINISHED_STAYS_MS || chainWaits(run)) recent.push(row);', '')],
   ['G10: the stay is not ten minutes', swap('export const FINISHED_STAYS_MS = 10 * 60 * 1000;',
     'export const FINISHED_STAYS_MS = 30 * 60 * 1000;')],
   ['G10: a reader of one run gets the list\'s rows', swap('    runs: runRows,', '    runs: rows.concat(recent),')],
-  ['G11: finished rows keep the poll busy', swap('(view) => !view || view.liveCount > 0;', '(view) => !view || !view.empty;')],
-  ['G11: a running row does not bring the busy pace back', swap('(view) => !view || view.liveCount > 0;', '(view) => !view;')],
+  ['G11: finished rows keep the poll busy', swap('(view) => !view || view.liveCount > 0 || view.handed > 0;', '(view) => !view || !view.empty;')],
+  ['G11: a running row does not bring the busy pace back', swap('(view) => !view || view.liveCount > 0 || view.handed > 0;', '(view) => !view;')],
   ['a failure record is not read, so its JSON is the line',
     swap('const record = failureRecordOf(run.error);', 'const record = null;')],
   ['a failure record is drawn as its JSON too',

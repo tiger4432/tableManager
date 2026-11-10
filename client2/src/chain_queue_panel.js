@@ -714,13 +714,19 @@ export class ChainQueuePanel {
     const view = queueView(payload, opts);
     const doc = this.doc;
     this.root.textContent = '';
-    // How long since the screen last read this queue (queue_poll, owner 10-11 Q) - a read that stalls shows its age.
-    if (opts.age) this.root.appendChild(this._line('chain-queue-read-age', opts.age));
+    // The head line: how long since the screen last read this queue (queue_poll, owner 10-11 Q) and Refresh - above
+    // the list and its failures, so a long list never pushes it down (owner 11-09).
+    const again = this._refresh();
+    if (opts.age || again) {
+      const head = doc.createElement('div');
+      head.className = 'chain-queue-head';
+      if (opts.age) head.appendChild(this._line('chain-queue-read-age', opts.age));
+      if (again) head.appendChild(again);
+      this.root.appendChild(head);
+    }
 
     if (!view.available) {
       this.root.appendChild(this._empty('⚪', view.reason));
-      const again = this._refresh();
-      if (again) this.root.appendChild(again);
       return view;
     }
 
@@ -751,8 +757,7 @@ export class ChainQueuePanel {
       ? this._table(view.rows) : this._line('chain-queue-empty', 'Nothing waiting'));
     if (view.recentFailures.length) this.root.appendChild(this._failures(view));
 
-    const again = this._refresh();
-    if (view.meta.length || again) {
+    if (view.meta.length) {
       const meta = doc.createElement('div');
       meta.className = 'chain-queue-meta';
       for (const m of view.meta) {
@@ -761,7 +766,6 @@ export class ChainQueuePanel {
         piece.textContent = m.text;
         meta.appendChild(piece);
       }
-      if (again) meta.appendChild(again);
       this.root.appendChild(meta);
     }
 

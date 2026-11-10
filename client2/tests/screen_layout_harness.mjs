@@ -410,6 +410,36 @@ const galleryAnswer = (u) => {
 const CUT_RUN = { on: false, entry: { run_id: 'cutrun-0001', op: 'chain_replay', rule: 'dt_log_to_dt_map', state: 'cancelled',
   pages: { done: 12, staged: 20, rows_done: 12000 }, cursor_end: 'LOT-2026-10-23-000123|WAFER-07|DIE-0042', total_rows: 40000,
   cut_at: '2026-10-23 09:00:00', resume: { run_id: 'cutrun-0001' }, cancel: { key: 'cutrun-0001' } } };
+// A replay's pages as the chain runs them (owner 11-09 «도는 거 반응이 없어», lead ㄷ): while on, the runs list carries
+// three done replays ended a minute ago - pages waiting, every page run, a failed page mixed in - and the grid's Queue tab
+// one replay as its run's one row.
+const REPLAYS = { on: false };
+const REPLAY_PAGES = [
+  ['rp-0001', { done: 3, staged: 20, rows_done: 3000, waiting: 17, rows_waiting: 17000, failed: 0 }],
+  ['rp-0002', { done: 20, staged: 20, rows_done: 20000, waiting: 0, rows_waiting: 0, failed: 0 }],
+  ['rp-0003', { done: 5, staged: 20, rows_done: 5000, waiting: 0, rows_waiting: 0, failed: 15 }]];
+const REPLAY_SAID = ['Chain 3 / 20 pages · 17,000 rows waiting', 'Chain 20 / 20 pages', 'Chain 5 / 20 pages · 15 failed'];
+const replaysAnswer = (u) => {
+  if (u.pathname === '/admin/retroactive/runs') {
+    const ended = new Date(Date.now() - 60000).toISOString();
+    return { status: 200, type: 'application/json', body: { state_names: { done: 'done' }, runs: REPLAY_PAGES.map(([id, pages]) => ({
+      run_id: id, op: 'chain_replay', label: 'Replay chain rules over old data (R1)', params: { rule: 'dt_log_to_dt_map' },
+      requested_by: 'kk980', state: 'done', processed_rows: pages.staged * 1000, total_rows: null, error: null,
+      result: { rows_staged: pages.staged * 1000, events_staged: pages.staged, pages_failed: 0 },
+      result_sentence: `rows staged ${pages.staged * 1000} · events staged ${pages.staged}`,
+      queued_at: '2026-11-09T10:00:00+09:00', started_at: '2026-11-09T10:00:01+09:00', finished_at: ended,
+      last_progress_at: ended, phase: null, phase_seconds: null, rows_per_second: null, seconds_left: null, waiting: null,
+      next_start: null, pages })) } };
+  }
+  if (u.pathname === '/outbox/queue/rows') {
+    const q = QUEUE['/outbox/queue/rows'];
+    return { status: 200, type: 'application/json', body: { ...q, rows: [{ outbox_id: 299, event_type: 'EDIT', table_name: 'dt_log',
+      created_at: '2026-10-08 19:58:00', waiting_seconds: 120, owner: 'chain', chain_state: LINES[0], broadcast_state: 'pending',
+      rules: [{ name: 'dt_log_to_dt_map', will_fire: true }], run_id: 'rp-0001', rule: 'dt_log_to_dt_map',
+      pages: REPLAY_PAGES[0][1] }, ...q.rows] } };
+  }
+  return null;
+};
 // A retroactive run held up by a chain slot (owner ㄱ, lead 11-08): while on, the queue's running items carry it with
 // its wait - the server's sentence, long - and a chain line beside it that waits on nothing.
 const HELD_WAIT = 'waiting Lock:transactionid on pid 51234 (chain-slot-1 · tx 3f9a2c7e-0000-0000 · 30000 row(s) of '
@@ -604,6 +634,7 @@ const answerOf = (u) => {
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
+  if (REPLAYS.on) { const v = replaysAnswer(u); if (v) return v; }
   if (HELD_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], now_running: HELD_RUN.items,
       ...(CUT_RUN.on ? { interrupted_runs: [CUT_RUN.entry] } : {}) } };
@@ -1226,6 +1257,45 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
+// owner 11-09 «리프레시 위로»: each queue panel's Refresh above its numbers, list and failures.
+CELLS.push({ entry: 'admin.html', after: 'Overview', rule: 'contents', at: 'chain-queue-refresh', expr: `(() => {
+  const shown = [...document.querySelectorAll('.chain-queue-panel .chain-queue-refresh')].filter((b) => b.getClientRects().length);
+  if (!shown.length) return 'no Refresh drawn';
+  for (const btn of shown) {
+    const panel = btn.closest('.chain-queue-panel');
+    const first = panel.querySelector('.chain-queue-numbers, .chain-queue-table, .chain-queue-empty, .empty-state');
+    if (first && btn.getBoundingClientRect().bottom > first.getBoundingClientRect().top + 1) return 'a Refresh under its list';
+  }
+  return null;
+})()` });
+// owner 11-09, lead ㄷ: a done replay says its pages beside done - drawn, whole, not small, in the Overview's recent runs.
+CELLS.push({ entry: 'admin.html', after: 'Overview, chain replays', rule: 'contents', at: 'running-body', expr: `(() => {
+  const all = [...document.querySelectorAll('#running-body .run-line__chain')];
+  const said = all.map((el) => el.textContent);
+  if (JSON.stringify(said) !== ${JSON.stringify(JSON.stringify(REPLAY_SAID))}) return 'the lines say ' + JSON.stringify(said)
+    + ' (run lines: ' + [...document.querySelectorAll('#running-body .run-line')].map((el) => el.getAttribute('data-run-id')).join(',')
+    + '; body: ' + ((document.getElementById('running-body') || {}).textContent || '').slice(0, 160) + ')';
+  for (const el of all) {
+    if (!el.getClientRects().length) return 'a chain line is not drawn';
+    if (parseFloat(getComputedStyle(el).fontSize) < 12) return 'a chain line is ' + getComputedStyle(el).fontSize;
+    if (el.scrollWidth > el.clientWidth + 1) return 'a chain line is cut: ' + el.textContent;
+  }
+  return null;
+})()` });
+// owner 11-09 «오른쪽 큐도 똑같은 거 잔뜩», lead ㄷ: a replay is one row of the grid's Queue tab - «Replay», its run and pages.
+CELLS.push({ entry: 'index.html', after: 'Queue tab, a replay', rule: 'contents', at: 'queue-view', expr: `(() => {
+  const all = [...document.querySelectorAll('#queue-view .queue-replay')];
+  if (all.length !== 1) return all.length + ' replay lines';
+  const el = all[0];
+  if (el.textContent !== 'Replay · run rp-0001 · ' + ${JSON.stringify(REPLAY_SAID[0])}) return 'it says ' + el.textContent;
+  const row = el.closest('.queue-row');
+  const box = row && row.getBoundingClientRect(), r = el.getBoundingClientRect();
+  if (!row || r.left < box.left - 1 || r.right > box.right + 1) return 'its line runs out of its row';
+  if (!el.getClientRects().length) return 'its line is not drawn';
+  if (parseFloat(getComputedStyle(el).fontSize) < 12) return 'its line is ' + getComputedStyle(el).fontSize;
+  if (el.scrollWidth > el.clientWidth + 1) return 'its line is cut';
+  return null;
 })()` });
 // owner ㄱ, lead 11-08: a held run's wait is the line under its row - drawn, whole, not small, inside the queue; the
 // line beside it that waits on nothing has none.
@@ -3467,7 +3537,13 @@ const DRIVE = {
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],
-    ['a row picked under the Queue tab', (c) => evaluate(c, `(() => {
+    // A replay waiting in the chain (owner 11-09, lead ㄷ): its run's one row, «Replay» and its pages; off at the next step.
+    ['Queue tab, a replay', async (c) => {
+      REPLAYS.on = true;
+      await evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()");
+      await until(c, "Boolean(document.querySelector('#queue-view .queue-replay'))");
+    }],
+    ['a row picked under the Queue tab', (c) => (REPLAYS.on = false) || evaluate(c, `(() => {
       const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell');
       if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
       return true; })()`).then(() => sleep(600))],
@@ -3763,8 +3839,17 @@ const DRIVE = {
     ['Overview, every row unfolded', (c) => evaluate(c, `(() => {
       for (const row of document.querySelectorAll('.ov-row[aria-expanded="false"]')) row.click();
       return true; })()`).then(() => sleep(800))],
+    // Three done replays ended a minute ago (owner 11-09, lead ㄷ): read by the list's own beat (idle 30 s - the page
+    // does not leave to read again), every row unfolded; off at the next step (the busy beat reads again before the cell).
+    ['Overview, chain replays', async (c) => {
+      REPLAYS.on = true;
+      await evaluate(c, `(() => { location.hash = '#overview';
+        for (const row of document.querySelectorAll('.ov-row[aria-expanded="false"]')) row.click();
+        return true; })()`);
+      await until(c, "document.querySelectorAll('#running-body .run-line__chain').length === 3", 40000);
+    }],
     // The Retry row with «Include files that went in» turned on (lead a4d135a06).
-    ['File Ingestion, files that went in included', (c) => evaluate(c, `(() => {
+    ['File Ingestion, files that went in included', (c) => (REPLAYS.on = false) || evaluate(c, `(() => {
       location.hash = '#file';
       return true; })()`).then(() => sleep(1500)).then(() => evaluate(c, `(() => {
       const box = document.querySelector('.folder-retry-include-box'); if (!box) return false;

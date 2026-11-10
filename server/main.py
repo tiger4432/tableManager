@@ -350,7 +350,7 @@ async def health_check():
         stale_after=_heartbeat_mod.DEFAULT_STALE_AFTER_SEC,
     )
     from runtime import stall_watch
-    payload["stall"] = stall_watch.last()       # {line, at} of the last freeze - said when it ENDS, null before one
+    payload["stall"] = stall_watch.last()       # {line, at, slow} of the last freeze - said when it ENDS, null before one
     return JSONResponse(status_code=http_status, content=payload,
                         headers={"Cache-Control": "no-store"})
 
@@ -4771,14 +4771,9 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # a replay's line runs its one rule (`only_rule`)
         if r.op in event_constants.CHAIN_OWNED_RETROACTIVE_OPS:
             replayed[r.run_id] = (json.loads(r.params) if r.params else {}).get("rule")
-    # a replay's pages - the last committed, the last staged, the rows through the first (fc1e1e385); null before it
-    from sqlalchemy import bindparam, text
+    # a replay's pages (`chain_replay.pages_of`, the runs list and the grid's Queue tab read the same); null before it
     from chain import replay as chain_replay
-    # a read-only answer: it asks whether the columns are there and adds none (`replay._cursor_start` does)
-    pages = {r[0]: {"done": r[1], "staged": r[2], "rows_done": r[3]} for r in (db.execute(text(
-        "SELECT run_id, cursor_page, staged_page, cursor_rows FROM retroactive_runs WHERE run_id IN :ids "
-        "AND cursor_page IS NOT NULL").bindparams(bindparam("ids", expanding=True)), {"ids": run_ids})
-        if run_ids and models.ensure_run_columns(db.get_bind(), add=False) else ())}
+    pages = chain_replay.pages_of(db, run_ids)
 
     def _age(dt):
         if dt is None:
@@ -5118,10 +5113,19 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
     could_run = or_(outbox.table_name.in_(watched),
                     outbox.event_type.in_(event_constants.CONTROL_EVENT_TYPES))
 
+    # 🔴 ONE REPLAY IS ONE ROW (owner 11-09 «똑같은 거 잔뜩»): a replay's pages are listed by their run's first waiting
+    #    event, which says the run's pages (`replay.pages_of`). The run is ONE row of the population, so the id
+    #    cursor cannot split it across pages. A person's edit, a file and any other row stay one row each.
+    from sqlalchemy import func
+    from chain import replay
+    replayed = and_(outbox.run_id.isnot(None),
+                    func.coalesce(outbox.payload[event_constants.REPLAY_KEY].as_boolean(), False) == True)  # noqa: E712
+    first_of_run = (db.query(func.min(outbox.id)).filter(waiting, could_run, replayed).group_by(outbox.run_id))
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload, outbox.retry_count,
-                 event_constants.queue_line_key(outbox).label("line_key")).filter(and_(waiting, could_run))
+                 outbox.payload, outbox.retry_count, outbox.run_id,
+                 event_constants.queue_line_key(outbox).label("line_key")).filter(
+        and_(waiting, could_run, or_(~replayed, outbox.id.in_(first_of_run))))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -5130,6 +5134,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
     fetched = q.order_by(outbox.id.asc()).limit(limit + 1).all()
     has_more = len(fetched) > limit
     head = fetched[:limit]
+    pages = replay.pages_of(db, [r.run_id for r in head if r.run_id and event_constants.replay_of(
+        get_payload_dict(r) or {})])
 
     # 🔴 응답의 「지금」은 «하나»다 (옆 라우트와 같은 규율). 나이마다 now() 를 부르면
     #    응답이 「지금」을 여러 번 말하고, 그 차이는 캐시가 생기는 날 조용히 틀린다.
@@ -5211,12 +5217,17 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request 
             "chain_state": state,
             "broadcast_state": broadcast,
             "rules": matched,
+            # a replay's row is its run (above): which run, its one rule, its pages - null on any other row
+            **({"run_id": r.run_id, "rule": event_constants.only_rule_of(payload), "pages": pages.get(r.run_id)}
+               if r.run_id and event_constants.replay_of(payload) else {}),
         })
 
     return {
         "generated_at": to_local_str(now_utc),
         "clock": "server",
         "rows": rows,
+        # runs queued with no outbox row to wake them (a chain replay behind a run, owner 11-09) - the seat's lines
+        "queued_runs": running_seat.queued_runs(db, now_utc),
         # 게이트 ①이 «집합»으로 대조하는 자리 — 수가 아니라 이름이다.
         "rules_known": sorted(str(x.get("name") or "") for x in rules),
         # ⛔ [게이트 ⑪] 행 «수»를 안 싣는다. 이 표를 비우는 것은 둘이라 합친 수는

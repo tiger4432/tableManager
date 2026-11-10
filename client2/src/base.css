@@ -309,3 +309,33 @@
    title (lead 10-21, 903053c14: the admin table's one line holds for every cell but these). */
 :where(.reason-lines) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
   overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+
+/* A run's line, one part on two pages (RunLines: the admin's runs and queue, the grid's Queue tab - owner 11-09):
+   title | progress | elapsed | state | x, what it did on a full-width line under it (lead a274c90f0). A bar that
+   knows its whole fills, one that does not slides; waiting, finished and stopping hold still. */
+:where(.run-lines) { display: flex; flex-direction: column; gap: var(--space-1); }
+:where(.run-line) { display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
+                         max-content max-content var(--space-6);
+  align-items: center; column-gap: var(--space-3); row-gap: var(--space-1);
+  padding: var(--space-1) 0; font-size: var(--fs-label); color: var(--text); }
+:where(.run-line__what) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.run-line__who) { color: var(--text-dim); margin-left: var(--space-2); }
+:where(.run-line__progress) { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+:where(.run-line__number, .run-line__elapsed) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+:where(.run-line__number) { text-align: right; }
+:where(.run-line__elapsed, .run-line__state) { color: var(--text-dim); white-space: nowrap; }
+:where(.run-line__act) { text-align: right; }
+:where(.run-line__result) { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: var(--space-2); color: var(--text-dim); overflow-wrap: anywhere; }
+:where(.run-line__reason) { color: var(--danger); }
+:where(.run-line__label) { color: var(--text-dim); margin-right: var(--space-1); }
+:where(.run-line.is-finished .run-line__what, .run-line.is-finished .run-line__number,
+  .run-line.is-waiting .run-line__what, .run-line.is-stopping .run-line__what) { color: var(--text-dim); }
+:where(.running-bar) { flex: 1; height: 6px; overflow: hidden; background: rgba(127,127,127,0.22); position: relative; }
+:where(.running-bar__fill) { display: block; height: 100%; background: var(--accent, #4c9be8); }
+:where(.running-bar.is-unknown .running-bar__fill) { width: 35%; animation: running-slide 1.4s linear infinite; }
+@keyframes running-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+:where(.running-bar.is-waiting .running-bar__fill) { animation: none; }
+:where(.running-bar.is-unknown.is-waiting .running-bar__fill) { width: 0; }
+:where(.run-line.is-stopping .running-bar__fill) { background: var(--text-dim); }

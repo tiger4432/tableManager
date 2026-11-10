@@ -37,6 +37,8 @@ _WHERE_BY_RUNNER = {"chain": WHERE_CHAIN_WORKER, "scheduler": WHERE_SCHEDULER}
 #: Whether the process that started an item is still on it - `heartbeat.runner_state` in the
 #: queue's words. One judgment for retroactive runs and collectors (총괄 c44a7d2e4).
 STATE_RUNNING = "running"
+#: A queued run's line (owner 11-09): where it waits - the run table - and its state, the run table's own word.
+WHERE_QUEUED = "waiting"
 
 
 def run_state(runner):
@@ -192,17 +194,47 @@ def _retroactive(db, now):
     if started:
         at = datetime.fromisoformat(started)
         elapsed = (now - (at if at.tzinfo else at.replace(tzinfo=timezone.utc))).total_seconds()
-    try:
-        label = retroactive.operation(run["op"])["label"]
-    except Exception:                                            # noqa: BLE001
-        label = run["op"]
-    return [_item(label, _WHERE_BY_RUNNER.get(name, WHERE_OWN_PROCESS),
+    return [_item(_label(run["op"]), _WHERE_BY_RUNNER.get(name, WHERE_OWN_PROCESS),
                   int(pid) if str(pid).isdigit() else None, started, elapsed,
                   run.get("processed_rows"), run.get("total_rows"),
                   None if run.get("cancel_reaches") == retroactive.CANCEL_NEVER
                   else {"run_id": run["run_id"]},
                   state=run_state(run.get("runner")),
                   waiting=run.get("waiting"))]
+
+
+def _label(op):
+    """A retroactive op's label; an op this server does not know, its own name."""
+    from admin import retroactive
+
+    try:
+        return retroactive.operation(op)["label"]
+    except retroactive.RetroactiveRefused:
+        return op
+
+
+def queued_runs(db, now):
+    """The queued retroactive runs no outbox row wakes (`retroactive.wakes_by_outbox` - a chain-owned op), oldest
+    first: no queue line names them, so a waiting replay showed only once it started (owner 11-09). What each waits
+    on: the run in flight, by op and run id; nothing in flight, none."""
+    from admin import retroactive
+    from database import models
+
+    rows = (db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op, models.RetroactiveRun.queued_at)
+            .filter(models.RetroactiveRun.state == retroactive.RUN_QUEUED)
+            .order_by(models.RetroactiveRun.queued_at, models.RetroactiveRun.run_id).all())
+    rows = [row for row in rows if not retroactive.wakes_by_outbox(row.op)]
+    if not rows:
+        return []
+    ahead = retroactive.in_flight(db, now=now)
+    waits = "after %s · %s" % (ahead["op"], ahead["run_id"]) if ahead else None
+    items = []
+    for run_id, op, queued_at in rows:
+        at = queued_at if queued_at is None or queued_at.tzinfo else queued_at.replace(tzinfo=timezone.utc)
+        items.append(_item("%s · %s" % (_label(op), run_id), WHERE_QUEUED, None, at.isoformat() if at else None,
+                           (now - at).total_seconds() if at else None, cancel={"run_id": run_id},
+                           state=retroactive.RUN_QUEUED, waiting=waits))
+    return items
 
 
 def scheduler_status_path():
@@ -283,6 +315,7 @@ def running_now(db, now=None, sight=None):
     items = []
     for name, read in (("chain", lambda: _chain(db, sight, beats, now)),
                        ("retroactive", lambda: _retroactive(db, now)),
+                       ("queued", lambda: queued_runs(db, now)),
                        ("collectors", lambda: _collectors(
                            (beats.get("scheduler") or {}).get("pid"))),
                        ("ingestion", lambda: _ingestions(

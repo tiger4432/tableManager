@@ -104,7 +104,7 @@ def test_the_first_ask_grows_by_the_declaration_entry_only():
     prompt = admin_help.prompt_of("q")
     mine = [line for line in prompt.split("\n") if line.startswith("- declaration:") or "디사이드 키" in line]
     assert len(mine) == 2 and sum(len(line) for line in mine) <= 700
-    assert '"search": only for the tool declaration' in admin_help.SYSTEM
+    assert '"search": only for the tools declaration and operations' in admin_help.SYSTEM
 
 
 def _answering(sections, kind="chain_rule", name="help_probe", declaration=None):

@@ -45,6 +45,11 @@ def answer(kind: str, pid_file: str | None = None, db: Session = Depends(get_db)
         raise ZeroDivisionError("boom")
     if kind == "query":
         db.execute(text("SELECT 1"))
+    if kind == "sleep":
+        db.execute(text("SELECT pg_sleep(3)"))
+    if kind == "name":
+        from database.database import connection_name
+        return {"pid": os.getpid(), "name": connection_name()}
     if kind == "hang":
         with open(pid_file, "w") as handle:
             handle.write(str(os.getpid()))
@@ -142,6 +147,56 @@ def test_a_pool_answer_is_the_answer_given_here(client, monkeypatch, kind):
 
 def test_the_body_ran_in_another_process(client):
     assert client.get("/body", params={"kind": "pid"}).json()["pid"] != os.getpid()
+
+
+def test_a_pool_process_s_connections_carry_its_pid_and_the_request_handed_to_it_knows_that_name(client, monkeypatch):
+    """Lead 11-10 ㄱ: the grid page runs in a pool process - the stall line finds the statement of the request it runs
+    by its connections' name, «assy_walkpool:<its pid>»; the request notes that name while the process runs it."""
+    from database.database import connection_name
+    seen = []
+    real = request_timing.runs_in
+    monkeypatch.setattr(request_timing, "runs_in", lambda name: (seen.append(name), real(name)))
+    answer = client.get("/body", params={"kind": "name"}).json()
+    assert answer["name"] == "assy_walkpool:%d" % answer["pid"]
+    assert seen == [answer["name"], None]
+    assert connection_name("WalkPool") == "assy_walkpool", "another process's name is asked without a pid"
+
+
+@pytest.mark.pg
+def test_on_postgresql_p_names_the_statement_a_pool_process_runs_for_it(client, pg_engine, monkeypatch, caplog):
+    """The grid-side board (lead 11-10): a body sleeping on PostgreSQL in a pool process - the line's P names its
+    statement and «Timeout:PgSleep», found by the pool process's connection name; its [Slow] line rides with it."""
+    from runtime import stall_watch
+    monkeypatch.setenv("DATABASE_URL", pg_engine.url.render_as_string(hide_password=False))
+    monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
+    monkeypatch.setattr(stall_watch, "_engine", [pg_engine])
+    monkeypatch.setattr(stall_watch, "STALL_SECONDS", 0.0)
+    begin = request_timing.begin
+    monkeypatch.setattr(request_timing, "begin", lambda path=None: begin(path or "/body"))
+    said = []
+    w = stall_watch.Watch(request_timing.oldest_open, lambda now: 0.0, lambda: (1, 40), lambda: 0, lambda: None,
+                          lambda pids: (5.0, None, {"pg": 1.0, "api": 1.0, "other": 1.0}), lambda: ({}, None),
+                          lambda: None, lambda: None, lambda: None, say=said.append, pg_doing=stall_watch.pg_doing)
+    monkeypatch.setattr(stall_watch, "_watch", [w])
+    out = {}
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        thread = threading.Thread(target=lambda: out.setdefault(
+            "response", client.get("/body", params={"kind": "sleep"})))
+        thread.start()
+        for _ in range(600):                            # the process starts, then the sleep begins
+            where = request_timing.oldest_open()[3]
+            if isinstance(where, str) and stall_watch.pg_doing(where) and \
+                    stall_watch.pg_doing(where)[2] == "Timeout:PgSleep":
+                break
+            time.sleep(0.05)
+        time.sleep(1.2)
+        w.tick(time.perf_counter() + 6.0)
+        thread.join()
+        w.tick(time.perf_counter() + 7.0)
+    assert out["response"].status_code == 200, out["response"].text
+    assert re.match(r"^STALL \d+s P /body SELECT [12]s Timeout:PgSleep L0 ", said[0]), said
+    slow = [m for m in caplog.messages if m.startswith("[Slow] GET /body 200 - ")]
+    assert stall_watch.last()["slow"] == slow[0]
 
 
 def test_the_pool_s_database_time_joins_the_request_s(client, monkeypatch, caplog):

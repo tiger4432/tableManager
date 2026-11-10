@@ -17,7 +17,7 @@ try:
 except ImportError:  # imported without server/ on sys.path
     from . import paths  # type: ignore
 
-from runtime.process_supervisor import ChildSpec
+from runtime.process_supervisor import ChildSpec, PRIORITY_BELOW_NORMAL
 
 
 def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
@@ -46,6 +46,9 @@ def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
     hand-started uvicorn, whose event-loop thread the loop body blocks on every slow tick
     (S-252 was one instance); under the launcher this line says so in the environment.
 
+    `priority=` (owner 11-10): the background workers start below normal so reads keep the machine when they pile
+    up; the API (and the grid pool children it starts) stays normal.
+
     The desktop shell is NOT here: `main()` appends it only when the launcher is not
     in server-only mode, and its path is `run_decoupled_app.desktop_shell_path`.
     """
@@ -56,7 +59,7 @@ def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
                   log_file=paths.log_path("server_stdout.log")),
         # The workers assume the web server is accepting /internal/events/*.
         ChildSpec("File Ingestion Watcher", [python_exe, "run_watcher.py"], server_dir,
-                  heartbeat="watcher", start_delay=2.0,
+                  heartbeat="watcher", start_delay=2.0, priority=PRIORITY_BELOW_NORMAL,
                   log_file=paths.log_path("watcher_stdout.log")),
         # ⚰️ [R-2026-08-14-H] "Graph DB Sync Worker" (`run_graph_sync.py`, :8090)가
         # 여기 있었다. 스택은 5프로세스에서 4프로세스가 된다.
@@ -67,15 +70,15 @@ def child_specs(python_exe, server_dir, server_cmd, api_host, api_port):
         # 진입(라우트)은 `server/main.py`의 `_graph_branch_retired`가 막고,
         # 저장소는 `server/migrations/drop_graph_storage.py`가 폐기한다.
         ChildSpec("Chained Ingestion Worker", [python_exe, "run_chain_worker.py"], server_dir,
-                  heartbeat="chain",
+                  heartbeat="chain", priority=PRIORITY_BELOW_NORMAL,
                   log_file=paths.log_path("chain_worker_stdout.log")),
         # 🔴 [총괄 7763dd6d0, 소유자 「원장 프로세스 ㄱ」] THE LEDGER'S WORK RUNS IN ITS OWN PROCESS - the
         # follow-up, the census, the ledger's index line. It follows what the chain processed, so the chain
         # writes on when this one stops, and this one alone can be restarted.
         ChildSpec("Ledger Worker", [python_exe, "run_ledger_worker.py"], server_dir,
-                  heartbeat="ledger",
+                  heartbeat="ledger", priority=PRIORITY_BELOW_NORMAL,
                   log_file=paths.log_path("ledger_worker_stdout.log")),
         ChildSpec("Auto Update Scheduler", [python_exe, "run_auto_update.py"], server_dir,
-                  heartbeat="scheduler",
+                  heartbeat="scheduler", priority=PRIORITY_BELOW_NORMAL,
                   log_file=paths.log_path("auto_update_stdout.log")),
     ]

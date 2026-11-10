@@ -8,6 +8,15 @@ import signal
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 
+# Release bundles in release/ are applied before anything below is loaded; when HEAD moved, the launcher runs again from
+# the new code - this process only waits for it (owner 11-10, server/runtime/release_apply.py).
+if __name__ == "__main__":
+    from runtime import release_apply
+    from utils.logger import get_process_logger as _release_logger
+    _again = release_apply.start(_ROOT_DIR, sys.argv, _release_logger("Launcher", "launcher.log").info)
+    if _again is not None:
+        sys.exit(_again)
+
 from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host
 from runtime.launcher_args import parse_launcher_args  # noqa: E402
 from runtime.launcher_specs import child_specs  # noqa: E402  (S-255: the roster is a value)

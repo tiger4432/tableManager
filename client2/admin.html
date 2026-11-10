@@ -297,6 +297,17 @@
       padding: var(--space-3) 0;
       color: var(--text-dim);
     }
+    /* the head line: the read's age, Refresh at its end - above the list (owner 11-09) */
+    .chain-queue-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      padding: 0 0 var(--space-2);
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+    }
+    .chain-queue-head > .chain-queue-refresh { margin-left: auto; }
     /* 조각 사이의 점은 글자가 아니라 여기서 — 부품은 값만 낸다. */
     .chain-queue-meta {
       display: flex;
@@ -1747,7 +1758,6 @@
     /* 🔴 한 실행 = 한 줄 (총괄 a274c90f0) — 제목 | 진행 | 경과 | 상태 | × , 결과는 그 줄 «아래» 전폭.
           칸 수는 «격자 선언»이 정합니다: 다섯 칸이고 줄은 언제나 다섯 자식입니다(`run_lines.js`).
           끝난 줄은 흐리지 않습니다 — muted 글자 토큰과 상태 낱말이 말합니다. */
-    .run-lines { display: flex; flex-direction: column; gap: var(--space-1); }
     /* 실패 요약 — 한 줄 = (표 · 종류 · 날). 여는 줄 아래에 그 줄의 행 표가 앉습니다. */
     .fail-summary { display: flex; flex-direction: column; }
     .fail-summary__line { display: block; width: 100%; text-align: left; font: inherit;
@@ -1758,35 +1768,7 @@
     .fail-summary__line:has(+ .fail-summary__reason) { border-bottom: 0; }
     .fail-summary__reason { padding: 0 var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); }
     .fail-summary__rows { padding: var(--space-2) 0 var(--space-3) var(--space-3); }
-    .run-line { display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
-                             max-content max-content var(--space-6);
-      align-items: center; column-gap: var(--space-3); row-gap: var(--space-1);
-      padding: var(--space-1) 0; font-size: var(--fs-label); color: var(--text); }
-    .run-line__what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-line__who { color: var(--text-dim); margin-left: var(--space-2); }
-    .run-line__progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-    .run-line__number, .run-line__elapsed { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .run-line__number { text-align: right; }
-    .run-line__elapsed, .run-line__state { color: var(--text-dim); white-space: nowrap; }
-    .run-line__act { text-align: right; }
     .run-line .running-x { margin-left: 0; }
-    .run-line__result { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline;
-      gap: var(--space-2); color: var(--text-dim); overflow-wrap: anywhere; }
-    .run-line__reason { color: var(--danger); }
-    .run-line__label { color: var(--text-dim); margin-right: var(--space-1); }
-    .run-line.is-finished .run-line__what, .run-line.is-finished .run-line__number,
-    .run-line.is-waiting .run-line__what, .run-line.is-stopping .run-line__what { color: var(--text-dim); }
-    .running-bar { flex: 1; height: 6px; overflow: hidden;
-      background: rgba(127,127,127,0.22); position: relative; }
-    .running-bar__fill { display: block; height: 100%; background: var(--accent, #4c9be8); }
-    /* 전체를 모를 때: 폭을 «주장하지 않고» 움직임만 보입니다. */
-    .running-bar.is-unknown .running-bar__fill { width: 35%; animation: running-slide 1.4s linear infinite; }
-    @keyframes running-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-    /* 기다림 · 끝남 · 멈추는 중: 궤도는 남고 «아무것도 안 움직입니다». */
-    .running-bar.is-waiting .running-bar__fill { animation: none; }
-    .running-bar.is-unknown.is-waiting .running-bar__fill { width: 0; }
-    .run-line.is-stopping .running-bar__fill { background: var(--text-dim); }
     .run-line .retro-extras { grid-column: auto; }
     .running-x {
       width: 18px;

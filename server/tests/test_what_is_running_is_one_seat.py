@@ -113,6 +113,41 @@ def test_nothing_running_is_an_empty_list(db_session, sources):
     assert running.running_now(db_session) == []
 
 
+def test_a_queued_run_no_outbox_row_wakes_is_listed_waiting_oldest_first(db_session, sources):
+    """Owner 11-09 «취소하니 예전에 걸어 놓은 리플레이가 갑자기 나타나네»: a chain replay queued behind a run has no
+    outbox row (the chain worker claims it from the run table), so no queue line named it. The seat lists it -
+    waiting, oldest first, behind the run in flight, its ×; a queued scheduler run is left to its own outbox line."""
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    sources["run"](retroactive.RUN_RUNNING)
+    for run_id, op, ago in (("rp-new", "chain_replay", 60), ("rp-old", "chain_replay", 600), ("wd-q", "withdraw", 900)):
+        db_session.add(models.RetroactiveRun(run_id=run_id, op=op, params="{}", state=retroactive.RUN_QUEUED,
+                                             queued_at=now - timedelta(seconds=ago)))
+    db_session.flush()
+    assert retroactive.wakes_by_outbox("withdraw") and not retroactive.wakes_by_outbox("chain_replay")
+
+    waiting = [item for item in running.running_now(db_session, now=now) if item["where"] == running.WHERE_QUEUED]
+    label = retroactive.operation("chain_replay")["label"]
+    assert [item["what"] for item in waiting] == ["%s · rp-old" % label, "%s · rp-new" % label]
+    assert all(item["state"] == retroactive.RUN_QUEUED and item["waiting"] == "after withdraw · run-probe"
+               for item in waiting)
+    assert [item["cancel"] for item in waiting] == [{"run_id": "rp-old"}, {"run_id": "rp-new"}]
+    assert [round(item["elapsed_seconds"]) for item in waiting] == [600, 60]
+    assert set(waiting[0]) == {"what", "where", "pid", "started_at", "elapsed_seconds", "progress", "cancel", "state",
+                               "waiting"}
+
+    db_session.query(models.RetroactiveRun).filter(models.RetroactiveRun.run_id == "run-probe").delete()
+    db_session.flush()
+    alone = [item for item in running.running_now(db_session, now=now) if item["where"] == running.WHERE_QUEUED]
+    assert [item["waiting"] for item in alone] == [None, None], "nothing in flight: next, no «after»"
+    # both queues read the seat: the Queue tab's and the admin's run lines (that route ends the test's session: last)
+    assert [i["what"] for i in main.get_outbox_queue_rows(db=db_session)["queued_runs"]] == [
+        item["what"] for item in alone]
+    assert [i["what"] for i in main.get_chain_queue_depth(db=db_session)["now_running"]
+            if i["where"] == running.WHERE_QUEUED] == [item["what"] for item in alone]
+
+
 def test_the_queue_carries_the_seat(db_session, sources):
     sources["chain"](["tx-probe"])
     sources["run"](retroactive.RUN_RUNNING)

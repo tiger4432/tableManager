@@ -391,7 +391,7 @@ async def test_the_queue_says_a_replays_pages_and_lists_cut_runs_with_resume_and
     await _process(db, pages[1])
     answer = client.get("/admin/chain/queue").json()
     [line] = [l for l in answer["waiting_transactions"] if l["run_id"] == "q1"]
-    assert line["pages"] == {"done": 1, "staged": 3, "rows_done": 3}
+    assert line["pages"] == {"done": 1, "staged": 3, "rows_done": 3, "waiting": 2, "rows_waiting": 6, "failed": 0}
     assert answer["interrupted_runs"] == []
     _set_aside(db, pages[2] + pages[3])
     db.query(models.RetroactiveRun).filter_by(run_id="q1").update({"total_rows": 9})

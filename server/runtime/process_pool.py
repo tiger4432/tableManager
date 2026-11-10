@@ -50,9 +50,10 @@ BOOT_ENV = "ASSY_WALK_BOOT"
 os.environ.setdefault(BOOT_ENV, uuid.uuid4().hex[:12])
 #: How many ended pool processes keep why they ended - what a key of theirs is told.
 ENDED_SAID = 200
-#: A pool process runs one body at a time: its session and nothing else (chain.slots.SLOT_POOL's size).
-POOL_DB = {"ASSY_DB_POOL_SIZE": "2", "ASSY_DB_MAX_OVERFLOW": "2"}
-#: Its logger - and so its connections' application name, `assy_walkpool`; its own lines go to walk_pool.log.
+#: A pool process runs one body at a time: its session and nothing else (chain.slots.SLOT_POOL's size); its
+#: connections' name carries its pid (`database.connection_name`), so the request it runs is found by it.
+POOL_DB = {"ASSY_DB_POOL_SIZE": "2", "ASSY_DB_MAX_OVERFLOW": "2", "ASSY_CONNECTION_PID": "1"}
+#: Its logger - and so its connections' application name, `assy_walkpool:<pid>`; its own lines go to walk_pool.log.
 PROCESS_NAME = "WalkPool"
 
 logger = logging.getLogger("Server")
@@ -369,6 +370,8 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
         if not pool.answer_waits:
             deadline = None
         process, connection, _generation_of = worker
+        from database.database import connection_name
+        request_timing.runs_in("%s:%d" % (connection_name(pool.process_name), process.pid))
         connection.send((target, kwargs, request_accept_encoding.get()))   # the pool process gzips (lead 11-09 ㄴ)
         if not connection.poll(left()):
             raise _unavailable("walk_timed_out", "The walk did not finish in %g s and its walk process was stopped - "
@@ -384,6 +387,7 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
         keep = True
         return answer
     finally:
+        request_timing.runs_in(None)
         with pool.cond:
             pool.taken[0] -= 1
             if worker is not None:

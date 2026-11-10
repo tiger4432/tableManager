@@ -28,8 +28,8 @@ CHOICES_SHOWN = 40
 SYSTEM = ("You route an operator's question to ONE maintenance tool of the list below, or to none. Answer one JSON "
           'object: {"op": the tool name from the list or null, "params": {field: value} using only that tool\'s '
           'fields - leave a field out when the question does not say it, "why": one short English sentence, '
-          '"similar": up to three other tool names from the list, "search": only for the tool declaration - the '
-          "question rewritten in the words a configuration guide would use}. Never name a tool or a field that is "
+          '"similar": up to three other tool names from the list, "search": only for the tools declaration and '
+          "operations - the question rewritten in the words a guide would use}. Never name a tool or a field that is "
           "not in the list.")
 
 #: The help's own tool (owner 10-29 «선언법도 도우미에»): how to write a declaration - answered from the guides
@@ -42,6 +42,40 @@ DECLARATION_SPEC = {
     "examples": ["디사이드 키 다른거 어케하더라", "조인 규칙 어떻게 적어", "표에 칸 타입 선언하는 법",
                  "원장 소스 선언 예시 보여줘"],
     "next": [],
+    "answer": "declaration",
+}
+#: Slow lines an operations answer carries besides the last STALL's own.
+STATE_SLOW = 5
+
+
+def state_lines(db):
+    """The server's own last readings an operations answer may cite - the last STALL line and the [Slow] line its
+    request left, the last STATE_SLOW slow requests' lines, and /health's problems (the database answered this ask).
+    Nothing is collected for it: each is what the server already holds."""
+    from runtime import health, process_supervisor, request_timing, stall_watch
+    from utils import heartbeat
+
+    stall = stall_watch.last()
+    lines = ["%s %s" % (stall["at"], stall["line"])] + ([stall["slow"]] if stall.get("slow") else []) if stall else []
+    lines += ["%s %s" % said for said in request_timing.slow_lines(STATE_SLOW) if said[1] not in lines]
+    payload, _ = health.compute_health({"status": "ok"}, heartbeat.read_all(), process_supervisor.read_status(),
+                                       health.probe_outbox(db), heartbeat.DEFAULT_STALE_AFTER_SEC)
+    return lines + ["/health: %s" % problem for problem in payload.get("problems") or ()]
+
+
+#: The help's operations answer (lead 11-10, owner «도우미 ㄴ»): why it is slow, what a line means, which setting -
+#: from the server's own readings (`state_lines`) and the operations guide, each cited.
+OPERATIONS = "operations"
+OPERATIONS_SPEC = {
+    "label": "Why it is slow - what to do",
+    "what_is_missing": ("the operator asks why the server or a screen is slow or stuck, what a log or STALL line "
+                        "means, or which setting to change - answered from the server's last readings and the "
+                        "operations guide"),
+    "examples": ["지금 왜 느려", "그리드가 안 떠", "STALL 줄 뜻이 뭐야", "CPU 100 인데 뭐 때문이야",
+                 "shared_buffers 올리는 법"],
+    "next": [],
+    "answer": "operations",
+    "lines": state_lines,
 }
 
 
@@ -50,7 +84,7 @@ def catalog():
     answer."""
     return {**{op: spec for op, spec in retroactive.OPERATIONS.items()
                if not spec.get("retired") and retroactive.form_started(spec)},
-            **retroactive.DOORS_OUTSIDE, DECLARATION: DECLARATION_SPEC}
+            **retroactive.DOORS_OUTSIDE, DECLARATION: DECLARATION_SPEC, OPERATIONS: OPERATIONS_SPEC}
 
 
 def _field(param):
@@ -116,7 +150,7 @@ def pick(question, ask_json=None):
             refused = ("the model named no tool" if answer.get("op") in (None, "")
                        else "%r is not a tool in the list" % (answer.get("op"),))
             continue
-        if op in retroactive.DOORS_OUTSIDE or op == DECLARATION:
+        if op in retroactive.DOORS_OUTSIDE or tools[op].get("answer"):
             params, unfilled = {}, []
         else:
             try:
@@ -153,11 +187,13 @@ def ask(db, question, asked_by=None, ask_json=None):
     got.update(help_id=uuid.uuid4().hex[:12], count=None, count_refused=None, label=spec.get("label"),
                **({"doors": spec["doors"]} if spec.get("doors") else {}))
     search = got.pop("search", None)
-    if got["op"] == DECLARATION:
+    if spec.get("answer"):
         from admin import help_guides
         from utils import llm
 
-        got["declaration"] = help_guides.answer(question, search, ask_json or llm.ask_json)
+        got[spec["answer"]] = help_guides.answer(question, search, ask_json or llm.ask_json, form=spec["answer"],
+                                                 lines=spec["lines"](db) if spec.get("lines") else ())
+    if got["op"] == DECLARATION:
         got["params"] = {cell: got["declaration"].get(cell) for cell in ("kind", "name") if got["declaration"].get(cell)}
     if got["op"] in retroactive.OPERATIONS and got["unfilled"]:
         # a blank required field is expected here - its count waits for the form, not a failure (lead 10-29)
