@@ -1509,6 +1509,7 @@ def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: l
     return audit_history.line_keys(db, table_name, row_ids)
 
 from admin.audit_cache import audit_cache, in_group
+from database.lines import index_name as lines_index_name  # noqa: E402 - the person index the figures read
 from database.lines import stored_relation as lines_stored_relation  # noqa: E402 - t__now: where its indexes live
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
@@ -1652,7 +1653,7 @@ def _hold(cache, value, at):
     """Keep `value` as the figure computed at `at`. -> value"""
     cache["value"], cache["at"] = value, at
     return value
-# 2차 방어선: 인덱스(t__lines 의 ix_<table>__lines_person_at)가 아직 없는 운영 DB에서도 대시보드가
+# 2차 방어선: 인덱스(사람 줄 인덱스, lines.index_name(t, "p"))가 아직 없는 운영 DB에서도 대시보드가
 # 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
 # (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
 RECORRECTION_TIMEOUT_MS = 1500
@@ -1685,7 +1686,7 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
         lowered = detail.lower()
         if "timeout" in lowered or "canceling statement" in lowered:
             reason = (f"집계 시간 초과 ({RECORRECTION_TIMEOUT_MS}ms) — "
-                      f"ix_<table>__lines_person_at 인덱스 확인. "
+                      f"{lines_index_name('<table>', 'p')} 인덱스 확인. "
                       f"[{type(e).__name__}] {detail}")
         else:
             reason = f"집계 실패 — [{type(e).__name__}] {detail or '상세 없음'}"

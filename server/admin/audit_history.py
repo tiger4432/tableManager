@@ -289,10 +289,10 @@ def line_bits(db, table_name) -> dict:
 
 
 def line_table(table_name, bits):
-    from database import lines, models
+    """t__lines as Core: its value cells are text whatever the column's type (C b9f242763) - read one with
+    `line_cell`."""
+    from database import lines
 
-    model = models.DYNAMIC_TABLES.get(table_name)
-    typed = {c.name: c.type for c in model.__table__.columns} if model is not None else {}
     chunks = max(bits.values(), default=0) // LINE_BITS + 1
     return sa.Table(lines.lines_relation(table_name), sa.MetaData(),
                     sa.Column("line_id", sa.Integer), sa.Column("line_kind", sa.String),
@@ -301,7 +301,15 @@ def line_table(table_name, bits):
                     sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
                     *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
                       for kind in ("written", "head", "withdrawn")],
-                    *[sa.Column(name, typed.get(name, sa.String())) for name in bits])
+                    *[sa.Column(name, sa.Text) for name in bits])
+
+
+def line_cell(table_name, row, name):
+    """A line's value of `name` as the column's declared type - through `crud.line_value`, the one read-side cast."""
+    from database import crud
+
+    types = (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    return crud.line_value(getattr(row, name), types.get(name, "string"))
 
 
 def bit_said(row, bit, kind="written"):
@@ -343,7 +351,7 @@ def line_entries(table_name, row, bits, column=None, business_key=None, row_dele
         return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
                      new_value="row deleted", source_name="system")]
     return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
-                 new_value=None if bit_said(row, bit, "withdrawn") else getattr(row, name))
+                 new_value=None if bit_said(row, bit, "withdrawn") else line_cell(table_name, row, name))
             for name, bit in bits.items() if (column is None or name == column) and bit_said(row, bit)]
 
 
@@ -455,6 +463,6 @@ def head_lines(db, table_name, row_ids, columns=None) -> dict:
             for name, bit in bits.items():
                 if bit_said(row, bit, "head") and not bit_said(row, bit, "withdrawn"):
                     out.setdefault((row.row_id, name), {})[row.source_name] = {
-                        "value": getattr(row, name), "at": row.at, "written_by": row.written_by}
+                        "value": line_cell(table_name, row, name), "at": row.at, "written_by": row.written_by}
     return out
 

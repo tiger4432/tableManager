@@ -62,6 +62,6 @@ def test_a_slow_reference_read_scanning_the_current_lines_asks_for_the_declared_
     engine, _bits = indexed
     asked = []
     monkeypatch.setattr(index_wants, "want", lambda table, columns, why, seconds, bind: asked.append((table, columns)))
-    index_wants._plan_wants("probe", "probe view", 'SELECT row_id FROM "%s" WHERE b = :v' % TABLE, {"v": "x"}, 2.0,
+    index_wants._plan_wants("probe", "probe view", 'SELECT row_id FROM "%s" WHERE b = :v' % TABLE, {"v": 1.5}, 2.0,
                             engine)
     assert asked == [(TABLE, ["b"])], asked

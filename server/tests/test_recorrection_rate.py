@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 import pytest
 
 from conftest import retire_dynamic_model
-from database import crud, models
+from database import crud, lines, models
 from tests.support import line_tables
 
 # Table names are namespaced so they can never collide with a real table in the
@@ -312,7 +312,7 @@ def test_a_real_recorrection_timeout_is_still_identified_as_one(
     main.RECORRECTION_CACHE["value"] = None
 
     reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
-    assert "시간 초과" in reason and "__lines_person_at" in reason, \
+    assert "시간 초과" in reason and lines.index_name("<table>", "p") in reason, \
         "the timeout case must still point at the index that fixes it"
     main.RECORRECTION_CACHE["value"] = None
 

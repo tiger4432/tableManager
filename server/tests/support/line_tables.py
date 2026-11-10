@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from database import crud, lines
 
-#: table -> its shape as `lines.ensure_line_table` made it - lines go in typed, as the write path's do (SQLite keeps a
-#: datetime as text in the column type's own form)
+#: table -> its shape as `lines.ensure_line_table` made it - a line's values go in as text (`crud.line_text`), the
+#: current line's typed
 _BUILT = {}
 
 
@@ -69,7 +69,8 @@ def line(conn, table, bits, row_id, *, kind="write", source="probe.csv", at=None
         row["written_%d" % chunk] = written.get(chunk, 0)
         row["head_%d" % chunk] = written.get(chunk, 0) if head else 0
         row["withdrawn_%d" % chunk] = gone.get(chunk, 0)
-    row.update(values)
+    types = crud.TABLE_CONFIG[table].get("column_types") or {}
+    row.update({name: crud.line_text(value, types.get(name, "string")) for name, value in values.items()})
     return conn.execute(shape["lines"].insert().values(row)).inserted_primary_key[0]
 
 
