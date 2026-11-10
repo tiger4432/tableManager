@@ -24,6 +24,7 @@ from sqlalchemy import func
 
 from conftest import retire_dynamic_model
 from database import crud, models
+from tests.support import line_tables
 
 TABLE = "pivot_probe"
 ENTRY = {"business_key": "bk", "composite_key_source": ["lot", "wafer", "itemid"],
@@ -45,7 +46,7 @@ def grid(db_session, client, monkeypatch):
         monkeypatch.setattr(crud, name, {})
     models.init_dynamic_models({TABLE: ENTRY})
     crud.TABLE_CONFIG[TABLE] = ENTRY
-    models.DYNAMIC_TABLES[TABLE].__table__.create(bind=db_session.get_bind())
+    line_tables.build(db_session.get_bind(), TABLE)             # t and its lines, as ensure_declared makes them
     model = models.DYNAMIC_TABLES[TABLE]
     put = [{"updates": {"lot": lot, "wafer": wafer, "itemid": item, "value": value}, "source_name": "file",
             "updated_by": "probe"} for (lot, wafer), items in LONG.items() if wafer for item, value in items.items()]
@@ -59,6 +60,7 @@ def grid(db_session, client, monkeypatch):
         yield client
     finally:
         db_session.rollback()
+        line_tables.drop(db_session.get_bind(), TABLE)
         model.__table__.drop(bind=db_session.get_bind())
         retire_dynamic_model(TABLE)
 
@@ -195,9 +197,10 @@ def test_a_cell_is_written_by_its_row_and_a_blank_cell_makes_the_row(grid, db_se
     assert _values_with_ids(after)[("L1", "W1")]["a"]["row_id"] == cell["row_id"], "the same row"
     assert _values(after)[("L1", "W2")] == {"a": 2.0, "b": 6.0, "c": 7.0}
     assert db_session.query(model).count() == 9, "one row made, none else"
-    logged = db_session.query(models.AuditLog).filter(models.AuditLog.row_id == cell["row_id"],
-                                                      models.AuditLog.column_name == "value").all()
-    assert [(log.old_value, log.new_value) for log in logged] == [(1, 11)], "one history line, the edit's"
+    # the cell's history is its lines (cell-source overhaul), newest first: the edit's, over the file's that made it
+    logged = grid.get("/tables/%s/rows/%s/cells/value/history" % (TABLE, cell["row_id"])).json()["logs"]
+    assert [(log["source_name"], log["new_value"]) for log in logged] == [("user", 11), ("file", 1)], \
+        "one history line, the edit's"
 
 
 def _values_with_ids(read):
