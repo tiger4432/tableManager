@@ -3405,8 +3405,12 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
    chain rule's formula cell. The field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
 .formula-input { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .formula-input [hidden] { display: none; }
-.formula-input__field { position: relative; display: flex; align-items: center; gap: var(--space-2); }
-.formula-input__input { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); }
+.formula-input__field { position: relative; display: flex; align-items: flex-start; gap: var(--space-2); }
+/* many lines (owner 11-11): the box grows with its lines up to eight, then scrolls */
+.formula-input__input { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); height: auto; max-height: 8lh;
+  field-sizing: content; resize: none; white-space: pre-wrap; overflow-y: auto; }
+.formula-input__keys { display: none; flex: none; align-self: center; font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; }
+.formula-input:focus-within .formula-input__keys { display: inline; }
 .formula-input__input[aria-invalid="true"] { border-color: var(--danger); }
 /* what the caret stands in, over what follows (owner's mockup 11-07): the names offered under the field, or the call's
    arguments with the one being typed in bold under the field and its refusal */

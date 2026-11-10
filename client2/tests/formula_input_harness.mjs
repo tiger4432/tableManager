@@ -47,7 +47,7 @@ function makeDoc() {
         setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; },
         // bubbles from here up its parents until a listener stops it
         dispatch(type, init = {}) {
-          const event = { type, target: this, key: init.key, stopped: false, prevented: false,
+          const event = { type, target: this, key: init.key, ctrlKey: !!init.ctrlKey, metaKey: !!init.metaKey, stopped: false, prevented: false,
             stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } };
           for (let node = this; node && !event.stopped; node = node.parentNode) {
             (node.listeners[type] || []).slice().forEach((fn) => fn(event));
@@ -116,7 +116,10 @@ async function suite(M, loud) {
   const fn = M.acceptAt('=Datx+1', 4, M.offerAt('=Datx+1', 4, []) || { kind: 'function', from: 1 }, 'DatePart');
   const cl = M.acceptAt('=Sum([dt_]+1', 9, M.offerAt('=Sum([dt_]+1', 9, ['dt_lot']), 'dt_lot');
   say('H6 taken: a function as «Name(» over the rest of the word, a column as «name]» over a «]» already there',
-    fn.text === '=DatePart(+1' && fn.caret === 10 && cl.text === '=Sum([dt_lot]+1' && cl.caret === 13, [fn, cl]);
+    fn.text === '=DatePart(, )+1' && fn.caret === 10 && cl.text === '=Sum([dt_lot]+1' && cl.caret === 13, [fn, cl]);
+  say('H8 a function taken comes as its call\'s skeleton: a slot for each argument it needs, none for «[…]» or «...»',
+    M.callSkeleton('If') === 'If(, , )' && M.callSkeleton('DatePart') === 'DatePart(, )' && M.callSkeleton('Sum') === 'Sum()'
+    && M.callSkeleton('Count') === 'Count()' && M.callSkeleton('Find') === 'Find(, )', ['If', 'DatePart', 'Sum', 'Count', 'Find'].map(M.callSkeleton));
   const w = M.offerAt('uni', 3, [], ['unique_concat', 'spec_out.s_o']);
   const wt = w && M.acceptAt('uni', 3, w, w.items.find((i) => i.word).value, true);
   say('H7 the words a field takes beside a formula are offered with the functions and taken as themselves',
@@ -131,8 +134,8 @@ async function suite(M, loud) {
     && t.lit() === 0 && t.list.getAttribute('role') === 'listbox' && t.f.input.getAttribute('aria-expanded') === 'true', [t.list.hidden, t.lit()]);
   t.f.input.fire('keydown', { key: 'ArrowDown' });
   const enter = t.f.input.fire('keydown', { key: 'Enter' });
-  say('I2 ↓ then Enter takes the lit row as «DatePart(» - the owner\'s Enter not called, the list closed',
-    t.f.value === '=DatePart(' && t.f.input.selectionStart === 10 && enter.prevented && t.list.hidden && t.entered.length === 0,
+  say('I2 ↓ then Enter takes the lit row as «DatePart(, )», the caret in its first slot - the owner\'s apply not called, the list closed',
+    t.f.value === '=DatePart(, )' && t.f.input.selectionStart === 10 && enter.prevented && t.list.hidden && t.entered.length === 0,
     [t.f.value, t.entered]);
   say('I3 ...and its arguments stand under it, the first in bold', !t.sign.hidden && t.sign.textContent === 'DatePart(part, value)'
     && bold(t.sign) === 'part', t.sign.textContent);
@@ -152,10 +155,25 @@ async function suite(M, loud) {
   say('I8 Esc closes the list alone - the key goes no further', t.list.hidden && esc.stopped && t.f.value === '=Su');
   t.typeIn('=Ro');
   t.list.children[0].dispatch('mousedown');
-  say('I9 a press on a row takes it', t.f.value === '=Round(' && t.list.hidden, t.f.value);
+  say('I9 a press on a row takes it', t.f.value === '=Round(, )' && t.list.hidden, t.f.value);
   t.typeIn('=[a]+1');
   const plain = t.f.input.fire('keydown', { key: 'Enter' });
-  say('I10 with no list open, Enter is the owner\'s - with the text', t.entered.join() === '=[a]+1' && plain.prevented, t.entered);
+  say('I10 with no list open, Enter is a new line - the box\'s own, not the owner\'s', t.entered.length === 0 && !plain.prevented, t.entered);
+  const ctrl = t.f.input.fire('keydown', { key: 'Enter', ctrlKey: true });
+  const cmd = t.f.input.fire('keydown', { key: 'Enter', metaKey: true });
+  say('I16 Ctrl+Enter (⌘+Enter) is the owner\'s apply - with the text', t.entered.join() === '=[a]+1,=[a]+1' && ctrl.prevented
+    && cmd.prevented, t.entered);
+  const lone = field(M, { onEnter: undefined });
+  const raised = [];
+  let sent = 0;
+  lone.doc.defaultView = { Event: function Ev(type) { this.type = type; } };
+  lone.f.input.dispatchEvent = (ev) => { raised.push(ev.type); };
+  lone.f.input.form = { requestSubmit: () => { sent += 1; } };
+  lone.typeIn('=[a]');
+  raised.length = 0;
+  lone.f.input.fire('keydown', { key: 'Enter', ctrlKey: true });
+  say('I17 with no owner, Ctrl+Enter raises the box\'s change and sends the form it sits in - as Enter in one line did',
+    raised.join() === 'change' && sent === 1, [raised, sent]);
   say('I11 each change is told to the owner', t.typed.length > 5 && t.typed[t.typed.length - 1] === '=[a]+1', t.typed.length);
   const r = field(M, { refusal: (text) => (text.includes('(') && !text.includes(')') ? 'The expression ends too soon' : '') });
   r.typeIn('=DatePart(');
@@ -192,6 +210,10 @@ async function suite(M, loud) {
   const own = M.formulaMark(makeDoc());
   say('F2 the mark a folded line wears is the same one (one place)', has(own, 'formula-mark') && own.textContent === M.FORMULA_MARK
     && own.getAttribute('aria-hidden') === 'true', own.className);
+  const keys = find(a.host, 'formula-input__keys');
+  say('F3 how to apply stands beside the box, in the field\'s own words', keys && keys.textContent === M.APPLY_KEYS
+    && M.APPLY_KEYS === 'Ctrl+Enter to apply' && find(a.host, 'formula-input__field').children.includes(keys));
+  say('F4 the box takes many lines', a.f.input.tagName === 'TEXTAREA', a.f.input.tagName);
   return bad;
 }
 
@@ -203,8 +225,13 @@ const swap = (from, to) => (src) => {
   return src.replace(from, to);
 };
 const DEFECTS = [
-  ['M1 the Enter that takes a row is the owner\'s too',
-    swap("    } else if (e.key === 'Enter' && this.deps.onEnter) {", "    }\n    if (e.key === 'Enter' && this.deps.onEnter) {")],
+  ['M1 a plain Enter applies - no new line, and it takes no listed row',
+    swap("    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {", "    if (e.key === 'Enter') {")],
+  ['M11 with no owner, Ctrl+Enter sends no form', swap('    if (this.input.form && this.input.form.requestSubmit) this.input.form.requestSubmit();\n', '')],
+  ['M12 ⌘+Enter is not taken', swap("(e.ctrlKey || e.metaKey)", 'e.ctrlKey')],
+  ['M13 a function taken as «Name(» alone', swap("(word ? value : callSkeleton(value))", '(word ? value : `${value}(`)')],
+  ['M15 an optional argument gets a slot', swap(" && !/^\\[.*\\]$/.test(a)", '')],
+  ['M14 no word for how to apply', swap('    field.appendChild(this.keys);\n', '')],
   ['M2 the argument being typed does not move past a comma',
     swap("    else if (ch === ',' && calls.length) calls[calls.length - 1].arg += 1;\n", '')],
   ['M3 Esc with the list open goes on to the owner',
@@ -221,7 +248,7 @@ const DEFECTS = [
     (src) => swap("    this.list = el('div', 'formula-input__complete');", "    this.list = SHARED.list || (SHARED.list = el('div', 'formula-input__complete'));")(src)
       .replace("export class FormulaInput {", "const SHARED = {};\nexport class FormulaInput {")],
   ['M9 a word taken as a call',
-    swap("const piece = offer.kind === 'function' ? (word ? value : `${value}(`) : `${value}]`;", "const piece = offer.kind === 'function' ? `${value}(` : `${value}]`;")],
+    swap("const piece = offer.kind === 'function' ? (word ? value : callSkeleton(value)) : `${value}]`;", "const piece = offer.kind === 'function' ? callSkeleton(value) : `${value}]`;")],
 ];
 DEFECTS.push(['M10 the field wears no formula mark', swap('    field.appendChild(formulaMark(this.doc));\n', '')]);
 const CONTROLS = [
