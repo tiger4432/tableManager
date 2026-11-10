@@ -2204,6 +2204,7 @@ def form_started(spec) -> bool:
 OPERATIONS = {
     "chain_replay": {
         "label": "Replay chain rules over old data (R1)",
+        "writes": {"rule": "rule", "cascade": "cascade"},
         "what_is_missing": "data older than the rule has never been seen by that rule",
         "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘",
                      "꺼 둔 규칙을 이름 대고 이 웨이퍼만 한 번 돌려 보고 싶어", "리포트 폴더에 .send_failed 가 남았어, 중계 PC 고쳤으니 그 웨이퍼 다시 보내줘",
@@ -2334,6 +2335,7 @@ OPERATIONS = {
     },
     FILE_REREAD_OP: {
         "label": "Re-read files",
+        "writes": {"table": "table", "wakes": True},
         "started_by": STARTED_BY_REREAD,
         "what_is_missing": "files read again with today's parser - their chain runs as a retroactive line",
         "examples": [],
@@ -2412,6 +2414,7 @@ OPERATIONS = {
         "cli_only": ["--list-all (prints every moved cell)"],
     },
     "fold_written_notation": {
+        "writes": {"table": "table", "wakes": True},
         "label": "Fold stored values into the declared spelling",
         "what_is_missing": ("a \"write\" column keeps the spellings stored before it was declared, "
                             "a text column keeps numbers stored before text took them, and a row keyed "
@@ -2635,6 +2638,7 @@ OPERATIONS = {
     },
     "ledger_backfill": {
         "label": "Translate the rows not yet in the ledger",
+        "writes": {"ledger": True},
         "what_is_missing": "the declaration reads this source, but some of its rows are not in the ledger yet",
         "examples": ["원장에 이 소스의 원자가 없거나 도중에 멈춰 있다", "새 소스를 선언했는데 걷기에 안 나와"],
         "next": [],
@@ -2664,6 +2668,7 @@ OPERATIONS = {
     },
     "ledger_catch_up": {
         "label": "Catch a ledger world up",
+        "writes": {"ledger": True},
         "what_is_missing": ("the world did not follow its tables live for a while, so rows "
                             "made, edited or deleted meanwhile are not in its ledger"),
         "examples": ["원장이 못 본 수정이 있다 — 표 값이 바뀌었는데 원자가 옛 값 그대로", "가지를 다시 켰는데 옛 값이야"],
@@ -2685,6 +2690,7 @@ OPERATIONS = {
     },
     "ledger_rescope": {
         "label": "Re-translate a ledger scope",
+        "writes": {"ledger": True},
         "what_is_missing": "corrected input never reached the ledger, so that scope alone holds stale values",
         "examples": ["원장 해석을 고쳤는데 이미 적재된 원자는 옛 해석 그대로다", "이 랏만 원장 다시 번역해줘"],
         "next": [],
@@ -2719,6 +2725,7 @@ OPERATIONS = {
         "cli_only": [],
     },
     "enrichment_backfill": {
+        "writes": {"derived_of": "rule"},
         "label": "Create enrichment derived rows",
         "what_is_missing": "the derived rows were never created at all",
         "examples": ["파생 테이블에 행 자체가 없다", "워크리스트에도 안 떠"],
@@ -3080,11 +3087,92 @@ def in_flight_rows(db):
             .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES)))
 
 
-def in_flight(db, now=None, stall_after=None):
-    """The run the scheduler's gate is closed on, and whether it is still moving.
+#: The place a run writes when its operation declares no `writes` cell, or a place it names cannot be answered - it
+#: overlaps every run (lead 11-10: unknown -> all, as before).
+EVERYWHERE = "*"
 
-    Returns ``None`` when no run is recorded as in flight. Otherwise a dict carrying the
-    run, its `moving` state, and whether a cancel could reach it.
+
+def writes(op, params):
+    """The places a run of `op` with `params` writes - «table:<name>», «ledger:<world>» - from its operation's
+    `writes` cell and the declarations that answer it (owner 11-09 «규칙이 어디에 쓰는지는 선언이 답한다»):
+        rule      the rule the replay names (`replay.find_rule`, the replay's own lookup) and the tables it writes
+                  (`chain_bindings.rule_tables`); with `cascade` true, what those writes wake, to the end
+        derived_of  the enrich rule a backfill names - its derived table (`enrichment.backfill.load_rule`, the run's
+                  own lookup) and what that chain-layer write wakes, to the end
+        table     that table; with `wakes`, what a write on it wakes - the chain worker's own predicate
+                  (`chain.graph._wakes`) - and what those write, to the end
+        ledger    the world the run translates into (`_ledger_world`, the run's own) - a source it reads is not a
+                  place it writes; a replay's changed rows reach the ledger through the outbox follow-up
+    {EVERYWHERE} when the cell is absent or a name cannot be answered."""
+    cell = (OPERATIONS.get(op) or {}).get("writes")
+    params = params or {}
+    try:
+        if not cell:
+            return {EVERYWHERE}
+        if cell.get("ledger"):
+            return {"ledger:%s" % _ledger_world(params)}
+        if cell.get("derived_of"):
+            from chain import enrichment
+            from database import crud
+
+            rule = enrichment.backfill.load_rule(params.get(cell["derived_of"]), crud.TABLE_CONFIG,
+                                                 **_given(params, "force_disabled"))
+            tables, woken = {rule["derived_table"]}, "chain"
+        elif cell.get("rule"):
+            from chain import replay
+
+            from chain_bindings import TABLE_ROLE_WRITE, rule_tables
+            tables = rule_tables(replay.find_rule(params.get(cell["rule"]), row_scoped=True), TABLE_ROLE_WRITE)
+            woken = "chain" if params.get(cell.get("cascade")) is True else None
+        else:
+            table = params.get(cell["table"])
+            tables, woken = ({table} if isinstance(table, str) and table.strip() else set()), (
+                "user" if cell.get("wakes") else None)
+        if not tables:
+            return {EVERYWHERE}
+        return {"table:%s" % name for name in _woken_to_the_end(tables, woken)}
+    except Exception as exc:                                     # noqa: BLE001 - unanswered is everywhere, said
+        logger.warning("[Retroactive] where %s writes is not known (%s) - it waits for every run", op, told(exc))
+        return {EVERYWHERE}
+
+
+def _woken_to_the_end(tables, channel):
+    """`tables` and, when `channel` names one, the tables every rule a write on them wakes writes - a write by a person
+    («user») wakes every rule on its table, a chain write («chain») only the rules that opted in - again for what those
+    write, until nothing new."""
+    from chain import graph, ingestion_worker
+    from chain_bindings import TABLE_ROLE_WRITE, rule_tables
+
+    found = set(tables)
+    if channel is None:
+        return found
+    rules = {rule.get("name"): rule for rule in graph._chain_rules()}
+    frontier, asked = list(found), channel
+    while frontier:
+        nxt = []
+        for table in frontier:
+            for name in graph._wakes(ingestion_worker, list(rules.values()), table)[asked]:
+                for written in rule_tables(rules.get(name), TABLE_ROLE_WRITE) - found:
+                    found.add(written)
+                    nxt.append(written)
+        frontier, asked = nxt, "chain"                      # what a rule writes wakes only the opted-in rules
+    return found
+
+
+def overlap(places, others):
+    """The places two runs both write - every one of either when one of them writes everywhere."""
+    if EVERYWHERE in places or EVERYWHERE in others:
+        return (places | others) - {EVERYWHERE} or {EVERYWHERE}
+    return places & others
+
+
+def in_flight(db, now=None, stall_after=None, op=None, params=None):
+    """The run the gate is closed on for a run of `op` with `params` - the newest run in flight whose places overlap
+    its (`writes`); no `op`: the newest run in flight - and whether it is still moving.
+
+    Returns ``None`` when no such run is recorded as in flight. Otherwise a dict carrying the
+    run, its `moving` state, whether a cancel could reach it and, asked for an `op`, the places they share
+    (`overlaps`).
 
     🔴 IT READS THE `retroactive_runs` TABLE, NOT THE THREAD. The thread is in the
     scheduler process and the reader of this is the web process, so the thread is not
@@ -3104,6 +3192,19 @@ def in_flight(db, now=None, stall_after=None):
     boundary, "no progress since the start" is all that is known - and calling that a
     stall would name a fault that has not been established.
     """
+    mine = writes(op, params) if op is not None else None
+    for run in in_flight_runs(db, now=now, stall_after=stall_after):
+        if mine is None:
+            return run
+        shared = overlap(mine, writes(run["op"], run["params"]))
+        if shared:
+            return dict(run, overlaps=sorted(shared))
+    return None
+
+
+def in_flight_runs(db, now=None, stall_after=None):
+    """Every run in flight, newest first, each as `in_flight` describes it - runs whose places do not overlap run
+    side by side (lead 11-10), so the screens list them all."""
     from datetime import datetime, timezone
 
     from database import models
@@ -3115,15 +3216,14 @@ def in_flight(db, now=None, stall_after=None):
         stall_after = heartbeat.DEFAULT_STALL_AFTER_SEC
     now = now or datetime.now(timezone.utc)
 
-    row = (in_flight_rows(db)
-           # ⚰️ `.nullslast()` REMOVED (S-131 의 같은 부류, S-130 커밋에 같이).
-           # `DESC NULLS LAST` 는 btree 가 «뒤로 읽어» 줄 수 있는 순서가 아니라
-           # 인덱스를 못 쓰게 만든다 — 그 절이 그리드에서 0.25 s 를 먹였다.
-           # 이 표는 작아서 비용은 작지만, 남겨 두면 다음 사람이 「거기만 있었다」고 읽는다.
-           .order_by(models.RetroactiveRun.started_at.desc())
-           .first())
-    if row is None:
-        return None
+    # ⚰️ `.nullslast()` REMOVED (S-131) - `DESC NULLS LAST` is no order a btree reads backwards.
+    rows = in_flight_rows(db).order_by(models.RetroactiveRun.started_at.desc()).all()
+    stages = _stages_of(db, [row.run_id for row in rows]) if rows else {}
+    return [_described(row, now, stall_after, stages) for row in rows]
+
+
+def _described(row, now, stall_after, stages):
+    """One run in flight: its row, its `moving` state, whether a cancel could reach it."""
 
     started, progressed = _utc(row.started_at), _utc(row.last_progress_at)
     since = None if progressed is None else max(0.0, (now - progressed).total_seconds())
@@ -3170,7 +3270,7 @@ def in_flight(db, now=None, stall_after=None):
         # process, so an operator asking "is anything actually doing this" had nothing to
         # look at. NULL means the row predates this column - unknown, not "nobody".
         "runner": row.runner,
-        "waiting": _waiting_of(row, _stages_of(db, [row.run_id])),
+        "waiting": _waiting_of(row, stages),
         # 🔴 THE GATE'S OWN STATE, SAID OUT LOUD. `moving` was computed here and thrown
         # away: the response carried "a run is in flight" and the screen could not tell
         # "about to finish" from "stopped and blocking everything behind it". Those are
@@ -4150,8 +4250,13 @@ def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = N
 # ---------------------------------------------------------------------------
 
 
-def gate_refusal(db):
+def gate_refusal(db, op=None, params=None):
     """게이트가 닫혀 있으면 «운영자가 읽고 풀 수 있는» 한 줄, 열려 있으면 `None`.
+
+    🆕 11-10 (소유자 «백필이랑 체인 리플레이 서로 안 세우게», 총괄 ㄱ): 닫히는 것은 `op` · `params` 의 실행과 «쓰는 곳»
+       (`writes`)이 겹치는 실행이 돌 때만이다. 옛 문은 «도는 소급이 하나라도 있으면» 닫혔다 — 그것이 막으려던 것은
+       «같은 표의 같은 칸을 두 세션이 씀»이고(총괄 판정 f453968fe · 1ff4dcc6c, 소유자 판정 아님), 이번에 그 판정을
+       «쓰는 곳이 겹칠 때»로 좁힌다. `op` 없이 물으면 옛 답(아무 실행이나)이다.
 
     🔴 저자가 «하나»여야 하는 이유. 이 판단(「지금 소급을 하나 더 시작해도 되나」)을 데몬이
        둘 묻게 됐다 — 스케줄러(회수·원장)와 체인 워커(리플레이). 사본을 두면 한쪽이 게이트를
@@ -4165,9 +4270,10 @@ def gate_refusal(db):
     ⚠️ 거절은 «사유»와 «다음 행동»을 둘 다 든다. 게이트가 프로세스를 건너므로 막은 실행이
        읽는 쪽 프로세스에 «없을 수» 있고, 그러면 「여기서 뭐가 도나」로는 아무것도 안 나온다.
     """
-    blocking = in_flight(db)
+    blocking = in_flight(db, op=op, params=params) if op is not None else in_flight(db)
     if not blocking:
-        return _replay_still_waiting(db)
+        return _replay_still_waiting(db, op, params)
+    shared = (" - both write %s" % ", ".join(blocking["overlaps"])) if blocking.get("overlaps") else ""
     # 🔴 「취소해라」만으로는 «그 취소가 안전한지»를 못 읽는다 (소유자 2026-09-23
     #    「qued replay waiting ~~~ 계속 뜨는데 어케함」). runner 가 살아 있으면 취소는 «도는
     #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푼다» — 판단이 정반대인데 문장이 같았다.
@@ -4179,27 +4285,28 @@ def gate_refusal(db):
     if owner == "orphaned":
         return ("run_id=%s op=%s is held by runner=%s, and that process is NOT alive — "
                 "cancelling RELEASES this lock (the run is marked failed, not cancelled: "
-                "its work did not finish). %s"
-                % (run_id, op, blocking.get("runner"), where))
+                "its work did not finish). %s%s"
+                % (run_id, op, blocking.get("runner"), where, shared))
     if owner == "unknown":
         return ("run_id=%s op=%s is held by runner=%s, and whether that process is alive "
                 "CANNOT BE JUDGED from here (a row written before runs carried a runner "
                 "stamp, or its heartbeat file did not read just now). Cancelling asks it to "
-                "stop; it cannot release the lock. %s"
-                % (run_id, op, blocking.get("runner"), where))
+                "stop; it cannot release the lock. %s%s"
+                % (run_id, op, blocking.get("runner"), where, shared))
     # The seconds are SINCE THE LAST PROGRESS - 「progressing for 0.0s」 read as a run that
     # had just started (총괄 d34247b3d ㉡).
     last = ("no progress reported yet" if blocking["moving"] == MOVING_UNREPORTED
             else "last progress %ss ago" % blocking.get("no_progress_seconds"))
     return ("run_id=%s op=%s is %s, %s (runner=%s is alive — cancelling stops work that "
-            "is actually running) — %s"
-            % (run_id, op, blocking["moving"], last, blocking.get("runner"), where))
+            "is actually running) — %s%s"
+            % (run_id, op, blocking["moving"], last, blocking.get("runner"), where, shared))
 
 
-def _replay_still_waiting(db):
+def _replay_still_waiting(db, op=None, params=None):
     """A replay run is `done` once it has staged its pages, while the chain still runs them (C 간섭 ②, 총괄
-    1ff4dcc6c): the gate stays closed until they have run - every retroactive run waits, whatever table it writes.
-    -> the sentence, or None. Reads the waiting rows only (`idx_outbox_unprocessed`)."""
+    1ff4dcc6c): the gate stays closed until they have run - for a run of `op` whose places overlap that replay's
+    (`writes`, lead 11-10); no `op`: for every run. -> the sentence, or None. Reads the waiting rows only
+    (`idx_outbox_unprocessed`)."""
     from sqlalchemy import func
 
     from database import models
@@ -4210,13 +4317,21 @@ def _replay_still_waiting(db):
                .filter(outbox.processed_chain == False,                       # noqa: E712 - the index's spelling
                        outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True,  # noqa: E712
                        run_of.isnot(None))
-               .group_by(run_of).order_by(func.min(outbox.id)).first())
-    if waiting is None:
-        return None
-    run_id, events, table = waiting
-    return ("run_id=%s chain_replay has staged its pages, and %d of its event(s) on %s still wait in the chain "
-            "queue - every retroactive run, on any table, waits until they have run. × on that queue line stops them "
-            "(POST /admin/chain/queue/cancel {\"key\": \"%s\"})" % (run_id, events, table, run_id))
+               .group_by(run_of).order_by(func.min(outbox.id)).all())
+    mine = writes(op, params) if op is not None else None
+    for run_id, events, table in waiting:
+        shared = None
+        if mine is not None:
+            row = db.get(models.RetroactiveRun, run_id)
+            shared = overlap(mine, writes(row.op if row else None, json.loads(row.params) if row and row.params
+                                          else {}))
+            if not shared:
+                continue
+        return ("run_id=%s chain_replay has staged its pages, and %d of its event(s) on %s still wait in the chain "
+                "queue - a run writing where it writes waits until they have run. × on that queue line stops them "
+                "(POST /admin/chain/queue/cancel {\"key\": \"%s\"})%s" % (
+                    run_id, events, table, run_id, " - both write %s" % ", ".join(sorted(shared)) if shared else ""))
+    return None
 
 
 #: The lock every claim takes (총괄 f453968fe ⓒ). Checking the gate and writing the running
@@ -4249,7 +4364,11 @@ def claim(op=None, params=None, run_id=None, beat_as=None):
         if session.get_bind().dialect.name == "postgresql":
             session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:name))"),
                             {"name": GATE_LOCK_NAME})
-        refusal = gate_refusal(session)
+        if run_id is not None and op is None:
+            queued = session.get(models.RetroactiveRun, run_id)
+            if queued is not None:
+                op, params = queued.op, json.loads(queued.params) if queued.params else {}
+        refusal = gate_refusal(session, op, params) if op is not None else gate_refusal(session)
         if refusal:
             raise RetroactiveRefused(refusal)
         if beat_as:
@@ -4280,6 +4399,19 @@ def claim(op=None, params=None, run_id=None, beat_as=None):
         session.close()
 
 
+def queued_in_order(db, op):
+    """Every queued run of `op`, oldest first, each as `next_queued` gives one - a run whose places overlap none in
+    flight starts though an older one waits (lead 11-10)."""
+    # ⚠️ 이 파일은 `models` 를 «함수 안»에서 든다 - 이 줄이 빠져 훑기가 박스에서 2 초마다 NameError 로 죽은 적이 있다.
+    from database import models
+
+    rows = (db.query(models.RetroactiveRun)
+            .filter(models.RetroactiveRun.state == RUN_QUEUED, models.RetroactiveRun.op == op)
+            .order_by(models.RetroactiveRun.queued_at.asc()).all())
+    return [{"run_id": row.run_id, "op": row.op, "params": json.loads(row.params) if row.params else {}}
+            for row in rows]
+
+
 def next_queued(db, op):
     """그 op 의 «가장 오래 기다린» queued 실행의 payload, 없으면 `None`. 집지는 «않는다».
 
@@ -4288,20 +4420,7 @@ def next_queued(db, op):
        「이미 running」을 보고 «자기 일을 건너뛴다». 찾기와 집기를 나눠 두면 둘이 같은 행을
        찾아도 이기는 쪽은 여전히 하나다.
     """
-    # ⚠️ 이 파일은 `models` 를 «함수 안»에서 든다(8 자리). 이 줄이 빠져서 훑기가 박스에서
-    #    2 초마다 NameError 로 죽었고, 시험 29 는 초록이었다 — 시험이 이 함수를 «통째로»
-    #    monkeypatch 해서 진짜 몸통이 «한 번도 안 돌았기» 때문이다.
-    from database import models
-
-    row = (db.query(models.RetroactiveRun)
-           .filter(models.RetroactiveRun.state == RUN_QUEUED,
-                   models.RetroactiveRun.op == op)
-           .order_by(models.RetroactiveRun.queued_at.asc())
-           .first())
-    if row is None:
-        return None
-    return {"run_id": row.run_id, "op": row.op,
-            "params": json.loads(row.params) if row.params else {}}
+    return next(iter(queued_in_order(db, op)), None)
 
 
 def execute(payload: dict, log=logger.info, claimed=False) -> dict:

@@ -109,9 +109,28 @@ def test_the_gate_stays_closed_while_a_replays_events_wait(retro_env):
     _waiting(db, "r-wait", uuid="b")
     said = retroactive.gate_refusal(db)
     assert said and "run_id=r-wait" in said and "2 of its event(s) on retro_test_source" in said
-    assert "every retroactive run, on any table, waits" in said
+    assert "a run writing where it writes waits" in said
+    # r-wait has no run row, so where it writes is not known - everywhere: every run waits for it
     with pytest.raises(retroactive.RetroactiveRefused, match="r-wait"):
         retroactive.claim(op="probe_op", params={})
+
+
+def test_a_replays_waiting_events_hold_only_the_runs_writing_where_it_writes(retro_env, monkeypatch):
+    """11-10 (lead): the waiting events hold a run whose places overlap the replay's (`writes`), not every run."""
+    import json
+
+    db = retro_env
+    db.add(models.RetroactiveRun(run_id="r-wait", op="chain_replay", params=json.dumps({"rule": "a"}),
+                                 state=retroactive.RUN_DONE))
+    db.commit()
+    _waiting(db, "r-wait")
+    places = {"chain_replay": {"table:t1"}, "near": {"table:t1"}, "far": {"ledger:w1"}}
+    monkeypatch.setattr(retroactive, "writes", lambda op, params: places[op])
+
+    said = retroactive.gate_refusal(db, "near", {})
+    assert said and "run_id=r-wait" in said and "both write table:t1" in said
+    assert retroactive.gate_refusal(db, "far", {}) is None
+    assert "run_id=r-wait" in retroactive.gate_refusal(db), "asked for no op, every waiting replay still answers"
 
 
 def test_drifted_apply_goes_through_the_rescope_run(monkeypatch):

@@ -31,6 +31,8 @@ logger = get_process_logger("Scheduler", "auto_update.log")
 COLLECTOR_CUT_OFF = "The scheduler running this collector stopped before it finished - run it again."
 #: What a collector keeps when it is loaded again - by a rescan or by an edit of its script.
 CARRIED_STATUS = ("last_run", "last_status", "last_error", "runner")
+#: The retroactive wake-up rows a tick looks at, oldest first - the first the gate lets through starts (lead 11-10).
+RETRO_TRIGGERS_LOOKED = 50
 
 
 def _apply_proxy_policy():
@@ -417,7 +419,7 @@ class MultiDiscoveryScheduler:
         # thread, so the tick could not come round and fire it again - and that same
         # property is what stopped the heartbeat for the whole run. Taking the work off
         # the tick removes the accident that was doing this job, so the job becomes
-        # explicit. `retroactive_busy()` is the same idea one level up.
+        # explicit.
         self._collectors_running = set()
 
     def rescan_collectors(self):
@@ -755,56 +757,9 @@ class MultiDiscoveryScheduler:
             logger.error(f"[ConfigBackup] maintenance cycle raised: {told(e)}", exc_info=e)
             return None
 
-    def retroactive_busy(self) -> bool:
-        """Is the gate closed. 🔴 THE ANSWER IS UNCHANGED; ITS *SCOPE* IS NOW EVERY PROCESS.
-
-        A long run and a wedged one both close it, and both SHOULD: the reason the gate
-        exists is that two concurrent replays of one rule write the same cells from two
-        sessions. Opening it after a timeout would trade a stuck run for the one ordering
-        nobody could reason about afterwards. That judgement is untouched.
-
-        🔴 WHAT CHANGED, AND WHY IT HAD TO (2026-09-22). This read `self._retroactive_thread`
-        alone - a handle in THIS process. The gate's own stated reason includes 「a replay
-        racing a withdrawal on the same table」, and chain replay is moving to the chain
-        worker while withdraw stays here. That puts the exact pair this gate was written for
-        into two processes with two handles, so the gate would have gone on answering 「open」
-        while the case it guards was happening. No error, two sessions, same cells.
-
-        ⚰️ THE THREAD WITNESS RETIRED (총괄 f453968fe ③). It caught a run whose row could not
-           be written (2026-09-05: `runner` deployed before its migration made every UPDATE
-           raise, so the row said `queued` while the work ran). The row is now written by
-           `claim` BEFORE anything starts - a claim that cannot write starts nothing - and the
-           work runs in a child this process holds no handle to. The table is the witness.
-
-        ⚠️ COST, because the previous note here deliberately avoided it: this adds ONE query
-           per tick while nothing is in flight. Measured - tick is 5 s (`check_interval`) and
-           `in_flight` is a single `LIMIT 1` on `state IN (...)`, so 12 reads a minute. That
-           is the price of the gate spanning processes, and it is paid on a scheduler loop
-           rather than a request path.
-        """
-        return self.retroactive_moving_state() is not None
-
-    def retroactive_moving_state(self):
-        """WHICH of the two the closed gate is in, as a value, or None if unknowable.
-
-        Read from `retroactive_runs`, never from the thread: the thread only answers
-        "alive", which is the very question that cannot tell a long run from a stopped
-        one. Never fatal, and never called unless the gate has already refused something -
-        a diagnosis must not be able to stop the scheduler, nor cost a query per tick
-        while nothing is in flight.
-        """
-        try:
-            from admin import retroactive
-            from database.database import SessionLocal
-
-            session = SessionLocal()
-            try:
-                return retroactive.in_flight(session)
-            finally:
-                session.close()
-        except Exception as e:                                   # noqa: BLE001
-            logger.debug("[Retroactive] could not read the in-flight state: %s", told(e), exc_info=e)
-            return None
+    # ⚰️ `retroactive_busy` · `retroactive_moving_state` retired 11-10 (lead ㄱ): «is any run in flight» closed the gate
+    #    for every run; `retroactive.claim` now judges each run against the runs whose places it overlaps
+    #    (`retroactive.writes`) - one judgement, in the claim's own transaction.
 
     def start_retroactive_run(self, payload: dict) -> bool:
         """Run one queued retroactive (backfill) operation in a process of its own.
@@ -829,35 +784,12 @@ class MultiDiscoveryScheduler:
         the outbox row is left unprocessed so it is picked up on a later tick.
 
         Returns True when the run was started (and the event may be marked
-        processed), False when it was refused because one is already in flight.
+        processed), False when the gate refused it (a run writing where it writes is in flight).
         """
         from admin import retroactive
 
-        if self.retroactive_busy():
-            # 🔴 거절 문장의 «저자는 하나»다 — `retroactive.gate_refusal`. 이 판단을 이제
-            #    데몬이 둘 묻고(스케줄러·체인 워커), 사본을 두면 한쪽이 문장을 고쳐도
-            #    다른 쪽은 옛 문장을 계속 낸다. 운영자는 어느 쪽을 읽었는지 모른다.
-            from database.database import SessionLocal as _S
-            session = _S()
-            try:
-                blocking = retroactive.gate_refusal(session)
-            except Exception as e:                                     # noqa: BLE001
-                # 진단이 스케줄러를 멈출 수는 없다 — 게이트는 이미 닫혔고 이건 «말»이다.
-                logger.debug("[Retroactive] could not describe the gate: %s", told(e), exc_info=e)
-                blocking = None
-            finally:
-                session.close()
-            if not blocking:
-                # 표는 아무 말이 없는데 손잡이가 살아 있다 — 행을 못 쓴 실행이다(2026-09-05).
-                blocking = ("a run whose row could not be written (this process); "
-                            "it clears when that thread ends")
-            logger.warning(
-                "[Retroactive] gate closed: %s. Leaving run_id=%s queued for a later tick.",
-                blocking, (payload or {}).get("run_id"))
-            return False
-
-        # 🔴 [총괄 f453968fe ⓒ ③] CLAIMED HERE, IN THE TICK, BEFORE ANYTHING STARTS. The check
-        #    above is a reader for the log line; `claim` checks and writes under one lock. A
+        # 🔴 [총괄 f453968fe ⓒ ③] CLAIMED HERE, IN THE TICK, BEFORE ANYTHING STARTS. `claim`
+        #    checks and writes under one lock, its refusal the log line. A
         #    claim inside the thread would come after the wake-up row is marked, so a refusal
         #    there would strand the run `queued` with nobody left to ring for it.
         run_id = (payload or {}).get("run_id")
@@ -903,12 +835,12 @@ class MultiDiscoveryScheduler:
         #   The apply half of GET /admin/retroactive/{op}/count. Same outbox
         #   mechanism as SCHEDULER_RUN_NOW; unlike it, the work is handed to a
         #   thread so this tick keeps beating (see start_retroactive_run).
-        if not self.retroactive_busy():
-            retro_trigger = db.query(DatabaseOutbox).filter(
+        # 🆕 11-10 (lead ㄱ): a run whose places overlap none in flight starts though an older one waits
+        #    (`retroactive.writes`) - the wake-up rows are tried oldest first, the first the gate lets through starts.
+        for retro_trigger in db.query(DatabaseOutbox).filter(
                 DatabaseOutbox.event_type == event_constants.EVENT_RETROACTIVE_RUN,
                 DatabaseOutbox.processed_chain == False
-            ).order_by(DatabaseOutbox.id.asc()).first()
-
+        ).order_by(DatabaseOutbox.id.asc()).limit(RETRO_TRIGGERS_LOOKED).all():
             if retro_trigger:
                 # Bound before the `try` so the failure path can name the run
                 # even when it is the parse itself that raised - which is the
@@ -960,6 +892,7 @@ class MultiDiscoveryScheduler:
                     elif self.start_retroactive_run(retro_payload):
                         event_constants.mark_processed(retro_trigger, "SUCCESS")
                         db.commit()
+                        break                       # one start a tick
                 except Exception as retro_err:
                     # 🔴 A REQUEST THAT THREW IS FINISHED, NOT PENDING, AND
                     # LEAVING IT UNMARKED STOPPED PRODUCTION. Measured

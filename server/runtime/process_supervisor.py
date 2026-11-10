@@ -580,8 +580,9 @@ def stop_retroactive_child(grace=RETROACTIVE_STOP_GRACE_SEC, log=None):
             return "not_ours"
         session = SessionLocal()
         try:
-            run = retroactive.in_flight(session)
-            if run and str(run.get("runner") or "").endswith("/%s" % beat["pid"]):
+            run = next((each for each in retroactive.in_flight_runs(session)
+                        if str(each.get("runner") or "").endswith("/%s" % beat["pid"])), None)
+            if run:
                 retroactive.request_cancel(session, run["run_id"])
                 say("Asked retroactive run_id=%s (pid %s) to stop at its next page."
                     % (run["run_id"], beat["pid"]))
