@@ -99,6 +99,20 @@ def _checked(name: str) -> str:
     return name
 
 
+#: The longest name derived from a declared table: `t__lines_ra`.
+MAX_TABLE_NAME_BYTES = MAX_NAME_BYTES - len(LINES_SUFFIX + "_ra")
+
+
+def table_name_refusal(table_name: str):
+    """None when t can carry line tables; else the operator sentence (which table, how many bytes, what to do) -
+    the migration's pre-check says it before any DDL."""
+    size = len(table_name.encode("utf-8"))
+    if size <= MAX_TABLE_NAME_BYTES:
+        return None
+    return (f"table {table_name!r} is {size} bytes long; line tables need {MAX_TABLE_NAME_BYTES} or fewer - "
+            f"declare it under a shorter name (a non-ASCII character takes 3 bytes) and migrate again")
+
+
 def now_relation(table_name: str) -> str:
     """The physical table holding t's current lines - what a catalogue, plan or index question names."""
     return _checked(table_name + NOW_SUFFIX)

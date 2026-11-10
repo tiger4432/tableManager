@@ -119,3 +119,10 @@ def test_a_name_whose_derived_index_name_is_too_long_is_refused():
     with pytest.raises(ValueError):
         lines.index_name("x" * 54, "ra")
     assert lines.index_name("x" * 53, "ra") == "x" * 53 + "__lines_ra"
+
+
+def test_a_too_long_table_name_is_refused_with_its_size():
+    assert lines.MAX_TABLE_NAME_BYTES == 53
+    assert lines.table_name_refusal("x" * 53) is None
+    said = lines.table_name_refusal("표" * 18)                 # 54 bytes in UTF-8
+    assert "54 bytes" in said and "53 or fewer" in said
