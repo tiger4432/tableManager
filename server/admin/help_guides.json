@@ -15,6 +15,7 @@
     "docs/guide/INGESTION_GUIDE.md": ["file"],
     "docs/guide/LEDGER_GUIDE.md": ["ontology", "overview", "retroactive"],
     "docs/guide/TEXT_LINKS_GUIDE.md": ["chain", "retroactive", "ontology"],
+    "docs/guide/chain_ingestion_guide.md": ["chain", "retroactive", "overview"],
     "docs/guide/config/notation_rules_config.md": ["overview", "retroactive"],
     "docs/guide/config/maps.md": [],
     "docs/guide/config/map_overlay_config.md": ["overview"],
