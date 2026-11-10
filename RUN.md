@@ -12,7 +12,7 @@
 >          체인(chain_ingestion_guide) · 소급(BACKFILL) 은 낡은 문장을 고쳐서 넣음
 >          (BACKFILL 이 이제 말함: ledger.backfill --source · --catch-up 과 run_here 줄은 --apply 없이 바로 씀)
 >          소급 연산의 pace 도움말이 «ONE AT A TIME» 대신 «같은 곳에 쓰는 run 만 기다린다» 로 나옴
->          새 안내서에 지금 코드와 다른 문장이 남아 있음(목록은 총괄에게) — 도우미가 그 문장을 인용하면 안내서가 낡은 것
+>          11-11 셈의 낡은 문장(약 70)은 고침 — 그래도 도우미가 지금과 다른 문장을 인용하면 그 안내서가 낡은 것
 > 끄기     server/admin/help_guides.json 에서 그 줄을 빼고 API 재기동
 > ```
 >

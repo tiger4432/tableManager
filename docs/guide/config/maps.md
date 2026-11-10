@@ -4,10 +4,10 @@
 > 상위: [폴더 인덱스](./README.md) · [CONFIG_GUIDE](../CONFIG_GUIDE.md)
 
 <!-- Loader evidence (2026-07-28):
-  load: server/main.py:2998 load_maps_config (missing/corrupt -> {"presets": {}})
-  write: server/main.py:3007 save_maps_config via POST/DELETE /api/map-presets (whole-file rewrite)
-  per-request read: every endpoint calls load_maps_config()
-  is_custom: server-set true on API save (main.py:3051); field model: main.py:3017 MapPresetItem
+  load: server/main.py load_maps_config - held until it changes (config_watcher.json_object); none read -> {"presets": {}}
+  write: server/main.py save_maps_config via POST/DELETE /api/map-presets (whole-file rewrite)
+  read: every endpoint calls load_maps_config() - the held copy
+  is_custom: server-set true on API save (main.py); field model: main.py MapPresetItem
 -->
 
 ## 1. 언제 이 파일을 만지는가
@@ -36,7 +36,7 @@
 
 1. **스냅샷**: `conda run -n assy_manager python server/scripts/backup_config.py snapshot`
 2. `presets.<key>`에 항목 추가(키 목록은 §5) 후 저장. **API 쓰기와 겹치지 않게** 하십시오 — API는 전체 파일을 재저장하므로 동시 손편집이 덮일 수 있습니다.
-3. 반영은 자동(**요청마다 재읽기**).
+3. 반영은 자동(**설정 감시기가 저장을 보고 약 1 초 뒤 다시 읽음**).
 
 ## 3. 반영 확인
 
@@ -44,7 +44,7 @@
 GET /api/map-presets
 ```
 
-응답 `presets`에 새 키가 보이면 반영된 것입니다. 목록이 **통째로 비어 보이면** 파일 손상 신호 — 서버 콘솔의 `[Maps Config] Error loading maps.json` 로그를 확인하십시오(손상 시 조용히 `{"presets": {}}`로 동작).
+응답 `presets`에 새 키가 보이면 반영된 것입니다. 목록이 **통째로 비어 보이면** 파일 손상 신호 — 서버 로그에 그 파일을 못 읽었다는 줄이 한 번 남습니다. 손상되면 직전에 잘 읽은 목록을 계속 쓰고, 한 번도 못 읽었으면 `{"presets": {}}` 로 동작합니다.
 
 ## 4. 잘못됐을 때
 
@@ -52,7 +52,7 @@ GET /api/map-presets
 conda run -n assy_manager python server/scripts/backup_config.py restore maps_<yymmdd>.json.bak --yes
 ```
 
-요청마다 재읽으므로 즉시 반영. 삭제 실수는 `DELETE /api/map-presets/{key}` 이력이 없으므로 스냅샷 복원이 유일한 길입니다 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
+감시기가 보고 약 1 초 뒤 반영. 삭제 실수는 `DELETE /api/map-presets/{key}` 이력이 없으므로 스냅샷 복원이 유일한 길입니다 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
 
 ## 5. 키 참조 (`presets.<preset_key>`)
 

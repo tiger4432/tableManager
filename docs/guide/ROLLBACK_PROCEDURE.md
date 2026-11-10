@@ -32,15 +32,15 @@
 | 반영 대상 | 언제 반영되나 | 되돌리려면 |
 |---|---|---|
 | **코드**(`server/**`, `client2/dist/**`) | **프로세스 재기동까지 고정** | 파일 복원 + **재기동** |
-| **계획 계열 config**(`transfer_plan_config`·`bonding_plan_config`·`map_overlay_config`) | **요청마다 디스크 재읽기** — 즉시 | 파일 복원 (재기동 불필요) |
+| **계획 계열 config**(`transfer_plan_config`·`bonding_plan_config`·`map_overlay_config`) | 바뀔 때까지 들고 있다가 설정 감시기가 바뀐 것을 보면 다시 읽음 — 마지막 쓰기 뒤 약 1 초(`DEBOUNCE_SEC`) | 파일 복원 (재기동 불필요) |
 | **`table_config.json`** (선언) | config watcher의 **제자리 쓰기 감지** 시 즉시 (싱글턴 핫스왑) | 파일 복원 → watcher가 선언만 되돌림 |
 | **`table_config.json`** (물리 CREATE/ALTER) | 위와 **동시에** — 재기동 없이 DDL이 나간다 | ❌ **되돌아가지 않는다** → §5 |
-| **매퍼·수집기 스크립트**(`server/mappers/`, `<workspace>/auto_update/*.py`) | `SYSTEM_RELOAD`가 모듈 캐시를 비움 | 파일 복원 + `SYSTEM_RELOAD`(또는 재기동) |
+| **매퍼·수집기 스크립트**(`server/mappers/`, `<workspace>/auto_update/*.py`) | 설정 감시기가 저장을 보고 다시 읽음(MAPPERS · COLLECTORS 줄) — 스케줄러가 켜진 «뒤»에 만든 `auto_update` 폴더만 `SYSTEM_RELOAD` | 파일 복원 (새 폴더면 + `SYSTEM_RELOAD` 또는 재기동) |
 
 **드릴 실측**:
 
 - 코드 파일을 디스크에서 v2로 바꾼 직후 API는 **여전히 v1을 서빙**했다. 재기동 전까지 코드는 고정이다.
-- 계획 config를 되돌리자 **0.01초**(바로 다음 요청)에 반영됐다.
+- 계획 config를 되돌리자 **0.01초**(바로 다음 요청)에 반영됐다 — 07-28 측정, 그때는 요청마다 읽었다. 지금은 감시기가 보고 약 1 초 뒤.
 - `table_config.json` 제자리 쓰기 → 약 5초 뒤 watcher가 `CREATE TABLE` + `ALTER TABLE ... ADD COLUMN`을 **재기동 없이** 실행했다.
 
 > ⚠️ `SYSTEM_RELOAD`는 **config와 사용자 소유 스크립트만** 다시 읽는다. **제품 코드(`server/**`)를 다시 불러오는 경로는 존재하지 않는다.** 어떤 리로드 버튼도 코드 롤백을 대신하지 못한다.
@@ -177,7 +177,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py > sche
 conda run -n assy_manager python server/scripts/dev_env/manifest.py capture rollback_evidence/before.json
 ```
 
-**⚠️ 로그에 없는 것**: `table_config.json` 변경이 유발한 `ALTER TABLE`은 `sync_dynamic_tables_schema`가 **`print()`로만** 내보낸다. 런처는 자식 프로세스의 stdout을 리다이렉트하지 않으므로(`runtime/process_supervisor.py`의 `Popen`에 `stdout=` 없음) 그 줄은 **운영자 콘솔에만** 뜨고 어느 로그 파일에도 남지 않는다. 드릴에서 확인한 결과, `server.log`에는 `Physical database schema synced successfully.`라는 **어느 테이블의 어느 컬럼인지 없는 한 줄**만 남는다. 콘솔 스크롤백이 살아 있다면 **지금 복사해 두라. 재기동하면 사라진다.**
+**무엇이 추가됐나는 로그에 있다**: `table_config.json` 변경이 유발한 칸 추가는 칸마다 `[Schema Sync] added column '<칸>' to '<표>'` 한 줄로 남고, 자식 stdout 은 콘솔과 `<DATA_ROOT>/<이름>_stdout.log` 둘에 쓰인다(`runtime/process_supervisor.py` — 자기 창 모드면 그 파일은 빈다).
 
 ### 단계 2 — config 되돌리기 (즉시 반영, 재기동 불필요)
 
@@ -261,13 +261,13 @@ python run_decoupled_app.py
 > - **위험한 것은 앞으로 가는 방향입니다** — 마이그레이션을 안 돌린 DB에 새 코드를 올리면 **그 테이블이 통째로 죽습니다**(그 컬럼을 읽지 않는 코드까지). 배너의 `TABLE-DOWN`이 그것이고, 평결이 **어느 마이그레이션을 돌려라**까지 말합니다.
 > - ⚠️ **종료 코드는 포트만 봅니다** — 드리프트는 종료 코드를 안 바꿉니다(무인 재기동이 컬럼 하나로 스택 전체를 막지 못하게). **스크립트로 감싸지 말고 배너를 읽으십시오.**
 
-**웹서버만 재기동하지 마라.** 코드는 프로세스마다 고정되므로, 웹서버만 다시 띄우면 **워처·체인 워커·그래프 워커·스케줄러 4개가 옛 코드를 든 채 남는다.**
+**웹서버만 재기동하지 마라.** 코드는 프로세스마다 고정되므로, 웹서버만 다시 띄우면 **워처·체인 워커·원장 워커·스케줄러 4개가 옛 코드를 든 채 남는다**(그래프 워커는 은퇴).
 
 특히 걸리는 두 가지:
 
 | | |
 |---|---|
-| **Auto-Update 스케줄러** | `SYSTEM_RELOAD`를 구독하긴 하지만 하는 일은 **수집기 스크립트 재스캔**(`dynamic_collector_*` 모듈 캐시 비우기)뿐이다. `run_auto_update.py` 자신과 `server/**` 모듈은 **다시 로드되지 않는다.** 리로드로는 롤백되지 않는다 |
+| **Auto-Update 스케줄러** | `SYSTEM_RELOAD`를 받으면 선언을 전부 다시 읽고(`config_watcher.reload_everything`) **수집기 스크립트를 재스캔**한다. `run_auto_update.py` 자신과 `server/**` 모듈은 **다시 로드되지 않는다.** 리로드로는 롤백되지 않는다 |
 | **`ASSY_ADMIN_TOKEN`이 설정된 환경** | 워커는 런처 기동 시점의 환경을 복사해 물려받는다. 부분 재기동으로 워커가 옛 토큰을 든 채 남으면 `/internal/events/*`가 **401**(헤더 없음) 또는 **403**(양쪽 토큰 불일치)을 돌려주고 **실시간 동기화가 조용히 멈춘다** — 화면은 멀쩡하고 데이터만 안 들어온다. **[F8 2026-07-30] 진단이 로그 한 줄로 끝난다**: 실패 줄의 `admin-gate=yes`면 우리 게이트(토큰 문제 — 조치까지 같은 줄에 있다), `admin-gate=no`면 **우리가 아니다**(앞단 프록시·방화벽 — [DEPLOY_SETUP §1-5](./DEPLOY_SETUP.md), 재기동으로 절대 안 고쳐진다). 토큰이 갈렸는지는 웹서버·워커 기동 배너의 `token fingerprint`를 눈으로 비교하면 된다 |
 
 **실측 재기동 시간**: 정지 2.5초 + 기동 후 `/health` 응답까지 3.2초 = **약 5.6~5.7초**. 사용자에게는 그 구간이 연결 거부로 보인다.
@@ -317,7 +317,7 @@ conda run -n assy_manager python server/scripts/list_undeclared_tables.py
 |---|---|
 | **UNDECLARED TABLE** | 선언에도 없고 제품 시스템 테이블도 아닌 물리 테이블. **비어 있으면** 되돌린 선언의 잔여물일 가능성이 높다. **행이 있으면** config 이전의 레거시 테이블일 가능성이 높으니 **감으로 지우지 마라** |
 | **UNDECLARED COLUMN** | 선언된 테이블에 남은, 선언에 없는 물리 컬럼. 되돌린 컬럼 추가가 쌓이는 자리다. 인제션은 값을 버리고 그리드는 보여주지 않으므로 **무해하지만 계속 쌓인다** |
-| **DECLARED BUT MISSING** | 반대 방향 — 선언은 있는데 물리 테이블이 없다. 대개 원자적 쓰기라 watcher가 발화하지 않은 경우다. `POST /admin/reload-configs` 또는 재기동으로 생성된다 |
+| **DECLARED BUT MISSING** | 반대 방향 — 선언은 있는데 물리 테이블이 없다. 감시기는 원자적 쓰기(이동)도 본다(07-29) — 원인은 그 밖에서 찾는다. `POST /admin/reload-configs` 또는 재기동으로 생성된다 |
 
 ### 지우는 것은 사람이 한다
 
@@ -427,7 +427,7 @@ GET /                          -> 200 text/html
 ### 드릴이 드러낸 인접 사실 2건
 
 - **유령 워커**: 어제 격리 세션에서 남은 워커 5개가 아직 떠 있었고, 그중 하나가 :8091을 점유해 드릴의 그래프 워커가 6회 연속 실패 → `FAILED` 확정됐다. 감시자·박동 판정은 **설계대로** 이것을 `foreign_beat`으로 잡아냈다. 드릴은 이들을 **죽이지 않고** 전용 포트·전용 데이터 루트로 비켜 갔다.
-- **`[Schema Sync]`는 로그 파일에 없다**: 런처가 자식 stdout을 리다이렉트하지 않아, `ALTER TABLE` 문장은 콘솔에만 뜬다. `server.log`에는 어느 컬럼인지 없는 `Physical database schema synced successfully.` 한 줄만 남는다.
+- **`[Schema Sync]` 는 로그에 있다**: 추가한 칸마다 `[Schema Sync] added column '<칸>' to '<표>'` 한 줄, 그리고 자식 stdout 은 `<DATA_ROOT>/<이름>_stdout.log` 에도 쓰인다(⚰️ 옛: «콘솔에만»).
 
 ---
 
