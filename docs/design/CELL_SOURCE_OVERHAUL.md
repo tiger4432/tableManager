@@ -98,6 +98,11 @@
 - 같은 새 키가 동시에 두 쓰기에서 생기면: 지금 줄의 부분 유일 인덱스가 막고, 오늘 `_is_business_key_unique_violation` 재시도가 하던 일을 같은 자리에서 한다(새 개체는 ON CONFLICT, 있는 개체의 키 바꿈은 위 병합).
 - 오늘과 다르게 하는 곳: 이긴 값은 오늘과 같다. 다른 것은 합쳐지는 쪽의 이력이 키 주인 밑으로 따라온다는 것뿐이다(오늘은 껍데기 행과 함께 지워지고 audit_logs 에만 남았다).
 
+## 들어온 철자 (소유자 11-10 «ㄱ»)
+
+- 표기 접기 칸의 «들어온 철자»는 버린다. 줄에 칸이 없고 audit_logs 에도 안 쓴다. 착지 때 crud 의 `_written_spelling` → create_audit_log 자리(5ee9d3bd1 의 감사 줄)가 은퇴한다.
+- 은퇴 때 그 약속을 든 자리를 같이 지운다. origin/main 에서 낱말로 센 자리: crud.py 2 · schemas.py 1 · chain/replay.py 1 · RUN.md 한 블록 · docs/guide/config/notation_rules_config.md «이력» 줄 · CODE_MAP «쓰기 접기» 줄 · 시험 test_a_key_handed_back_in_another_shape_names_its_row.py. 그 감사 줄을 «성질»로 단언하는 시험은 착지 때 다시 센다(낱말 셈은 다른 낱말로 쓴 자리를 못 센다).
+
 ## 지움 (소유자 11-10 «지우기는 ㄱ»)
 
 - 행 지우기 = 그 행에 «지워짐» 줄 하나 + 지금 줄 내림(is_now 끔). 이름 t 에서 바로 사라지고, 이력 · 감사 점프는 남는다.
