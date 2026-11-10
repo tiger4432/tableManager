@@ -177,8 +177,19 @@ def person_cells(db, table_name: str, row_ids) -> dict:
 
 
 def person_rows(db, table_name: str, row_ids) -> set:
-    """The rows a person wrote a layer on, blank or not - what a gone row says by name (`person_cells`)."""
-    return {row_id for row_id, _column in person_cells(db, table_name, row_ids)}
+    """The rows a person has a part on: a layer they wrote, blank or not (`person_cells`), or a pin they set on a cell
+    (`cell_overwrites.manual_priority_source`). THE ONE «is a person's part left on this row» - a chain taking back what
+    it made keeps such a row (`shells`, `ingestion_worker._settle`; owner 11-10 «체인이 낸 행 부분만 없애면 됨»)."""
+    from database import models
+
+    co = models.CellOverwrite
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    found = {row_id for row_id, _column in person_cells(db, table_name, ids)}
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        found.update(row_id for (row_id,) in db.query(co.row_id).filter(
+            co.table_name == table_name, co.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]),
+            co.manual_priority_source.isnot(None)))
+    return found
 
 
 def key_columns(table_name: str) -> set:
@@ -195,7 +206,8 @@ def shells(db, table_name: str, row_ids) -> list:
     """is_shell, for each of these rows (총괄 5eee501eb · 판정 ㄱ, 소유자 10-09 「키값만 남아 있네」): no layer
     outside the key columns holds a value - a blank the chain wrote is none - every key-column layer is the
     chain's, and no person's layer anywhere, blank or not. And the row shows nothing outside its keys, so a
-    value no layer carries is not taken for nothing. The chain's write seat and the sweep ask this one."""
+    value no layer carries is not taken for nothing. A person's part - a layer or a pin - is `person_rows`'. The chain's
+    write seat and the sweep ask this one."""
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(table_name)
@@ -213,11 +225,11 @@ def shells(db, table_name: str, row_ids) -> list:
         by_row = {}
         for (row_id, column), named in layers.items():
             by_row.setdefault(row_id, []).extend((column, name, entry["value"]) for name, entry in named.items())
+        persons = person_rows(db, table_name, chunk)
         for row in db.query(model).filter(model.row_id.in_(chunk)).all():
-            if any(not crud.is_blank_value(getattr(row, column, None)) for column in shown):
+            if row.row_id in persons or any(not crud.is_blank_value(getattr(row, column, None)) for column in shown):
                 continue
-            if all(crud.layer_writer(name) != crud.USER_SOURCE and (
-                    crud.layer_ranks_as(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value))
+            if all(crud.layer_ranks_as(name) == crud.CHAIN_SOURCE if column in keys else crud.is_blank_value(value)
                    for column, name, value in by_row.get(row.row_id, ())):
                 found.append(row.row_id)
     return found
