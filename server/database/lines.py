@@ -47,6 +47,41 @@ class LineColumn(Base):
                                   "serves": "lines.bit_map / assign_bits"}),)
 
 
+class LineSource(Base):
+    """Source name -> the name it ranks as (crud.layer_ranks_as) - one row per distinct source name, not one per line,
+    so the rank's first term is a plain CASE in both dialects (lead 11-11 ㄷ). Rules for splitting a name change ->
+    refill this table only."""
+
+    __tablename__ = "line_sources"
+
+    source_name = Column(String, primary_key=True)
+    ranks_as = Column(String, nullable=False)
+
+
+def note_sources(db, names) -> None:
+    """Give each source name not yet in line_sources its row - write_lines and the migration call this before they
+    write lines. A name two writers meet at once lands once (insert or ignore)."""
+    from sqlalchemy import insert
+
+    from . import crud
+
+    names = {str(n) for n in names if n is not None}
+    if not names:
+        return
+    known = set(db.execute(select(LineSource.source_name).where(LineSource.source_name.in_(names))).scalars())
+    fresh = [{"source_name": n, "ranks_as": crud.layer_ranks_as(n)} for n in sorted(names - known)]
+    if not fresh:
+        return
+    stmt = insert(LineSource).values(fresh)
+    dialect = db.connection().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = pg_insert(LineSource).values(fresh).on_conflict_do_nothing(index_elements=["source_name"])
+    else:
+        stmt = stmt.prefix_with("OR IGNORE")
+    db.execute(stmt)
+
+
 class AuditBatch(Base):
     """The audit log: one row per (transaction, table, work kind). No values - «changed rows» is counted from the
     table's lines by batch."""

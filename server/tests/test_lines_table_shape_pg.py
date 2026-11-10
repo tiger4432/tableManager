@@ -107,3 +107,30 @@ def test_a_65th_column_rebuilds_the_head_index_on_pg(db):
         db.rollback()
         lines.drop_line_table(db, "lt65")
         db.commit()
+
+
+def test_two_writers_noting_one_new_source_leave_one_row(pg_engine):
+    seen = {}
+
+    def note(tag):
+        session = sessionmaker(bind=pg_engine)()
+        try:
+            lines.note_sources(session, ["pg_race_source"])
+            session.commit()
+            seen[tag] = "ok"
+        finally:
+            session.close()
+
+    first = sessionmaker(bind=pg_engine)()
+    lines.note_sources(first, ["pg_race_source"])          # holds the row's insert open
+    worker = threading.Thread(target=note, args=("second",))
+    worker.start()
+    worker.join(1.0)
+    assert worker.is_alive(), "the second insert did not wait for the first"
+    first.commit()
+    first.close()
+    worker.join(10)
+    with pg_engine.begin() as conn:
+        assert conn.execute(text("SELECT count(*) FROM line_sources WHERE source_name = 'pg_race_source'")).scalar() == 1
+        conn.execute(text("DELETE FROM line_sources WHERE source_name = 'pg_race_source'"))
+    assert seen == {"second": "ok"}

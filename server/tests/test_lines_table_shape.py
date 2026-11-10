@@ -206,3 +206,14 @@ def test_which_tables_keep_lines():
     assert not lines.keeps_lines(system, shipped.tables()[system])
     assert not lines.keeps_lines("ledger_atom_rows", None)                       # undeclared: the ledger's own
     assert lines.stored_relation(system, shipped.tables()[system]) == system
+
+
+def test_note_sources_keeps_one_row_per_name(db):
+    from database import crud
+
+    lines.LineSource.__table__.create(db.connection())
+    lines.note_sources(db, ["user", "user (old_exist_x)", "user"])
+    lines.note_sources(db, ["user", "fileA"])
+    rows = dict(db.execute(text("SELECT source_name, ranks_as FROM line_sources")).all())
+    assert set(rows) == {"user", "user (old_exist_x)", "fileA"}
+    assert all(rows[n] == crud.layer_ranks_as(n) for n in rows)
