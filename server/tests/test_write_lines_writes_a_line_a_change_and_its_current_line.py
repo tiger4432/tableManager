@@ -78,7 +78,7 @@ def test_a_write_is_one_line_its_current_line_and_one_audit_row(db):
                       "written_by": "loader"})
     [line] = _lines(db)
     [(row_id, change)] = out["changed"].items()
-    assert (line["line_kind"], line["row_id"], line["business_key_val"], line["a"], line["n"]) == (
+    assert (line["line_kind"], line["row_id"], line["business_key_val"], line[lines.value_column("a")], line[lines.value_column("n")]) == (
         "write", row_id, "K1", "x", "2.0"), line
     assert _now(db)[row_id]["n"] == 2.0, "a line keeps text; the current line has the column's type (crud.line_value)"
     assert line["written_0"] == line["head_0"] != 0 and line["withdrawn_0"] == 0
@@ -113,7 +113,7 @@ def test_a_column_that_says_what_its_source_said_is_not_written_again(db):
     first, second = _lines(db)
     bits = lines.shape(db, TABLE, CFG)["bits"]
     assert second["written_0"] == 1 << bits["a"], "only the column that changed is written"
-    assert first["head_0"] == (1 << bits["k"]) | (1 << bits["n"]) and second["n"] is None, (first, second)
+    assert first["head_0"] == (1 << bits["k"]) | (1 << bits["n"]) and second[lines.value_column("n")] is None, (first, second)
 
 
 def test_a_later_line_of_one_source_takes_the_head(db):
@@ -242,7 +242,7 @@ def test_a_version_gated_table_takes_a_newer_version_and_refuses_an_older_one_af
     newer = _write(db, {"row_id": row_id, "values": {"a": "new", "n": 3}, "source_name": "f2"}, tx="tx4")
     assert (older["lines"], older["gated"]) == (0, {crud.REASON_VERSION_OLDER: 1}), older
     assert (by_hand["lines"], by_hand["gated"]) == (1, {}), "a person's correction is not version-ordered"
-    assert (newer["lines"], _lines(db)[-1]["a"]) == (1, "new"), newer
+    assert (newer["lines"], _lines(db)[-1][lines.value_column("a")]) == (1, "new"), newer
 
 
 def test_the_answer_says_each_item_s_row_work_and_columns_in_the_items_order(db, monkeypatch):

@@ -139,7 +139,8 @@ def test_a_column_of_no_history_changes_t_and_its_event_with_no_line_and_no_audi
     out = _write(db, "f1", k="A", n="busy")
     _events(db)
     [row_id] = out["changed"]
-    lined = db.execute(select(ln.c.n).where(ln.c.row_id == row_id)).scalars().all()
+    n = ln.c[lines.value_column("n")]
+    lined = db.execute(select(n).where(ln.c.row_id == row_id)).scalars().all()
     with crud.transaction_context("probe", "tx", "f1"):
         again = _write(db, "f1", k="A", n="idle")
     assert (again["items"][0]["work"], again["lines"], again["audit"]) == ("edit", 0, []), again
@@ -152,5 +153,5 @@ def test_a_column_of_no_history_changes_t_and_its_event_with_no_line_and_no_audi
     t = lines.shape(db, TABLE, CFG)["table"]
     now = db.execute(select(t.c.n, t.c.m, t.c.won_by)).one()
     assert (both["lines"], now.n, now.m, set(now.won_by)) == (1, "off", 3, {"k", "m"}), (both, now)
-    assert lined == [None] and db.execute(select(ln.c.n).where(ln.c.n.is_not(None))).scalars().all() == [], \
+    assert lined == [None] and db.execute(select(n).where(n.is_not(None))).scalars().all() == [], \
         "no line ever holds the column"

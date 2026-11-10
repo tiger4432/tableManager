@@ -78,9 +78,15 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     own items by - a map's rows claimed, a dropped cell's row."""
     _open(db)
     cfg = crud.TABLE_CONFIG[table]
-    shape = lines.shape(db, table, cfg)
-    now, ln, bits, chunks = shape["table"], shape["lines"], shape["bits"], shape["chunks"]
-    data = _data(bits)
+    keeps = lines.has_lines(db, table)
+    if keeps:
+        shape = lines.shape(db, table, cfg)
+        now, ln, bits, chunks = shape["table"], shape["lines"], shape["bits"], shape["chunks"]
+        data = _data(bits)
+    else:   # a table with no lines (shipped, or one ensure refused): every column of no history (lead 11-11 2)
+        now = lines.current_table(db, table, cfg)
+        shape, ln, bits, chunks = {"table": now, "columns": [c.name for c in now.columns]}, None, None, None
+        data = [c.name for c in now.columns if c.name not in {name for name, _type in lines.FRAMEWORK}]
     items = [dict(it, line_kind=it.get("line_kind") or WRITE) for it in items]
     for it in items:
         if it["line_kind"] not in LINE_KINDS:
@@ -96,17 +102,20 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     claimed = dict(targets)
     gated = _version_gate(table, cfg, items, targets, old)
     held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
-    plain = _plain(table, cfg, items, targets, old, held)
+    plain = _plain(table, cfg, items, targets, old, held, keeps)
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
-    kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
+    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held) if keeps
+                      else ([], sum(1 for i in targets if i not in plain)))
     moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
-    lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
-    written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
-    _heads(db, ln, chunks, written)
-    unpinned = _marks(db, table, shape, items, kept, targets, asked)
+    unpinned = set()
+    if keeps:
+        lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
+        written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
+        _heads(db, ln, chunks, written)
+        unpinned = _marks(db, table, shape, items, kept, targets, asked)
     for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
         if targets[i] in unpinned and i not in work:
             work[i] = "edit"
@@ -119,12 +128,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     for i in sorted(plain):
         rows_plain.setdefault(targets[i], {}).update(plain[i])
     new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, old,
-                     rows_plain)
+                     rows_plain, keeps)
     changed = {}
     for i in sorted(list(kept) + moved):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
-    audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
+    audit = _audit(db, table, items, kept, targets, work, transaction_id, at) if keeps else []
     _stage(db, table, cfg, shape["columns"], changed, keys,
            {targets[i]: set(items[i].get("values") or ()) | set(plain.get(i) or ())
             for i in list(kept) + moved if items[i]["line_kind"] == WRITE})
@@ -148,7 +157,7 @@ def _open(db):
         connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-def _plain(table, cfg, items, targets, old, held) -> dict:
+def _plain(table, cfg, items, targets, old, held, keeps) -> dict:
     """A write's columns of no history (`crud.keeps_history`, `no_history_columns` - state cells written every few
     seconds; lead 11-11 ㄴ) leave no line and no audit: their value goes to t as it is - the «a column of no line is t's
     value» rule's case, no new mechanism. Taken out of the item's values here, after the claim and the version gate
@@ -158,7 +167,7 @@ def _plain(table, cfg, items, targets, old, held) -> dict:
     for i, it in enumerate(items):
         if it["line_kind"] != WRITE or i not in targets:
             continue
-        free = {c: v for c, v in (it.get("values") or {}).items() if not crud.keeps_history(table, c)}
+        free = {c: v for c, v in (it.get("values") or {}).items() if not keeps or not crud.keeps_history(table, c)}
         if not free:
             continue
         it["values"] = {c: v for c, v in it["values"].items() if c not in free}
@@ -207,7 +216,7 @@ def _claim(db, table, cfg, now, items):
             wanted.setdefault(bk, crud._engine_minted_row_id(it.get("row_id"), table))
             by_key[i] = bk
     keys = {row_id: row.get("business_key_val") for row_id, row in old.items()}
-    if wanted or looked:
+    if wanted and lines.key_index_standing(db.connection(), table):
         if db.get_bind().dialect.name == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as upsert
         else:
@@ -215,6 +224,17 @@ def _claim(db, table, cfg, now, items):
         for page in _pages(sorted(wanted), 2):
             db.execute(upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"]),
                        [{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
+    elif wanted:
+        # no valid unique index on the key (lines.key_index_next says why - the rules list and the pre-check show it):
+        # today's funnel's way - the keys held read under lock, the rest inserted - with its race window: two writers
+        # of one new key in the same instant can make two rows (D3, as before; lead 11-11 ㄴ - collection never stops)
+        held = set()
+        for page in _pages(sorted(wanted), 1):
+            held.update(db.execute(select(now.c.business_key_val).where(now.c.business_key_val.in_(page))
+                                   .with_for_update()).scalars())
+        for page in _pages(sorted(set(wanted) - held), 2):
+            db.execute(insert(now), [{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
+    if wanted or looked:
         ordered = sorted(set(wanted) | set(looked.values()))
         holder = {}
         for page in _pages(ordered, 1):
@@ -275,7 +295,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
     if writes and columns:
         # the incoming rows as a UNION ALL of SELECTs - sqlite takes no VALUES with column names
         named = [("i", Integer), ("row_id", String), ("src", String), ("who", String), ("inrow", String)] \
-            + [(c, ln.c[c].type) for c in columns]
+            + [(lines.value_column(c), ln.c[lines.value_column(c)].type) for c in columns]
         for page in _pages(writes, len(named), UNION_MOST):
             rows = [(i, targets[i], items[i].get("source_name"), items[i].get("written_by"), items[i].get("input_row"),
                      *[items[i]["values"].get(c) for c in columns]) for i in page]
@@ -289,7 +309,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
                     h.c.row_id == v.c.row_id, h.c.source_name == v.c.src, h.c.line_kind == WRITE,
                     h.c["head_%d" % k].op("&")(m) != 0, h.c["withdrawn_%d" % k].op("&")(m) == 0,
                     h.c.written_by.is_not_distinct_from(v.c.who), h.c.input_row.is_not_distinct_from(v.c.inrow),
-                    h.c[c].is_not_distinct_from(v.c[c])), 1), else_=0))
+                    h.c[lines.value_column(c)].is_not_distinct_from(v.c[lines.value_column(c)])), 1), else_=0))
             for row in db.execute(select(v.c.i, *flags)):
                 same[row[0]] = {c for c, flag in zip(columns, row[1:]) if flag and c in items[row[0]]["values"]}
     spoken = _spoken(db, ln, bits, chunks, {(targets[i], items[i].get("source_name")) for i in targets
@@ -345,7 +365,7 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
             row["head_%d" % k] = masks[k]
             row["withdrawn_%d" % k] = masks[k] if it["line_kind"] == WITHDRAW else 0
         for c in _data(bits):
-            row[c] = (it.get("values") or {}).get(c) if it["line_kind"] == WRITE else None
+            row[lines.value_column(c)] = (it.get("values") or {}).get(c) if it["line_kind"] == WRITE else None
         rows.append(row)
     if not rows:
         return []
@@ -432,17 +452,18 @@ def _marks(db, table, shape, items, kept, targets, asked):
     return unpinned
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, old, plain):
+def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
     """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge; `lines.winners_sql` under it):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
     with won_by. Returns {row_id: {column: value}} as written."""
-    now, data = shape["table"], _data(shape["bits"])
+    now = shape["table"]
+    data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
     if not row_ids:
         return {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
     won_by = {row_id: {} for row_id in row_ids}
-    for row_id, decided in lines.merge(db, table, cfg, row_ids).items():
+    for row_id, decided in (lines.merge(db, table, cfg, row_ids) if keeps else {}).items():
         for c, (value, line_id) in decided.items():
             merged[row_id][c] = value
             if line_id is not None:
@@ -450,9 +471,12 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain):
     for row_id, values in plain.items():
         if row_id in merged:
             merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
-    db.execute(update(now).where(now.c.row_id == bindparam("r")).values(
-        {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
-        [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])
+    # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
+    db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
+        {**{c: bindparam("__%d" % n) for n, c in enumerate(data)}, **({"won_by": bindparam("__won")} if keeps else {}),
+         "updated_at": at}),
+        [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)}}
+         for row_id in row_ids])
     return merged
 def _stage(db, table, cfg, view_columns, changed, keys, wrote):
     """Step 7 - this write's outbox events, in its transaction, from its answer - the one author the broadcast reads

@@ -3814,19 +3814,16 @@ async def apply_batch_updates_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IntegrityError as e:
-        # [D3] A business-key conflict that survived `apply_batch_updates`' replays is
-        # NOT a server fault, and 500 says it is. The write path already re-read the
-        # committed row and still could not merge, which means two different identities
-        # are claiming one business key - the caller has to change what it sent.
-        # Anything else that raises IntegrityError keeps its 500: this branch refuses to
-        # widen, for exactly the reason the retry itself refuses to (see
-        # `crud._is_business_key_unique_violation`).
+        # [D3] A business-key conflict is NOT a server fault, and 500 says it is. Two writers of one new key end on
+        # one row inside write_lines' claim (ON CONFLICT), so this is never a race: two identities claim one business
+        # key and the caller has to change what it sent. Anything else that raises IntegrityError keeps its 500
+        # (`crud._is_business_key_unique_violation` stays narrow).
         if not crud._is_business_key_unique_violation(e):
             raise
         raise HTTPException(
             status_code=409,
-            detail=f"Another row of '{table_name}' already holds this business key - another process "
-                   f"may have just saved it. Refresh and try again."
+            detail=f"Another row of '{table_name}' already holds this business key. "
+                   f"Change the key you sent, or edit that row instead."
         )
 
     # [adopt] Decided HERE, before the response is built, not inside the background

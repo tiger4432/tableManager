@@ -143,9 +143,42 @@ def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_sessio
         s.commit()
         said.append((out["lines"], out["left_out"]))
     shape = lines.shape(s, TABLE, CFG)
-    stored = s.execute(select(shape["lines"].c.d).where(shape["lines"].c.business_key_val == "K4")).scalars().all()
+    stored = s.execute(select(shape["lines"].c[lines.value_column("d")]).where(shape["lines"].c.business_key_val == "K4")).scalars().all()
     now = s.execute(select(shape["table"].c.d).where(shape["table"].c.business_key_val == "K4")).scalar()
     s.close()
     instant = expression._wall("2026-03-05 09:00:00", expression.time_zone())
     assert said == [(1, 0), (0, 1), (0, 1)], said
     assert stored == [instant.isoformat()] and now == instant, (stored, now)
+
+
+def test_a_table_without_its_key_index_still_takes_new_keys_the_old_way(pg_engine, monkeypatch):
+    """Lead 11-11 ㄴ: collection never stops at the landing - a table whose business key has no valid unique index
+    (ensure refused it: the scheduler has not built it, duplicates, a broken index) takes a new key as today's funnel
+    did (held keys read under lock, the rest inserted), with no lines; an existing key is that row's edit. The
+    indexed table's ON CONFLICT is the tests above."""
+    from sqlalchemy import Index, MetaData, Table
+
+    name, cfg = "wl_noindex", {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
+    monkeypatch.setitem(crud.TABLE_CONFIG, name, cfg)
+    models.DatabaseOutbox.__table__.create(pg_engine, checkfirst=True)
+    t = Table(name, MetaData(), *lines._data_columns(cfg, models.sql_type_of, row_id_key=True))
+    Index("ix_%s_bk" % name, t.c.business_key_val)                      # the plain index today's tables carry
+    t.create(pg_engine)
+    s = sessionmaker(bind=pg_engine)()
+    try:
+        assert not lines.key_index_standing(s.connection(), name) and not lines.has_lines(s, name)
+        first = write_lines(s, name, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
+                                      {"key": {"k": "K2"}, "values": {"k": "K2", "a": "y"}, "source_name": "f1"}],
+                            kind="funnel", transaction_id="tx-1")
+        s.commit()
+        again = write_lines(s, name, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "z"}, "source_name": "f1"}],
+                            kind="funnel", transaction_id="tx-2")
+        s.commit()
+        rows = sorted(tuple(r) for r in s.execute(select(t.c.business_key_val, t.c.a)))
+        assert sorted(c["work"] for c in first["changed"].values()) == ["new", "new"] and first["lines"] == 0
+        assert [c["work"] for c in again["changed"].values()] == ["edit"] and rows == [("K1", "z"), ("K2", "y")], rows
+    finally:
+        s.rollback()
+        s.execute(text('DROP TABLE IF EXISTS "%s"' % name))
+        s.commit()
+        s.close()
