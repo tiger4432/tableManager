@@ -95,3 +95,27 @@ def test_declared_of_reads_stored_relation_backwards():
     tables = {"t": CFG, "v": {"kind": "view", "column_types": {}}}
     assert lines.declared_of("t__now", tables) == "t" and lines.declared_of("v", tables) == "v"
     assert lines.declared_of("t", tables) is None and lines.declared_of("audit_batches", tables) is None
+
+
+def test_chunks_follow_the_built_table_not_the_slot_map(db):
+    cfg = {"column_types": {f"c{i}": "string" for i in range(64)}}
+    lines.ensure_line_table(db, "t", cfg)
+    wider = {"column_types": {**cfg["column_types"], "c64": "string"}}
+    lines.ensure_line_table(db, "t", wider)            # slots grow, the built table does not
+    lines.alter_columns(db, "t", wider, add=["c64"])
+    cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
+    assert {"c64", "written_1", "head_1", "withdrawn_1"} <= cols
+    head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h'")).scalar()
+    assert "head_1" in head_sql
+
+
+def test_now_has_row_id_as_its_key(db):
+    lines.ensure_line_table(db, "t", CFG)
+    pk = inspect(db.connection()).get_pk_constraint("t__now")["constrained_columns"]
+    assert pk == ["row_id"]
+
+
+def test_a_name_whose_derived_index_name_is_too_long_is_refused():
+    with pytest.raises(ValueError):
+        lines.index_name("x" * 54, "ra")
+    assert lines.index_name("x" * 53, "ra") == "x" * 53 + "__lines_ra"
