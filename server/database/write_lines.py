@@ -14,6 +14,8 @@ An item is a dict:
     values        {column: value} for a write - cast here by `crud.cast_value_by_type`
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
+    at            a line's «when» kept from the line it re-spells (design «쓰기» 53: a fold writes a new line whose
+                  rank does not move); else the write's instant - the batch keeps when it was done
     folds         source names whose head bits the write's columns also take off (a file's folded layer)
     version_judged  true when the caller judged the row's version already (a map judged whole)
 `kind` is the writing seat's word (funnel · chain · formula · withdraw · delete · create · notation · merge · mark ·
@@ -415,7 +417,7 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
         it = items[i]
         said = it.get("values") if it["line_kind"] == WRITE else it.get("columns") if it["line_kind"] == WITHDRAW else ()
         masks = _masks(bits, chunks, said or ())
-        row = {"line_kind": it["line_kind"], "source_name": it.get("source_name"), "at": at,
+        row = {"line_kind": it["line_kind"], "source_name": it.get("source_name"), "at": it.get("at") or at,
                "written_by": it.get("written_by"), "batch": transaction_id, "input_row": it.get("input_row"),
                "owner_rule": it.get("owner_rule"), "owner_key": it.get("owner_key"), "confirmed": it.get("confirmed"),
                "row_id": targets[i], "business_key_val": keys.get(targets[i])}
@@ -552,7 +554,9 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
     """Step 5½ - a row that was there before whose key part's value step 5 moved gets its key rebuilt
     (`crud.rebuilt_business_key` on the merged values, `crud.put_business_key`'s two columns - design «업무 키가 바뀔
     때»); on a table keyed by one column, that column's value composed (`crud.compose_business_key`) - a blank one
-    writes nothing, and a row an item named by its key keeps that key: the old `_update_row_business_key`'s rules. Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
+    writes nothing, and a row an item named by its key keeps that key: the old `_update_row_business_key`'s rules.
+    NEW for that shape: a key another row holds merges the row into it (design «업무 키가 바뀔 때», owner 11-10) -
+    the old seat wrote the key and met the unique index. Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
     the batch that took it before (row_id order) - so rows swapping or passing keys along in one batch move, not
     merge. The keys are written first (`_put_keys`); then a held key takes the row in (`_merge_into`), with what this
     write named as its explicit values and, from a person, its person's cells - the old write seat's rule
