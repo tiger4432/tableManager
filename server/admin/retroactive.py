@@ -1648,7 +1648,8 @@ def _count_fold_written_notation(db, params, scan_limit):
                    f"stops there; fix the declaration first.")
     if left:
         detail += (f" The time rule leaves values as written - no matching format: "
-                   f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}.")
+                   f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}, "
+                   f"no year and no time it came in: {left.get('no_arrival', 0)}.")
     detail += (" Afterwards run Fold file layers on this table, then give the space back: "
                "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {

@@ -2266,11 +2266,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     aliases = notation_norm.aliases_by_column(db)
     claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
-    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS
+    # a column whose year is when its value came in folds by each layer's time, not by spelling (lead 11-10)
+    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS and not any(
+        notation_norm.reads_arrival(notation_norm.write_spec(table_name, column)["rules"]) for column in written)
 
-    def fold_value(column, value):
+    def fold_value(column, value, arrived=None):
         """(stored, verdict, [column, value, stored, again] or None) - THE fold of one stored value."""
-        stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases)
+        stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases, arrived)
         again = None
         if stored != value:
             moved = notation_norm.moves_again(
@@ -2283,13 +2285,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                              table_name)
         return stored, verdict, again
 
-    def fold(column, value, again):
-        stored, verdict, moved = fold_value(column, value)
+    def fold(column, value, again, arrived=None):
+        stored, verdict, moved = fold_value(column, value, arrived)
         if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
             stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + 1
         if moved:
             again.append(moved)
-        return stored
+        return stored, verdict
 
     def twins_of(rows):
         """{row_id: the key's first row} - rows whose stored key a row with a smaller row_id stores too: a
@@ -2308,26 +2310,30 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     def plan_rows(page, again, fold, twins=None):
         """The row path over `page` (rows of the model): each row's cells, layers, key and merge."""
         twins = twins_of(page) if twins is None else twins
-        plans = {}
+        plans, unknown = {}, set()
         for row in page:
             cells = {}
             for column in folded:
                 old = getattr(row, column, None)
-                new = fold(column, old, again)
+                # a shown value holds no time it came in - its layers below have one
+                new, verdict = fold(column, old, again, notation_norm.ARRIVAL_UNKNOWN)
+                if verdict == notation_norm.NO_ARRIVAL:
+                    unknown.add((row.row_id, column))
                 if new != old:
                     cells[column] = (old, new)
             plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
         if not plans:
             return plans
-        moved = {}
-        for layer_id, row_id, column, source, value in (
+        moved, layered = {}, set()
+        for layer_id, row_id, column, source, value, arrived in (
                 db.query(models.CellSource.id, models.CellSource.row_id,
                          models.CellSource.column_name, models.CellSource.source_name,
-                         models.CellSource.value)
+                         models.CellSource.value, models.CellSource.ingested_at)
                 .filter(models.CellSource.table_name == table_name,
                         models.CellSource.row_id.in_(list(plans)),
                         models.CellSource.column_name.in_(folded)).all()):
-            new = fold(column, value, again)
+            layered.add((row_id, column))
+            new = fold(column, value, again, arrived)[0]
             if new != value:
                 plans[row_id]["layers"].append({"id": layer_id, "value": new})
                 moved.setdefault((row_id, column), {})[source] = new
@@ -2344,6 +2350,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     cells[column] = (old, new)
                 else:
                     cells.pop(column, None)
+        left = len(unknown - layered)       # a year-less shown value with no layer to take a year from
+        if left:
+            stats["time_left"][notation_norm.NO_ARRIVAL] = stats["time_left"].get(notation_norm.NO_ARRIVAL, 0) + left
         for plan in plans.values():
             row, cells = plan["row"], plan["cells"]
             if not any(column in cells for column in parts_of_key):
@@ -2399,9 +2408,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                             "folded_key": plan["row"].business_key_val, "into": twins[row_id]})
         return plans
 
-    def quiet(column, value, _again):
+    def quiet(column, value, _again, arrived=None):
         """The row path's fold on a page folded by value - that page already counted every value."""
-        return fold_value(column, value)[0]
+        return fold_value(column, value, arrived)[:2]
 
     total = db.query(func.count(model.row_id)).scalar() or 0
     total = min(total, limit) if limit is not None else total
