@@ -347,8 +347,9 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 #: t was dropped and built again while its t__lines stayed: attaching it would show the old table's history as
 #: the new one's (lead 11-11) - refused, the operator decides
-ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again but %(lines)s still holds the history of the earlier "
-                  "%(t)s - drop %(lines)s to start its history afresh, or rebuild %(t)s from that history")
+ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again while %(lines)s still holds the earlier %(t)s's "
+                  "history - %(t)s keeps no history until that %(lines)s is dropped (no screen does this; it arises "
+                  "only outside the product)")
 
 
 def drop_every_line_table(engine) -> list:
