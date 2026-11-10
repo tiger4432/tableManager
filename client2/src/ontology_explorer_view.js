@@ -2648,6 +2648,11 @@ function renderSkeletonLeaf(context, node, path, value) {
     const read = h('span', 'oe-value oe-box', spelledValue(value));
     read.title = read.textContent;
     read.setAttribute('data-clip-ok', '');
+    // Read, a formula wears the same mark as written (lead 11-10 ㄱ): one formula, one look on every screen.
+    if (formulaUnder(node, context.deref)(value)) {
+      read.textContent = '';
+      read.append(formulaMark(document), document.createTextNode(value));
+    }
     return read;
   }
   // 🔴 A VALUE THIS CONTROL CANNOT HOLD IS SHOWN, AND NO CONTROL IS OFFERED FOR IT. The text

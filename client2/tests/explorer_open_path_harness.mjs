@@ -2248,6 +2248,14 @@ console.log('\n[16] a folded line marks its formulas');
       `${plain?.textContent} | ${none?.textContent}`);
     const leaf = fold(M.renderAuthoringRow, M.formulaUnder, FORMULA_LEAF, 'Max([t])');
     say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'ƒMax([t])', leaf?.textContent);
+    // the read-only tree (the explorer's read mode): its leaves are values, and a formula wears the same mark (lead 11-10 ㄱ)
+    const tree = M.renderSkeletonForm(M.readContext({}, {}), TAKE, '', { fn: 'Min([t])', separator: ', ' });
+    const read = walkAll(tree).filter((n) => n._classes?.includes('oe-value'));
+    const readFn = read.find((n) => n.textContent.includes('Min'));
+    const readSep = read.find((n) => n.textContent.includes(','));
+    say('F5 read, a formula wears the mark and a plain word beside it none',
+      marks(readFn) === 1 && readFn.textContent === 'ƒMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
+      read.map((n) => n.textContent).join(' | '));
     return { ran: names.length, names, failures };
   };
   const base16 = suite16(await import('../src/ontology_explorer_view.js'));
@@ -2260,6 +2268,8 @@ console.log('\n[16] a folded line marks its formulas');
       mutate: (text) => swap(text, "    if (at && at.kind === 'oneOf' && at.pick === 'shape') at = deref((at.branches || {})[shapeBranch(at, value, deref)]);\n", '') },
     { id: 'F-M3', what: 'every value is a formula', catches: 'F2',
       mutate: (text) => swap(text, "at && at.hint === 'formula' && typeof value", 'at && typeof value') },
+    { id: 'F-M5', what: 'a formula read wears no mark', catches: 'F5',
+      mutate: (text) => swap(text, "      read.append(formulaMark(document), document.createTextNode(value));", '      read.append(document.createTextNode(value));') },
     { id: 'F-M4', what: 'a record\'s field is not looked up', catches: 'F2',
       mutate: (text) => swap(text, "shape.kind === 'record' ? ((shape.fields || []).find((f) => f.key === key) || {}).node : null", 'null') },
   ];
