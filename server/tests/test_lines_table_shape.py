@@ -83,3 +83,9 @@ def test_seeding_is_scoped():
     with lines.seeding():
         assert lines.is_seeding()
     assert not lines.is_seeding()
+
+
+def test_stored_relation_by_declaration():
+    assert lines.stored_relation("t", CFG) == "t__now"
+    assert lines.stored_relation("audit_batches", None) == "audit_batches"
+    assert lines.stored_relation("v", {"kind": "view", "column_types": {}}) == "v"

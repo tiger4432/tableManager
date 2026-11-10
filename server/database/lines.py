@@ -103,6 +103,16 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def stored_relation(table_name: str, table_cfg) -> str:
+    """The physical relation an index, plan or catalogue question about t names: `t__now` for a declared data
+    table, the name itself for an operator view (kind: view) or a system table (no table_cfg)."""
+    from ledger.setup_bundle import catalog_kind
+
+    if not table_cfg or catalog_kind(table_cfg) == "view":
+        return table_name
+    return now_relation(table_name)
+
+
 def bit_map(db, table_name: str) -> dict:
     """{column: bit} of t's live columns."""
     rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(
