@@ -1666,6 +1666,9 @@ def _count_fold_written_notation(db, params, scan_limit):
     if s["moves_again"]:
         detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
                    f"stops there; fix the declaration first.")
+    if s["pinned_left"]:
+        detail += (f" {s['pinned_left']} pinned cell(s) are left as they are: the pin was set before this table "
+                   f"kept lines and no line holds the pinned value, so the shown value stays.")
     if left:
         detail += (f" The time rule leaves values as written - no matching format: "
                    f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}, "
@@ -1684,7 +1687,7 @@ def _count_fold_written_notation(db, params, scan_limit):
         "detail": detail,
         "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged", "same_key_groups",
                                           "split_key_groups", "merged", "keys_not_rebuilt", "not_rebuilt",
-                                          "moves_again", "again", "time_left")},
+                                          "moves_again", "again", "time_left", "pinned_left")},
     }
 
 
@@ -1697,7 +1700,7 @@ def _run_fold_written_notation(db, params, log, control=None):
     _final_progress(control, s.get("rows_scanned"), s)
     out = {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
                                    "rows_merged", "same_key_groups", "split_key_groups", "keys_not_rebuilt",
-                                   "moves_again", "stopped_on_moves_again", "rows_scanned")}
+                                   "moves_again", "stopped_on_moves_again", "pinned_left", "rows_scanned")}
     if s.get("row_ids_not_found"):
         out["row_ids_not_found"] = s["row_ids_not_found"]
     if s["rows_merged"] and not s["stopped"]:

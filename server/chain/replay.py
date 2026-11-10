@@ -2268,7 +2268,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     from sqlalchemy import func, select
 
     import notation_norm
-    from database import crud, lines
+    from database import crud, lines, models
     from database.write_lines import merge_rows, write_lines
     from chain import keyset_scan
 
@@ -2292,7 +2292,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
              "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_merged": 0,
              "same_key_groups": 0, "split_key_groups": 0,
              "merged": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
-             "moves_again": 0, "again": [], "time_left": {},
+             "moves_again": 0, "again": [], "time_left": {}, "pinned_left": 0,
              "stopped": False, "stopped_on_moves_again": False}
     selection = None
     if row_ids is not None:
@@ -2352,6 +2352,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 if row.business_key_val in firsts and firsts[row.business_key_val] != row.row_id}
 
     same_groups, split_groups = set(), set()
+    keeps_lines = lines.has_lines(db, table_name)
 
     def plan_rows(page, again):
         """Each row of `page`: its shown cells that fold (`cells`), its head lines that fold (`lines`, one a line
@@ -2363,7 +2364,19 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         won_by = {}                     # row -> {column: the line its shown value is}
         if heads:
             now = lines.current_table(db, table_name, config)
-            won_by = dict(db.execute(select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(ids))).all())
+            won_by = {r: dict(w or {}) for r, w in db.execute(
+                select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(ids)))}
+            # a cell with lines that t was never stamped as (copied where t showed another spelling - the copy
+            # stores what today's write would): its winner is asked of the merge, as the write will merge it
+            loose = sorted({r for (r, c) in heads if c not in won_by.get(r, {})})
+            for r, cols in (lines.merge(db, table_name, config, loose) if loose else {}).items():
+                won_by.setdefault(r, {}).update({c: line_id for c, (_v, line_id) in cols.items() if line_id})
+        pinned = set()                  # a pin over a cell no line said keeps t's value (the merge's rule)
+        if keeps_lines:
+            ov = models.CellOverwrite.__table__
+            pinned = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
+                ov.c.table_name == table_name, ov.c.row_id.in_(ids), ov.c.column_name.in_(list(folded)),
+                ov.c.manual_priority_source.isnot(None)))}
         for row in page:
             won = won_by.get(row.row_id) or {}
             cells, said, bare = {}, {}, {}
@@ -2374,25 +2387,32 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 for source, head in sorted(layer.items()):
                     value = fold(column, head["value"], again, head["ingested_at"])[0]
                     if value != head["value"]:
+                        # its source and «when» stay (its rank), and its author: a spelling is no new value
                         line = said.setdefault(head["line_id"], {
                             "row_id": row.row_id, "values": {}, "source_name": source,
                             "written_by": head["updated_by"], "input_row": head["origin_row_id"],
                             "owner_rule": head["owner_rule"], "owner_key": head["owner_key"],
-                            "at": head["ingested_at"]})
+                            "at": head["ingested_at"], "respelled": True})
                         line["values"][column] = value
                     if head["line_id"] == won.get(column):
                         new = value                # the winning line, re-spelled: what the cell will show
-                if new is None:
-                    # a shown value holds no time it came in - its layers below have one
+                if not layer and (row.row_id, column) not in pinned:
+                    # a cell no line said (a table cut at the landing): t's value, folded, becomes a line of its
+                    # own - a shown value holds no time it came in
                     new, verdict = fold(column, old, again, notation_norm.ARRIVAL_UNKNOWN)
-                    if verdict == notation_norm.NO_ARRIVAL and not layer:
+                    if verdict == notation_norm.NO_ARRIVAL:
                         unknown.add((row.row_id, column))
-                    if not layer and new != old:
+                    if new != old:
                         bare[column] = new
+                elif new is None:              # no line wins (a pin with no line under it): t keeps its value
+                    if not layer and fold_value(column, old, notation_norm.ARRIVAL_UNKNOWN)[0] != old:
+                        stats["pinned_left"] += 1  # named, not folded: a line under no pin would be made up (lead)
+                    new = old
                 if new != old:
                     cells[column] = (old, new)
+            written = {c for line in said.values() for c in line["values"]} | set(bare)
             plans[row.row_id] = {"row": row, "cells": cells, "lines": list(said.values()), "bare": bare,
-                                 "key": None}
+                                 "key": None, "remerge": bool(set(cells) - written)}
         if unknown:
             stats["time_left"][notation_norm.NO_ARRIVAL] = (stats["time_left"].get(notation_norm.NO_ARRIVAL, 0)
                                                             + len(unknown))
@@ -2481,15 +2501,20 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             stats["layers_folded"] += sum(len(line["values"]) for plan in plans.values() for line in plan["lines"])
             items = [line for plan in plans.values() for line in plan["lines"]]
             items += [{"row_id": row_id, "values": plan["bare"], "source_name": NOTATION_BACKFILL_SOURCE,
-                       "written_by": NOTATION_BACKFILL_SOURCE} for row_id, plan in plans.items() if plan["bare"]]
-            # a re-spelled key moves no cell: its row is re-keyed by the write all the same (owner 10-20)
-            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "rekey": True,
+                       "written_by": NOTATION_BACKFILL_SOURCE, "respelled": True}
+                      for row_id, plan in plans.items() if plan["bare"]]
+            # a re-spelled key moves no cell: its row is re-keyed by the write all the same (owner 10-20); a cell
+            # whose winning line already holds the folded spelling moves by a merge of its row - a mark asks it
+            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "rekey": bool(plan.get("respelled")),
                        "source_name": NOTATION_BACKFILL_SOURCE, "written_by": NOTATION_BACKFILL_SOURCE}
-                      for row_id, plan in plans.items() if plan.get("respelled")]
+                      for row_id, plan in plans.items() if plan.get("respelled") or plan.get("remerge")]
             twins = sorted((row_id, plan["twin"]) for row_id, plan in plans.items() if plan.get("twin"))
             if apply and (items or twins):
-                if items:
-                    write_lines(db, table_name, items, kind="notation", transaction_id=tx_id)
+                gone = write_lines(db, table_name, items, kind="notation", transaction_id=tx_id)["merged"] \
+                    if items else {}
+                # a twin's first row the write merged away: its twins meet the row it went into (QA 11-11)
+                twins = [(row_id, gone.get(first, first)) for row_id, first in twins
+                         if row_id not in gone and gone.get(first, first) != row_id]
                 if twins:
                     merge_rows(db, table_name, twins, source_name=NOTATION_BACKFILL_SOURCE,
                                written_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
@@ -2504,7 +2529,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         f"(their cells no longer spell their stored key), {stats['rows_merged']} row(s) "
         f"{'merged' if apply else 'to merge'} into the row holding their folded key "
         f"({stats['same_key_groups']} key(s) held twice as stored, {stats['split_key_groups']} met by spelling), "
-        f"{stats['moves_again']} value(s) change again")
+        f"{stats['moves_again']} value(s) change again, {stats['pinned_left']} pinned cell(s) left as they are")
     return stats
 
 

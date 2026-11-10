@@ -510,6 +510,69 @@ def test_a_persons_cleared_cell_still_goes_with_the_merged_row(env):
     assert row.business_key_val == "L1_wafer-01"
 
 
+def test_a_cell_with_no_line_is_folded_into_a_line_that_the_next_merge_keeps(env, tmp_path, monkeypatch):
+    """Lead 11-11: a table cut at the landing (owner 11-10 - only named tables are copied) shows t's value in a cell
+    no line said (won_by empty). The backfill folds it into a line of its own, so a later write that merges the row
+    again keeps the folded spelling - and a second run moves nothing."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN, [("f01.csv", [{"k": "K-01", "v": "wafer.1"}])])
+    _cut(env)
+    assert _said(env, PLAIN, "v") == [], "canary: the cell has no line"
+    dry = replay.fold_written_notation(env, PLAIN)
+    assert (dry["cells_folded"], dry["layers_folded"]) == (1, 0)
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    assert _said(env, PLAIN, "v") == [(replay.NOTATION_BACKFILL_SOURCE, "wafer-01")]
+    (row,) = _rows(env, PLAIN)
+    crud.apply_batch_updates(env, PLAIN, schemas.GeneralUpdateBatch(
+        updates=[_item(row.row_id, {"note": "later"}, "f09.csv")], silent=True))
+    env.commit()
+    env.expire_all()
+    (row,) = _rows(env, PLAIN)
+    assert (row.v, row.note) == ("wafer-01", "later"), "the merge of the row keeps the folded spelling"
+    assert replay.fold_written_notation(env, PLAIN)["cells_folded"] == 0
+
+
+def _cut(db, row_id=None):
+    """Rows as a table cut at the landing holds them (owner 11-10): t's values, no line, won_by empty."""
+    where, args = (" WHERE row_id = :r", {"r": row_id}) if row_id else ("", {})
+    db.execute(text('DELETE FROM "%s"%s' % (lines.lines_relation(PLAIN), where)), args)
+    db.execute(text("UPDATE %s SET won_by = NULL%s" % (PLAIN, where)), args)
+    db.commit()
+
+
+def test_a_cut_rows_folded_key_merges_without_taking_the_holders_person_value(env, tmp_path, monkeypatch):
+    """QA 11-11: the backfill's lines are no new hand in a key merge - a cut row's folded value (no line said it) is
+    neither named nor a person's, so the holder's person value stays and no mark of the backfill's is made."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [{"k": "k-01", "v": "a"}]),
+                           ("user", [{"k": "k-01", "v": "person"}]),
+                           ("f02.csv", [{"k": "k.1", "v": "wafer.1"}])])
+    holder, shell = (next(r.row_id for r in _rows(env, PLAIN) if r.k == k) for k in ("k-01", "k.1"))
+    _cut(env, shell)
+    stats = replay.fold_written_notation(env, PLAIN, apply=True)
+    env.expire_all()
+    (row,) = _rows(env, PLAIN)
+    assert (stats["rows_merged"], row.row_id, row.v) == (1, holder, "person")
+    assert env.query(models.CellOverwrite).filter_by(
+        table_name=PLAIN, updated_by=replay.NOTATION_BACKFILL_SOURCE).count() == 0
+
+
+def test_a_pinned_cell_no_line_said_keeps_its_value_in_the_dry_run_as_in_the_run(env, tmp_path, monkeypatch):
+    """QA 11-11: a pin from before the landing over a cell no line said - the merge keeps t's value there, so the
+    backfill neither folds nor writes it, names it as pinned and left, and the dry run says what the run does."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN, [("f01.csv", [{"k": "K-01", "v": "wafer.1"}])])
+    (row,) = _rows(env, PLAIN)
+    _cut(env)
+    crud.bulk_upsert_cell_overwrites(env, [{"table_name": PLAIN, "row_id": row.row_id, "column_name": "v",
+                                            "is_overwrite": True, "updated_by": "kim", "updated_at": None,
+                                            "manual_priority_source": crud.USER_SOURCE}])
+    env.commit()
+    dry = replay.fold_written_notation(env, PLAIN)
+    run = replay.fold_written_notation(env, PLAIN, apply=True)
+    env.expire_all()
+    assert (dry["cells_folded"], run["cells_folded"], _rows(env, PLAIN)[0].v) == (0, 0, "wafer.1")
+    assert (dry["pinned_left"], run["pinned_left"]) == (1, 1), "named, so the operator sees why (lead 11-11)"
+
+
 @pytest.mark.parametrize("folded_on", ["holder", "shell"])
 def test_a_key_merge_after_the_backfill_keeps_the_folded_spelling(env, tmp_path, monkeypatch, folded_on):
     """Lead 11-11 (the backfill on lines): a cell the backfill folded keeps its folded spelling through a later key

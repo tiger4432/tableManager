@@ -206,3 +206,34 @@ def test_a_key_moves_only_when_its_cells_still_spell_it(comp):
     assert (rows[still].wafer, rows[still].business_key_val) == ("x", "L4:x")
     assert (stats["keys_changed"], stats["keys_not_rebuilt"]) == (1, 1)
     assert [s["business_key_val"] for s in stats["not_rebuilt"]] == ["L2:w2"]
+
+
+@pytest.fixture(name="lined")
+def fixture_lined(table):
+    from database import lines
+
+    lines.ensure_line_table(table, T, TABLE)
+    table.execute(text('DELETE FROM "%s"' % lines.lines_relation(T)))
+    table.commit()
+    return table
+
+
+def test_a_cell_copied_in_the_spelling_a_write_stores_shows_it_after_the_backfill(lined):
+    """The state C's copy leaves (lead 11-11): a layer JSON 1.0 in a text column is copied as the line «1» - what
+    today's write stores - while t still shows «1.0» and its won_by names no line there. The backfill shows the
+    line's value; the number layer the retired tests folded is this state after the copy."""
+    from chain import replay
+
+    _write(lined, [{"k": "r", "v": 1.0}])
+    lined.commit()
+    model = models.DYNAMIC_TABLES[T]
+    row_id = lined.query(model).filter_by(business_key_val="r").one().row_id
+    assert lined.query(model).filter_by(row_id=row_id).one().v == "1", "canary: a write stores the read spelling"
+    lined.execute(text("UPDATE %s SET v = '1.0', won_by = NULL WHERE row_id = :r" % T), {"r": row_id})
+    lined.commit()
+    dry = replay.fold_written_notation(lined, T)
+    assert (dry["cells_folded"], dry["layers_folded"]) == (1, 0)
+    replay.fold_written_notation(lined, T, apply=True)
+    lined.expire_all()
+    assert lined.query(model).filter_by(row_id=row_id).one().v == "1"
+    assert replay.fold_written_notation(lined, T)["cells_folded"] == 0, "a second run moves nothing"

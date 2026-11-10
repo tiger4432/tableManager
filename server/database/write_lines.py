@@ -15,8 +15,9 @@ An item is a dict:
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
     at            a line's «when» kept from the line it re-spells (design «쓰기» 53: a fold writes a new line whose
-                  rank does not move); else the write's instant - the batch keeps when it was done. A re-spelled
-                  line is no new hand: it moves no mark or pin, and a key merge reads it as neither named nor a person's
+                  rank does not move); else the write's instant - the batch keeps when it was done
+    respelled     true: the line re-spells what is stored (the notation backfill) - no new hand: it moves no mark or
+                  pin, and a key merge reads it as neither named nor a person's
     rekey         true: step 5½ rebuilds the row's key though no key part moved (a key in an old spelling; a mark
                   item with no columns carries it)
     folds         source names whose head bits the write's columns also take off (a file's folded layer)
@@ -477,7 +478,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
     cells = {}                                     # (row_id, column) -> (item, its line moved)
     for i in sorted(targets):
         it = items[i]
-        if it["line_kind"] != WRITE or it.get("at"):
+        if it["line_kind"] != WRITE or it.get("respelled"):
             continue
         moved = set(it.get("values") or ()) if i in kept else set()
         for c in (asked.get(i) or set()) if it.get("source_name") == "user" else moved:
@@ -617,7 +618,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
             if targets[i] != row_id:
                 continue
             who = who or it.get("written_by")
-            if it["line_kind"] == WRITE and not it.get("at"):    # a re-spelled line is no new hand: names nothing
+            if it["line_kind"] == WRITE and not it.get("respelled"):     # no new hand: names nothing
                 explicit.update(given.get(i) or {})
                 if crud.writes_as_person(it.get("source_name"), it.get("written_by")):
                     human.update(given.get(i) or {})
