@@ -87,3 +87,12 @@ def test_a_table_without_lines_is_refused(db):
         line_migration.copy_page(db, "t", CFG, None, 2, transaction_id="tx")
     with pytest.raises(ValueError, match="keeps lines"):
         line_migration.copy_page(db, "v", {"kind": "view", "column_types": {}}, None, 2, transaction_id="tx")
+
+
+def test_an_interrupted_copy_resumes_after_its_last_committed_row(db):
+    n, after = line_migration.copy_page(db, "t", CFG, None, 2, transaction_id="tx-copy")      # gone, r1
+    assert after == "r1" and line_migration.copied_through(db, "t", CFG, "tx-copy") == "r1"
+    cells, pages = copy_all(db)                                     # a new run starts from None
+    assert cells == 2                                               # r2, r3 only - r1 is not copied twice
+    lt = lines.shape(db, "t", CFG)["lines"]
+    assert db.execute(select(lt.c.line_id).where(lt.c.row_id == "r1")).all().__len__() == 2

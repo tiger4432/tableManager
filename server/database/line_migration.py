@@ -76,6 +76,17 @@ def copy_total(db, table: str) -> int:
     return db.execute(select(func.count()).select_from(cs).where(cs.c.table_name == table)).scalar() or 0
 
 
+def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
+    """The last row id an interrupted copy already moved - the highest row of t's lines whose batch is the copy's
+    transaction_id (a page commits whole, so every row up to it is copied) - or None. copy_page resumes from it when
+    asked from the start; the driver may say it (B 11-11). The driver passes one transaction_id per table across
+    runs, so this finds the earlier run's lines."""
+    from sqlalchemy import func, select
+
+    lt = lines.shape(db, table, table_cfg)["lines"]
+    return db.execute(select(func.max(lt.c.row_id)).where(lt.c.batch == transaction_id)).scalar()
+
+
 def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transaction_id: str,
               written_by: str = "system") -> tuple:
     """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines, as
@@ -84,7 +95,8 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     copied line is history under it). t's values are not touched; won_by names a line only where the line's value
     is what t shows. In the caller's transaction - the caller commits per page.
     The last page (next_after None) writes the «copy» audit row; a first page (after None) on a copied table
-    raises AlreadyCopied. -> (cells copied, next_after or None)."""
+    raises AlreadyCopied, on a table an earlier run left half copied resumes after copied_through.
+    -> (cells copied, next_after or None)."""
     from sqlalchemy import func, select, update
 
     from . import crud
@@ -100,6 +112,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
             n = db.execute(select(func.count()).select_from(s["lines"])
                            .where(s["lines"].c.batch == done)).scalar() or 0
             raise AlreadyCopied(table, n)
+        after = copied_through(db, table, table_cfg, transaction_id)
     cs = CellSource.__table__
     t = lines.current_table(db, table, table_cfg)
     q = select(cs.c.row_id).where(cs.c.table_name == table).group_by(cs.c.row_id).order_by(cs.c.row_id).limit(page_size)
