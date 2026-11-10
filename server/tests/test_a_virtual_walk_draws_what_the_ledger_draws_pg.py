@@ -195,7 +195,7 @@ def test_a_value_object_is_read_as_the_ledger_holds_it(world):
     """Lead 11-10 value objects stage 2: a sentence whose object is a value - a string one here, which the stored
     translator refused row by row until its value role stopped being read as a required qualifier (the claim's own
     qualifier names, `setup_registry`) - is read whole: nothing left out, walk-shadow finds every atom of the source
-    (the values included), the walk draws what the stored walk draws - a row whose value is missing drawing none."""
+    (the values included), the walk draws what the stored walk draws - a row whose value is blank keeping its edges, its value unsaid."""
     document = _only(CHANGED, KEPT, one=True)
     document["vocabulary"]["has_netdie@1"]["subjects"] = ["wafer@1"]              # a value predicate the sample has
     document["vocabulary"]["has_netdie@1"]["object"]["value_type"] = "string"
@@ -217,7 +217,7 @@ def test_a_value_object_is_read_as_the_ledger_holds_it(world):
     assert said[CHANGED]["atoms"]["stored"] == 3, "canary: the stored ledger holds the values (P1-P3; P4 has no step)"
     stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
     assert _drawn(virtual) == _drawn(stored)
-    assert len(stored["edges"]) == 2, "P4's edges leave with its row - a missing value refuses the whole molecule"
+    assert len(stored["edges"]) >= 3, "P4's edges stay - a blank value unsays its own sentence alone (lead 11-10)"
 
 
 def _shadow_finds_no_difference(board, follow=None):

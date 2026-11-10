@@ -481,7 +481,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
     kept += [f"NOT ({_when(kinds, clause['when'], 'read.exclude_when')})"
              for clause in driver.exclude_when if clause.get("when") is not None]
-    legs, prefix, unread, registered, refused = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set(), set(), []
+    legs, prefix, unread, registered = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set(), set()
     for sentence, mapping in sorted(plan.profile.mappings.items()):
         emission_plan = roleframe._emission_plan(context, mapping.predicate_id, mapping.config_path)
         emission = emission_plan.emission
@@ -497,12 +497,6 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
             except NotCompiled:
                 unread.add(f"{sentence}: a value object not read")
                 continue
-            if "column" in value:
-                # a missing value refuses the translator's whole molecule - every sentence of the row, not this one
-                # alone (`roleframe._evaluate_binding`, «contains a missing value»)
-                missing = _missing(value)
-                refused.append(f"({_when(kinds, dict(mapping.when), f'{sentence}.when')} AND {missing})"
-                               if mapping.when else missing)
         named = {role: mapping.bindings[reference.role_id]
                  for role, reference in (("subject", emission.subject), ("object", emission.object_role))
                  if not ((objectless or valued) and role == "object")}
@@ -532,6 +526,8 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
         first = {"object": [], **{role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}}
         kept_here = [*kept, _when(kinds, dict(mapping.when), f"{sentence}.when")] if mapping.when else kept
+        if value and "column" in value:         # a blank value unsays this sentence alone (`event_frame._blank_cells`)
+            kept_here = [*kept_here, f"NOT {_missing(value)}"]
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
@@ -579,8 +575,6 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
-    for leg in legs if refused else ():
-        leg.kept = [*leg.kept, *(f"NOT {each}" for each in refused)]
     return legs, sorted(unread)
 
 
