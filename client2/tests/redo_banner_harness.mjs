@@ -200,6 +200,37 @@ function oneWorld(M, world) {
   return groupsShown(host);
 }
 
+/** Fold notation on two picked rows with `answer` as the count's (owner 11-10 «노테이션 소급 ㄱ»): the line before
+ *  and after the count, the note, a redraw, a press, the hand-off - what the run, the count and the hand-off got. */
+const NOTATION_WORK = { ok: true, absence: null, detail: 'folds', affected: 5, affectedLabel: 'cells and row keys whose spelling changes' };
+const NOTATION_NONE = { ok: true, absence: 'not_applicable', affected: 0, affectedLabel: 'cells and row keys whose spelling changes',
+  detail: '\'dt_log\' has no "write" column in notation_rules.json and no text column - nothing is folded.' };
+async function notationSeen(M, answer) {
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const calls = [];
+  const counts = [];
+  let handed = null;
+  const rows = [envelope({ a: '1' }, 'n1'), envelope({ a: '2' }, 'n2')];
+  const part = new M.RedoBanner(host, { doc, getSelection: () => rows, readValue: readEnvelope, hasToken: () => true,
+    handOff: (got) => { handed = got; },
+    run: (op, params) => { calls.push({ op, params }); return Promise.resolve({ ok: true }); },
+    count: (op, params) => { counts.push({ op, params }); return Promise.resolve(answer); } });
+  part.setRelation('dt_log');
+  part.render();
+  press(host, 'notation');
+  const before = groupsShown(host);
+  await new Promise((r) => setTimeout(r, 0));
+  const lines = groupsShown(host);
+  const said = note(host);
+  part.selectionChanged();
+  const line = byClass(host, 'redo-panel__group')[0];
+  if (line) line.click();
+  const go = byClass(host, 'redo-panel__go')[0];
+  if (go) go.click();
+  return { before, lines, said, calls, counts, handed };
+}
+
 const buttons = (host) => byClass(host, 'redo-banner__btn');
 const groupsShown = (host) => byClass(host, 'redo-panel__group').map((n) => n.textContent);
 const note = (host) => (byClass(host, 'redo-panel__note')[0] || {}).textContent;
@@ -228,8 +259,8 @@ console.log('\n── A. THE BOUNDARY ──────────────
 console.log('\n── B. THE BUTTONS ──────────────────────────────────────────────────');
 {
   const empty = build([]);
-  ok('B1 with nothing selected both buttons are dead',
-    buttons(empty.host).length === 2 && buttons(empty.host).every((b) => b.disabled === true),
+  ok('B1 with nothing selected every button is dead - the three of a source table',
+    buttons(empty.host).length === 3 && buttons(empty.host).every((b) => b.disabled === true),
     buttons(empty.host).map((b) => b.disabled));
   // 🔴 C-120. 꺼진 것만으로는 부족합니다 — 총괄 실측: 이 둘의 `title` 이 «빈 문자열»이라,
   //    같은 바의 옆 버튼 셋이 사유를 다는 동안 이 둘만 아무 말이 없었습니다. 조건은 옳았고
@@ -250,7 +281,7 @@ console.log('\n── B. THE BUTTONS ──────────────�
   //    and "not a ledger source" must not paint the same. The ledger button is ABSENT there.
   const notSource = build([envelope({ lot_id: 'L1' })], { relation: 'not_declared' });
   ok('B3 on a table that is not a ledger source the ledger button is absent, not merely dead',
-    buttons(notSource.host).map((b) => b.dataset.redo).join(',') === 'chain',
+    buttons(notSource.host).map((b) => b.dataset.redo).join(',') === 'chain,notation',
     buttons(notSource.host).map((b) => b.dataset.redo));
 }
 
@@ -732,6 +763,15 @@ const DEFECTS = [
     swap('            world: sourceRow.world,\n', '')],
   ['M22 a branch-only line runs unnamed, as if it were the operating world',
     swap('const named = sources.length > 1 || sourceRow.world !== this.operating;', 'const named = sources.length > 1;')],
+  // Fold notation (owner 11-10 «노테이션 소급 ㄱ»)
+  ['M23 the notation line runs the chain replay', swap("const NOTATION_OP = 'fold_written_notation';", "const NOTATION_OP = 'chain_replay';")],
+  ['M24 the notation line says no size', swap("asked.affectedLabel ? `${asked.affected} ${asked.affectedLabel}` : ''", "''")],
+  ['M25 a table with nothing to fold is drawn as a line to press',
+    swap('    if (asked && asked.absence === NOT_APPLICABLE) return { note: asked.detail };\n', '')],
+  ['M26 the count is asked for the whole table', swap('Promise.resolve(this.count(NOTATION_OP, params))',
+    'Promise.resolve(this.count(NOTATION_OP, { table: params.table }))')],
+  ['M27 the notation hand-off drops the rows', swap('payload: { op: NOTATION_OP, params },',
+    'payload: { op: NOTATION_OP, params: { table: this.relation } },')],
 ];
 
 const CONTROLS = [
@@ -767,6 +807,7 @@ const CATCHES = {
   // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
   M1b: 'R25',
   M18: 'R26', M19: 'R27', M20: 'R28', M21: 'R29', M22: 'R30',
+  M23: 'R31', M24: 'R32', M25: 'R33', M26: 'R34', M27: 'R35',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate, where]) => ({
@@ -936,11 +977,13 @@ async function runMutant({ name, mutate, where }) {
       //    whole scoring block, and the throw was folded into `bad = true` \u2014 a crash banked as a
       //    catch. A check that cannot run has not passed; it fails, by name, and the rest still
       //    get to speak.
+      const seen = await notationSeen(M, NOTATION_WORK);
+      const none = await notationSeen(M, NOTATION_NONE);
       const CHECKS = [
         ['R1 nothing selected leaves every button dead',
           () => buttons(empty.host).every((b) => b.disabled === true)],
-        ['R2 a table that is not a source offers chain only',
-          () => buttons(notSource.host).map((b) => b.dataset.redo).join(',') === 'chain'],
+        ['R2 a table that is not a source offers chain and notation only',
+          () => buttons(notSource.host).map((b) => b.dataset.redo).join(',') === 'chain,notation'],
         ['R3 the group line counts distinct values, not rows',
           () => (lines[0] || '').includes('2 groups from 3 rows')],
         ['R4 the ledger hand-off carries the groups',
@@ -991,6 +1034,19 @@ async function runMutant({ name, mutate, where }) {
           () => { const got = panelsOnBody(M); return got.open === 1 && got.shut === 0; }],
         ['R29 a source in two worlds runs each line in its own world (owner 10-12)',
           () => twoWorlds(M).calls.map((c) => c.params.world).join(',') === 'default,modeling'],
+        ['R31 pressing the Fold notation line runs the notation fold on the table and the picked rows',
+          () => seen.calls.length === 1 && seen.calls[0].op === 'fold_written_notation'
+            && seen.calls[0].params.table === 'dt_log' && seen.calls[0].params.row_ids === 'n1,n2'],
+        ['R32 the line counts, then says the rows and the count\'s number with its own label',
+          () => (seen.before[0] || '').includes('counting')
+            && seen.lines[0] === '2 rows · 5 cells and row keys whose spelling changes'],
+        ['R33 a table with nothing to fold: the server\'s sentence in place of the line, nothing to press',
+          () => none.said === NOTATION_NONE.detail && none.lines.length === 0 && none.calls.length === 0],
+        ['R34 the count is asked once, on the table and the picked rows, however often the panel is drawn',
+          () => seen.counts.length === 1 && seen.counts[0].op === 'fold_written_notation'
+            && seen.counts[0].params.row_ids === 'n1,n2' && seen.counts[0].params.table === 'dt_log'],
+        ['R35 the notation hand-off carries the same table and rows',
+          () => !!seen.handed && seen.handed.op === 'fold_written_notation' && seen.handed.params.row_ids === 'n1,n2'],
         ['R30 a line outside the operating world names its world even alone (lead 10-12)',
           () => (oneWorld(M, 'modeling')[0] || '').startsWith('modeling \u00b7 dt_log_src \u00b7 lot_id')],
       ];

@@ -38,6 +38,10 @@ import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 
 const NEEDS_A_ROW = 'Pick rows';
+/** The notation backfill's operation (server/admin/retroactive.py) - it takes `table` and `row_ids`. */
+const NOTATION_OP = 'fold_written_notation';
+/** The count's word for «nothing this operation can do here» - the server's sentence is drawn in its place. */
+const NOT_APPLICABLE = 'not_applicable';
 
 /** 고른 행들이 이 컬럼에서 «실제로 들고 있는» 값. 없는 값은 지어내지 않고 «셉니다».
  *
@@ -104,6 +108,11 @@ export class RedoBanner {
     this.handOff = options.handOff || null;
     // «돌리는» 한 함수. (op, params) -> Promise<{ok, state?, error?}>.
     this.run = options.run || null;
+    // «세는» 한 함수, run 과 같은 규율 (op, params) -> Promise<{ok, absence, detail, affected, affectedLabel} | {ok: false,
+    // error}>. Fold notation 의 줄이 그 행들의 크기와 «해당 없음»을 누르기 전에 말합니다.
+    this.count = options.count || null;
+    // The last count asked: its parameters' key and its answer (null while it is out).
+    this.counted = null;
     // 토큰이 «있는지»만 묻습니다. 값을 받지 않습니다.
     this.hasToken = options.hasToken || (() => false);
     // 체인 규칙 «이름» 목록. `null` 은 「아직/못 읽음」이고 `[]` 와 다릅니다.
@@ -201,6 +210,7 @@ export class RedoBanner {
     //    「행을 안 골랐다」와 「이 표는 원장이 아니다」가 같은 픽셀이 됩니다.
     if (sources.length) bar.appendChild(this.button('ledger', 'Re-translate', rows.length > 0));
     bar.appendChild(this.button('chain', 'Replay chain', rows.length > 0));
+    bar.appendChild(this.button('notation', 'Fold notation', rows.length > 0));
     this.host.appendChild(bar);
 
     if (this.open) {
@@ -255,9 +265,11 @@ export class RedoBanner {
     box.dataset.redoPanel = this.open;
     this.list = null;
 
-    const assembled = this.open === 'ledger'
-      ? this.ledgerPayload(rows, sources)
-      : this.chainPayload(rows);
+    const assembled = {
+      ledger: () => this.ledgerPayload(rows, sources),
+      chain: () => this.chainPayload(rows),
+      notation: () => this.notationPayload(rows),
+    }[this.open]();
 
     if (assembled.note) {
       const note = doc.createElement('div');
@@ -394,6 +406,39 @@ export class RedoBanner {
           .map((entry) => ({ label: entry.label, params: entry.params })),
       },
     };
+  }
+
+  /** The count of `params` - asked once per parameters while a token and a count are given; null while it is out, {}
+   *  when it cannot be asked. Its answer redraws the panel. */
+  countFor(params) {
+    const key = JSON.stringify(params);
+    if (this.counted && this.counted.key === key) return this.counted.answer;
+    if (typeof this.count !== 'function' || this.hasToken() !== true) return {};
+    const asked = { key, answer: null };
+    this.counted = asked;
+    const answer = (got) => {
+      if (this.counted !== asked) return;
+      asked.answer = got && got.ok ? got : { error: (got && got.error) || 'no reason given' };
+      this.render();
+    };
+    Promise.resolve(this.count(NOTATION_OP, params)).then(answer, (err) => answer({ error: (err && err.message) || 'unreachable' }));
+    return null;
+  }
+
+  /** Fold notation on the picked rows (owner 11-10 «노테이션 소급 ㄱ»): the chain's identity (row_id), one line - its size
+   *  the server's count of those rows with the count's own label; a table its notation rules give nothing to fold
+   *  says so in the count's sentence, as the server wrote it, in place of the line. */
+  notationPayload(rows) {
+    const { values } = scopeValuesFor(rows, 'row_id', this.readValue);
+    if (!values.length) return { note: 'No row_id in the selected rows' };
+    const params = { table: this.relation, row_ids: values.join(',') };
+    const asked = this.countFor(params);
+    if (asked && asked.absence === NOT_APPLICABLE) return { note: asked.detail };
+    const size = !asked ? 'counting…' : asked.error ? `count failed — ${asked.error}`
+      : asked.affectedLabel ? `${asked.affected} ${asked.affectedLabel}` : '';
+    const from = unitText(values.length, 'row');
+    return { op: NOTATION_OP, payload: { op: NOTATION_OP, params },
+      rows: [{ text: size ? `${from} · ${size}` : from, params }] };
   }
 
   chainPayload(rows) {

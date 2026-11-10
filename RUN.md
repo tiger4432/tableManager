@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **그리드 배너 «Fold notation»: 고른 행만 노테이션 소급** — 브라우저 새로 고침(클라). 서버는 A 18c6996a9 와 같은 묶음
+>
+> ```
+> 무엇     그리드에서 행을 고르고 위 배너의 Fold notation → 판에 줄 하나 «N rows · <몇> cells and row keys whose spelling changes»
+>          그 줄을 누르면 fold_written_notation 이 그 표 · 그 row_id 들로 대기열에 들어감(진행은 대기열 줄)
+> 볼 줄    판을 열면 «counting…» 다음에 크기. 표에 write 칸도 텍스트 칸도 없으면 줄 대신 서버 문장 한 줄
+> 답의 뜻  «… has no "write" column in notation_rules.json and no text column - nothing is folded.» → 그 표는 접을 것이 없음(정상)
+>          «count failed — …» → 토큰 · 서버 거절 문장 그대로. «holds no row …» → 고른 행이 그 사이 지워짐
+> 끄기     클라 dist 를 이 착지 전으로(버튼만 사라짐)
+> ```
+>
+> ---
+>
 > ## [11-10] **그리드: 쪽 먼저, «누가 썼나» 색은 뒤에서** — 브라우저 새로 고침(클라만). 서버(D)가 같이 올라가야 효과가 남
 >
 > ```

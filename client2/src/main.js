@@ -70,6 +70,7 @@ import { putRescopeHandoff } from './rescope_handoff.js';
 import { readAdminToken, adminFetch } from './admin_token.js';
 // 그리고 «거절을 읽는» 규칙도 하나입니다 — 여기서 상태 코드로 문자열을 짓지 않습니다.
 import { CHROME, failureFactOf, fetchFailureLine, retroFailureLine } from './config_resolve_view.js';
+import { retroCountUrl } from './retroactive_view.js';
 // C-109. 다시 돌릴 수 있는 규칙의 목록은 «표마다» 다릅니다. 그 물음이 자기 모듈에 사는
 // 사유는 그 파일 머리글에 있습니다(이 파일은 node 가 import 못 합니다).
 import { loadReplayableRules } from './replayable_rules.js';
@@ -370,6 +371,21 @@ async function runRetroactive(op, params) {
   }
 }
 
+/** One operation counted on the grid's rows (the redo banner's Fold notation): the count's answer as the server wrote it -
+ *  {ok, absence, detail, affected (only with its label), affectedLabel} - or its refusal as runRetroactive says one. */
+async function countRetroactive(op, params) {
+  if (!readAdminToken()) return { ok: false, error: 'no admin token on this browser' };
+  try {
+    const res = await adminFetch(retroCountUrl(API_BASE, op, Object.entries(params).map(([key, value]) => ({ key, value }))));
+    if (!res.ok) return { ok: false, error: await retroFailureLine(res, failureFactOf(res), CHROME.FETCH_FAILED) };
+    const body = await res.json().catch(() => ({}));
+    const label = body.affected_label || null;
+    return { ok: true, absence: body.absence || null, detail: body.detail || '', affected: label ? body.affected : null, affectedLabel: label };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || 'unreachable' };
+  }
+}
+
 // A column's formula (owner 10-28 option A) - opened by a right-click on a data column's header or its fx mark.
 let formulaPop = null;
 
@@ -460,6 +476,7 @@ function initRedoBanner() {
       if (found) state.gridApi.ensureNodeVisible(found, 'middle');
     },
     run: (op, params) => runRetroactive(op, params),
+    count: (op, params) => countRetroactive(op, params),
     handOff: (payload) => {
       if (!putRescopeHandoff(payload)) {
         // 저장소가 막히면 «조용히 넘어간 척» 하지 않습니다. 그 침묵이 어드민에서
