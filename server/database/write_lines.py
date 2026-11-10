@@ -18,7 +18,7 @@ work kind of each item (edit · new · delete · withdraw · merge · mark) is d
 """
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Integer, String, and_, bindparam, cast, delete, exists, insert, literal, or_, select
+from sqlalchemy import Integer, String, bindparam, case, delete, exists, insert, literal, or_, select
 from sqlalchemy import union_all, update
 
 from database import crud, lines
@@ -171,8 +171,9 @@ def _claim(db, table, cfg, now, items):
 
 
 def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
-    """Step 2 - the items that change something. A write is left out when every column it writes equals its source's
-    head line there - the cast stored forms compared IS NOT DISTINCT FROM in SQL (blank = NULL), no generator. A
+    """Step 2 - the items that change something. A write's column is left out when its source's head line there says
+    the same text, from the same hand and input row (ruling 434) - IS NOT DISTINCT FROM in SQL, blank = NULL - and the
+    write when no column is left. A
     withdraw keeps the columns its source still speaks in and is left out when none - never by comparing values (a NULL
     head withdrawn by NULL = NULL would speak on). Deletes and marks are kept. Returns (kept indexes, how many left)."""
     types = cfg.get("column_types") or {}
@@ -181,26 +182,28 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
         items[i]["values"] = {c: crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
                                                 types.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
-    same = set()
+    same = {}
     columns = sorted({c for i in writes for c in items[i]["values"]})
     if writes and columns:
         # the incoming rows as a UNION ALL of SELECTs - sqlite takes no VALUES with column names
-        named = [("i", Integer), ("row_id", String), ("src", String)] + [("w%d" % k, BigInteger) for k in range(chunks)]             + [(c, ln.c[c].type) for c in columns]
+        named = [("i", Integer), ("row_id", String), ("src", String), ("who", String), ("inrow", String)] \
+            + [(c, ln.c[c].type) for c in columns]
         for page in _pages(writes, len(named), UNION_MOST):
-            rows = [(i, targets[i], items[i].get("source_name"), *_masks(bits, chunks, items[i]["values"]),
+            rows = [(i, targets[i], items[i].get("source_name"), items[i].get("written_by"), items[i].get("input_row"),
                      *[items[i]["values"].get(c) for c in columns]) for i in page]
             v = union_all(*[select(*[literal(value, kind).label(name) for value, (name, kind) in zip(row, named)])
                             for row in rows]).subquery("incoming")
-            conds = []
+            flags = []
             for c in columns:
                 k, m = _bit(bits, c)
                 h = ln.alias("h")
-                spoken = exists().where(h.c.row_id == v.c.row_id, h.c.source_name == v.c.src,
-                                        h.c.line_kind == WRITE, h.c["head_%d" % k].op("&")(m) != 0,
-                                        h.c["withdrawn_%d" % k].op("&")(m) == 0,
-                                        h.c[c].is_not_distinct_from(cast(v.c[c], ln.c[c].type)))
-                conds.append(or_(v.c["w%d" % k].op("&")(m) == 0, spoken))
-            same |= {row[0] for row in db.execute(select(v.c.i).where(and_(*conds)))}
+                flags.append(case((exists().where(
+                    h.c.row_id == v.c.row_id, h.c.source_name == v.c.src, h.c.line_kind == WRITE,
+                    h.c["head_%d" % k].op("&")(m) != 0, h.c["withdrawn_%d" % k].op("&")(m) == 0,
+                    h.c.written_by.is_not_distinct_from(v.c.who), h.c.input_row.is_not_distinct_from(v.c.inrow),
+                    h.c[c].is_not_distinct_from(v.c[c])), 1), else_=0))
+            for row in db.execute(select(v.c.i, *flags)):
+                same[row[0]] = {c for c, flag in zip(columns, row[1:]) if flag and c in items[row[0]]["values"]}
     spoken = _spoken(db, ln, bits, chunks, {(targets[i], items[i].get("source_name")) for i in targets
                                             if items[i]["line_kind"] == WITHDRAW})
     kept, left_out = set(), 0
@@ -208,7 +211,9 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
         it = items[i]
         if it["line_kind"] == WITHDRAW:
             it["columns"] = [c for c in it.get("columns") or () if c in spoken.get((targets[i], it.get("source_name")), ())]
-        if (it["line_kind"] == WRITE and i in same) or (it["line_kind"] == WITHDRAW and not it["columns"]):
+        if it["line_kind"] == WRITE and same.get(i):
+            it["values"] = {c: value for c, value in it["values"].items() if c not in same[i]}
+        if (it["line_kind"] == WRITE and not it["values"]) or (it["line_kind"] == WITHDRAW and not it["columns"]):
             left_out += 1
         else:
             kept.add(i)

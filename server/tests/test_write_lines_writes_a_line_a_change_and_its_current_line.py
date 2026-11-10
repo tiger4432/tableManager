@@ -84,6 +84,25 @@ def test_the_same_write_again_writes_nothing(db):
     assert len(_lines(db)) == 1
 
 
+@pytest.mark.parametrize("again", [{"written_by": "kim"}, {"input_row": "r9"}])
+def test_the_same_value_from_another_hand_or_input_row_is_a_new_statement(db, again):
+    item = {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1", "written_by": "loader",
+            "input_row": "r1"}
+    _write(db, item)
+    out = _write(db, dict(item, **again), tx="tx2")
+    assert (out["lines"], out["left_out"]) == (1, 0), out
+
+
+def test_a_column_that_says_what_its_source_said_is_not_written_again(db):
+    item = {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x", "n": 2}, "source_name": "f1"}
+    _write(db, item)
+    _write(db, dict(item, values={"k": "K1", "a": "y", "n": "2.0"}), tx="tx2")
+    first, second = _lines(db)
+    bits = lines.shape(db, TABLE, CFG)["bits"]
+    assert second["written_0"] == 1 << bits["a"], "only the column that changed is written"
+    assert first["head_0"] == (1 << bits["k"]) | (1 << bits["n"]) and second["n"] is None, (first, second)
+
+
 def test_a_later_line_of_one_source_takes_the_head(db):
     first = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})
     [row_id] = first["changed"]
