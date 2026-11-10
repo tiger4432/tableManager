@@ -870,3 +870,11 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("pg") is not None:
             item.add_marker(asked_out)
+
+
+@pytest.fixture
+def stored_walks(monkeypatch):
+    """The fixture holds a stored ledger only (no physical table_config, a stand-in connection) - its walks read the
+    ledger. The default is virtual since 11-10 (`trace_router.DEFAULT_ENGINE`)."""
+    from ledger import trace_router
+    monkeypatch.setattr(trace_router, "DEFAULT_ENGINE", "stored")

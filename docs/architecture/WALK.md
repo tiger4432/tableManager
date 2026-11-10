@@ -32,12 +32,14 @@
              virtual 원천 표에서 SQL(sql_translate 다리) — 키 칸 자동 인덱스(walk key) 위에서
 ```
 
-**가상이 0 층 밖에서 따로 손볼 곳은 둘** — 1 층 «소스 둘이 말하는 one 술어의 지금 사실»(지금 left_out) · 2 층 «이어 걷기»(지금 422).
+**가상이 0 층 밖에서 따로 손볼 곳은 둘** — 1 층 «소스 둘이 말하는 one 술어의 지금 사실»(지금 left_out) · 2 층 «이어 걷기»(engine=virtual 을 적고 이어 걸기를 청하면 422 · 엔진을 안 적은 걷기는 한 번에 걷고 truncated).
 **4 층의 LLM 보조 넷 중 셋은 조합**이고, 토큰 기준 자르기만 2 층 예산의 «세는 단위»를 넓힌다.
 
-### 가상 기본 전환의 게이트 (소유자 11-09)
+### 가상 기본 — 엔진을 안 적으면 virtual (소유자 11-08 «다 가상걷기로 해» · 11-09 «전면 가상전환», 총괄 11-10)
 ```
-전환      DEFAULT_ENGINE = virtual 은 «무조건» — 묻지 않는다. 아래 게이트가 초록인 순간 바꾼다
+기본      trace_router.DEFAULT_ENGINE = virtual — 걷기 · key-values · gaps · reach 가 엔진을 안 적으면(직접 부름 포함)
+          trace_router.engine_for 한 자리가 virtual 로 답한다. engine=stored 를 적으면 원장
+아래 표   «기본을 바꿀지»의 관문이 아니라 두 엔진의 «대조 시험»이다 (총괄 11-10)
 대상      운영 모양 소스만 — «행 변환 선언형 원장»(소유자: 운영엔 이것뿐). 뷰 · row_id 없음 · 코드 맵퍼 소스는 «운영 밖»
 필수      위 층의 기능 전부, 뺀 것: 이름표(키가 그대로 이름 — 같은 함수라 두 엔진 같음) · aux · 여러 행 분자 소스
           진위 · 집계는 3 층 접기라 «짓기 없음, 확인만»(11-09 박스: group_by=type Count 두 엔진 같음)
@@ -473,7 +475,7 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 
 ```
 묻는 것   같은 걷기를 저장 원장 대신 «선언이 읽는 표»에서 — 원장에 쓴 것 없이
-인자      engine=stored(기본, 오늘 그대로) | virtual — subgraph · key-values · gaps 셋이 같은 낱말. 묻는 자리는
+인자      engine=virtual(기본 — 안 적으면, 11-10) | stored — subgraph · key-values · gaps 셋이 같은 낱말. 묻는 자리는
           trace_router._engine_reading 하나. 걷기 답의 cards 는 답 본문과 선언만 읽어 따로 할 것 없음
 읽기      sql_translate.compile_world — 선언 소스를 «다리»(sql_translate.Leg = 칸 맵)로: 문장 하나 · 그 문장의
           엔티티가 든 references 하나마다 끝마다의 키 칸 · 수식어 칸 · 시각 칸(clock)

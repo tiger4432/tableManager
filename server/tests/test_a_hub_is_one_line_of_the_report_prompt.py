@@ -18,6 +18,8 @@ from ledger import trace_router
 from ledger_api import ledger_subgraph
 from support import declaration
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 MEMBERS = 500
 

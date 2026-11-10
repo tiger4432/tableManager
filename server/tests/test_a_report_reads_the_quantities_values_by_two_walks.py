@@ -24,6 +24,8 @@ from ledger import explorer, trace_router
 from ledger_api import ledger_subgraph
 from support import declaration
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 VALUES = {"follow": ["is_a", "describes", "acts_on"], "value": "measures:value",
           "event": "processed_at:tx_id", "order": ["measured_at", "step_seq"]}

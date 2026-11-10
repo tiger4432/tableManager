@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import explorer                                             # noqa: E402

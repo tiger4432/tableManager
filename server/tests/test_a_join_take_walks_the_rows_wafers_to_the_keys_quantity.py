@@ -8,6 +8,8 @@ import pytest
 from chain import join_into, rule_shape
 from test_a_report_reads_the_quantities_values_by_two_walks import DB, VALUES, _step_label, ledger  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 WALK = {"fn": "walk", "walk": dict(VALUES), "row": ["wafers"], "why": "why"}
 THK, CD = "PA40-THK", "PA60-CD"
 

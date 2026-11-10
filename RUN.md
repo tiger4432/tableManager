@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **걷기는 엔진을 안 적으면 가상(virtual) — 멈춘 세계에서도 AI · 보고서 · 걷기 화면이 표에서 바로 답** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 무엇     걷기 · reach · key-values · gaps 가 engine 을 안 적으면 virtual(선언이 읽는 표에서). 화면 · AI · 보고서 · 대조 걷기 전부 안 적음
+>          engine=stored 를 적으면 원장(예전 그대로). 고르는 자리는 trace_router.engine_for 하나, 기본값은 DEFAULT_ENGINE
+> 볼 것    걷기 답 JSON 에 "engine": {"name": "virtual", "left_out": [...], "scans": [...]} 가 실림
+> 답의 뜻  left_out 이 비어 있음 → 선언의 소스를 다 표에서 읽음
+>          left_out 에 소스가 있음 → 그 소스는 가상으로 못 읽어 답에서 빠짐(why 칸이 사유). 그 소스가 필요하면 engine=stored
+>          scans 에 (표, 칸) → 그 키 칸에 인덱스가 없어 표를 훑음 — 스케줄러가 자동 인덱스를 지음([Indexes] 줄), 지은 뒤 빨라짐
+> 바뀐 것  이어 걷기(화면의 «더 보기»)는 가상에선 안 됨 — 한 번에 걷고 상한에서 잘리면 truncated. engine=virtual 을 «적고»
+>          이어 걷기를 청하면 예전처럼 422 virtual_walk_not_continued
+> 끄기     요청에 engine=stored · 급하면 trace_router.py 의 DEFAULT_ENGINE = "stored"(추적 파일이라 다음 릴리스 자동 반영이 멈춤)
+> ```
+>
+> ---
+>
 > ## [11-10] **피벗 쪽도 «누가 썼나»를 기다리지 않는다 · 색 읽기는 쪽마다 하나, 그리드 읽기 제한 아래** — git pull · API 재기동
 >
 > ```
@@ -1304,7 +1320,7 @@
 >          노드의 키 부분 column_types(9fe25f35d)는 다시 빠짐 — 쓰는 화면이 없음
 > 돌릴 것  server 폴더에서  python -m ledger walk-shadow
 > 답의 뜻  bins.real 0 이어야 함 — 아니면 그 줄 그대로 총괄에게
-> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
+> 끄기     engine=stored 를 적으면 그때와 같음 (11-10 부터 안 적으면 virtual)
 > ```
 >
 > ---
@@ -1319,7 +1335,7 @@
 > 답의 뜻  bins.real 0 이어야 함 — 아니면 그 줄 그대로 총괄에게. tie_split > 0 = 같은 시각 동률에서 보이는 원자만 다름
 >          답의 engine.left_out 의 why 가 다음 행동:
 >            «... declared one and more than one source says it»   one 술어를 두 소스가 말함 — 그 소스는 빠짐
-> 끄기     engine 을 빼면(기본 stored) 오늘과 같음
+> 끄기     engine=stored 를 적으면 그때와 같음 (11-10 부터 안 적으면 virtual)
 > ```
 >
 > ---
@@ -1449,7 +1465,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          최신순으로 1,000 개까지 넘겨 다음 걸음을 감. 박스 저장 1,000 값: 한 칸 2.7 s · 두 칸 4.5 s
 > 돌릴 것  curl -X POST http://<서버>/api/ledger/subgraph -H "Content-Type: application/json" -d
 >          '{"reach":{"table":"lot_slot_wafer","column":"wafer","values":["<웨이퍼>"],"type":"wafer",
->            "follow":["processed_with"],"to":"wafer_process"}}'    (?engine=virtual 을 안 붙이면 stored)
+>            "follow":["processed_with"],"to":"wafer_process"}}'    (11-10 부터 안 붙이면 virtual · ?engine=stored 면 원장)
 > 답의 뜻  rows             표 B 의 row id — 걸음이 읽은 원자 «전부»의 행
 >          count.total      rows 의 수.  capped = true 면 어느 걸음이 상한에서 끊김 -> 화면은 «N+»
 >          capped_steps     끊긴 걸음 [{step, predicate}] — 화면이 «어디서 멈췄나»를 말하는 자리
@@ -1481,7 +1497,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ## [11-06] **가상 걷기 engine=virtual — 그림자로 저장 원장과 견주기** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```
-> 무엇     걷기 · key-values · gaps 에 engine=virtual — 원장 대신 선언이 읽는 표에서 답함. 기본은 stored(운영 동작 그대로)
+> 무엇     걷기 · key-values · gaps 에 engine=virtual — 원장 대신 선언이 읽는 표에서 답함. 기본은 stored(운영 동작 그대로) — 11-10 부터 기본 virtual
 > 돌릴 것  server 폴더에서  python -m ledger walk-shadow
 >          (읽기만 · 씨앗 1,100,1000 이 기본 · --source <소스> 로 하나 · --since 2026-09-01 이면 time 칸도)
 > 답의 뜻  left_out 줄  가상이 안 읽는 소스 · 그 소스의 저장 원자 수 · 사유 — 그 사실은 가상 답에 없음

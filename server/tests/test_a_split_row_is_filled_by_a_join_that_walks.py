@@ -8,6 +8,8 @@ from database import crud, models
 from conftest import retire_dynamic_model
 from test_a_report_reads_the_quantities_values_by_two_walks import VALUES, _step_label, ledger  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 TABLES = {
     "sf_rows": {"composite_key_source": ["lot", "split", "item_text"], "column_types": {
         "lot": "string", "split": "string", "item_text": "string", "wafer": "string", "value": "string",

@@ -267,11 +267,11 @@ def evidence_subgraph(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
                      "as of the first page")),
-    engine: str = Query(
-        "stored", pattern="^(stored|virtual)$",
-        description=("stored (as ever): the ledger's atoms; virtual: the declaration read from its own tables, "
-                     "nothing stored - the answer's `engine` names the sources it leaves out and the key columns "
-                     "no index serves («scans»)")),
+    engine: str | None = Query(
+        None, pattern="^(stored|virtual)$",
+        description=("virtual (none named): the declaration read from its own tables, nothing stored - the "
+                     "answer's `engine` names the sources it leaves out and the key columns no index serves "
+                     "(«scans»); stored: the ledger's atoms")),
     hidden: tuple = Depends(access.hidden_tables),
     reader: str | None = Depends(access.person),
     reach: dict | None = Body(
@@ -397,12 +397,14 @@ def evidence_subgraph(
             "reason": "seeds_not_defined",
             "message": "No seeds given - list them with `id` or describe them with "
                        "`seed_type`"})
-    engine = engine if engine in ENGINES else "stored"          # a direct call leaves the Query sentinel
-    if engine == "virtual" and (resumable is True or isinstance(resume, dict)):
+    asked, engine = engine in ENGINES, engine_for(engine)        # a direct call leaves the Query sentinel
+    if engine == "virtual" and (isinstance(resume, dict) or (asked and resumable is True)):
         raise HTTPException(status_code=422, detail={
             "reason": "virtual_walk_not_continued", "argument": "resumable",
             "message": "A virtual walk is not continued page by page - nothing is stored to read it as of its "
                        "first page. Walk it whole, or with engine=stored"})
+    if engine == "virtual":
+        resumable = False               # none named: walked whole, a cut walk says `truncated` as any other
     try:
         payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative), world=world,
@@ -808,6 +810,13 @@ def _declared_entities(world=None):
 #: What a walk reads (lead 11-06): the stored ledger, or the declaration read from its own tables
 #: (`sql_translate.compile_world`) - the shadow beside the ledger, compared by `python -m ledger walk-shadow`.
 ENGINES = ("stored", "virtual")
+#: The engine of a walk that names none (owner 11-08 «다 가상걷기로 해» · 11-09 «전면 가상전환», lead 11-10).
+DEFAULT_ENGINE = "virtual"
+
+
+def engine_for(asked):
+    """The engine a walk reads with: the one asked, else `DEFAULT_ENGINE` - None, or a direct call's Query sentinel."""
+    return asked if asked in ENGINES else DEFAULT_ENGINE
 #: {world: ((declaration file, its stamp), (legs, left out))} - compiled once a declaration file's stamp
 _COMPILED = {}
 #: (table, column) an index serves (`models.auto_index_serves`) - kept for the process: the product builds indexes,
@@ -846,7 +855,7 @@ def _engine_reading(connection, engine, names, leave_out=None):
     database holds (`models.auto_index_serves`, the ask's own judgment - declared, automatic or by hand); each scan's
     first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자동», `index_wants.want`, once a
     process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`)."""
-    if engine != "virtual":
+    if engine_for(engine) != "virtual":
         return None, None
     from database import models
     from runtime import index_wants
@@ -904,7 +913,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
-                    propagation=True, read="both", engine="stored", hidden=()):
+                    propagation=True, read="both", engine=None, hidden=()):
     names = _worlds(world)
     cardinalities = _predicate_cardinalities(world)
     leave_out = schema.first_read(names, _source_names) if read == "first" else None
@@ -963,7 +972,7 @@ def _items(keys):
                         for key, value in (keys or {}).items()))
 
 
-def reach(connection, *, table, column, values, type, follow, to, world=None, engine="stored", hidden=()):
+def reach(connection, *, table, column, values, type, follow, to, world=None, engine=None, hidden=()):
     """THE HOP of the Tables page (lead 11-06): the rows of `table` whose `column` is one of `values` (the grid's set
     filter, `column_filter`) -> the `type` nodes their atoms name -> the walk's reader along `follow`, one predicate a
     step -> the rows of `to` every atom read was read from (`rows_of`). The picture's assembly and its caps are not on
@@ -1066,7 +1075,7 @@ def _reached(db, asked, world, engine, hidden=(), reader=None):
                                   reason="predicate_not_declared", what="predicate", world=world,
                                   argument="reach.follow") if asked["follow"] else []
     said = reach(db.connection(), table=asked["table"], column=asked["column"], values=asked["values"], type=kind,
-                 follow=follow, to=asked["to"], world=world, engine=engine if engine in ENGINES else "stored",
+                 follow=follow, to=asked["to"], world=world, engine=engine_for(engine),
                  hidden=hidden)
     return {**said, "marking": held} if held else said
 
@@ -1115,8 +1124,9 @@ def ledger_key_values(
         None, description=("앞글자 — 그 타입의 `prefix_axis` 가 이것으로 시작하는 노드만, 원장 인덱스의 그 "
                            "범위에서 (`prefix_case` 가 대소문자를 말한다). 비면 오늘과 같은 답")),
     db: Session = Depends(get_db),
-    engine: str = Query("stored", pattern="^(stored|virtual)$",
-                        description="stored: the ledger; virtual: the declaration read from its own tables"),
+    engine: str | None = Query(None, pattern="^(stored|virtual)$",
+                               description="virtual (none named): the declaration read from its own tables; "
+                                           "stored: the ledger"),
     hidden: tuple = Depends(access.hidden_tables),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
@@ -1152,7 +1162,7 @@ def ledger_key_values(
     connection = db.connection()
     names = _worlds(world)
     hidden, hiding = _hidden_here(names, hidden)
-    reader, said = _walk_lookup(connection, engine if engine in ENGINES else "stored", names, world, hiding)
+    reader, said = _walk_lookup(connection, engine_for(engine), names, world, hiding)
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
     # type answers with one list per axis, and a screen that pairs them offers the CROSS
@@ -1372,9 +1382,9 @@ def _relation_absent(relation) -> HTTPException:
 def ledger_gap_catalogue(name: str = Query(None),
                          world: list[str] | None = Query(
                              None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
-                         engine: str = Query("stored", pattern="^(stored|virtual)$",
-                                             description="stored: the ledger; virtual: the declaration read from its "
-                                                         "own tables"),
+                         engine: str | None = Query(None, pattern="^(stored|virtual)$",
+                                                    description="virtual (none named): the declaration read from "
+                                                                "its own tables; stored: the ledger"),
                          hidden: tuple = Depends(access.hidden_tables)):
     """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
 
@@ -1419,7 +1429,7 @@ def ledger_gap_catalogue(name: str = Query(None),
         from database.database import engine as database
         with database.connect() as connection:
             hidden, hiding = _hidden_here(_worlds(world), hidden)
-            reader, said = _walk_lookup(connection, engine if engine in ENGINES else "stored", _worlds(world), world,
+            reader, said = _walk_lookup(connection, engine_for(engine), _worlds(world), world,
                                         hiding)
             measured = _gaps.measure(database, declared, only=name, reader=reader)
         return {"mode": "measured", "count": 1, "gaps": measured,

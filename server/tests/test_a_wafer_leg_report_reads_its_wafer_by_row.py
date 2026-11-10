@@ -16,6 +16,8 @@ from support import declaration
 from test_a_report_reads_the_quantities_values_by_two_walks import (  # noqa: F401
     CANDIDATES, CAUSES, VALUES, Reads, _step_label, ledger)
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 
 class LegReads(Reads):
     """Two legs of W1, one of W2, and a leg whose wafer column is blank."""

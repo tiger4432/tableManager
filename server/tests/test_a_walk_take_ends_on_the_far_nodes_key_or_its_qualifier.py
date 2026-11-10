@@ -16,6 +16,8 @@ from test_a_report_reads_the_quantities_values_by_two_walks import (  # noqa: F4
     CANDIDATES, DB, NOW, Reads, _atom, _cells, ledger)
 from datetime import timedelta
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 ROW = ["lot", "slot"]
 KEY = {"follow": ["has_wafer"], "end": "processed_with"}
 STEP = {"follow": ["has_wafer"], "end": "processed_with:step"}

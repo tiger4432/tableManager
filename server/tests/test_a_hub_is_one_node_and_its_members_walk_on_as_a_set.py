@@ -21,6 +21,8 @@ import validation
 from ledger import explorer, setup_bundle, trace_router, walk_cards
 from ledger_api import ledger_subgraph
 
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 
 @pytest.fixture(autouse=True)
 def _shipped_declaration(monkeypatch, tmp_path_factory):

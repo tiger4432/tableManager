@@ -223,3 +223,21 @@ def test_a_virtual_walk_is_not_continued(board):
                                        until=None, around=None, earlier=None, later=None, positive=None,
                                        negative=None, resume=None)
     assert refused.value.status_code == 422 and refused.value.detail["reason"] == "virtual_walk_not_continued"
+
+
+def test_a_walk_naming_no_engine_answers_from_the_tables_when_the_ledger_holds_nothing(world):
+    """11-10 (owner «다 가상걷기로 해» · «전면 가상전환»): the operation's worlds are paused, so their ledger stops where it
+    stopped - a walk naming no engine reads the tables, not that ledger. Here nothing was ever translated."""
+    import notation_norm
+
+    with world["engine"].begin() as conn:
+        conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.key_number_sql())
+    with open(os.path.join(paths.config_path("ontology"), "ledger_config.json"), "w", encoding="utf-8") as fh:
+        json.dump(_only(CHANGED, KEPT, one=True), fh)
+    trace_router._COMPILED.clear()
+    _write(world, "wafer_process", ROWS)
+    _write(world, "lot_slot_wafer", SEATS)
+    stored, unnamed, virtual = (_walk(world, engine) for engine in ("stored", None, "virtual"))
+    assert not stored["edges"], "canary: the ledger holds nothing"
+    assert len(unnamed["edges"]) >= 3 and unnamed["engine"]["name"] == "virtual", unnamed.get("engine")
+    assert _drawn(unnamed) == _drawn(virtual)

@@ -10,6 +10,7 @@ from ledger.envelope import source_event_identity
 from ledger import explorer
 from ledger_api import ledger_subgraph
 import pytest
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
 from fastapi import HTTPException
 from ledger import trace_router
 

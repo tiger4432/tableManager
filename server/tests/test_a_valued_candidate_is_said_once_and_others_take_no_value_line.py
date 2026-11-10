@@ -10,6 +10,9 @@ from chain import report_loop, report_reads, report_shape
 from test_a_report_reads_the_quantities_values_by_two_walks import CANDIDATES, CAUSES, Reads, ledger  # noqa: F401
 from test_the_report_walks_the_static_layer_from_the_seeds_the_model_picks import REQUEST, Model, _clock
 
+import pytest
+pytestmark = pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10)
+
 TO_FILL = report_shape.LABELS["to_fill"]
 
 
