@@ -341,29 +341,44 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else the number of business keys held by more than one row (0: the index is just not
-    built). The index is built by the one command that builds it (migrations/add_business_key_unique_index -
-    CONCURRENTLY, so never inside this transaction)."""
+    (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
+    than one row · KEY_INVALID: a broken index holds the name). The index has one builder (ingestion_worker's,
+    CONCURRENTLY, never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
     verdict = bk.plan_table(conn, table_name)
-    return None if verdict.get("verdict") == bk.OK_ALREADY else (verdict.get("dup_keys") or 0)
+    if verdict.get("verdict") == bk.OK_ALREADY:
+        return None
+    if verdict.get("verdict") == bk.REFUSED_INVALID_INDEX:
+        return (KEY_INVALID, 0)
+    dups = verdict.get("dup_keys") or 0
+    return (KEY_FOLD, dups) if dups else (KEY_BUILD, 0)
+
+
+KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
 
 
 def key_index_next(missing) -> str:
-    """[(table, duplicate keys)] -> why, then the next action: duplicates fold first (the retroactive operation
-    fold_duplicate_rows), then the index command. ONE sentence for the pre-check line and ensure's refusal."""
-    why = ", ".join(f"{t} ({d} business keys appear more than once)" if d else f"{t} (no unique index on business_key_val)"
-                    for t, d in missing)
-    folds = [t for t, d in missing if d]
-    fold = (f"in the Retroactive tab run Fold duplicate rows on {', '.join(folds)}, then " if folds else "")
-    command = "python server/migrations/add_business_key_unique_index.py --apply " + " ".join(f"--table {t}" for t, _ in missing)
-    return f"{why} - first {fold}run {command}"
+    """[(table, state)] -> per table why + the ONE next action its state calls for (lead 11-11): the scheduler builds
+    a clean table's index, Fold duplicate rows builds it after its merge, only a broken index needs the hand command.
+    The pre-check line, ensure's refusal and the rules list (its business key part) say this sentence."""
+    said = []
+    for t, (kind, n) in missing:
+        if kind == KEY_FOLD:
+            said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
+                        f"rows on {t}; it builds the index after the merge")
+        elif kind == KEY_INVALID:
+            said.append(f"{t} (an INVALID index holds the name) - drop it with python "
+                        f"server/migrations/add_business_key_unique_index.py, an operator watching")
+        else:
+            said.append(f"{t} (no unique index on business_key_val yet) - the scheduler builds it at start, a Reload "
+                        f"or the table's own ask; wait")
+    return "; ".join(said)
 
 
 def key_index_refusal(conn, table_name: str):
-    dups = key_index_missing(conn, table_name)
-    return None if dups is None else f"Cannot keep lines: {key_index_next([(table_name, dups)])}, then keep lines again"
+    state = key_index_missing(conn, table_name)
+    return None if state is None else f"Cannot keep lines: {key_index_next([(table_name, state)])}"
 
 
 def drop_line_table(db, table_name: str) -> None:

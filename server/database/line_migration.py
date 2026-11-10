@@ -33,13 +33,13 @@ def report_line(differences: list):
 
 
 def key_index_missing(db, tables) -> list:
-    """(table, duplicate keys) for every table that lacks the unique business_key_val index keeping lines needs - the
+    """(table, state) for every table that lacks the unique business_key_val index keeping lines needs - the
     pre-check REPORTS these before landing so the operator builds them first; ensure_line_table refuses them on the day."""
     conn = db.connection()
     if conn.dialect.name != "postgresql":
         return []
     found = ((name, lines.key_index_missing(conn, name)) for name in tables)
-    return [(name, dups) for name, dups in found if dups is not None]
+    return [(name, state) for name, state in found if state is not None]
 
 
 def key_index_line(missing: list):
