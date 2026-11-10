@@ -42,13 +42,30 @@
 | `reuse.key` | `[{column, drop_leading}, ...]` — 이 값이 같은 기존 답이 있으면 묻지 않고 그 답을 씁니다(다른 그룹 포함). `drop_leading` 은 앞 접두(제품)를 떼어 «같은 자리의 공정»으로 견줄 때. 이 줄의 아이템 중 기존 답에 없는 것이 있으면 그 줄은 묻습니다 |
 | `reuse.within` | `{cell, table, column, carry}` — 재사용할 답의 `cell` 값이 이 그룹의 목록에 없으면 재사용하지 않고 묻습니다 |
 
-### 사람 교정을 기억하는 칸 (A-3)
+### 리포트 메모리 · 코멘트 — 사람 교정을 기억하는 칸 (A-3)
 
 | 칸 | 뜻 |
 |---|---|
 | `memory.table` | 교정을 적을 표. 키는 보통 `purpose` · `key` · `cell` 칸 셋 |
 | `memory.columns` | 역할마다 그 표의 칸 이름: `purpose`(규칙 이름) · `key`(상황 — 출력 행의 키 칸과, 그 표가 가진 `scope` 칸 값의 json) · `cell` · `ai`(AI 가 낸 값) · `right`(사람이 고친 값) · `memo`(사람이 적는 메모, 규칙은 안 씀) · `who` · `when` |
 | `prompts.memory` | `{scope, limit}` — 상황의 `scope` 칸 값이 같은 교정만, 최근 `limit` 개(기본 5)를 프롬프트에 «Past corrections» 줄로 싣습니다 |
+
+리포트 규칙에 메모리와 코멘트를 단 선언 (견본 `wafer_report` 를 줄인 것):
+
+```json
+{"name": "wafer_report", "enabled": false,
+ "on":   {"table": "wafer_report"},
+ "into": {"table": "wafer_report"},
+ "derive": {"kind": "report", "report": {
+   "wafer":   {"table": "wafer_summary", "key": ["wafer", "leg"]},
+   "summary": {"table": "wafer_summary", "wafer": ["wafer", "leg"], "item": "defect_kind",
+               "fail": "defective_chip_count", "total": "total_chip_count"},
+   "results": {"file": "report_path", "summary": "report_summary"},
+   "prompts": {"memory": {"scope": ["wafer"], "limit": 5}},
+   "memory":  {"table": "ai_memory", "comment": "reviewer_comment",
+               "columns": {"purpose": "purpose", "key": "situation", "cell": "cell", "ai": "ai",
+                           "right": "right", "memo": "memo", "who": "who", "when": "at"}}}}}
+```
 
 리포트 선언(`derive.report`)도 같은 `memory` · `prompts.memory` 칸을 읽고 씁니다. 사람이 리포트 표의 글 칸(`results` 가 이름 댄 text 칸)을 고치면 그 교정이 메모리 행이 됩니다. 상황은 리포트 표의 키 칸과, 그 표가 가진 `scope` 칸의 값입니다 — 제품이 키가 아니어도 리포트 표에 제품 칸이 있으면 `scope: ["<제품 칸>"]` 로 같은 제품의 교정이 실립니다. 메모리 표에도 그 `scope` 칸을 두면 메모리 행이 그 값을 칸으로도 가져서, 메모리 표를 읽는 규칙이 그 칸으로 묶을 수 있습니다(교정을 접어 «교훈 표»에 쓰고, 리포트가 `prompts.memo` 의 `on` 으로 그 교훈을 읽음).
 
