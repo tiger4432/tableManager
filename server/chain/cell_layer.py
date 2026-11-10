@@ -320,38 +320,29 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
     `crud.owned_layer_name`, a source row's layer, a merge's copy), and an `enrichment_backfill` layer - the
     backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a rule's that wrote the cell after it. What settle
     takes back when its answer leaves it out. READ ONLY, the shape `cells_stamped_by` answers."""
-    from sqlalchemy import and_, func, or_, tuple_
     from chain.enrichment import backfill
-    from database import crud, models
+    from database import crud, lines
 
-    S = models.CellSource
-    names = rule_layer_names()
-    wanted = list(dict.fromkeys(cells or ()))
-    pairs_joined = db.get_bind().dialect.name == "postgresql"
+    names = rule_layer_names() + (backfill.SOURCE_NAME,)
+    declared = set(declarations or ())
+
+    def theirs(source, entry):
+        return crud.layer_writer(source) in names and (entry["updated_by"] in declared
+                                                       or source == backfill.SOURCE_NAME)
+
     found = []
-    mine = or_(S.updated_by.in_(list(declarations)), S.source_name == backfill.SOURCE_NAME)
     whole = list(dict.fromkeys(str(r) for r in rows or () if r))
-    for i in range(0, len(whole), chunk_size):
-        found.extend(tuple(row) for row in db.query(
-            S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
-            S.table_name == table_name, S.row_id.in_(whole[i:i + chunk_size]), mine)
-            if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
+    for (row_id, column), named in lines.layers(db, table_name, whole).items():
+        found.extend((table_name, row_id, column, source, entry["origin_row_id"])
+                     for source, entry in named.items() if theirs(source, entry))
     whole = set(whole)
-    wanted = [cell for cell in wanted if cell[0] not in whole]
-    for i in range(0, len(wanted), chunk_size):
-        part = wanted[i:i + chunk_size]
-        query = db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
-            S.table_name == table_name, mine)
-        if pairs_joined:
-            # the pairs joined as two arrays: a 1,000-pair row-value IN is a 1,000-arm BitmapOr planned 363-384 ms a
-            # chunk (C 11-06; 1,000 rows x 14 columns 5.8 s -> 0.21 s), and rows IN + columns IN read every column
-            # of those rows - 300,000 rows for 2,000 pairs on a 300-column table (B 11-06, lead's rule)
-            pair = func.unnest([r for r, _c in part], [c for _r, c in part]).table_valued("r", "c").render_derived(
-                name="wanted_cell")
-            query = query.join(pair, and_(S.row_id == pair.c.r, S.column_name == pair.c.c))
-        else:
-            query = query.filter(tuple_(S.row_id, S.column_name).in_(part))
-        found.extend(tuple(row) for row in query.all() if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
+    wanted = {cell for cell in dict.fromkeys(cells or ()) if cell[0] not in whole}
+    if wanted:
+        read = lines.layers(db, table_name, sorted({r for r, _c in wanted}), {c for _r, c in wanted})
+        for (row_id, column), named in read.items():
+            if (row_id, column) in wanted:
+                found.extend((table_name, row_id, column, source, entry["origin_row_id"])
+                             for source, entry in named.items() if theirs(source, entry))
     return found
 
 
