@@ -107,10 +107,10 @@
   - 지움 = «지워짐» 줄 INSERT(`t__lines`) + 지금 줄 DELETE(`t__now`). 키 병합의 줄 row_id 바꾸기는 `t__lines` 안의 UPDATE, 껍데기의 지금 줄은 DELETE.
   - `t__now` 는 오늘 t 처럼 개체당 한 줄로 촘촘하다. 그리드 · 걷기 읽기가 오늘 heap 모양 그대로다. 개체 하나 지키기(ㄴ1)는 `t__now` 의 유일 인덱스 (row_id) · (business_key_val). 이름 t 보기는 `t__now` 를 읽는다.
   - is_now 칸은 두지 않는다 — 어느 표에 있느냐가 그 답이다.
-- 칸 DDL 은 한 함수가 두 표에 같은 트랜잭션으로 한다(`lines.alter_columns`). A 가 origin/main 8151d231e 에서 문자열로 센 자리(AST 아님 — Index 객체 등 다른 낱말로 짓는 자리는 못 셌다):
+- 칸 DDL 은 한 함수가 두 표에 같은 트랜잭션으로 한다(`lines.alter_columns(db, table_name, changes)` — 칸 더하기 · 타입 바꾸기 · 지우기 · 이름 바꾸기, C 몫 · 총괄 11-10). 표 만들기는 `lines.ensure_line_table`. 운영자에게 «손으로 돌릴 줄»로 보여 주는 DDL 문장(schema_drift · list_undeclared_tables)도 이 함수가 낸 문장을 그대로 보인다 — 문장의 저자가 하나다. A 가 origin/main 8151d231e 에서 문자열로 센 자리(AST 아님 — Index 객체 등 다른 낱말로 짓는 자리는 못 셌다):
   - 두 표에 같이 가야 하는 칸 DDL: models.sync_dynamic_tables_schema 의 ADD COLUMN · models 의 동적 표 create_all 두 자리(표 만들기 → `lines.ensure_line_table`) · admin/retype.py 의 ALTER COLUMN TYPE + 그 칸 인덱스 DROP · admin/schema_drift._add_column_ddl(운영자에게 보여 주는 문장) · scripts/list_undeclared_tables.py(보여 주는 DROP 문장).
   - 칸이 아닌 DDL — 거는 표는 `t__now`(그리드 · 개체 하나): models 의 자동 인덱스 · gin 검색 인덱스 · 남은 인덱스 지우기 · decide 키 인덱스 안내, chain/unique_key.py 의 조인 키 유일 인덱스, notation_norm 의 접은 값 식 인덱스.
-  - 저장 매개변수(runtime/maintenance_line.py 의 fillfactor · autovacuum_*)는 두 표의 성격이 다르다(`t__now` 제자리 UPDATE · `t__lines` 덧붙이기). 선언 칸이 표마다 따로 있어야 한다 — 착지 안에서 C 가 정한다.
+  - 저장 매개변수(runtime/maintenance_line.py 의 fillfactor · autovacuum_*): 선언된 «storage» 는 `t__now` 에 건다 — 오늘 그 값이 겨냥하던 제자리 UPDATE 의 표가 `t__now` 다. `t__lines` 는 덧붙이기만 하는 표라 선언 칸 없이 PG 기본값으로 둔다(C 판단 11-10). 칸 아닌 DDL 의 기본도 `t__now` 다 (총괄).
 - `t__lines`의 머리 줄 합치기 · 행 이력 읽기는 오늘 cell_sources 와 같은 흩어짐이다(개체마다 원천 수만큼 무작위 페이지). 그 순서(CLUSTER (row_id, 언제) · 읽는 순서 row_id 정렬)는 다음 라운드이고, 깊이 판에서 차가운 캐시로 잰다.
 - A 의 «두 연결 겹쳐 쓰기» 게이트는 이 모양 위에서 — 둘째가 오류 없이 기다렸다 이어 쓰고, 머리 줄 수 = 원천 수.
 - 크기: 안 쟀다.
