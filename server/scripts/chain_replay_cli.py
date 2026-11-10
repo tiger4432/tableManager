@@ -226,7 +226,7 @@ def main(argv=None):
     p = sub.add_parser("fold-withdraw-events")
     p.add_argument("--apply", action="store_true")
 
-    # 총괄 5eee501eb: the rows left with only the chain's keys - the chain's write seat's judgement.
+    # 총괄 5eee501eb: the rows nothing keeps (person_rows, through shells) - the chain's write seat's judgement.
     p = sub.add_parser("remove-shells")
     p.add_argument("table")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/config/pacing.json")

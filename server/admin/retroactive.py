@@ -1494,9 +1494,10 @@ def _count_remove_shell_rows(db, params, scan_limit):
         "scanned": s["rows_read"],
         "scan_limit": scan_limit,
         "truncated": False,
-        "detail": (f"{s['rows_read']} row(s) of '{params['table']}' show nothing outside their keys; "
-                   f"{s['rows_to_delete']} of them have only the chain's key layers left - no value, no "
-                   f"person's layer - and go as a grid delete does, a history line with each. Cannot be undone."
+        "detail": (f"{s['rows_read']} row(s) of '{params['table']}' read; "
+                   f"{s['rows_to_delete']} of them have nothing left that keeps them - only the chain's keys and "
+                   f"values another chain attached, no person's layer or pin, no file's - and go as a grid delete "
+                   f"does, a history line with each. Cannot be undone."
                    + (f" For example {shown}." if shown else "")),
         "extra": {key: s[key] for key in ("rows_read", "rows_to_delete", "sample")},
     }
@@ -2600,7 +2601,8 @@ OPERATIONS = {
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
-        "what_is_missing": "rows the chain filled whose sources are all gone - only the chain's keys are left",
+        "what_is_missing": ("rows the chain filled whose sources are all gone - only the chain's keys, or values "
+                            "another chain attached, are left"),
         "examples": ["원본이 다 지워졌는데 공식 표에 키만 남은 행이 쌓여 있다", "값 없이 키만 있는 행 지워줘"],
         "next": [],
         "params": [_p("table"), _pace_param()],
@@ -2610,7 +2612,8 @@ OPERATIONS = {
         "cli": "server/scripts/chain_replay_cli.py remove-shells <table> [--pace slow] --apply",
         # 총괄 5eee501eb: the judgement the chain's write seat asks (cell_layer.shells), through
         # crud.delete_rows_batch - each row's layers and a history line go with it.
-        "deletes": "table rows left with only the chain's key layers, with their cell layers",
+        "deletes": ("table rows nothing keeps - the chain's key layers and values another chain attached - "
+                    "with their cell layers"),
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
