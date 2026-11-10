@@ -4,16 +4,16 @@
 
 The one seat that changes a value is the write funnel's head, once per call and ahead of its
 retry loop; the chain key gate judges with the same function and forwards the item as it came.
-A value the fold changed leaves one audit line when its cell is written. A row stored under the
-raw spelling is found by it and re-keyed. The time rule's left-as-written values are named once
-per file on the FILE line.
+The spelling that arrived is not kept (owner 11-10 ㄱ: an audit line holds six items, no before
+value). A row stored under the raw spelling is found by it and re-keyed. The time rule's
+left-as-written values are named once per file on the FILE line.
 """
 import json
 import os
 import sys
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -30,11 +30,12 @@ from chain import ingestion_worker as worker                               # noq
 from chain import key_gate                                                 # noqa: E402
 from chain import replay                                                   # noqa: E402
 from conftest import retire_dynamic_model                                  # noqa: E402
-from database import crud, models, schemas                                 # noqa: E402
+from database import crud, lines, models, schemas                          # noqa: E402
 from database.database import Base                                         # noqa: E402
 from directory_watcher import IngestionHandler                             # noqa: E402
 from product_tables import NOTATION_ALIAS_TABLE, PRODUCT_TABLES            # noqa: E402
 from test_heavy_lane import FakeLane                                       # noqa: E402
+from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock  # noqa: E402
 
 PLAIN, COMP = "notw_plain", "notw_comp"
 TABLES = {
@@ -72,13 +73,18 @@ def env(db_session, tmp_path, monkeypatch):
     models.init_dynamic_models(_tables())
     crud.TABLE_CONFIG.update(_tables())
     Base.metadata.create_all(bind=db_session.get_bind())
+    for name in TABLES:                            # declared tables keep lines, as the start-up builds them
+        lines.ensure_line_table(db_session, name, TABLES[name])
     # The suite's sqlite outlives a test: start from empty tables and side tables.
     for name in _tables():
         db_session.query(models.DYNAMIC_TABLES[name]).delete()
+    for name in TABLES:
+        db_session.execute(text('DELETE FROM "%s"' % lines.lines_relation(name)))
     for side in (models.AuditLog, models.CellSource, models.CellOverwrite):
         db_session.query(side).filter(side.table_name.in_(list(_tables()))).delete(
             synchronize_session=False)
     db_session.commit()
+    ticking_clock(monkeypatch)
     _declare(tmp_path, monkeypatch, DECLARED)
     yield db_session
     from database import config_watcher
@@ -99,10 +105,12 @@ def _rows(db, table):
     return db.query(models.DYNAMIC_TABLES[table]).all()
 
 
-def _fold_lines(db, table, column):
-    return sorted(((a.old_value, a.new_value, a.source_name) for a in db.query(models.AuditLog)
-                   .filter(models.AuditLog.table_name == table,
-                           models.AuditLog.column_name == column)), key=repr)
+def _said(db, table, column):
+    """[(source, value)] of every write line that said the column, in line order - the history, old spellings too."""
+    ln = lines.shape(db, table, TABLES[table])["lines"]
+    value = ln.c[lines.value_column(column)]
+    return [tuple(r) for r in db.execute(select(ln.c.source_name, value).where(
+        ln.c.line_kind == "write", value.is_not(None)).order_by(ln.c.line_id))]
 
 
 def _aliases(db, rows):
@@ -113,13 +121,13 @@ def _aliases(db, rows):
 
 # --- the funnel: what is stored, and the line it leaves -----------------------------------------
 
-def test_a_write_column_is_stored_folded_and_says_what_arrived(env):
+def test_a_write_column_is_stored_folded_and_the_spelling_that_arrived_is_not_kept(env):
+    """Owner 11-10 ㄱ: the history holds what is stored - 'wafer.1' arrived, no line says it."""
     _write(env, PLAIN, [{"k": "k.1", "v": "wafer.1", "note": "wafer.1"}])
     (row,) = _rows(env, PLAIN)
     assert (row.k, row.v, row.note, row.business_key_val) == ("k-01", "wafer-01", "wafer.1", "k-01")
-    assert _fold_lines(env, PLAIN, "v") == [("wafer.1", "wafer-01", "f01.csv")]
-    assert _fold_lines(env, PLAIN, "k") == [("k.1", "k-01", "f01.csv")]
-    assert _fold_lines(env, PLAIN, "note") == [], "a compare-only column is stored as it came"
+    assert (_said(env, PLAIN, "v"), _said(env, PLAIN, "k")) == ([("f01.csv", "wafer-01")], [("f01.csv", "k-01")])
+    assert _said(env, PLAIN, "note") == [("f01.csv", "wafer.1")], "a compare-only column is stored as it came"
 
 
 def test_an_alias_comes_first_and_a_blank_canonical_is_no_alias(env):
@@ -141,19 +149,17 @@ def test_the_time_rule_folds_and_counts_what_it_left(env):
         ("K-01", "2026-09-26 13:05:07"), ("K-02", "2026-09-26 13:05:07"),
         ("K-03", "yesterday"), ("K-04", "2026-09-26T13:05:07+09:00")]
     assert report == {"unmatched": 1, "zoned": 1}
-    assert _fold_lines(env, PLAIN, "seen") == [
-        ("2026/09/26 13:05:07", "2026-09-26 13:05:07", "f01.csv")]
 
 
-def test_a_resent_spelling_whose_cell_is_not_written_leaves_no_line(env):
-    """3eb161a9c ①: the hourly refetch the file-layer fold made a no-op mints no line."""
+def test_a_resent_spelling_writes_no_line(env):
+    """3eb161a9c ①: the hourly refetch of one spelling by one source mints no line."""
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0100.csv")
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0200.csv")
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0200.csv")
-    assert len(_fold_lines(env, PLAIN, "v")) == 1
+    assert len(_said(env, PLAIN, "v")) == 2
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.2"}], source="day_0300.csv")
-    assert _fold_lines(env, PLAIN, "v")[-1] == ("wafer.2", "wafer-02", "day_0300.csv")
-    assert len(_fold_lines(env, PLAIN, "v")) == 2
+    assert _said(env, PLAIN, "v")[-1] == ("day_0300.csv", "wafer-02")
+    assert len(_said(env, PLAIN, "v")) == 3
 
 
 def test_a_retried_batch_is_folded_once(env, tmp_path, monkeypatch):
@@ -172,7 +178,7 @@ def test_a_retried_batch_is_folded_once(env, tmp_path, monkeypatch):
     _write(env, PLAIN, [{"k": "K-01", "v": "ax"}])
     assert len(calls) == 2
     assert [r.v for r in _rows(env, PLAIN)] == ["axx"]
-    assert _fold_lines(env, PLAIN, "v") == [("ax", "axx", "f01.csv")]
+    assert _said(env, PLAIN, "v") == [("f01.csv", "axx")]
 
 
 @pytest.mark.parametrize("table, raw, folded_key", [
@@ -243,7 +249,6 @@ def test_the_grid_stores_the_folded_spelling(env, client):
         "transaction_id": "tx-grid"})
     assert reply.status_code == 200, reply.text
     assert [r.v for r in _rows(env, PLAIN)] == ["wafer-01"]
-    assert ("wafer.1", "wafer-01", "user") in _fold_lines(env, PLAIN, "v")
 
 
 def test_a_chain_write_stores_the_folded_spelling(env):
@@ -254,7 +259,6 @@ def test_a_chain_write_stores_the_folded_spelling(env):
         [], [], {PLAIN: ["r_probe"]}, [])
     assert ok, reason
     assert [r.v for r in _rows(env, PLAIN)] == ["wafer-01"]
-    assert _fold_lines(env, PLAIN, "v") == [("wafer.1", "wafer-01", "chain_ingestion")]
 
 
 @pytest.fixture(name="watcher")
@@ -311,15 +315,11 @@ def test_a_file_names_the_time_values_it_left_once_on_its_line(watcher, monkeypa
     assert _stored(factory) == [("K-02", "a", "yesterday"),
                                 ("K-03", "b", "2026-09-26T13:05:07+09:00"),
                                 ("k-01", "wafer-01", "2026-09-26 13:05:07")]
-    # 5ee9d3bd1 ②: the fold's lines are among the audit-log rows the line counts.
     db = factory()
     try:
         audit = db.query(models.AuditLog).filter(models.AuditLog.table_name == PLAIN).all()
     finally:
         db.close()
-    assert sorted(a.column_name for a in audit if a.old_value in ("k.1", "wafer.1",
-                                                                  "2026/09/26 13:05:07")) \
-        == ["k", "seen", "v"]
     assert "audit logs " in lines[0] and "/ %d rows" % len(audit) in lines[0].split(
         "audit logs ", 1)[1].split(" · ", 1)[0], (len(audit), lines[0])
 
@@ -353,10 +353,17 @@ def _stored_then_declared(db, tmp_path, monkeypatch, table, rows_by_source, decl
     _declare(tmp_path, monkeypatch, declared)
 
 
+def _layers(db, table, columns=None, row_ids=None):
+    """{(row_id, column): {source: its head}} - each source's standing word (`lines.layers`)."""
+    db.expire_all()
+    return lines.layers(db, table, row_ids or [r.row_id for r in _rows(db, table)], columns)
+
+
 def _layers_of(db, table, column):
-    return sorted((s.source_name, s.value, s.ingested_at) for s in db.query(models.CellSource)
-                  .filter(models.CellSource.table_name == table,
-                          models.CellSource.column_name == column))
+    return sorted((source, head["value"], head["ingested_at"])
+                  for layer in _layers(db, table, [column]).values() for source, head in layer.items())
+
+
 
 
 def test_the_backfill_folds_every_layer_in_place_and_the_same_layer_still_wins(
@@ -375,7 +382,7 @@ def test_the_backfill_folds_every_layer_in_place_and_the_same_layer_still_wins(
     after = _layers_of(env, PLAIN, "v")
     assert [(s, v) for s, v, _ in after] == [("f03.csv", "wafer-01"), ("f07.csv", "W-02")]
     assert [at for _, _, at in after] == [at for _, _, at in before], "no layer's time moves"
-    assert _fold_lines(env, PLAIN, "v")[-1] == ("W-2", "W-02", replay.NOTATION_BACKFILL_SOURCE)
+    assert {("f03.csv", "wafer.1"), ("f07.csv", "W-2")} <= set(_said(env, PLAIN, "v")), "old spellings stay history"
 
 
 @pytest.mark.parametrize("table, raw, folded_key", [
@@ -390,9 +397,8 @@ def test_the_backfill_rekeys_a_row_stored_under_the_raw_spelling(env, tmp_path, 
     assert (stats["keys_changed"], row.business_key_val) == (1, folded_key)
 
 
-def _layer_rows(db, table):
-    return {r for (r,) in db.query(models.CellSource.row_id).filter(
-        models.CellSource.table_name == table)}
+def _layer_rows(db, table, row_ids):
+    return {row for row, _column in _layers(db, table, row_ids=row_ids)}
 
 
 def test_a_row_whose_folded_key_another_row_holds_is_merged_into_it(env, tmp_path, monkeypatch):
@@ -415,13 +421,12 @@ def test_a_row_whose_folded_key_another_row_holds_is_merged_into_it(env, tmp_pat
     stats = replay.fold_written_notation(env, PLAIN, apply=True)
     (row,) = _rows(env, PLAIN)
     assert (stats["rows_merged"], row.row_id, row.v, row.note) == (1, holder, "person", "hello")
-    assert [(crud.layer_writer(s), v) for s, v, _ in _layers_of(env, PLAIN, "note")] == [
-        ("f02.csv", "hello")], "the shell's layer moved onto the holder"
-    moved = [(crud.layer_writer(s), v) for s, v, _ in _layers_of(env, PLAIN, "v")]
-    assert ("f02.csv", "wafer-01") in moved, "the shell's layer is folded before it moves"
-    assert _layer_rows(env, PLAIN) == {holder}, "the merged row's own layers are gone"
-    assert ("", "hello", "collision_merge") in [
-        (o or "", n, s) for o, n, s in _fold_lines(env, PLAIN, "note")]
+    notes = [(crud.layer_writer(s), v) for s, v, _ in _layers_of(env, PLAIN, "note")]
+    assert ("f02.csv", "hello") in notes, "the shell's layer moved onto the holder"
+    assert (crud.COLLISION_SOURCE, "hello") in notes, "the value the merge chose is its own line"
+    moved = [(crud.layer_writer(s), v) for s, v in _said(env, PLAIN, "v")]
+    assert ("f02.csv", "wafer-01") in moved, "the shell's line is folded before it moves - history on a person's cell"
+    assert _layer_rows(env, PLAIN, [holder, shell]) == {holder}, "the merged row's own layers are gone"
     again = replay.fold_written_notation(env, PLAIN)
     assert (again["rows_merged"], again["keys_changed"], again["cells_folded"]) == (0, 0, 0)
 
@@ -446,9 +451,8 @@ OWNER_ITEM = {"replace": [[" *[.] *", "."], [" *[(][0-9]+[)]\\Z", ""]], "collaps
 
 
 def _blank_layers(db, table):
-    return sorted((s.row_id, s.column_name, s.source_name) for s in db.query(models.CellSource)
-                  .filter(models.CellSource.table_name == table)
-                  if crud.is_blank_value(s.value))
+    return sorted((row, column, source) for (row, column), layer in _layers(db, table).items()
+                  for source, head in layer.items() if crud.is_blank_value(head["value"]))
 
 
 def test_a_second_backfill_after_merges_changes_nothing(env, tmp_path, monkeypatch):
@@ -506,13 +510,32 @@ def test_a_persons_cleared_cell_still_goes_with_the_merged_row(env):
     assert row.business_key_val == "L1_wafer-01"
 
 
+@pytest.mark.parametrize("folded_on", ["holder", "shell"])
+def test_a_key_merge_after_the_backfill_keeps_the_folded_spelling(env, tmp_path, monkeypatch, folded_on):
+    """Lead 11-11 (the backfill on lines): a cell the backfill folded keeps its folded spelling through a later key
+    merge - on whichever of the two rows it sat."""
+    raw = {"v": "wafer.1"}
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [dict({"k": "A"}, **(raw if folded_on == "holder" else {}))]),
+                           ("f02.csv", [dict({"k": "B"}, **(raw if folded_on == "shell" else {}))])])
+    assert replay.fold_written_notation(env, PLAIN, apply=True)["cells_folded"] == 1
+    holder, shell = (next(r.row_id for r in _rows(env, PLAIN) if r.k == k) for k in ("A", "B"))
+    crud.apply_batch_updates(env, PLAIN, schemas.GeneralUpdateBatch(
+        updates=[_item(shell, {"k": "A"}, "f09.csv")], silent=True))
+    env.commit()
+    env.expire_all()
+    (row,) = _rows(env, PLAIN)
+    assert (row.row_id, row.v) == (holder, "wafer-01")
+    assert {v for _s, v, _at in _layers_of(env, PLAIN, "v")} == {"wafer-01"}, "no layer says the raw spelling"
+
+
 def test_a_value_a_second_fold_moves_again_stops_the_run_before_it_is_written(
         env, tmp_path, monkeypatch):
     _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
                           [("f01.csv", [{"k": "K-01", "v": "ax"}])],
                           declared={PLAIN: {"v": {"write": True,
                                                   "rules": {"replace": [["x", "xx"]]}}}})
-    assert replay.fold_written_notation(env, PLAIN)["moves_again"] == 2, "the cell and its layer"
+    assert replay.fold_written_notation(env, PLAIN)["moves_again"] == 1, "its line - the cell shows that line"
     stats = replay.fold_written_notation(env, PLAIN, apply=True)
     assert stats["stopped_on_moves_again"] and stats["cells_folded"] == 0
     assert [r.v for r in _rows(env, PLAIN)] == ["ax"]

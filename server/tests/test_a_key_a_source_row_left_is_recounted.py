@@ -412,8 +412,7 @@ def test_a_decide_that_requires_a_column_still_takes_a_deletion(db):
 
 
 def test_a_notation_fold_that_moves_a_key_recounts_the_key_it_left(db, tmp_path, monkeypatch):
-    """4: the notation fold writes outside the flush hook on PostgreSQL (`replay._write_by_values`) - its event
-    carries what the cell was."""
+    """4: the notation fold's write (write_lines, A 11-11) - its event carries what the cell was."""
     import notation_norm as nn
     from chain import replay
 

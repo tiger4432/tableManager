@@ -5056,19 +5056,6 @@ def apply_row_update_internal(
                 if logs_to_cache is not None and log_dict is not None:
                     logs_to_cache.append(log_dict)
 
-        # 총괄 5ee9d3bd1 ② · 3eb161a9c ①: a value the notation fold changed leaves one line per
-        # cell - the spelling that arrived, what is stored, under the writer that sent it - only
-        # when the cell is written. A re-sent spelling the no-op above kept writes nothing.
-        arrived = (update_item._written_spelling or {}).get(col_name)
-        if arrived is not None and (has_changed or not source_unchanged):
-            log_dict = create_audit_log(
-                db, table_name, row.row_id, col_name, arrived, clean_val,
-                update_item.source_name, (update_item.updated_by or "system"),
-                transaction_id=transaction_id, business_key=row.business_key_val,
-                add_to_cache=(logs_to_cache is None))
-            if logs_to_cache is not None and log_dict is not None:
-                logs_to_cache.append(log_dict)
-
     lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)]
     if lined and update_item.source_name != "user":
         log_dict = row_update_line(
@@ -5080,7 +5067,7 @@ def apply_row_update_internal(
 
     # ⚰️ [Notation normalization] REVERSED FOR `write` COLUMNS BY THE OWNER'S DECISION (총괄
     # 5ee9d3bd1 ③): such a column is folded ONCE, ahead of this function, by
-    # `_fold_written_notation`, and the cell loop above writes its audit line. The paragraph
+    # `_fold_written_notation` (the spelling that arrived is not kept - owner 11-10 ㄱ). The paragraph
     # below is the record of the compare-only model, which every other column still has.
     # [Notation normalization] THERE IS NOTHING HERE ANY MORE, and that is the design.
     # A derivation hook used to sit at this exact spot, refreshing a physical
@@ -5879,9 +5866,9 @@ def _fold_written_notation(db, table_name: str, batch, notation_report=None):
     """A `write` column's values are stored folded - THE seat that changes them (총괄 47aba5d44 ③).
 
     Once per `apply_batch_updates` call, ahead of its retry loop: a retry re-runs the same
-    items, and a second fold would move again a value a non-idempotent declaration moves, and
-    would lose the spelling that arrived - which the audit line keeps (5ee9d3bd1 ②). The
-    replace_map scope is folded with the values, or it would scope the spelling no stored row
+    items, and a second fold would move again a value a non-idempotent declaration moves. The
+    spelling that arrived is not kept (owner 11-10 ㄱ: an audit line holds six items, no before
+    value - it was 5ee9d3bd1 ②'s audit line until then). The replace_map scope is folded with the values, or it would scope the spelling no stored row
     has any more. A table with no `write` column reads nothing.
     """
     import notation_norm
@@ -5896,8 +5883,6 @@ def _fold_written_notation(db, table_name: str, batch, notation_report=None):
         item.updates, item.business_key_val, arrived, counts = \
             notation_norm.fold_item_for_write(table_name, item.updates,
                                               item.business_key_val, aliases)
-        if arrived:
-            item._written_spelling = arrived
         for verdict, n in counts.items():
             left[verdict] = left.get(verdict, 0) + n
         # 총괄 3eb161a9c ②: a row stored under the raw spelling is found by it - the spelling

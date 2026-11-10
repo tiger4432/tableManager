@@ -173,7 +173,7 @@ def test_the_funnel_answers_as_a_funnel_told_nothing_up_front(world, monkeypatch
     assert _audit(product, s) == _audit(before, s) and product["rows"][s]["a"] == 3, "canary: S written 3 again"
     assert _audit(product, r, column_name="a", source_name="user"), "canary: a person's line a cell"
     assert _audit(product, n, column_name="ROW_UPDATE"), "canary: a machine's ROW_UPDATE line"
-    assert product["rows"][r]["lot"] == "L.2" and _audit(product, r, old_value="L . 2"), "canary: folded as written"
+    assert product["rows"][r]["lot"] == "L.2", "canary: folded (the spelling that arrived is not kept, owner 11-10)"
     assert q not in product["rows"] and _audit(product, p, source_name="collision_merge"), "canary: Q merged into P"
     assert "user" in _layers(before, q, "b") and "chain:q" in _layers(before, q, "c"), "canary: Q's other columns"
     assert "chain:q (J1_1_2_<id6>)" in _layers(product, p, "c"), ("canary: the merge moved a layer of a column the batch did not "
