@@ -863,12 +863,15 @@ def layer_writer(source_name) -> str:
     return str(source_name or "").split(" (", 1)[0]
 
 
-def human_source_clause(column):
-    """The SQL of «`layer_writer`(the name in `column`) is USER_SOURCE» - a person's line, a collision-merge copy of one
-    included (lead 11-10 ㄴ). Its text is the partial index's predicate on t__lines: keep the two alike."""
-    from sqlalchemy import or_
+def human_source_clause():
+    """The SQL of «`layer_writer`(source_name) is USER_SOURCE» - a person's line, a collision-merge copy of one
+    included (lead 11-10 ㄴ). The text IS the t__lines partial index's predicate (`lines.HUMAN_SOURCE_SQL`, C): the
+    planner uses the index only on the same words, so it is read from there, never spelled again."""
+    from sqlalchemy import text
 
-    return or_(column == USER_SOURCE, column.like(USER_SOURCE + " (%"))
+    from database import lines
+
+    return text(lines.HUMAN_SOURCE_SQL)
 
 
 def layer_ranks_as(source_name):
@@ -2472,7 +2475,7 @@ def human_lines(db: Session, since) -> list:
         t = audit_history.line_table(table_name, bits)
         written = [t.c[name] for name in t.c.keys() if name.startswith("written_")]
         for row in db.execute(sa.select(t.c.row_id, t.c.batch, *written).where(
-                human_source_clause(t.c.source_name), t.c.at >= since)):
+                human_source_clause(), t.c.at >= since)):
             found.append((table_name, row.row_id, group_of(row.batch),
                           {name for name, bit in bits.items() if audit_history.bit_said(row, bit)}))
     return found

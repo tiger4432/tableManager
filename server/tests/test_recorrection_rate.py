@@ -312,7 +312,7 @@ def test_a_real_recorrection_timeout_is_still_identified_as_one(
     main.RECORRECTION_CACHE["value"] = None
 
     reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
-    assert "시간 초과" in reason and "idx_audit_user_recorrection" in reason, \
+    assert "시간 초과" in reason and "__lines_person_at" in reason, \
         "the timeout case must still point at the index that fixes it"
     main.RECORRECTION_CACHE["value"] = None
 
@@ -331,6 +331,7 @@ def test_a_merge_copy_of_a_persons_line_is_a_persons(db_session):
 def test_the_sql_says_of_each_name_what_layer_writer_says(db_session, name):
     import sqlalchemy as sa
 
-    picked = db_session.execute(sa.select(crud.human_source_clause(sa.literal(name)))).scalar()
+    one = sa.select(sa.literal(name).label("source_name")).subquery()
+    picked = db_session.execute(sa.select(sa.func.count()).select_from(one).where(crud.human_source_clause())).scalar()
     assert bool(picked) == (crud.layer_writer(name) == crud.USER_SOURCE), name
 
