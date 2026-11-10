@@ -327,6 +327,8 @@ class Report:
         where = {report_shape.column_of(role, role["name"]): {"filterType": "text", "type": "contains",
                                                               "filter": report_shape.name(time_item)}} \
             if only_time and time_item else None
+        from database import crud
+
         seen_names = {}
         for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
                                         sorted(set(wafers), key=label), where=where):
@@ -338,14 +340,17 @@ class Report:
                 facts["conditions"][name] = row[1]
             elif row[1] is not None and str(row[1]) not in str(said).split(BOTH):
                 facts["conditions"][name] = "%s%s%s" % (said, BOTH, row[1])
-            if time_item and report_shape.name(row[0]) == report_shape.name(time_item) and facts.get("time") is None:
+            # a blank said (crud.is_blank_value - «», spaces, NaN) is not said: a later row's value takes its place
+            if time_item and report_shape.name(row[0]) == report_shape.name(time_item) and \
+                    crud.is_blank_value(facts.get("time")):
                 facts["time"] = row[1]
-            if title_item and report_shape.name(row[0]) == report_shape.name(title_item) and facts.get("title") is None:
+            if title_item and report_shape.name(row[0]) == report_shape.name(title_item) and \
+                    crud.is_blank_value(facts.get("title")):
                 facts["title"] = row[1]
             if time_item:
                 seen_names[report_shape.name(row[0])] = seen_names.get(report_shape.name(row[0]), 0) + 1
             for at, cell in enumerate(extra):
-                if facts.get(cell) is None:
+                if crud.is_blank_value(facts.get(cell)):
                     facts[cell] = row[2 + at]
 
         if time_item:
@@ -683,11 +688,15 @@ class Report:
                 "own": [name == self.evaluation for name, _col, _members in columns]}
 
     def _title(self, wafer, under):
-        """The title of the wafer's unit (`under`: key columns, as `_day`) - its first wafer's that says one."""
+        """The title of the wafer's unit (`under`: key columns, as `_day`) - its first wafer's that says one; a blank one
+        (`crud.is_blank_value`: «», spaces, NaN) says none (lead 11-10)."""
+        from database import crud
+
         at = [self.keys.index(k) for k in under or ()]
         unit = (lambda w: tuple(w[i] for i in at)) if at else self._report_wafer
         mine = unit(wafer)
-        said = [str(f["title"]) for w, f in self.wafers.items() if unit(w) == mine and f.get("title") not in (None, "")]
+        said = [str(f["title"]) for w, f in self.wafers.items()
+                if unit(w) == mine and not crud.is_blank_value(f.get("title"))]
         return said[0] if said else None
 
     def _day(self, wafer, under=None):
