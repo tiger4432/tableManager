@@ -285,3 +285,29 @@ def test_a_write_of_nothing_makes_no_row_and_names_one_that_is_there(db):
                  {"key": {"k": "K1"}, "values": {}, "source_name": "f1"}, tx="tx2")
     assert [(it["row_id"], it["work"]) for it in out["items"]] == [(None, None), (None, None), (row_id, "left_out")]
     assert set(_now(db)) == {row_id} and out["changed"] == {}
+
+
+def test_a_persons_write_marks_its_cell_and_takes_the_pin_off_and_a_pin_holds_the_merge(db):
+    """Pins stay in cell_overwrites this landing (lead 11-11): a machine write leaves no mark; a person's write marks
+    the cell and takes its pin off, the same value again included; a pin makes its source's head line the cell's
+    value, and a pin whose source has no head line leaves t's value (C's lines.merge)."""
+    ov = models.CellOverwrite.__table__
+
+    def mark():
+        return [tuple(r) for r in db.execute(select(ov.c.is_overwrite, ov.c.updated_by, ov.c.manual_priority_source))]
+
+    def pin(source):
+        db.execute(ov.update().values(manual_priority_source=source))
+
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    assert mark() == [] and _now(db)[r]["a"] == "x", "a machine write marks nothing"
+    _write(db, {"row_id": r, "values": {"a": "kim"}, "source_name": "user", "written_by": "kim"}, tx="tx2")
+    assert mark() == [(True, "kim", None)] and _now(db)[r]["a"] == "kim"
+    pin("f1")
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "f2", "written_by": "loader"}, tx="tx3")
+    assert mark() == [(True, "loader", "f1")] and _now(db)[r]["a"] == "x", "the pin holds f1's line over the others"
+    _write(db, {"row_id": r, "values": {"a": "kim"}, "source_name": "user", "written_by": "kim"}, tx="tx4")
+    assert mark() == [(True, "kim", None)] and _now(db)[r]["a"] == "kim", "the same value again takes the pin off"
+    pin("f9")
+    _write(db, {"row_id": r, "values": {"a": "z"}, "source_name": "f1", "written_by": "loader"}, tx="tx5")
+    assert _now(db)[r]["a"] == "kim", "a pin whose source has no head line leaves t's value"

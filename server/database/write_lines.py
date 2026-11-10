@@ -97,6 +97,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     gated = _version_gate(table, cfg, items, targets, old)
     held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
     plain = _plain(table, cfg, items, targets, old, held)
+    asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held)
     moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
     left_out -= len(moved)
@@ -105,6 +106,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
     written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     _heads(db, ln, chunks, written)
+    unpinned = _marks(db, table, shape, items, kept, targets, asked)
+    for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
+        if targets[i] in unpinned and i not in work:
+            work[i] = "edit"
+            moved.append(i)
+            left_out -= 1
     gone = sorted({targets[i] for i in kept if items[i]["line_kind"] == DELETED})
     for page in _pages(gone, 1):
         db.execute(delete(now).where(now.c.row_id.in_(page)))
@@ -365,6 +372,64 @@ def _heads(db, ln, chunks, written):
         or_(*[ln.c["head_%d" % k].op("&")(bindparam("m%d" % k)) != 0 for k in range(chunks)])
     ).values({"head_%d" % k: ln.c["head_%d" % k].op("&")(bindparam("n%d" % k)) for k in range(chunks)})
     db.execute(statement, params)
+
+
+def _marks(db, table, shape, items, kept, targets, asked):
+    """Step 4½ - the overwrite mark and the pin of each written cell, in cell_overwrites as today (pins are outside
+    this landing - design «셀소스 · 감사 이력 · 고정이 어디로»; lead 11-11), before step 5's merge reads the pins: a
+    person's write ("user") takes its cells' pin off, the cells it repeats included; a cell a person's head line or a
+    pin sits on is marked (is_overwrite, by the writer), any other cell's mark goes. A mark already saying exactly that
+    on a cell whose line did not move is left - `apply_row_update_internal`'s rule, cell for cell. -> the rows a pin
+    was taken off - their merge moves though no line did."""
+    from datetime import datetime
+
+    from database import models
+
+    cells = {}                                     # (row_id, column) -> (item, its line moved)
+    for i in sorted(targets):
+        it = items[i]
+        if it["line_kind"] != WRITE:
+            continue
+        moved = set(it.get("values") or ()) if i in kept else set()
+        for c in (asked.get(i) or set()) if it.get("source_name") == "user" else moved:
+            cells[(targets[i], c)] = (it, c in moved)
+    if not cells:
+        return set()
+    ov = models.CellOverwrite.__table__
+    row_ids = sorted({r for r, _c in cells})
+    columns = sorted({c for _r, c in cells})
+    held = {}
+    for page in _pages(row_ids, 1, most=PARAMS_MOST - len(columns)):
+        for r, c, flag, by, pin in db.execute(select(ov.c.row_id, ov.c.column_name, ov.c.is_overwrite, ov.c.updated_by,
+                                                      ov.c.manual_priority_source).where(
+                ov.c.table_name == table, ov.c.row_id.in_(page), ov.c.column_name.in_(columns))):
+            held[(r, c)] = (flag, by, pin)
+    ln, bits, chunks = shape["lines"], shape["bits"], shape["chunks"]
+    person = set()                                 # (row_id, column) a person's head line says
+    heads, gone = lines.bit_columns("head", chunks), lines.bit_columns("withdrawn", chunks)
+    for page in _pages(row_ids, 1):
+        for row in db.execute(select(ln.c.row_id, *[ln.c[n] for n in heads + gone]).where(
+                ln.c.row_id.in_(page), ln.c.source_name == "user")):
+            for c in columns:
+                k, m = bits[c] // BITS_A_CHUNK, 1 << (bits[c] % BITS_A_CHUNK)
+                if (row[1 + k] & ((1 << 64) - 1)) & m and not (row[1 + chunks + k] & ((1 << 64) - 1)) & m:
+                    person.add((row[0], c))
+    upserts, deletes, unpinned = [], [], set()
+    for (r, c), (it, moved) in sorted(cells.items()):
+        was = held.get((r, c))
+        pin = None if it.get("source_name") == "user" else (was[2] if was else None)
+        if was and was[2] is not None and pin is None:
+            unpinned.add(r)
+        who = it.get("written_by") or "system"
+        if (r, c) in person or pin is not None:
+            if moved or not (was and was[0] is True and was[1] == who and was[2] == pin):
+                upserts.append({"table_name": table, "row_id": r, "column_name": c, "is_overwrite": True,
+                                "updated_by": who, "updated_at": datetime.now(), "manual_priority_source": pin})
+        elif was:
+            deletes.append((table, r, c))
+    crud.bulk_upsert_cell_overwrites(db, upserts)
+    crud.bulk_delete_cell_overwrites(db, deletes)
+    return unpinned
 
 
 def _merge_now(db, table, cfg, shape, row_ids, at, old, plain):
