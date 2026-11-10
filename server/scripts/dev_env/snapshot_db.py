@@ -125,10 +125,11 @@ def open_source_readonly(url):
 
 
 # ------------------------------------------------------------------- inventory
-def list_tables(conn):
+def list_tables(conn, schema="public"):
+    """Base tables only: a view (a declared table t over t__now) holds no rows of its own and refuses writes."""
     return [r[0] for r in conn.execute(text(
         "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema='public' ORDER BY table_name"))]
+        "WHERE table_schema = :s AND table_type = 'BASE TABLE' ORDER BY table_name"), {"s": schema})]
 
 
 def columns_of(conn, table):

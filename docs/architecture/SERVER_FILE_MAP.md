@@ -196,7 +196,6 @@
 |---|---|---:|---|---|
 | ✅ | `setup/init_db` | 2,592 | 2026-07-26 |  |
 | ✅ | `setup/reset_db` | 2,455 | 2026-07-26 |  |
-| ✅ | `setup/seed_data` | 5,260 | 2026-07-26 |  |
 | ✅ | `setup/setup_workspace` | 1,370 | 2026-07-26 |  |
 
 ## source_fixtures/
