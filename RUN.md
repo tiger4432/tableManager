@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11] **맵퍼가 값으로 지은 키가 둘로 갈렸나 — 읽기 전용 질의 (코드 변경 없음)** — 재기동 없음
+>
+> ```
+> 무엇     lot_lineage_mapper · lot_slot_wafer_mapper 는 사건의 값을 str() 로 이어 키를 짓는다(«a|b|c|시각»)
+>          같은 행의 사건이 값을 다른 철자로 실으면(숫자 2 · 2.0, 시각 시간대 있음 · 없음) 같은 사건이 키 둘 = 행 둘이 된다
+>          키 철자는 바꾸지 않는다(총괄 11-11 ㄷ) — 갈린 행이 이미 있는지 이 질의로 본다
+> 질의     그 규칙의 target 표와 params 의 target_* 칸 이름으로 바꿔 넣는다 (박스 예: lot_slot_wafer)
+>          SELECT lot, slot, wafer, event_time, count(*) AS n, array_agg(lot_slot_wafer_key) AS keys
+>            FROM lot_slot_wafer GROUP BY 1, 2, 3, 4 HAVING count(*) > 1 LIMIT 20;
+>          lot_lineage 의 target 이면 GROUP BY 가 (부모, 자식, 종류, 시각) 네 칸
+> 답의 뜻  0 행   갈린 키 없음
+>          1 행 이상  같은 사건이 키 둘로 들어가 있다 — keys 칸에서 어느 철자가 갈렸는지 본다
+>                   다시 돌리기 · 지우기는 소유자 판단. 이 질의는 아무것도 안 바꾼다
+> 못 세는 것 운영의 gitignore 된 맵퍼(.py)는 저장소에 없어 우리가 셀 수 없다
+>          값을 str() 로 이어 키를 짓는 맵퍼가 거기 있으면 같은 질의를 그 target 표에 돌린다
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```
