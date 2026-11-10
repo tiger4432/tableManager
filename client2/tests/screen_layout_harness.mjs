@@ -1159,9 +1159,11 @@ CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at
   const scrollers = [...document.querySelectorAll('.ag-body-horizontal-scroll-viewport, .ag-center-cols-viewport')];
   const was = scrollers.map((s) => s.scrollLeft);
   scrollers.forEach((s) => { s.scrollLeft = s.scrollWidth; s.dispatchEvent(new Event('scroll')); });
-  await new Promise((r) => setTimeout(r, 400));
+  // the Ledger cells drawn after the scroll, not a time (lead 11-10: red under load) - 5 s at most
+  const drawn = () => [...document.querySelectorAll('.ag-cell[col-id="#ledger"]')].filter((c) => c.getClientRects().length);
+  for (let i = 0; i < 50 && !drawn().length; i += 1) await new Promise((r) => setTimeout(r, 100));
   try {
-    const cells = [...document.querySelectorAll('.ag-cell[col-id="#ledger"]')].filter((c) => c.getClientRects().length);
+    const cells = drawn();
     if (!cells.length) return 'no Ledger cell drawn';
     for (const [word, what] of [['changed', 'the changed row'], ['Not yet', 'the row no world read took']]) {
       const c = cells.find((x) => x.textContent.trim().startsWith(word));
@@ -3251,7 +3253,9 @@ const DRIVE = {
       await sleep(400);
       await evaluate(c, GALLERY_PICK('Rows by', 'c_bn'));
       await evaluate(c, GALLERY_PICK('Columns by', 'core_lot'));
-      await sleep(800);
+      // the thumbnails' own loads, not a time (lead 11-10: «thumbs fill» red under load)
+      await until(c, `(() => { const i = [...document.querySelectorAll('#gallery-host .gallery-cell__thumb img')];
+        return i.length > 0 && i.every((x) => x.complete); })()`);
     }],
     ['Gallery, nine a cell', (c) => evaluate(c, GALLERY_PICK('Show', '9')).then(() => sleep(800))],
     ['Gallery, a cell opened and a tile pressed', async (c) => {
@@ -3267,7 +3271,11 @@ const DRIVE = {
         h.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x + 20 }));
         document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x }));
         document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x })); return true; })()`);
-      await sleep(600);
+      // the seat at its width and its tiles laid out again, not a time (lead 11-10: «seat widened» red under load)
+      await until(c, `(() => { const seat = document.getElementById('gallery-seat'); if (!seat) return false;
+        const tiles = [...seat.querySelectorAll('.gallery-tile')];
+        return Math.abs(seat.getBoundingClientRect().width - 520) <= 2
+          && (tiles.length < 2 || new Set(tiles.map((t) => Math.round(t.getBoundingClientRect().top))).size < tiles.length); })()`);
     }],
     ['Gallery, + Column', (c) => evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-add'); if (b) b.click(); return Boolean(b); })()").then(() => sleep(800))],
     ['Gallery, filtered to a cell', async (c, log) => {

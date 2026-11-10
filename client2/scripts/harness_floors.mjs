@@ -1190,7 +1190,7 @@ export const FLOORS = new Map([
   // new with the entered order and its places (owner 11-06): its count on the commit that adds it
   ['grid_order_harness.mjs', 16],
   // a cell's look (owner 11-06, lead L2): paint over rules, the later rule, columns, writer, the broadcast, the writes, a rule moved, the selection and its paints, a broadcast's answer, M1-M8
-  ['grid_look_harness.mjs', 57],
+  ['grid_look_harness.mjs', 73],
   // the screen checker's --mutant (lead 11-07): a named mutant runs, the others do not, an unknown name is said
   ['mutant_pick_harness.mjs', 7],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
@@ -1240,7 +1240,7 @@ export const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 356],   // 359 -> 356: the view's titles retired, no reader left - its strings no longer walked (owner 10-11 R)
+  ['retroactive_view_harness.mjs', 358],   // 356 -> 358: the count's one address, retroCountUrl (owner 11-10 «노테이션 소급 ㄱ»)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],

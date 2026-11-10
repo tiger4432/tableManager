@@ -127,8 +127,8 @@ function redoSuite(RedoBanner) {
   };
   const off = seat([]);
   const btns = walk(off).filter((n) => String(n.className || '').includes('redo-banner__btn'));
-  ok(btns.length === 2 && btns.every((b) => b.disabled === true),
-     'R1 행이 없으면 버튼 둘이 꺼진다', btns.map((b) => b.disabled));
+  ok(btns.length === 3 && btns.every((b) => b.disabled === true),
+     'R1 행이 없으면 버튼 셋이 꺼진다', btns.map((b) => b.disabled));
   ok(mute(off).length === 0, 'R2 그리고 «말 없이» 꺼진 컨트롤이 하나도 없다', mute(off).length);
   ok(btns.every((b) => titleOf(b) === 'Pick rows'),
      'R3 사유는 「Pick rows」 — 다음 행동 한 줄', btns.map(titleOf));

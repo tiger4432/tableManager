@@ -344,6 +344,10 @@ async function suite(source) {
   ok(unlabelled.detail !== null,
     'count: dropping the number must not drop the sentence that contains it');
   ok(view.buildCountView({}).affected === null, 'count: an empty payload yields no number');
+  // the count's one address (the admin's tab and the grid's banner both ask it, owner 11-10 «노테이션 소급 ㄱ»)
+  ok(view.retroCountUrl('B', 'fold written', [{ key: 'table', value: 'dt log' }, { key: 'row_ids', value: 'a,b' }])
+    === 'B/admin/retroactive/fold%20written/count?table=dt%20log&row_ids=a%2Cb', 'count url: the op and every parameter encoded');
+  ok(view.retroCountUrl('B', 'op', []) === 'B/admin/retroactive/op/count', 'count url: no parameter, no «?»');
 
   // The second labelled number travels separately and is never folded into `affected`.
   ok(sampled.extras.length === 1 && sampled.extras[0].count.value === 4,

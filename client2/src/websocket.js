@@ -12,7 +12,7 @@ import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete 
 import { fileEndView, isDoneStatus, statusToastTone } from './retry_verdict.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally, loadHistory } from './timeline.js';
 import { markWork } from './ui_stall.js';
-import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
+import { updateGridSortState, updateLoadedCount, updatePaginationUI, redrawLooks } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
 import { sayLine } from './write_guard.js';
@@ -456,7 +456,7 @@ export function handleWebSocketMessage(msg) {
       fetchData(state.viewMode !== 'pagination');
     } else if (said.looks) {
       state.looks = said.looks;
-      if (state.gridApi) state.gridApi.refreshCells({ force: true });
+      redrawLooks();
       saidLooksChanged();
     }
     return;

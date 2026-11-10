@@ -1130,7 +1130,7 @@ const DEFECTS = [
     s => s.replace('  badge.textContent = why;\n  badge.hidden = !why;', '')],
   // 🔴 C-105. The read path, which is where the owner's 422 arrived as an exception.
   ['api.js: a refused read is read as a page of rows again', 'api',
-    s => s.replace('    if (!res.ok) {', '    if (false) {')],
+    s => s.replace('    if (!res.ok) {\n      showReadRefusal(', '    if (false) {\n      showReadRefusal(')],
   ['api.js: the refused read claims it counted zero', 'api',
     s => s.replace('  setMatchCount(elements.totalRowsCount, null);',
                    '  setMatchCount(elements.totalRowsCount, 0);')],

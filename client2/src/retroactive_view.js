@@ -339,6 +339,13 @@ export function groupExtras(extras) {
   return places;
 }
 
+/** `GET /admin/retroactive/{op}/count`'s address with its parameters (`entries` [{key, value}]) - the one spelling;
+ *  the admin's Retroactive tab and the grid's redo banner both ask it. */
+export function retroCountUrl(base, op, entries) {
+  const query = (entries || []).map((e) => `${encodeURIComponent(e.key)}=${encodeURIComponent(e.value)}`).join('&');
+  return `${base}/admin/retroactive/${encodeURIComponent(op)}/count${query ? `?${query}` : ''}`;
+}
+
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.
  *
  * 🔴 THE NUMBER TRAVELS WITH ITS LABEL OR IT DOES NOT TRAVEL. `affected` is emitted only when

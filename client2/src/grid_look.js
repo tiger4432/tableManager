@@ -172,4 +172,27 @@ export function pageLooks(looks, answer, append = false) {
   return { rules: answer.rules || [], paints: { ...(append && looks ? looks.paints : {}), ...(answer.paints || {}) } };
 }
 
+/** The looks as one string: two prints equal when they draw the same (the rules in order, the paints) - what was drawn
+ *  last is known by it. */
+export const looksPrint = (looks) => JSON.stringify(looks ? [looks.rules || [], looks.paints || {}] : null);
+
+/** A row's writers as one string - each cell's written_by by its column. */
+export const writersPrint = (row) => JSON.stringify(Object.entries((row && row.data) || {})
+  .map(([column, cell]) => [column, cell && typeof cell === 'object' ? cell.written_by ?? null : null]));
+
+/** A page's writers read after it (D 11-10, part=writers: {"<row_id>/<column>": writer}) taken into its rows - `rowOf(rowId)`
+ *  the row's data, null when it is not drawn (the key is dropped: the rows changed between). -> the row ids it changed. */
+export function takeWriters(writtenBy, rowOf) {
+  const moved = new Set();
+  for (const [key, writer] of Object.entries(writtenBy || {})) {
+    const cut = key.indexOf('/');
+    const row = cut > 0 ? rowOf(key.slice(0, cut)) : null;
+    const cell = row && row.data ? row.data[key.slice(cut + 1)] : null;
+    if (!cell || typeof cell !== 'object' || cell.written_by === writer) continue;
+    cell.written_by = writer;
+    moved.add(key.slice(0, cut));
+  }
+  return moved;
+}
+
 export { LOOK_TABLE };

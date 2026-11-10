@@ -21,7 +21,7 @@
 //
 // Run: node client2/tests/grid_look_harness.mjs
 import { lookOf, ruleRefusal, ruleText, ruleUpdate, ruleMove, ruleOff, paintUpdate, paintKey, paintTargets, lookBroadcast, looksOn, pageLooks, RULE_EMPTY_NOTE,
-  isColour, lookStyle, hasPickedColour } from '../src/grid_look.js';
+  isColour, lookStyle, hasPickedColour, looksPrint, writersPrint, takeWriters } from '../src/grid_look.js';
 import * as stateModule from '../src/state.js';
 import { placeUpdate, placesOn, dropPlace } from '../src/grid_order.js';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
+import { makeDoc, makeNode } from './lib/board_dom.mjs';
 
 let pass = 0;
 const failures = [];
@@ -228,6 +229,28 @@ eq('K4 a picked colour comes in a broadcast as a role does - a rule\'s and a pai
   return [taken.rules.map((r) => r.role), taken.paints[paintKey('row-4', 'etch')].role, ruleUpdate('T', 'k9', { role: '#123abc', when: '[value] > 0' }, 'kim').updates.role];
 })(), [['#123abc'], '#fedcba', '#123abc']);
 
+// ── X: the page first, who wrote it after (D 11-10) - what a redraw compares ──
+const cellOf2 = (value, writtenBy) => ({ value, ...(writtenBy ? { written_by: writtenBy } : {}) });
+const writing = (m) => {
+  const rows = { r1: { row_id: 'r1', data: { a: cellOf2('1'), b: cellOf2('2', 'person'), 'c/d': cellOf2('3') } },
+    r2: { row_id: 'r2', data: { a: cellOf2('4') } }, r3: { row_id: 'r3', data: { a: cellOf2('5', 'person') } } };
+  const before = [m.writersPrint(rows.r1), m.writersPrint(rows.r2)];
+  const moved = [...m.takeWriters({ 'r1/a': 'ai', 'r1/b': 'person', 'r1/c/d': 'chain', 'r9/a': 'ai', 'r2/zz': 'ai', 'r3/a': 'person' },
+    (id) => rows[id] || null)].sort();
+  const after = [m.writersPrint(rows.r1), m.writersPrint(rows.r2)];
+  const valueOnly = m.writersPrint({ data: { a: cellOf2('5', 'ai'), b: cellOf2('2', 'person'), 'c/d': cellOf2('9', 'chain') } });
+  return [moved, [rows.r1.data.a.written_by, rows.r1.data['c/d'].written_by, rows.r2.data.a.written_by ?? null],
+    [before[0] !== after[0], before[1] === after[1], valueOnly === after[0]],
+    [m.looksPrint(LOOKS) === m.looksPrint(JSON.parse(JSON.stringify(LOOKS))), m.looksPrint(LOOKS) === m.looksPrint({ ...LOOKS, paints: {} }),
+      m.looksPrint(LOOKS) === m.looksPrint({ ...LOOKS, rules: LOOKS.rules.slice(1) }), m.looksPrint(null) === m.looksPrint({ rules: [], paints: {} })]];
+};
+const written = writing({ looksPrint, writersPrint, takeWriters });
+eq('X1 a writers answer taken: the drawn rows\' keys whose writer changed - r1/a, r1/c/d (a column with «/»); the same writer (r3), a row not drawn, a column it lacks: not',
+  written[0], ['r1']);
+eq('X2 the cells take their writer; a cell not in the answer keeps none', written[1], ['ai', 'chain', null]);
+eq('X3 a row\'s writers print moves with a writer, not with a value', written[2], [true, true, true]);
+eq('X4 the looks print: the same looks the same; a paint or a rule fewer another; none is not no rules', written[3], [true, false, false, false]);
+
 // ── mutants: the whole module copied, its imports pointed at the real modules, one change ──
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const decide = (m) => {
@@ -236,7 +259,7 @@ const decide = (m) => {
     on('row-1', 'cmp', '0.12', 'chain'), on('row-1', 'cmp', '0.12'),
     ...[['row-1', '2', 'person'], ['row-1', '0', 'merge'], ['row-2', '2', 'person']].map(([r, v, w]) => m.lookOf(LINED, r, 'v', { value: v, written_by: w }))];
 };
-const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js', 'testbed/palette.js'], (m) => [decide(m), paintsOf(m), told(m), colours(m)]];
+const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js', 'testbed/palette.js'], (m) => [decide(m), paintsOf(m), told(m), colours(m), writing(m)]];
 const PALETTE = ['testbed/palette.js', [], (m) => [['#2b7de9', '#ABCDEF', 'warn', '#abc', '', null].map(m.isColour)]];   // the colour's one seat
 const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js'], choose];
 const MUTANTS = [
@@ -257,6 +280,10 @@ const MUTANTS = [
     '!(msg.edits_of || []).includes(table) && !(msg.edits_of || []).includes(EVERY)'],
   ['M19 a style that leaves an unpicked line out (AG Grid keeps the colour drawn before)', LOOK,
     "  '--look-line': look && isColour(look.line) ? look.line : '' });", "  ...(look && isColour(look.line) ? { '--look-line': look.line } : {}) });"],
+  ['M22 the looks print blind to the paints', LOOK, 'JSON.stringify(looks ? [looks.rules || [], looks.paints || {}] : null)',
+    'JSON.stringify(looks ? [looks.rules || []] : null)'],
+  ['M23 a writers key split at its last «/» (a column with one lost)', LOOK, "const cut = key.indexOf('/');", "const cut = key.lastIndexOf('/');"],
+  ['M24 a writer taken though it is the same (a row redrawn for nothing)', LOOK, " || cell.written_by === writer) continue;", ') continue;'],
   ['M20 any word a colour', PALETTE, '/^#[0-9a-f]{6}$/i.test(', '/./.test('],
   ['M21 a paint\'s picked colour not asked', LOOK, '\n  || Object.values(looks.paints || {}).some((paint) => isColour(paint.role)));', ');'],
   ['M6 the ctrl-clicked cells not first', STATE, 'if (!rectangle && anyKey(clicked)) return', 'if (false) return'],
@@ -276,11 +303,149 @@ for (const [name, [module, deps, cases], from, to] of MUTANTS) {
     const file = path.join(dir, module);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text.replace(from, to));
-    const real = JSON.stringify(cases(module === 'state.js' ? stateModule : { lookOf, paintTargets, lookBroadcast, isColour, lookStyle, hasPickedColour }));
+    const real = JSON.stringify(cases(module === 'state.js' ? stateModule : { lookOf, paintTargets, lookBroadcast, isColour, lookStyle, hasPickedColour, looksPrint, writersPrint, takeWriters }));
     let caught;
     try { caught = JSON.stringify(cases(await import(pathToFileURL(file).href))) !== real; } catch (e) { caught = `threw ${e.message}`; }
     eq(`${name}: caught`, caught, true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+// ── D: the one redraw (grid.js redrawLooks) and the writers read after a page (api.js fillWriters) - the real modules
+//    under the shared document stub, the grid api and fetch recording ──
+globalThis.document = makeDoc('light');
+globalThis.window = { location: { port: '', origin: 'http://box', href: 'http://box/', hash: '', search: '' },
+  addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
+const { redrawLooks } = await import('../src/grid.js');
+const { fillWriters, fetchAllRows, showAllRows } = await import('../src/api.js');
+const { navigatorStep2, navigatorStep3 } = await import('../src/timeline.js');
+const S = stateModule.state;
+const nodeOf = (id, data) => ({ id, data: { row_id: id, data } });
+let nodes = [];
+let refreshed = [];
+S.gridApi = {
+  forEachNode: (fn) => nodes.forEach(fn),
+  getRowNode: (id) => nodes.find((n) => n.id === id) || null,
+  refreshCells: (arg) => refreshed.push(arg.rowNodes ? arg.rowNodes.map((n) => n.id) : 'all'),
+};
+const PICK = { rules: [rule('k', '0', '#2b7de9', { written_by: 'ai' })], paints: {} };
+const WORD = { rules: [rule('w', '0', 'warn', { written_by: 'ai' })], paints: {} };
+const drawn = (looks, rows, given) => { S.looks = looks; nodes = rows; refreshed = []; redrawLooks(given); return refreshed; };
+const redraws = [
+  drawn(PICK, [nodeOf('r1', { a: cellOf2('1') }), nodeOf('r2', { a: cellOf2('2') })]),
+  drawn(PICK, [nodeOf('r1', { a: cellOf2('1') }), nodeOf('r2', { a: cellOf2('2') })]),
+  drawn(PICK, [nodeOf('r1', { a: cellOf2('1', 'ai') }), nodeOf('r2', { a: cellOf2('3') })]),
+  drawn(WORD, [nodeOf('r1', { a: cellOf2('1') })]),
+  drawn(WORD, [nodeOf('r1', { a: cellOf2('1', 'ai') })]),
+  drawn(WORD, [nodeOf('r1', { a: cellOf2('1', 'ai') }), nodeOf('r2', { a: cellOf2('2') })], [nodeOf('r2', {})]),
+];
+eq('D1 redrawLooks: looks changed - every row; the same looks - none; a picked colour\'s rows whose writer moved - those '
+  + '(not a value moved); a role word\'s - none (its class rules rerun); rows given - those', redraws,
+  ['all', [], ['r1'], 'all', [], ['r2']].map((x) => (x === 'all' ? ['all'] : x.length ? [x] : [])));
+
+let urls = [];
+let answerOf = () => ({ table_name: 'T', skip: 2000, written_by: { 'r1/a': 'ai', 'r7/a': 'chain' } });
+globalThis.fetch = async (url) => { urls.push(String(url)); return { ok: true, status: 200, json: async () => answerOf() }; };
+S.currentTable = 'T';
+S.looks = PICK;
+nodes = [nodeOf('r1', { a: cellOf2('1') })];
+S.pageCache = new Map([[2000, { data: [{ row_id: 'r1', data: { a: cellOf2('1') } }, { row_id: 'r7', data: { a: cellOf2('7') } }] }]]);
+const live = { signal: undefined, current: () => true };
+refreshed = [];
+redrawLooks();
+refreshed = [];
+await fillWriters('/tables/T/data?skip=0&limit=1000&target_row_id=r1&order_by=row_id&defer_total=true&filters=x', 2000, live);
+const asked = new URL(urls[0]);
+eq('D2 fillWriters asks the page\'s own read at its skip with part=writers - no target_row_id, no defer_total, the rest kept',
+  [asked.pathname, asked.searchParams.get('skip'), asked.searchParams.get('part'), asked.searchParams.has('target_row_id'),
+    asked.searchParams.has('defer_total'), asked.searchParams.get('order_by'), asked.searchParams.get('filters')],
+  ['/tables/T/data', '2000', 'writers', false, false, 'row_id', 'x']);
+eq('D3 the drawn row takes its writer and is drawn again; the cached page takes the drawn row\'s and the one not drawn',
+  [nodes[0].data.data.a.written_by, refreshed, S.pageCache.get(2000).data.map((r) => r.data.a.written_by)],
+  ['ai', [['r1']], ['ai', 'chain']]);
+nodes = [nodeOf('r1', { a: cellOf2('1') })];
+refreshed = [];
+await fillWriters('/tables/T/data?skip=0&limit=1000', 0, { signal: undefined, current: () => false });
+eq('D4 a newer read since (the ticket not current): nothing taken, nothing drawn', [nodes[0].data.data.a.written_by ?? null, refreshed], [null, []]);
+let reading = true;
+answerOf = () => { reading = false; return { table_name: 'T', skip: 0, written_by: { 'r1/a': 'ai' } }; };
+nodes = [nodeOf('r1', { a: cellOf2('1') })];
+refreshed = [];
+await fillWriters('/tables/T/data?skip=0&limit=1000', 0, { signal: undefined, current: () => reading });
+eq('D5 a newer read while the answer was read: nothing taken, nothing drawn', [nodes[0].data.data.a.written_by ?? null, refreshed], [null, []]);
+{
+  const logged = [];
+  const say = console.error;
+  console.error = (...line) => logged.push(String(line[0]));
+  const outcomes = [];
+  try {
+    for (const way of [async () => ({ ok: false, status: 500, json: async () => ({ detail: 'boom' }), text: async () => '' }),
+      async () => { throw new Error('network down'); }]) {
+      globalThis.fetch = way;
+      nodes = [nodeOf('r1', { a: cellOf2('1') })];
+      refreshed = [];
+      let threw = null;
+      try { await fillWriters('/tables/T/data?skip=0&limit=1000', 0, live); } catch (e) { threw = e.message; }
+      outcomes.push([nodes[0].data.data.a.written_by ?? null, refreshed, threw]);
+    }
+  } finally { console.error = say; }
+  eq('D6 a writers read refused, or one that never answers well: nothing taken, nothing drawn, nothing thrown - one line each in the console',
+    [outcomes, logged], [[[null, [], null], [null, [], null]], ['Writers not read', 'Failed to fetch writers']]);
+}
+
+// ── J: Load All and the row jump take a page's looks as the page read does (lead 11-10 ㄱ) ──
+{
+  const made = new Map();
+  const found = globalThis.document.getElementById.bind(globalThis.document);
+  globalThis.document.getElementById = (id) => found(id) || made.get(id) || made.set(id, makeNode(globalThis.document, 'div')).get(id);
+  S.gridApi = new Proxy({ getRowNode: () => null, getColumnState: () => [], getColumns: () => [], getDisplayedRowCount: () => 0 },
+    { get: (t, k) => (k in t ? t[k] : () => undefined) });
+  const RULES = [rule('r', '0', 'warn', { when: '[value] > 0' })];
+  const chunks = [
+    { data: [{ row_id: 'a1', data: {} }, { row_id: 'a2', data: {} }], total: 3, looks: { rules: RULES, paints: { 'a1/v': { role: 'ok' } } } },
+    { data: [{ row_id: 'a3', data: {} }], total: null, looks: { rules: RULES, paints: { 'a3/v': { role: 'danger' } } } },
+  ];
+  globalThis.fetch = async (url) => {
+    const skip = Number(new URL(String(url), 'http://box/').searchParams.get('skip'));
+    return { ok: true, status: 200, json: async () => chunks[skip ? 1 : 0] };
+  };
+  const all = await fetchAllRows('/tables/T/data', 'order_by=row_id&order_desc=false', 2, () => {});
+  S.looks = null;
+  showAllRows(all.rows, all.looks);
+  eq('J1 Load All: the looks of every chunk - the first\'s rules, each chunk\'s paints - on the grid with its rows',
+    [all.rows.length, S.looks && S.looks.rules.map((r) => r.id), S.looks && Object.keys(S.looks.paints).sort()], [3, ['r'], ['a1/v', 'a3/v']]);
+
+  S.currentTable = 'T';
+  S.looks = { rules: RULES, paints: { 'old/v': { role: 'ok' } } };
+  S.pageCache = new Map([[1000, { data: [{ row_id: 'j1', data: {} }], count: { total: 1 }, looks: { rules: RULES, paints: { 'j1/v': { role: 'accent' } } } }]]);
+  navigatorStep2({ row_id: 'j1', column_name: 'v' });
+  const cachedHit = Object.keys(S.looks.paints);
+  S.pageCache = new Map();
+  S.looks = { rules: RULES, paints: { 'old/v': { role: 'ok' } } };
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: [{ row_id: 'j2', data: {} }], total: null,
+    target_offset: 0, calculated_skip: 2000, looks: { rules: RULES, paints: { 'j2/v': { role: 'warn' } } } }) });
+  await navigatorStep3({ row_id: 'j2', column_name: 'v' });
+  eq('J2 the row jump: a cached page drawn with its looks; a page read for the jump with its own, and cached with them',
+    [cachedHit, Object.keys(S.looks.paints), Object.keys(((S.pageCache.get(2000) || {}).looks || { paints: {} }).paints)],
+    [['j1/v'], ['j2/v'], ['j2/v']]);
+
+  // a page whose looks say updating: the jump draws and caches it, its writers read asked and left out - never awaited
+  S.pageCache = new Map();
+  const asked = [];
+  let drawnRows = null;
+  S.gridApi = new Proxy({ getRowNode: () => null, getColumnState: () => [], getColumns: () => [], getDisplayedRowCount: () => 0,
+    setGridOption: (key, value) => { if (key === 'rowData') drawnRows = value.map((r) => r.row_id); } },
+  { get: (t, k) => (k in t ? t[k] : () => undefined) });
+  globalThis.fetch = (url) => {
+    const u = new URL(String(url), 'http://box/');
+    asked.push(u.searchParams.get('part') || u.pathname.split('/').pop());
+    if (String(url).includes('part=writers')) return new Promise(() => {});
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [{ row_id: 'j3', data: {} }], total: null,
+      target_offset: 0, calculated_skip: 3000, looks: { rules: RULES, paints: {}, updating: true } }) });
+  };
+  const jumped = await Promise.race([navigatorStep3({ row_id: 'j3', column_name: 'v' }).then(() => 'done'),
+    new Promise((r) => setTimeout(() => r('waited'), 500))]);
+  eq('J3 a page whose writers are still out: the jump drew it and cached it and did not wait - the writers read asked after it',
+    [jumped, drawnRows, S.pageCache.has(3000), asked], ['done', ['j3'], true, ['data', 'count', 'writers']]);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

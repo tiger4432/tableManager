@@ -1,5 +1,32 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **그리드 배너 «Fold notation»: 고른 행만 노테이션 소급** — 브라우저 새로 고침(클라). 서버는 A 18c6996a9 와 같은 묶음
+>
+> ```
+> 무엇     그리드에서 행을 고르고 위 배너의 Fold notation → 판에 줄 하나 «N rows · <몇> cells and row keys whose spelling changes»
+>          그 줄을 누르면 fold_written_notation 이 그 표 · 그 row_id 들로 대기열에 들어감(진행은 대기열 줄)
+> 볼 줄    판을 열면 «counting…» 다음에 크기. 표에 write 칸도 텍스트 칸도 없으면 줄 대신 서버 문장 한 줄
+> 답의 뜻  «… has no "write" column in notation_rules.json and no text column - nothing is folded.» → 그 표는 접을 것이 없음(정상)
+>          «count failed — …» → 토큰 · 서버 거절 문장 그대로. «holds no row …» → 고른 행이 그 사이 지워짐
+> 끄기     클라 dist 를 이 착지 전으로(버튼만 사라짐)
+> ```
+>
+> ---
+>
+> ## [11-10] **그리드: 쪽 먼저, «누가 썼나» 색은 뒤에서** — 브라우저 새로 고침(클라만). 서버(D)가 같이 올라가야 효과가 남
+>
+> ```
+> 무엇     쪽 답의 looks 에 updating: true 가 오면, 그린 뒤 같은 읽기에 part=writers 를 더해 한 번 더 묻고
+>          AI · 체인 같은 writer 의 색을 그 행에만 다시 칠함. 쪽 · 정렬 · 거르기가 바뀌면 그 읽기는 버림
+>          색 다시 그리기는 한 자리: 색 규칙이 바뀌면 보이는 행 전부, 아니면 writer 가 바뀐 행만
+> 볼 줄    개발자 도구 네트워크: /tables/<표>/data?...&part=writers 가 쪽 읽기 바로 뒤에 한 번
+> 답의 뜻  part=writers 가 안 보임 → 서버가 updating 을 안 보냄(D 서버 전, 피벗, 색 규칙을 다 끈 표) — 정상
+>          색이 늦게 칠해짐 → 정상(쪽이 먼저 뜸). 끝내 안 칠해짐 → 콘솔 «Writers not read» 줄의 거절 문장을 봄
+> 끄기     클라 dist 를 이 착지 전으로
+> ```
+>
+> ---
+>
 > ## [11-10] **그리드 쪽이 «누가 썼나» 색을 기다리지 않는다 — 쪽 먼저, 모델 · 체인 writer 색은 곧 뒤에** — git pull · API 재기동 · 화면 새로고침(dist 바뀐 뒤)
 >
 > ```
