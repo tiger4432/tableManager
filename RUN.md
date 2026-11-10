@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **STALL 줄의 P 칸이 «그 요청을 누가 막나»까지 — × 가 안 먹고 멈춰 있을 때 막는 쪽이 보임** — git pull · 런처 재기동(API)
+>
+> ```
+> 띠에서 새로 보는 것  P 칸 끝에 «by <pid> <그 쪽 문장 머리>» — 예
+>          P /admin/chain/queue/cancel UPDATE database_outbox 12s Lock:transactionid by 4123 idle-in-transaction UPDATE cell_sources
+> 답의 뜻  by <pid> idle-in-transaction … → 트랜잭션을 연 채 쉬는 세션이 막음(그 문장은 «마지막으로 돈» 것). 그 세션의 주인을 찾아 끝냄
+>          by <pid> AUTOVACUUM <표> → autovacuum 이 막음. 보통 곧 풀림 — 계속이면 그 표의 autovacuum 이 문제
+>          by <pid> UPDATE · INSERT … (상태 없이) → 지금 도는 다른 쓰기가 막음. 그 쓰기가 끝나면 풀림
+>          by 칸이 없음 → 막는 쪽 없이 느림(cpu · IO 대기). 그 경우는 D · C · IO 칸을 봄
+> 끄기     없음 — 줄 한 조각이라 끌 것 없음. 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-10] **걷기는 엔진을 안 적으면 가상(virtual) — 멈춘 세계에서도 AI · 보고서 · 걷기 화면이 표에서 바로 답** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

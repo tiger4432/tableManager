@@ -335,8 +335,9 @@ def test_p_says_what_its_request_s_query_waits_for_at_its_longest_reading():
     kept - a tick where it runs Python (no pid) does not wipe it; another request becoming P starts over."""
     r, said = Readings(), []
     w = r.watch(said)
-    r.doing = {7: ("SELECT cell_sources", 4.2, "IO:DataFileRead"), 8: ("SELECT cell_sources", 9.4, "Lock:relation"),
-               9: ("UPDATE x", 1.0, "cpu")}
+    r.doing = {7: ("SELECT cell_sources", 4.2, "IO:DataFileRead", None),
+               8: ("SELECT cell_sources", 9.4, "Lock:relation", "by 4123 AUTOVACUUM public.cell_sources"),
+               9: ("UPDATE x", 1.0, "cpu", None)}
     r.open, r.path, r.key, r.pid = 6.0, "/tables/t/columns", 5, 7
     w.tick(1.0)
     r.open, r.pid = 7.0, 8
@@ -347,7 +348,8 @@ def test_p_says_what_its_request_s_query_waits_for_at_its_longest_reading():
     w.tick(3.0)
     r.open = 0.0
     w.tick(4.0)
-    assert said[0].startswith("STALL 9s P /tables/t/columns SELECT cell_sources 9s Lock:relation L0 "), said
+    assert said[0].startswith("STALL 9s P /tables/t/columns SELECT cell_sources 9s Lock:relation "
+                              "by 4123 AUTOVACUUM public.cell_sources L0 "), said
     r.open, r.path, r.key, r.pid = 6.0, "/a", 6, 9
     w.tick(10.0)
     r.open, r.path, r.key, r.pid = 7.5, "/b", 7, None   # another request is open longest now
@@ -449,6 +451,58 @@ def test_on_postgresql_p_names_the_stalled_request_s_own_statement_and_its_wait(
     assert re.match(r"^STALL \d+s P /tables/t/columns SELECT [12]s Timeout:PgSleep L0 ", said[0]), said
     slow = [m for m in caplog.messages if m.startswith("[Slow] GET /tables/t/columns 200 - ")]
     assert stall_watch.last()["slow"] == slow[0]
+
+
+@pytest.mark.pg
+def test_on_postgresql_p_names_who_holds_the_stalled_request_s_statement(pg_engine, monkeypatch):
+    """Log hole 2 (lead 11-10): a × whose statement waits on a row another session holds - the P cell names the holder
+    and what it ran: «… Lock:transactionid by <pid> idle-in-transaction UPDATE stall_hold»."""
+    import contextvars
+    from sqlalchemy import text
+    monkeypatch.setattr(stall_watch, "_engine", [pg_engine])
+    monkeypatch.setattr(stall_watch, "STALL_SECONDS", 0.0)
+    with pg_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE IF NOT EXISTS stall_hold (id int PRIMARY KEY, v int)"))
+        conn.execute(text("INSERT INTO stall_hold VALUES (1, 0) ON CONFLICT DO NOTHING"))
+    holder = pg_engine.connect()
+    holding = holder.begin()
+    holder_pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
+    holder.execute(text("UPDATE stall_hold SET v = v + 1 WHERE id = 1"))     # idle in its transaction after this
+    said = []
+    w = stall_watch.Watch(request_timing.oldest_open, lambda now: 0.0, lambda: (1, 40), lambda: 0, lambda: None,
+                          lambda pids: (5.0, None, PARTS), lambda: ({}, None), lambda: None, lambda: None,
+                          lambda: None, say=said.append, pg_doing=stall_watch.pg_doing)
+    began = request_timing.begin("/admin/chain/queue/cancel")
+
+    def query():
+        with pg_engine.connect() as conn:
+            conn.execute(text("SET lock_timeout = '5s'"))
+            conn.execute(text("UPDATE stall_hold SET v = v + 1 WHERE id = 1"))
+            conn.commit()
+    worker = threading.Thread(target=contextvars.copy_context().run, args=(query,))
+    try:
+        worker.start()
+        # the watch reads from a thread of its own - outside the request, or its probe is the request's statement
+        apart = contextvars.Context().run
+        for _ in range(60):                              # until the hook has noted its pid and it waits
+            pid = request_timing.oldest_open()[3]
+            if pid and (apart(stall_watch.pg_doing, pid) or (None, 0, ""))[2].startswith("Lock:"):
+                break
+            time.sleep(0.05)
+        apart(w.tick, time.perf_counter() + 6.0)
+    finally:
+        holding.rollback()
+        holder.close()
+        worker.join()
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE stall_hold"))
+
+    class Answered:
+        status_code, headers = 200, {"content-length": "2"}
+    request_timing.end(began, "POST", "/admin/chain/queue/cancel", Answered)
+    w.tick(time.perf_counter() + 7.0)
+    assert re.match(r"^STALL \d+s P /admin/chain/queue/cancel UPDATE stall_hold \d+s Lock:\w+ by %d idle-in-transaction UPDATE stall_hold L0 "
+                    % holder_pid, said[0]), said
 
 
 def test_a_request_waiting_for_a_grid_process_is_counted_while_it_waits():

@@ -50,10 +50,12 @@ ACTIVE_STATEMENTS = ("SELECT count(*) OVER (), extract(epoch FROM now() - query_
                      "FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid() "
                      "AND datname = current_database() ORDER BY query_start LIMIT 1")
 #: What one PostgreSQL process runs - any database's, a background one's too (its kind then) - by its pid, or by its
-#: connection's name (a pool process's), the active one first.
-PG_DOING = ("SELECT query, backend_type, extract(epoch FROM now() - query_start), state, wait_event_type, wait_event "
-            "FROM pg_stat_activity WHERE pid = :pid OR application_name = :name "
-            "ORDER BY state = 'active' DESC, query_start DESC NULLS LAST LIMIT 1")
+#: connection's name (a pool process's), the active one first; and the first process holding it up.
+PG_DOING = ("SELECT a.query, a.backend_type, extract(epoch FROM now() - a.query_start), a.state, a.wait_event_type, "
+            "a.wait_event, b.pid, b.query, b.backend_type, b.state "
+            "FROM pg_stat_activity a LEFT JOIN pg_stat_activity b ON b.pid = (pg_blocking_pids(a.pid))[1] "
+            "WHERE a.pid = :pid OR a.application_name = :name "
+            "ORDER BY a.state = 'active' DESC, a.query_start DESC NULLS LAST LIMIT 1")
 #: A PostgreSQL process, by its image name - the C cell's «pg».
 _PG_IMAGE = re.compile(r"postgres", re.I)
 _NOT_NAMES = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)      # literals and comments - never on the line
@@ -270,11 +272,13 @@ def oldest_transaction():
 
 
 def pg_doing(who):
-    """(head, seconds, waits) of PostgreSQL process `who` - a pid, or a connection name: its statement's head, or its
-    kind when it has none
+    """(head, seconds, waits, held) of PostgreSQL process `who` - a pid, or a connection name: its statement's head, or
+    its kind when it has none
     («checkpointer»); the seconds since that statement began; «Lock:transactionid» - what it waits for, «cpu» when
-    it runs, its state when not active («idle-in-transaction»). On the watch's own connection; None when the process
-    is not in pg_stat_activity (the postmaster)."""
+    it runs, its state when not active («idle-in-transaction»); «by 4123 UPDATE database_outbox» - the first process
+    holding it up and what that one runs (its state first when it is not running - «by 4123 idle-in-transaction UPDATE …»,
+    its last statement), None when none does (lead 11-10, log hole 2). On the watch's own connection;
+    None when the process is not in pg_stat_activity (the postmaster)."""
     from sqlalchemy import text
     engine = _kept()
     if engine is None:
@@ -284,9 +288,12 @@ def pg_doing(who):
         row = conn.execute(text(PG_DOING), {"pid": None if named else who, "name": who if named else None}).first()
     if row is None:
         return None
-    head = statement_head(row[0]) if (row[0] or "").strip() else (row[1] or "").replace(" ", "-") or None
+    def head_of(query, kind):
+        return statement_head(query) if (query or "").strip() else (kind or "").replace(" ", "-") or None
     waits = "%s:%s" % (row[4], row[5]) if row[4] else "cpu" if row[3] == "active" else (row[3] or "?").replace(" ", "-")
-    return head, float(row[2] or 0), waits
+    held = None if row[6] is None else "by %d %s%s" % (
+        row[6], "" if row[9] in (None, "active") else row[9].replace(" ", "-") + " ", head_of(row[7], row[8]) or UNREAD)
+    return head_of(row[0], row[1]), float(row[2] or 0), waits, held
 
 
 def statement_head(query):
@@ -442,8 +449,8 @@ class Watch:
         f = self.freeze
         cells = ["STALL", "%ds%s" % (round(now - f["start"]), "+" if going else "")]
         if f["P"]:
-            cells.append("P %s" % f["P"] + (" ?" if f["Pdb"] == UNREAD else "" if f["Pdb"] is None else " %s %ds %s" % (
-                f["Pdb"][0] or UNREAD, round(f["Pdb"][1]), f["Pdb"][2])))
+            cells.append("P %s" % f["P"] + (" ?" if f["Pdb"] == UNREAD else "" if f["Pdb"] is None else " %s %ds %s%s" % (
+                f["Pdb"][0] or UNREAD, round(f["Pdb"][1]), f["Pdb"][2], " " + f["Pdb"][3] if f["Pdb"][3] else "")))
         cells += ["L%s" % _int(f["L"]),
                  "T%s" % (UNREAD if f["T"] in (None, UNREAD) else "%d/%d" % f["T"]),
                  "G%s" % _int(f["G"]),
