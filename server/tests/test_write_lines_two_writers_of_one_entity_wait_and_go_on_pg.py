@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database import crud, lines, models
 from database.write_lines import write_lines
-from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines, stand_in_spoken, stand_in_winners
+from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines
 
 pytestmark = pytest.mark.pg
 
@@ -31,9 +31,7 @@ def fixture_sessions(pg_engine, monkeypatch):
     faulthandler.dump_traceback_later(90, exit=True)      # a hung lock gate says where, then stops
     make = sessionmaker(bind=pg_engine, autoflush=False)
     setup = make()
-    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(setup, TABLE, CFG)),
-                        raising=False)
+    keep_lines(setup, TABLE, CFG)
     setup.commit()
     try:
         yield make

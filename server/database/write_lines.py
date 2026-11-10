@@ -102,6 +102,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
+    lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
     written = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     _heads(db, ln, chunks, written)
     gone = sorted({targets[i] for i in kept if items[i]["line_kind"] == DELETED})
@@ -110,8 +111,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     rows_plain = {}
     for i in sorted(plain):
         rows_plain.setdefault(targets[i], {}).update(plain[i])
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, held,
-                     old, rows_plain)
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, old,
+                     rows_plain)
     changed = {}
     for i in sorted(list(kept) + moved):
         row_id = targets[i]
@@ -366,26 +367,21 @@ def _heads(db, ln, chunks, written):
     db.execute(statement, params)
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, held, old, plain):
-    """Step 5 - the touched current lines merged again from their head lines and pins, a column at a time by
-    `lines.winners_sql` (the one query `lines.merge` reads too), and written with won_by. Returns {row_id: {column:
-    value}} as written."""
+def _merge_now(db, table, cfg, shape, row_ids, at, old, plain):
+    """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge; `lines.winners_sql` under it):
+    a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
+    has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
+    with won_by. Returns {row_id: {column: value}} as written."""
     now, data = shape["table"], _data(shape["bits"])
     if not row_ids:
         return {}
-    # a column of no line keeps t's value and no won_by (owner 11-11 «옛날 거 끊어»: t is what it was until written);
-    # a column with lines is its winner's, or empty when none wins (all withdrawn)
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
-    spoken = lines.spoken(db, table, row_ids)
-    for row_id in row_ids:
-        for c in spoken.get(row_id, ()):
-            merged[row_id][c] = None
     won_by = {row_id: {} for row_id in row_ids}
-    for c in data:
-        query = lines.winners_sql(table, cfg, c, "row_ids")
-        for page in _pages(row_ids, 1):
-            for row_id, value, line_id in db.execute(query, {"row_ids": page}):
-                merged[row_id][c], won_by[row_id][c] = crud.line_value(value, held.get(c, "string")), line_id
+    for row_id, decided in lines.merge(db, table, cfg, row_ids).items():
+        for c, (value, line_id) in decided.items():
+            merged[row_id][c] = value
+            if line_id is not None:
+                won_by[row_id][c] = line_id
     for row_id, values in plain.items():
         if row_id in merged:
             merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
@@ -393,8 +389,6 @@ def _merge_now(db, table, cfg, shape, row_ids, at, held, old, plain):
         {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])
     return merged
-
-
 def _stage(db, table, cfg, view_columns, changed, keys, wrote):
     """Step 7 - this write's outbox events, in its transaction, from its answer - the one author the broadcast reads
     too (owner rule: the chain wakes on these). Today's shapes (the ORM flush hook's, kept letter for letter): a new

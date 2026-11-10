@@ -18,35 +18,14 @@ TABLE = "wl_probe"
 CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string", "n": "number"}}
 
 
-def stand_in_winners(shape):
-    """Stand-in for C's lines.winners_sql until it lands (11-11): the latest head line of the column wins - no rank, no
-    pin. The two write_lines test files share it."""
-    assert not hasattr(lines, "winners_sql"), "C's winners_sql landed - drop this stand-in, gate the real one"
-    def winners(table, cfg, column, param):
-        k, m = shape["bits"][column] // 64, 1 << (shape["bits"][column] % 64)
-        head = "h.line_kind = 'write' AND (h.head_{k} & {m}) != 0 AND (h.withdrawn_{k} & {m}) = 0".format(k=k, m=m)
-        return text("SELECT h.row_id, h.{c}, h.line_id FROM {t} h WHERE h.row_id IN :{p} AND {head} AND h.line_id = "
-                    "(SELECT max(line_id) FROM {t} h2 WHERE h2.row_id = h.row_id AND {head2})".format(
-                        c=column, t=shape["lines"].name, p=param, head=head, head2=head.replace("h.", "h2."))
-                    ).bindparams(bindparam(param, expanding=True))
-    return winners
+def ticking_clock(monkeypatch):
+    """sqlite's now() is a second: two writes in one second tie on `at` and the rank's last term (the source name)
+    decides. PostgreSQL's is the transaction's start, so writes of separate transactions never tie. Each write here
+    reads a clock one second on."""
+    from datetime import datetime, timedelta, timezone
 
-
-def stand_in_spoken(db, table, row_ids):
-    """Stand-in for C's lines.spoken until it lands: {row_id: the columns any line of it names} - every line's written
-    bits OR-ed (a withdraw names the cells it takes back; a mark or a deleted line names none)."""
-    shape = lines.shape(db, table, crud.TABLE_CONFIG[table])
-    ln, out = shape["lines"], {}
-    names = lines.bit_columns("written", shape["chunks"])
-    for row in db.execute(select(ln.c.row_id, *[ln.c[n] for n in names]).where(
-            ln.c.row_id.in_(list(row_ids)))):
-        for c, bit in shape["bits"].items():
-            if (row[1 + bit // 64] & 0xFFFFFFFFFFFFFFFF) >> (bit % 64) & 1:
-                out.setdefault(row[0], set()).add(c)
-    return out
-
-
-assert not hasattr(lines, "spoken"), "C's lines.spoken landed - drop stand_in_spoken, gate the real one"
+    ticks = iter(datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=n) for n in range(10 ** 6))
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: next(ticks))
 
 
 def keep_lines(db, table, cfg):
@@ -55,6 +34,8 @@ def keep_lines(db, table, cfg):
     write_lines test files share it."""
     from sqlalchemy import Index, MetaData, Table, inspect
 
+    for shared in (lines.LineSource, models.CellOverwrite):     # the rank's source names · the pins
+        shared.__table__.create(db.connection(), checkfirst=True)
     if not inspect(db.connection()).has_table(table):
         t = Table(table, MetaData(), *lines._data_columns(cfg, models.sql_type_of, row_id_key=True))
         Index("uq_%s_bk" % table, t.c.business_key_val, unique=True)
@@ -70,8 +51,8 @@ def fixture_db(monkeypatch):
     models.DatabaseOutbox.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(db, TABLE, CFG)), raising=False)
+    keep_lines(db, TABLE, CFG)
+    ticking_clock(monkeypatch)
     try:
         yield db
     finally:
@@ -221,8 +202,8 @@ def test_two_sqlite_writers_of_one_row_wait_for_the_write_lock_before_they_read(
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     make = sessionmaker(bind=engine)
     setup = make()
-    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(setup, TABLE, CFG)), raising=False)
+    keep_lines(setup, TABLE, CFG)
+    ticking_clock(monkeypatch)
     [row_id] = _write(setup, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "0"}, "source_name": "f0"})["changed"]
     setup.commit()
     setup.close()

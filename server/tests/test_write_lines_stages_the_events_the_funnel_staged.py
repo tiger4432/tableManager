@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from database import crud, lines, models
 from database.context import outbox_mode
 from database.write_lines import write_lines
-from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines, stand_in_spoken, stand_in_winners
+from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines, ticking_clock
 
 TABLE = "ob_rows"
 CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "n": "string", "m": "number"}}
@@ -27,8 +27,8 @@ def fixture_db(monkeypatch):
         model.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
-    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
-    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(keep_lines(db, TABLE, CFG)), raising=False)
+    keep_lines(db, TABLE, CFG)
+    ticking_clock(monkeypatch)
     db.commit()
     try:
         yield db
@@ -117,12 +117,7 @@ def test_a_time_column_stored_as_text_carries_its_text_as_written(db, monkeypatc
     table, written = "ob_text_time", "2026-01-01T13:00:00"
     cfg = {"composite_key_source": ["k"], "column_types": {"k": "string", "n": "string", "t": "string"}}
     monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
-    first = lines.winners_sql
-    monkeypatch.delattr(lines, "winners_sql")
-    second = stand_in_winners(keep_lines(db, table, cfg))
-    monkeypatch.setattr(lines, "spoken", stand_in_spoken, raising=False)
-    monkeypatch.setattr(lines, "winners_sql", lambda t, c, column, param: (second if t == table else first)(
-        t, c, column, param), raising=False)
+    keep_lines(db, table, cfg)
     db.commit()
     monkeypatch.setitem(crud.TABLE_CONFIG, table, dict(cfg, column_types=dict(cfg["column_types"], t="datetime")))
     for values in ({"k": "A", "n": "x", "t": written}, {"k": "A", "n": "y"}):
