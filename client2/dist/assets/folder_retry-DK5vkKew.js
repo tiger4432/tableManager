@@ -1,17 +1,17 @@
-import{c as e,s as t}from"./absent-Bu8hqJql.js";import{Q as n,g as r,t as i,tt as a}from"./utils-DJgorEas.js";import{t as o}from"./disabled_reason-BCuzM_C1.js";var s=`collector_backfill`,c=Object.freeze({button:`Backfill`,start:`Start`,cancel:`Cancel`,placeholder:`YYYY-MM-DD`,offTitle:`Declare # window: to backfill`}),l=e=>`${(e||{}).table_name}/${(e||{}).script_name}`;function u(e,t){let n=e||{},i=l(n);if(!(`window`in n))return{show:!1,title:``,offReason:``,key:i,nextStart:``,line:null};let a=typeof n.window==`string`?n.window.trim():``,o=a?`Backfill day by day (# window: ${a})`:``,s=a?``:c.offTitle,u=(t&&Array.isArray(t.runs)?t.runs:[]).find(e=>e&&e.op===`collector_backfill`&&e.params&&e.params.collector===i);if(!u)return{show:!0,title:o,offReason:s,key:i,nextStart:``,line:null};let d=typeof u.next_start==`string`?u.next_start:``,f=r({runs:[u],state_names:t.state_names||{}},Date.now(),{},{}).runs[0],p=f.stateName&&f.stateName.text?f.stateName.text:``,m=Number(u.total_rows),h=Number(u.processed_rows),g=Number.isFinite(m)&&m>0?`${Number.isFinite(h)?h:0}/${m} days`:``,_=f.reason&&f.reason.text?f.reason.text:``,v=f.summary&&f.summary.text?f.summary.text:``;return{show:!0,title:o,offReason:s,key:i,nextStart:d,line:{text:[p,g,f.finished?_||v:``].filter(Boolean).join(` · `),tone:_?`danger`:f.finished?`done`:`live`}}}function d(e){let t=String(e||``).trim(),n=Math.max(t.lastIndexOf(`\\`),t.lastIndexOf(`/`));if(n<0)return null;let r=t.slice(0,n+1);if(r.length<=40)return{full:r,shown:r};let i=r.slice(r.length-40),a=i.search(/[\\/]/);return{full:r,shown:`…${a>=0&&a<i.length-1?i.slice(a):i}`}}function f(e,{withStatus:t,timeStr:n}){let r=`<span class="${a(e.status)}">${i(e.status||`FAILED`)}</span>`,o=`<button class="admin-btn btn-primary btn-retry-file" data-id="${i(e.id)}">Retry</button>`,s=e.retry_count>0?`color: var(--warning); font-weight: 600;`:`color: var(--text-dim);`;return`
-    <td>${i(e.id)}</td>
-    <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${i(e.filename)}${p(e.filepath)}</td>
-    <td style="font-weight: bold; color: var(--color-primary);">${i(e.table_name)}</td>
+import{c as e,s as t}from"./absent-Bu8hqJql.js";import{$ as n,g as r,nt as i,t as a}from"./utils-DeLEo_Uj.js";import{t as o}from"./disabled_reason-BCuzM_C1.js";var s=`collector_backfill`,c=Object.freeze({button:`Backfill`,start:`Start`,cancel:`Cancel`,placeholder:`YYYY-MM-DD`,offTitle:`Declare # window: to backfill`}),l=e=>`${(e||{}).table_name}/${(e||{}).script_name}`;function u(e,t){let n=e||{},i=l(n);if(!(`window`in n))return{show:!1,title:``,offReason:``,key:i,nextStart:``,line:null};let a=typeof n.window==`string`?n.window.trim():``,o=a?`Backfill day by day (# window: ${a})`:``,s=a?``:c.offTitle,u=(t&&Array.isArray(t.runs)?t.runs:[]).find(e=>e&&e.op===`collector_backfill`&&e.params&&e.params.collector===i);if(!u)return{show:!0,title:o,offReason:s,key:i,nextStart:``,line:null};let d=typeof u.next_start==`string`?u.next_start:``,f=r({runs:[u],state_names:t.state_names||{}},Date.now(),{},{}).runs[0],p=f.stateName&&f.stateName.text?f.stateName.text:``,m=Number(u.total_rows),h=Number(u.processed_rows),g=Number.isFinite(m)&&m>0?`${Number.isFinite(h)?h:0}/${m} days`:``,_=f.reason&&f.reason.text?f.reason.text:``,v=f.summary&&f.summary.text?f.summary.text:``;return{show:!0,title:o,offReason:s,key:i,nextStart:d,line:{text:[p,g,f.finished?_||v:``].filter(Boolean).join(` · `),tone:_?`danger`:f.finished?`done`:`live`}}}function d(e){let t=String(e||``).trim(),n=Math.max(t.lastIndexOf(`\\`),t.lastIndexOf(`/`));if(n<0)return null;let r=t.slice(0,n+1);if(r.length<=40)return{full:r,shown:r};let i=r.slice(r.length-40),a=i.search(/[\\/]/);return{full:r,shown:`…${a>=0&&a<i.length-1?i.slice(a):i}`}}function f(e,{withStatus:t,timeStr:n}){let r=`<span class="${i(e.status)}">${a(e.status||`FAILED`)}</span>`,o=`<button class="admin-btn btn-primary btn-retry-file" data-id="${a(e.id)}">Retry</button>`,s=e.retry_count>0?`color: var(--warning); font-weight: 600;`:`color: var(--text-dim);`;return`
+    <td>${a(e.id)}</td>
+    <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${a(e.filename)}${p(e.filepath)}</td>
+    <td style="font-weight: bold; color: var(--color-primary);">${a(e.table_name)}</td>
     ${t?`<td style="text-align: center;">${r}</td>`:``}
-    <td style="text-align: center; ${s}">${i(e.retry_count)}</td>
-    <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${i(e.created_at||``)}">${i(n)}</td>
+    <td style="text-align: center; ${s}">${a(e.retry_count)}</td>
+    <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${a(e.created_at||``)}">${a(n)}</td>
     <td style="text-align: center;" onclick="event.stopPropagation()">
       ${o}
     </td>
-  `}function p(e){let t=d(e);if(!t)return``;let n=i(t.full);return`<div class="file-folder" title="${n}" style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); font-weight: 400; font-size: var(--fs-meta); color: var(--text-dim); word-break: normal;"><span class="file-folder__path" style="overflow: hidden; white-space: nowrap;">${i(t.shown)}</span><button type="button" class="admin-btn file-folder-copy" data-path="${n}" style="flex: none; padding: 0 var(--space-2); font-size: var(--fs-meta);">Copy</button></div>`}function m(n,{elapsedText:r}){let a=n.lane===`heavy`?`<span class="badge badge-warning" style="font-weight: bold;">HEAVY</span>`:`<span class="badge badge-success">normal</span>`,o=Math.max(0,Math.min(n.progress||0,100)),s=n.status===`QUEUED`?` waiting`:``,c=n.total_rows==null?t(n.processed_rows)&&Number(n.processed_rows)>0?e(n.processed_rows):`-`:`${e(n.processed_rows)} / ${e(n.total_rows)}`;return`
-      <td data-wrap-ok style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${i(n.filename)}${p(n.filepath)}</td>
-      <td style="font-weight: bold; color: var(--color-primary);">${i(n.table_name)}</td>
-      <td style="text-align: center;">${a}</td>
+  `}function p(e){let t=d(e);if(!t)return``;let n=a(t.full);return`<div class="file-folder" title="${n}" style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); font-weight: 400; font-size: var(--fs-meta); color: var(--text-dim); word-break: normal;"><span class="file-folder__path" style="overflow: hidden; white-space: nowrap;">${a(t.shown)}</span><button type="button" class="admin-btn file-folder-copy" data-path="${n}" style="flex: none; padding: 0 var(--space-2); font-size: var(--fs-meta);">Copy</button></div>`}function m(n,{elapsedText:r}){let i=n.lane===`heavy`?`<span class="badge badge-warning" style="font-weight: bold;">HEAVY</span>`:`<span class="badge badge-success">normal</span>`,o=Math.max(0,Math.min(n.progress||0,100)),s=n.status===`QUEUED`?` waiting`:``,c=n.total_rows==null?t(n.processed_rows)&&Number(n.processed_rows)>0?e(n.processed_rows):`-`:`${e(n.processed_rows)} / ${e(n.total_rows)}`;return`
+      <td data-wrap-ok style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${a(n.filename)}${p(n.filepath)}</td>
+      <td style="font-weight: bold; color: var(--color-primary);">${a(n.table_name)}</td>
+      <td style="text-align: center;">${i}</td>
       <td>
         <div style="display: flex; align-items: center; gap: 8px;">
           <div style="flex: 1; height: 6px; border-radius: 3px; background: var(--bg-inset); border: 1px solid var(--border); overflow: hidden;">
@@ -21,30 +21,30 @@ import{c as e,s as t}from"./absent-Bu8hqJql.js";import{Q as n,g as r,t as i,tt a
         </div>
       </td>
       <td style="text-align: center; font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${c}</td>
-      <td style="text-align: center; font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${i(r)}</td>
-    `}function h(e){let t=e.has_config?`<span class="badge badge-success">${i(e.config_file)}</span>`:`<span class="badge badge-danger">None</span>`,n=e.custom_scripts.length,r=n>0?`<span class="badge badge-success" style="font-family: var(--font-mono);">${n} script(s)</span>`:`<span class="badge badge-warning">None (Standard)</span>`,a=e.raw_files_count>0?`<span class="badge badge-warning" style="font-family: var(--font-mono); font-weight: bold;">${e.raw_files_count} file(s)</span>`:`<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;return`
-      <td style="font-weight: bold; color: var(--color-primary);">${i(e.name)}</td>
-      <td style="font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 500;">${i(e.table_name)}</td>
+      <td style="text-align: center; font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${a(r)}</td>
+    `}function h(e){let t=e.has_config?`<span class="badge badge-success">${a(e.config_file)}</span>`:`<span class="badge badge-danger">None</span>`,n=e.custom_scripts.length,r=n>0?`<span class="badge badge-success" style="font-family: var(--font-mono);">${n} script(s)</span>`:`<span class="badge badge-warning">None (Standard)</span>`,i=e.raw_files_count>0?`<span class="badge badge-warning" style="font-family: var(--font-mono); font-weight: bold;">${e.raw_files_count} file(s)</span>`:`<span class="badge badge-success" style="font-family: var(--font-mono);">0</span>`;return`
+      <td style="font-weight: bold; color: var(--color-primary);">${a(e.name)}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 500;">${a(e.table_name)}</td>
       <td style="text-align: center;">${t}</td>
       <td style="text-align: center;">${r}</td>
-      <td style="text-align: center;">${a}</td>
+      <td style="text-align: center;">${i}</td>
     `}function g(e){let t=e.functions.length;return`
-      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${i(e.filename)}</td>
-      <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${i(e.module_name)}</td>
+      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${a(e.filename)}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${a(e.module_name)}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${t}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
         <button class="admin-btn btn-primary btn-edit-mapper">🛠️ Edit</button>
       </td>
-    `}var _=e=>`au-backfill-line${e&&e.tone?` is-${e.tone}`:``}`;function v(e){let t=e||{},n=t.view||{};if(!n.show)return``;let r=t.open?`<input class="au-backfill-start" placeholder="${c.placeholder}" value="${i(t.value===void 0?n.nextStart||``:t.value)}" aria-label="First day to backfill, KST">
+    `}var _=e=>`au-backfill-line${e&&e.tone?` is-${e.tone}`:``}`;function v(e){let t=e||{},n=t.view||{};if(!n.show)return``;let r=t.open?`<input class="au-backfill-start" placeholder="${c.placeholder}" value="${a(t.value===void 0?n.nextStart||``:t.value)}" aria-label="First day to backfill, KST">
        <button class="admin-btn btn-primary btn-backfill-start"${t.busy?` disabled`:``}>${c.start}</button>
-       <button class="admin-btn btn-backfill-cancel">${c.cancel}</button>`:`<button class="admin-btn btn-primary btn-backfill" title="${i(n.title||``)}">${c.button}</button>`,a=n.line||{text:``,tone:``};return`<div class="au-backfill-controls">${r}</div>
-    <div class="${_(a)}" data-backfill-key="${i(n.key||``)}">${i(a.text)}</div>
-    ${t.failure?`<div class="au-backfill-line is-danger au-backfill-refusal">${i(t.failure)}</div>`:``}`}function y(e,{isActive:t,nextRunText:n,lastRunText:r,backfill:o}){let s=`<span class="${a(e.last_status)}">${i(e.last_status||`PENDING`)}</span>`,c=t?``:`<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>`;return`
-      <td style="font-weight: bold; color: var(--color-primary);">${i(e.table_name)}</td>
-      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${i(e.script_name)}${c}</td>
-      <td style="font-family: var(--font-mono); font-size: var(--fs-button); text-align: center;">${i(e.cron_expression)}</td>
-      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${i(e.next_run||``)}">${i(n)}</td>
-      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${i(e.last_run||``)}">${i(r)}</td>
+       <button class="admin-btn btn-backfill-cancel">${c.cancel}</button>`:`<button class="admin-btn btn-primary btn-backfill" title="${a(n.title||``)}">${c.button}</button>`,i=n.line||{text:``,tone:``};return`<div class="au-backfill-controls">${r}</div>
+    <div class="${_(i)}" data-backfill-key="${a(n.key||``)}">${a(i.text)}</div>
+    ${t.failure?`<div class="au-backfill-line is-danger au-backfill-refusal">${a(t.failure)}</div>`:``}`}function y(e,{isActive:t,nextRunText:n,lastRunText:r,backfill:o}){let s=`<span class="${i(e.last_status)}">${a(e.last_status||`PENDING`)}</span>`,c=t?``:`<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>`;return`
+      <td style="font-weight: bold; color: var(--color-primary);">${a(e.table_name)}</td>
+      <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${a(e.script_name)}${c}</td>
+      <td style="font-family: var(--font-mono); font-size: var(--fs-button); text-align: center;">${a(e.cron_expression)}</td>
+      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${a(e.next_run||``)}">${a(n)}</td>
+      <td style="color: var(--text-muted); font-size: var(--fs-button); font-family: var(--font-mono);" title="${a(e.last_run||``)}">${a(r)}</td>
       <td style="text-align: center;">${s}</td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
         <label class="au-switch" title="${t?`Click → deactivate the collector (schedule stops)`:`Click → activate the collector (schedule resumes)`}">
@@ -53,7 +53,7 @@ import{c as e,s as t}from"./absent-Bu8hqJql.js";import{Q as n,g as r,t as i,tt a
         </label>
       </td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-run-now" data-table="${i(e.table_name)}" data-script="${i(e.script_name)}"
+        <button class="admin-btn btn-primary btn-run-now" data-table="${a(e.table_name)}" data-script="${a(e.script_name)}"
          
           title="${t?`Collect once now`:`An inactive collector can still be run by hand`}">Run Now</button>
       </td>

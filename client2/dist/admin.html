@@ -218,7 +218,9 @@
     .runtime-table td[data-col="loop"] { font-weight: 600; }
     /* Indexes (총괄 d71f931c7) wear the runtime table's look; a number's head stands over its number. */
     .index-table th.num { text-align: right; }
-    .index-outside-title { margin: var(--space-4) 0 var(--space-2); }
+    /* The columns that take the room (Purpose, Serves, a storage State) wrap; nowrap pushed the table past its box at 1920. */
+    .index-table td:not(.cell-fit) { white-space: normal; }
+    .index-outside-title, .index-storage-title { margin: var(--space-4) 0 var(--space-2); }
     .index-table-head { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
     .index-table-head .index-refresh:disabled { color: var(--text-dim); cursor: default; }
 
@@ -297,6 +299,17 @@
       padding: var(--space-3) 0;
       color: var(--text-dim);
     }
+    /* the head line: the read's age, Refresh at its end - above the list (owner 11-09) */
+    .chain-queue-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      padding: 0 0 var(--space-2);
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+    }
+    .chain-queue-head > .chain-queue-refresh { margin-left: auto; }
     /* 조각 사이의 점은 글자가 아니라 여기서 — 부품은 값만 낸다. */
     .chain-queue-meta {
       display: flex;
@@ -1140,7 +1153,13 @@
     .help-card__decl-text { margin: 0; max-height: 320px; overflow: auto; padding: var(--space-2) var(--space-3);
       border: 1px solid var(--border); background: var(--bg-inset); font-family: var(--font-mono); font-size: var(--fs-tag);
       white-space: pre; color: var(--text); }
-    .help-card__sections { display: flex; flex-direction: column; gap: var(--space-1); }
+    .help-card__sections, .help-card__lines, .help-card__ops { display: flex; flex-direction: column; gap: var(--space-1); }
+    .help-card__ops { gap: var(--space-2); min-width: 0; }
+    /* the server's reading lines as written - one face, whole, typed from the screen */
+    .help-card__line { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text); overflow-wrap: anywhere;
+      padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); }
+    .help-card__section-open { align-self: flex-start; text-align: left; }
+    .help-card__uncited { color: var(--warning); }
     .help-card__section, .help-card__dropped, .help-card__check-note { font-family: var(--font-mono); font-size: var(--fs-tag);
       color: var(--text-muted); }
     .help-card__check-ok { font-weight: 600; color: var(--success); }
@@ -1747,7 +1766,6 @@
     /* 🔴 한 실행 = 한 줄 (총괄 a274c90f0) — 제목 | 진행 | 경과 | 상태 | × , 결과는 그 줄 «아래» 전폭.
           칸 수는 «격자 선언»이 정합니다: 다섯 칸이고 줄은 언제나 다섯 자식입니다(`run_lines.js`).
           끝난 줄은 흐리지 않습니다 — muted 글자 토큰과 상태 낱말이 말합니다. */
-    .run-lines { display: flex; flex-direction: column; gap: var(--space-1); }
     /* 실패 요약 — 한 줄 = (표 · 종류 · 날). 여는 줄 아래에 그 줄의 행 표가 앉습니다. */
     .fail-summary { display: flex; flex-direction: column; }
     .fail-summary__line { display: block; width: 100%; text-align: left; font: inherit;
@@ -1758,35 +1776,7 @@
     .fail-summary__line:has(+ .fail-summary__reason) { border-bottom: 0; }
     .fail-summary__reason { padding: 0 var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); }
     .fail-summary__rows { padding: var(--space-2) 0 var(--space-3) var(--space-3); }
-    .run-line { display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
-                             max-content max-content var(--space-6);
-      align-items: center; column-gap: var(--space-3); row-gap: var(--space-1);
-      padding: var(--space-1) 0; font-size: var(--fs-label); color: var(--text); }
-    .run-line__what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .run-line__who { color: var(--text-dim); margin-left: var(--space-2); }
-    .run-line__progress { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-    .run-line__number, .run-line__elapsed { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .run-line__number { text-align: right; }
-    .run-line__elapsed, .run-line__state { color: var(--text-dim); white-space: nowrap; }
-    .run-line__act { text-align: right; }
     .run-line .running-x { margin-left: 0; }
-    .run-line__result { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline;
-      gap: var(--space-2); color: var(--text-dim); overflow-wrap: anywhere; }
-    .run-line__reason { color: var(--danger); }
-    .run-line__label { color: var(--text-dim); margin-right: var(--space-1); }
-    .run-line.is-finished .run-line__what, .run-line.is-finished .run-line__number,
-    .run-line.is-waiting .run-line__what, .run-line.is-stopping .run-line__what { color: var(--text-dim); }
-    .running-bar { flex: 1; height: 6px; overflow: hidden;
-      background: rgba(127,127,127,0.22); position: relative; }
-    .running-bar__fill { display: block; height: 100%; background: var(--accent, #4c9be8); }
-    /* 전체를 모를 때: 폭을 «주장하지 않고» 움직임만 보입니다. */
-    .running-bar.is-unknown .running-bar__fill { width: 35%; animation: running-slide 1.4s linear infinite; }
-    @keyframes running-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-    /* 기다림 · 끝남 · 멈추는 중: 궤도는 남고 «아무것도 안 움직입니다». */
-    .running-bar.is-waiting .running-bar__fill { animation: none; }
-    .running-bar.is-unknown.is-waiting .running-bar__fill { width: 0; }
-    .run-line.is-stopping .running-bar__fill { background: var(--text-dim); }
     .run-line .retro-extras { grid-column: auto; }
     .running-x {
       width: 18px;
@@ -1822,20 +1812,20 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CkUhJHu0.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BKZDj1lD.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/chunk-CEoa-xHZ.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-Bu8hqJql.js">
   <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
   <link rel="modulepreload" crossorigin href="/assets/dropdown-ffa53XA6.js">
   <link rel="modulepreload" crossorigin href="/assets/account_boot-CtlXZ_iP.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-DJgorEas.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-DeLEo_Uj.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BCuzM_C1.js">
-  <link rel="modulepreload" crossorigin href="/assets/folder_retry-DQV_uyRJ.js">
+  <link rel="modulepreload" crossorigin href="/assets/folder_retry-DK5vkKew.js">
   <link rel="modulepreload" crossorigin href="/assets/branch_picker-D_yUKr02.js">
   <link rel="modulepreload" crossorigin href="/assets/count_with_absence-BnZl0AUO.js">
   <link rel="modulepreload" crossorigin href="/assets/ui_words-wvShDvFk.js">
   <link rel="modulepreload" crossorigin href="/assets/match_count-CowQGU0R.js">
-  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-JR_bFVwc.js">
+  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-C05qSXB8.js">
   <link rel="modulepreload" crossorigin href="/assets/cross_icon-D7TTlgNZ.js">
   <link rel="modulepreload" crossorigin href="/assets/reach_table-CQ7scXWt.js">
   <link rel="modulepreload" crossorigin href="/assets/expression-Dc9BsN4l.js">
@@ -1853,10 +1843,10 @@
   <link rel="modulepreload" crossorigin href="/assets/world-pS1gg4ou.js">
   <link rel="stylesheet" crossorigin href="/assets/absent-DBMX_g2q.css">
   <link rel="stylesheet" crossorigin href="/assets/account_boot-Dn-l1TZG.css">
-  <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-CPybX3o8.css">
+  <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-NZpIpU28.css">
   <link rel="stylesheet" crossorigin href="/assets/ontology_explorer_view-DMtSL-U0.css">
   <link rel="stylesheet" crossorigin href="/assets/admin-oH5J1yPO.css">
-  <link rel="stylesheet" crossorigin href="/assets/base-DtrWoe31.css">
+  <link rel="stylesheet" crossorigin href="/assets/base-CRiMSnL4.css">
 </head>
 <body>
   <header class="admin-bar">
