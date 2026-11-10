@@ -490,8 +490,8 @@ from utils.wire_format import wire_text  # noqa: E402
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
     """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
     priority_source}` a cell: the line t__now.won_by names (`audit_history.winners`) - its source the winner, its
-    writer `updated_by` («system» when no line won it) -, the pins from cell_overwrites,
-    and with `include_sources` each source's head line (`audit_history.head_lines`)."""
+    writer `updated_by` (None when no line won it: before the landing, nobody is known - lead 11-11) -, the pins from
+    cell_overwrites, and with `include_sources` each source's head line (`audit_history.head_lines`)."""
     if not rows:
         return []
 
@@ -587,7 +587,7 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             manual_pin = ow_info[1] if ow_info else None
             line = won.get(key) or {}
             priority_source = line.get("source")
-            updated_by = line.get("written_by") or "system"
+            updated_by = line.get("written_by")      # None: no line won it - written before the landing, unknown
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)

@@ -5,7 +5,7 @@ again on a read); its sources are each source's head line, a withdrawn one left 
 
     page read     priority_source from won_by with or without the sources; sources = the head lines' values;
                   updated_by = that line's writer, never the pin's setter (cell_overwrites.updated_by, C ㄱ 11-10);
-                  a cell no line won names none, written by «system»
+                  a cell no line won names none and no writer (None - before the landing, unknown; never «system»)
     sources panel cell_layers: the same heads with time and writer, the same winner, its writer and time in "won"
 """
 from datetime import datetime, timedelta, timezone
@@ -58,9 +58,9 @@ def test_a_cells_winner_is_the_source_of_the_line_won_by_names(cells):
     assert _page(cells, True) == {"k": ("f.csv", {"f.csv": "K1"}, "probe"),
                                   "a": ("user", {"f.csv": "A1", "user": "A2"}, "person"),
                                   "b": ("f.csv", {"f.csv": 1.5}, "probe"),
-                                  "c": (None, {}, "system")}
+                                  "c": (None, {}, None)}
     assert _page(cells, False) == {"k": ("f.csv", {}, "probe"), "a": ("user", {}, "person"),
-                                   "b": ("f.csv", {}, "probe"), "c": (None, {}, "system")}
+                                   "b": ("f.csv", {}, "probe"), "c": (None, {}, None)}
 
 
 def test_the_sources_panel_reads_the_same_heads_and_winner(cells):
