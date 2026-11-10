@@ -347,8 +347,9 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 #: t was dropped and built again while its t__lines stayed: attaching it would show the old table's history as
 #: the new one's (lead 11-11) - refused, the operator decides
-ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again but %(lines)s still holds the history of the earlier "
-                  "%(t)s - drop %(lines)s to start its history afresh, or rebuild %(t)s from that history")
+ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again while %(lines)s still holds the earlier %(t)s's "
+                  "history - %(t)s keeps no history until that %(lines)s is dropped (no screen does this; it arises "
+                  "only outside the product)")
 
 
 def drop_every_line_table(engine) -> list:
@@ -363,6 +364,23 @@ def drop_every_line_table(engine) -> list:
     return names
 
 
+def key_index_standing(conn, table_name: str) -> bool:
+    """Does a VALID unique index on exactly (business_key_val) stand on t - what INSERT ... ON CONFLICT
+    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat: ensure,
+    key_index_missing and write_lines' claim ask this."""
+    if conn.dialect.name == "postgresql":
+        import migrations.add_business_key_unique_index as bk
+
+        found = bk.existing_unique_index(conn, table_name)
+        return bool(found and found[1])
+    for _seq, name, unique, _origin, partial in conn.exec_driver_sql(
+            f'PRAGMA index_list("{_checked(table_name)}")').all():
+        if unique and not partial and [c[2] for c in conn.exec_driver_sql(
+                f'PRAGMA index_info("{_checked(name)}")').all()] == ["business_key_val"]:
+            return True
+    return False
+
+
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
     (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
@@ -370,6 +388,8 @@ def key_index_missing(conn, table_name: str):
     CONCURRENTLY, never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
+    if key_index_standing(conn, table_name):    # the catalogue only - the census below reads the whole table
+        return None
     verdict = bk.plan_table(conn, table_name)
     if verdict.get("verdict") == bk.OK_ALREADY:
         return None
