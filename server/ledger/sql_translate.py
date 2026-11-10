@@ -225,6 +225,7 @@ class Leg:
         self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
         self.basis, self.version, self.columns, self.plan, self.world_name = basis, version, columns, plan, None
         self.naive = naive
+        self.attributes = frozenset()           # the qualifiers read from entity attributes - a blank one says nothing
         self.time = plan.driver.occurred_at
 
     def key(self, spec) -> str:
@@ -432,14 +433,16 @@ def _qualifier(kinds, binding, why) -> dict:
 
 
 def compile_source(snapshot, plan, kinds, world) -> tuple:
-    """(`plan`'s legs - a sentence each, and each entity reference its entities carry - , the bare types whose entity
-    attributes it does not read) or `NotCompiled`. An attribute is read by its key only (lead 11-10, stage 1): the
-    sentences' nodes and edges are walked, their attribute values and the registrations they make are not."""
+    """(`plan`'s legs - a sentence each, each entity reference its entities carry, each registration its roles'
+    attributes make - , the bare types whose entity attributes it cannot read) or `NotCompiled`. Attributes as the
+    stored translator writes them (`roleframe`): a subject's attribute named as a qualifier of its sentence is that
+    qualifier; a role the source registers (`registered_roles`) says «register» of its node with its attributes."""
     from collections.abc import Mapping
 
     import map_overlay
 
-    from .setup_bundle import NOT_AN_EVENT_BASIS, bare_name, is_event_time_role, is_registration
+    from .setup_bundle import NOT_AN_EVENT_BASIS, REGISTER_PREDICATE, bare_name, is_event_time_role, is_registration
+    from .setup_registry import REGISTRATION_DERIVATION_PREFIX
 
     if not plan.runs:
         raise NotCompiled("not planned: %s" % ((plan.refusal or {}).get("message") or plan.status))
@@ -455,10 +458,8 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
     kept += [f"NOT ({_when(kinds, clause['when'], 'read.exclude_when')})"
              for clause in driver.exclude_when if clause.get("when") is not None]
-    legs, prefix, unread = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set()
+    legs, prefix, unread, registered = [], f"ledger-v2:{snapshot.snapshot_sha256}#", set(), set()
     for sentence, mapping in sorted(plan.profile.mappings.items()):
-        unread.update(bare_name(binding["entity_type"]) for binding in mapping.bindings.values()
-                      if isinstance(binding, Mapping) and binding.get("attributes") and binding.get("entity_type"))
         emission_plan = roleframe._emission_plan(context, mapping.predicate_id, mapping.config_path)
         emission = emission_plan.emission
         # a sentence with no object (a registration) says its subject only - its object end is none (`NO_OBJECT`)
@@ -470,15 +471,26 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                  if not (objectless and role == "object")}
         ends = {role: _entity(plan.relation, kinds, binding, f"{sentence}.{role}") for role, binding in named.items()}
         ends.setdefault("object", NO_OBJECT)
-        qualifiers = {}
+        qualifiers, from_attributes = {}, set()
+        subject_attributes = named["subject"].get("attributes") or {}
         for name, reference in emission.qualifiers.items():
             binding = mapping.bindings.get(reference.role_id)
+            attribute = binding is None and name in subject_attributes
+            binding = subject_attributes[name] if attribute else binding
             if binding is None:
                 continue
             role = emission_plan.claim.roles.get(reference.role_id)
             if role is None or role.required:
                 raise NotCompiled(f"{sentence}: a required qualifier {name!r}")
-            qualifiers[name] = _qualifier(kinds, binding, f"{sentence}.{name}")
+            try:
+                qualifiers[name] = _qualifier(kinds, binding, f"{sentence}.{name}")
+            except NotCompiled:
+                if not attribute:
+                    raise
+                unread.add(ends["subject"][0])          # an attribute it cannot read leaves its value out, not the source
+                continue
+            if attribute:
+                from_attributes.add(name)
         event = any(is_event_time_role(role) for role in mapping.bindings)
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
         first = {"object": [], **{role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}}
@@ -487,6 +499,28 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
                         prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, naive))
+        legs[-1].attributes = frozenset(from_attributes)
+        for role_id in mapping.registered_roles:
+            binding = mapping.bindings[role_id]
+            end = _entity(plan.relation, kinds, binding, f"{sentence}.{role_id}")
+            try:
+                specs = {name: _qualifier(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
+                         for name, child in sorted((binding.get("attributes") or {}).items())}
+            except NotCompiled:
+                unread.add(end[0])
+                continue
+            # its time rule is the naming sentence's (`runtime_v2._stamp_occurred_at_basis`); one registration of a
+            # node per row, as the translator makes one per molecule: the same end and
+            # attributes on the same rows is the same atom (`roleframe._reference_rows`, «made»)
+            once = (end[0], json.dumps(end[1], sort_keys=True), json.dumps(specs, sort_keys=True), tuple(kept_here))
+            if once in registered:
+                continue
+            registered.add(once)
+            derivation = f"{REGISTRATION_DERIVATION_PREFIX}{sentence}"
+            legs.append(Leg(plan, derivation, REGISTER_PREDICATE, {"outgoing": end, "incoming": NO_OBJECT}, specs, said,
+                            [*kept_here, _one_present(specs)], basis, prefix + derivation,
+                            {"outgoing": _text_columns(binding.get("keys") or {}, kinds), "incoming": []}, naive))
+            legs[-1].attributes = frozenset(specs)
         for role, binding in named.items():
             bare, keys = ends[role]
             for reference in getattr(snapshot.entities.get(binding["entity_type"]), "references", ()):
@@ -509,6 +543,17 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
     return legs, sorted(unread)
+
+
+def _one_present(specs) -> str:
+    """SQL: one of the attribute `specs` has a value - the translator registers a node only then (`_attribute_values`:
+    a blank cell says nothing; `roleframe._is_missing`, spaces present)."""
+    said = ["true" if roleframe._is_missing(spec["constant"]) is False else "false" for spec in specs.values()
+            if "constant" in spec]
+    said += [f"(w.{_quoted(spec['column'])} IS NOT NULL" + (f" AND w.{_quoted(spec['column'])} <> '')"
+                                                          if spec["kind"] == _TEXT else ")")
+             for spec in specs.values() if "column" in spec]
+    return "(" + " OR ".join(said or ["false"]) + ")"
 
 
 def _text_columns(keys, kinds):
