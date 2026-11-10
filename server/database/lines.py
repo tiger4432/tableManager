@@ -196,9 +196,14 @@ def bit_map(db, table_name: str) -> dict:
 
 
 def has_lines(db, table_name: str) -> bool:
-    """Whether t keeps lines (has slots in line_columns) - an audit row of a relation without lines has no
-    countable «changed rows»."""
-    return db.execute(select(LineColumn.bit).where(LineColumn.table_name == table_name).limit(1)).first() is not None
+    """Whether t's lines are BUILT (t__lines exists, so t carries won_by) - THE answer every read of won_by or
+    t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
+    unique business key index). Not the slots: those are assigned before building and outlive drop_line_table."""
+    from sqlalchemy import inspect
+
+    if table_name_refusal(table_name):
+        return False
+    return inspect(db.connection()).has_table(lines_relation(table_name))
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
