@@ -147,12 +147,17 @@ def value_types(db, table_name: str) -> dict:
     """{column: "number" | "datetime" | "string"} by the PHYSICAL type of `t__now` - the type crud.line_text /
     line_value take. A column declared datetime but stored as text stays text (its value is the written text, as
     today), so a line never respells what the table holds. Framework columns are left out."""
+    return physical_kinds(db, now_relation(table_name))
+
+
+def physical_kinds(db, relation: str) -> dict:
+    """{column: "number" | "datetime" | "string"} of a relation's stored columns, framework columns left out."""
     from sqlalchemy import inspect
     from sqlalchemy.types import DateTime as _DateTime, Float, Integer as _Integer, Numeric
 
     framework = {n for n, _ in FRAMEWORK}
     out = {}
-    for col in inspect(db.connection()).get_columns(now_relation(table_name)):
+    for col in inspect(db.connection()).get_columns(relation):
         if col["name"] in framework or col["name"] == "won_by":
             continue
         kind = col["type"]
