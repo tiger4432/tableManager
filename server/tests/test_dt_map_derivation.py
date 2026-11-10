@@ -1163,9 +1163,15 @@ def _deletes(db):
 
 
 def _deletion_logs(db):
-    return (db.query(models.AuditLog)
-            .filter(models.AuditLog.table_name == MAP,
-                    models.AuditLog.column_name == "DELETE").all())
+    """The map's «deleted» lines (cell-source overhaul) - its history of what went; none when it keeps no lines."""
+    from sqlalchemy import select
+
+    from database import lines
+
+    if not lines.has_lines(db, MAP):
+        return []
+    ln = lines.shape(db, MAP, TABLES[MAP])["lines"]
+    return db.execute(select(ln.c.row_id).where(ln.c.line_kind == "deleted")).all()
 
 
 def test_retraction_budget_guard_declines_a_wholesale_loss(env):
@@ -1191,7 +1197,10 @@ def test_a_retracted_row_is_announced_and_remembered_like_any_deleted_row(env, m
     from ledger import followup
     from utils.payload_helper import get_payload_dict
 
+    from database import lines
+
     db = env
+    lines.ensure_line_table(db, MAP, TABLES[MAP])          # the map keeps lines, as a declared table does
     _seed_map_rows(db, ["k1", "k2", "k3"])
     notices = []
     monkeypatch.setattr(event_constants, "row_delete_message",
@@ -1237,38 +1246,22 @@ def test_apply_retraction_deletes_exactly_the_plan_and_re_derives_nothing(env):
 
 
 def test_apply_retraction_takes_the_ledgers_with_the_row(env):
-    """A row deleted without its `cell_sources` / `cell_overwrites` leaves records keyed
-    to a row_id that no longer exists, and nothing will ever join back to them.
-    `crud._apply_batch_updates_once` deletes exactly these two tables before it deletes
-    the row on BOTH of its removal paths; a second way to remove a map row must not be a
-    second opinion about what removing one means."""
+    """A retracted row goes through the door every removal shares (`crud.purge_map_rows` -> `delete_row_layers`): a
+    second way to remove a map row must not be a second opinion about what removing one means. A person's mark is
+    what protects a row (`_human_touched_row_ids`), so the survivor carries one and keeps it; the row it decided on
+    is gone. (Its lines stay - they are its history; cell_sources is written by no one since the overhaul.)"""
     db = env
     _seed_map_rows(db, ["k1", "k2"])
-    for rid in ("k1", "k2"):
-        db.add(models.CellSource(table_name=MAP, row_id=rid, column_name="bn",
-                                 source_name="chain_ingestion", value={"value": "x"},
-                                 updated_by="chain_worker"))
-    # A human overwrite on the row that SURVIVES - it must still be there afterwards.
-    db.add(models.CellOverwrite(table_name=MAP, row_id="k1", column_name="bn",
-                                is_overwrite=True, updated_by="operator"))
+    db.add(models.CellOverwrite(table_name=MAP, row_id="k1", column_name="bn", is_overwrite=True,
+                                updated_by="operator"))
     db.commit()
 
-    def ledger(rid):
-        return (db.query(models.CellSource)
-                .filter(models.CellSource.table_name == MAP,
-                        models.CellSource.row_id == rid).count(),
-                db.query(models.CellOverwrite)
-                .filter(models.CellOverwrite.table_name == MAP,
-                        models.CellOverwrite.row_id == rid).count())
-
-    assert ledger("k2") == (1, 0), "fixture did not arm the axis this test is about"
-
-    plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"},
-                                      min_population=100)
+    plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"}, min_population=100)
     assert plan["delete_row_ids"] == ["k2"]
     assert derivation.apply_retraction(db, plan) == 1
-    assert ledger("k2") == (0, 0), "the retracted row left ledger orphans behind"
-    assert ledger("k1") == (1, 1), "the surviving row lost its ledger"
+    model = models.DYNAMIC_TABLES[MAP]
+    assert [r.row_id for r in db.query(model).order_by(model.row_id)] == ["k1"], "the retracted row stayed"
+    assert db.query(models.CellOverwrite).filter_by(table_name=MAP, row_id="k1").count() == 1,         "the surviving row lost its mark"
 
 
 def test_derived_keys_refuses_an_item_that_came_back_unkeyed(env):

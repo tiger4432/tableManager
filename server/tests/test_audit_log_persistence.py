@@ -22,19 +22,29 @@ def test_delete_rows_batch_persists_audit_logs(db_session):
     deleted = crud.delete_rows_batch(db_session, "raw_table_1", row_ids, user_name="tester")
     assert deleted == 3
 
-    logs = _db_logs(db_session, "raw_table_1", "DELETE")
-    assert len(logs) == 3
-    assert {l.row_id for l in logs} == set(row_ids)
-    assert all(l.updated_by == "tester" for l in logs)
+    from sqlalchemy import select
+
+    from database import lines
+    ln = lines.shape(db_session, "raw_table_1", crud.TABLE_CONFIG["raw_table_1"])["lines"]     # a «deleted» line a row
+    said = db_session.execute(select(ln.c.row_id, ln.c.written_by).where(ln.c.line_kind == "deleted")).all()
+    assert sorted(said) == sorted((r, "tester") for r in row_ids)
 
 
 def test_create_empty_rows_batch_persists_audit_logs(db_session):
-    new_rows = crud.create_empty_rows_batch(db_session, "inventory_master", 2, user_name="tester")
+    """A «created» line a row (C 11-11), and the notification's entries from the write's own answer."""
+    from sqlalchemy import select
+
+    from database import lines
+    entries = []
+    new_rows = crud.create_empty_rows_batch(db_session, "inventory_master", 2, user_name="tester",
+                                            created_lines=entries)
     assert len(new_rows) == 2
 
-    logs = _db_logs(db_session, "inventory_master", "CREATE")
-    assert len(logs) == 2
-    assert {l.row_id for l in logs} == {r.row_id for r in new_rows}
+    ln = lines.shape(db_session, "inventory_master", crud.TABLE_CONFIG["inventory_master"])["lines"]
+    said = db_session.execute(select(ln.c.row_id, ln.c.written_by).where(ln.c.line_kind == "created")).all()
+    assert sorted(said) == sorted((r.row_id, "tester") for r in new_rows)
+    assert sorted((e["row_id"], e["column_name"], e["new_value"], e["updated_by"]) for e in entries) == sorted(
+        (r.row_id, crud.ROW_CREATION_COLUMN, "row created", "tester") for r in new_rows)
 
 
 def test_delete_cell_source_batch_persists_audit_logs(db_session):

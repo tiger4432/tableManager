@@ -272,25 +272,48 @@ NO_KEY_INDEX_OFF_LINE = ("no key index on %s - automatic join indexes are off (A
                          "reads the whole table - build it by hand or turn the switch on")
 
 
-def no_key_index_line(tables, off=None) -> str:
+def no_key_index_line(tables, off=None, keyless=()) -> str:
     """The word for a rule whose key index on `tables` does not stand - what happens next: the scheduler builds it, or
-    `off` (the join switch's value, `rules_without_key_index`) says nothing will."""
+    `off` (the join switch's value, `rules_without_key_index`) says nothing will. `keyless`: the tables it writes whose
+    business key has no valid unique index (a new key is taken today's way, no lines - lead 11-11 ㄴ) - said by
+    `lines.key_index_next`, the one sentence the ensure refusal and the pre-check say too."""
+    from database import lines
+
     named = ", ".join(tables)
-    return NO_KEY_INDEX_OFF_LINE % (named, off) if off else NO_KEY_INDEX_LINE % named
+    said = [NO_KEY_INDEX_OFF_LINE % (named, off) if off else NO_KEY_INDEX_LINE % named] if tables else []
+    if keyless:
+        said.append(lines.key_index_next([(table, (lines.KEY_UNKNOWN, 0)) for table in keyless]))
+    return "; ".join(said)
 
 
 def rules_without_key_index(db, rules) -> dict:
-    """{rule name: ([tables], the join switch's value or None)} - the switched-on rules whose key indexes do not stand
-    valid in the database: a join's lookup indexes (`declared_lookup_targets`, under the join switch) and an alignment
-    rule's decision key (`models.alignment_decision_key_index_ddl`, no switch). A fact of the database, so every
-    process answers alike. {} off PostgreSQL or when unreadable."""
+    """{rule name: ([tables], the join switch's value or None, [tables it writes with no business key index])} - the
+    switched-on rules whose key indexes do not stand valid in the database: a join's lookup indexes
+    (`declared_lookup_targets`, under the join switch), an alignment rule's decision key
+    (`models.alignment_decision_key_index_ddl`, no switch) - PostgreSQL only - and, any dialect, the business key of
+    a table it writes (`lines.key_index_standing`, the catalogue only - no census on a list read). A fact of the
+    database, so every process answers alike. Unreadable: those parts left out."""
+    import chain_bindings
     from chain import join_key_index as vjc
     from chain import unique_key
-    from database import crud, models
+    from database import crud, lines, models
     from error_said import told
 
+    keyless = {}
+    try:
+        stood = {}
+        for rule in rules:
+            for table in sorted(chain_bindings.rule_tables(rule, chain_bindings.TABLE_ROLE_WRITE)):
+                if table in crud.TABLE_CONFIG and table not in stood:
+                    stood[table] = lines.key_index_standing(db.connection(), table)
+                if table in stood and not stood[table]:
+                    keyless.setdefault(rule.get("name"), []).append(table)
+    except Exception as exc:                                           # noqa: BLE001
+        db.rollback()
+        logger.warning("[Indexes] could not read the business key indexes for the rules list: %s", told(exc))
+        keyless = {}
     if vjc._dialect_of(db) != "postgresql":
-        return {}
+        return {name: ([], None, tables) for name, tables in keyless.items()}
     off, wanted = unique_key.auto_index_off(), {}
     for rule in rules:
         pairs = [(table, vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX))
@@ -301,17 +324,20 @@ def rules_without_key_index(db, rules) -> dict:
         index, _ddl = models.alignment_decision_key_index_ddl(params, crud.TABLE_CONFIG.get(source))
         wanted[rule.get("name")] = (pairs + ([(source, index)] if index else []), switch)
     names = sorted({name for pairs, _switch in wanted.values() for _table, name in pairs})
-    if not names:
-        return {}
-    try:
-        standing = {name for name, valid in unique_key.index_validity(db, names).items() if valid}
-        db.rollback()
-    except Exception as exc:                                           # noqa: BLE001
-        db.rollback()
-        logger.warning("[Indexes] could not read the key indexes for the rules list: %s", told(exc))
-        return {}
-    return {name: (list(dict.fromkeys(table for table, index in pairs if index not in standing)), switch)
-            for name, (pairs, switch) in wanted.items() if any(index not in standing for _table, index in pairs)}
+    standing = set()
+    if names:
+        try:
+            standing = {name for name, valid in unique_key.index_validity(db, names).items() if valid}
+            db.rollback()
+        except Exception as exc:                                       # noqa: BLE001
+            db.rollback()
+            logger.warning("[Indexes] could not read the key indexes for the rules list: %s", told(exc))
+            names, wanted = [], {}
+    out = {name: (list(dict.fromkeys(table for table, index in pairs if index not in standing)), switch, [])
+           for name, (pairs, switch) in wanted.items() if any(index not in standing for _table, index in pairs)}
+    for name, tables in keyless.items():
+        out[name] = (out.get(name, ([], None, []))[0], out.get(name, ([], None, []))[1], tables)
+    return out
 
 
 def declared_lookup_index_names(known_tables: dict = None) -> set:

@@ -4542,6 +4542,65 @@ def merge_into_key_holders(db: Session, table_name: str, pairs, *, source_name: 
     return merged
 
 
+def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem, plan: dict, drop_stats: dict,
+                        replaces_map: bool = False):
+    """One funnel item as a `write_lines` item (lead 11-10 ㄱ: the funnel's cell judgement stays, its end hands
+    write_lines its items) - a system, undeclared or unmapped column, a refused value and a blank from a writer that
+    cannot mean emptied are dropped and counted by reason as `apply_row_update_internal` counts them; a formula's
+    column holds no line (its value is the merge's, its history the batch's receipt, tallied in `plan["receipts"]`).
+    The item is named by its row_id or its assembled key - write_lines claims it. `plan`: what the batch works out
+    once (loadable, unmapped, refused_times, receipts, map_judged). -> (the write_lines item, the formulas whose
+    column it carried - their receipts name the item's row)."""
+    config = TABLE_CONFIG.get(table_name, {})
+    types = config.get("column_types") or {}
+    named = update_item.row_id or update_item.business_key_val
+    values, formulas = {}, []
+    for col_name, val in update_item.updates.items():
+        reason = (DROP_SYSTEM_COLUMN if col_name in SYSTEM_COLUMNS
+                  else DROP_UNDECLARED_COLUMN if col_name not in plan["loadable"] else None)
+        if reason is None:
+            if col_name not in plan["unmapped"]:
+                plan["unmapped"][col_name] = bool(unmapped_columns(table_name, (col_name,)))
+            reason = DROP_UNMAPPED_COLUMN if plan["unmapped"][col_name] else None
+        if reason == DROP_UNDECLARED_COLUMN:
+            _warn_undeclared_column_once(table_name, col_name)
+        if reason is not None:
+            _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, reason, val)
+            continue
+        col_type = types.get(col_name, "string")
+        formula = formula_written(table_name, col_name, update_item.source_name)
+        tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0,
+                                                       "who": update_item.updated_by}) if formula else None)
+        try:
+            if col_name in plan["refused_times"] and str(val).strip() in plan["refused_times"][col_name]:
+                raise CellRefused(col_name, val, "a time")
+            clean_val = cast_value_by_type(val, col_type, col_name, table_name)
+        except CellRefused as refused:
+            if tally is None:
+                _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, DROP_VALUE_REFUSED,
+                                     val)
+                seen = drop_stats["refused_values"].get(col_name)
+                if seen is not None:
+                    seen["cells"] += 1
+                elif len(drop_stats["refused_values"]) < MAX_DROP_REPORT_COLUMNS:
+                    drop_stats["refused_values"][col_name] = {"cells": 1, "first": refused.value}
+                continue
+            clean_val = None
+            tally["refused"] += 1
+        if tally is not None:
+            tally["blank"] += val is None
+            formulas.append(formula)
+            continue                                # a formula's column: no line
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
+            _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, DROP_ABSENT_NOT_WRITTEN,
+                                 clean_val)
+            continue
+        values[col_name] = val
+    return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
+             "source_name": update_item.source_name, "written_by": update_item.updated_by,
+             "input_row": update_item.origin_row_id, "version_judged": plan.get("map_judged", False)}, formulas)
+
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
@@ -5241,41 +5300,24 @@ def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
     recording cannot be added to one and forgotten on the other.
 
     ⚠️ THE USER AND THE TRANSACTION COME FROM THE REQUEST CONTEXT, not from new
-    arguments. `stage_collapsed_event` below reads the same three contextvars for the same
-    reason, and widening this signature would have moved the two call sites and the
+    arguments - widening this signature would have moved the two call sites and the
     assertions that pin them for a fact both callers already carry.
 
     🔵 A `DELETE` event wakes every rule but an AI's (`chain_bindings.takes_deletions`, owner 11-06 step 2) - it
     carries each row's values as its old values for those rules.
     """
-    from database.database import row_values, stage_collapsed_event
-
     row_ids = list(row_ids or [])
     if not row_ids:
         return []
 
-    # 🔴 READ BEFORE THE DELETE, for the same reason `delete_rows_batch` reads first:
-    # the business key lives on the row, and after the delete there is nothing to ask.
-    rows = db.query(table_model).filter(table_model.row_id.in_(row_ids)).all()
-    # Staged BEFORE the deletes so the event is added to the same flush that removes the
-    # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
-    # With each row's values as its old values (총괄 옛 키).
-    values = {row.row_id: row_values(row) for row in rows}
-    if said is not None:
-        said.append(map_keys_said(table_name, row_ids, values))
-    stage_collapsed_event(db, "DELETE", table_name, row_ids,
-                          old=[values.get(row_id, {}) for row_id in row_ids])
-
     from database.context import request_user, request_transaction_id
-    record_row_deletions(
-        db, table_name, rows,
-        request_user.get() or "system",
-        request_transaction_id.get() or str(uuid6.uuid7()))
-
+    # the deleted lines take the rows out and stage the DELETE with each row's values as its old ones (총괄 옛 키)
+    answer = record_row_deletions(db, table_name, row_ids, request_user.get() or "system",
+                                  request_transaction_id.get() or str(uuid6.uuid7()))
+    if said is not None:
+        said.append(map_keys_said(table_name, row_ids, {row_id: change["old"] or {}
+                                                        for row_id, change in answer["changed"].items()}))
     delete_row_layers(db, table_name, row_ids)
-    db.query(table_model).filter(
-        table_model.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
     return row_ids
 
 
@@ -5677,77 +5719,6 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
 # and an ImportError here would take down every write path to save one constant.
 BK_UNIQUE_INDEX_PREFIX = "uq_bk_"
 
-# How many times a batch may be replayed after losing a race. One is enough for the
-# mechanism - the retry re-reads the row the winner committed, so the second attempt
-# resolves onto it instead of inserting - and a second attempt is kept only for the case
-# where two writers both lose to a third. Beyond that a bounded failure is the honest
-# outcome: an unbounded retry against a genuinely conflicting key is a hang, not a fix.
-BK_CONFLICT_MAX_RETRIES = 2
-
-
-def _replay_sensitive_key_column(table_name: str, batch) -> Optional[str]:
-    """The payload column a replay must un-write first, or None when there is none.
-
-    🔴 THE REPLAY CANNOT REUSE THE PAYLOAD ATTEMPT 1 LEFT BEHIND, and this is the whole
-    reason this function exists. `assemble_composite_business_key` writes the assembled
-    key back into `update_item.updates[key_col]` IN PLACE. For a `replace_map` write,
-    `derive_replace_map_scope`'s legacy branch (no declared `map_key_columns`) builds the
-    purge filters from every non-coordinate column present in the FIRST payload row - and
-    the business key column is not in its skip list. So attempt 1 leaves a column in the
-    payload that attempt 2's resolver then reads as another filter:
-
-        attempt 1 scope : {'target_table': 'bonding_map', 'map_id': 'LOT1_01'}
-        attempt 2 scope : {'map_pk': 'bonding_map_LOT1_01', 'target_table': ..., ...}
-
-    which narrows a whole-map purge to a single row while the route still answers 200.
-    `assemble_composite_business_key`'s own docstring calls this an ORDERING CONSTRAINT
-    and asserts "the resolver sees exactly the payload it saw before" - true for a single
-    pass, false by construction once a replay exists. This restores that sentence.
-
-    Returns None - and therefore costs nothing at all - unless BOTH are true:
-      * the write is a `replace_map` (nothing else derives a decision from the payload)
-      * the table assembles its key from its own columns (nothing else mutates it)
-    Tables that hit it today: the four with `composite_key_source` and no
-    `map_key_columns` (`lot_event`, `wafer_id_status`, `eqp_frame_attribution`,
-    `wafer_map_metadata`). The seven shipped map tables declare `map_key_columns` and
-    take the declared branch, so they are safe either way - but that is a fact about
-    today's config, not an invariant, which is why the fix is here and not in a comment.
-
-    ⚠️ IF A FUTURE DECISION IS DERIVED FROM THE PAYLOAD OUTSIDE `replace_map`, WIDEN THIS.
-    """
-    if not getattr(batch, "replace_map", None):
-        return None
-    cfg = TABLE_CONFIG.get(table_name, {})
-    if not cfg.get("composite_key_source"):
-        return None
-    return cfg.get("business_key") or None
-
-
-def _snapshot_payload_identity(batch, key_col: str) -> list:
-    """Exactly the three fields `assemble_composite_business_key` writes, per item.
-
-    Not a deep copy. A `replace_map` push can carry tens of thousands of cells and this
-    runs on every one of them before the first attempt, so it holds four references per
-    item, not a duplicated object graph.
-
-    ⚠️ `_supplied_business_key_val` (판정 191) is restored rather than left alone even
-    though re-assembling would re-derive the same value: this function's contract is that
-    the caller's payload comes back unchanged, and an assembler arm that stops writing it
-    would otherwise leave attempt 1's memo standing into attempt 2.
-    """
-    return [(it, it.business_key_val, it._supplied_business_key_val,
-             key_col in it.updates) for it in batch.updates]
-
-
-def _restore_payload_identity(snapshot: list, key_col: str):
-    """Put the payload back the way the caller handed it over."""
-    for item, business_key_val, supplied_bk_val, had_key_col in snapshot:
-        item.business_key_val = business_key_val
-        item._supplied_business_key_val = supplied_bk_val
-        if not had_key_col:
-            item.updates.pop(key_col, None)
-
-
 def _is_business_key_unique_violation(exc) -> bool:
     """True only for "another writer already has this business key".
 
@@ -5839,7 +5810,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         drop_report: Optional[dict] = None,
                         notation_report: Optional[dict] = None,
                         deleted_edits: Optional[dict] = None):
-    """Batch write, with one recovery: losing a cross-process race on a business key.
+    """Batch write - its cells as lines (`write_lines`, through `_apply_batch_updates_once`).
 
     notation_report: optional out-param (dict) - `{verdict: count}` of the time values a
     `write` column's `time` rule left as written (`notation_norm.TIME_LEFT_AS_WRITTEN`), for
@@ -5853,46 +5824,9 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     for the shape and `DROP_UNDECLARED_COLUMN` / `DROP_SYSTEM_COLUMN` for the vocabulary.
     Pass nothing and behaviour is byte-identical to before.
 
-    ⚠️ ONE DICT PER CALL. It is CLEARED at the start of every attempt, so what a caller
-    reads describes the attempt that COMMITTED and never a rolled-back one.
-
-    [D3] `_apply_batch_updates_once` decides identity from a prefetch whose proof of
-    absence (`ProbedIdentity`) is sound against this session's loop and against nothing
-    else. Another OS process committing the same business key inside the window used to
-    produce two rows carrying one business key, silently - reproduced with two real
-    processes at the production chunk size of 1,000 items, window 2.4 s
-    (`Server_M2_race_reachability.md`). With the UNIQUE index from
-    `migrations/add_business_key_unique_index.py` in place, that outcome is an
-    `IntegrityError` instead, and this wrapper turns the error into the correct result.
-
-    HOW THE RETRY MERGES rather than merely retrying: the rollback ends the failed
-    transaction, so the replay's prefetch runs in a NEW READ COMMITTED snapshot and now
-    SEES the row the winner committed. `row_cache` is populated with it,
-    `_get_or_create_row` resolves onto it, and the batch updates that row instead of
-    inserting a second one. There is no separate merge code to keep in step - the replay
-    IS the merge, through the one identity resolver that exists.
-
-    ⚠️ THE RECOVERY IS NAMED AND LOGGED AT WARNING, ALWAYS. A silent retry would hide
-    the race it recovered from, and a race that never shows up in a log is a race nobody
-    ever measures. If it exhausts its attempts the error is re-raised unchanged.
-
-    ⚠️ Replay safety: `assemble_composite_business_key` is a PURE FUNCTION of the
-    payload's own columns, so a second pass over the same `batch.updates` computes the
-    same key and the keys are identical. (Until 판정 190 this said it was "guarded on
-    neither id nor key supplied" — that guard is gone, and the property it was credited
-    with was the function's all along, which is why replay is unaffected.) `db.rollback()` discards the
-    pending rows of the failed attempt, and the outbox rows staged by `before_flush` go
-    with them - the replay stages them again.
-
-    ⚠️ ONE THING THE ROLLBACK DOES COST, stated rather than left to be discovered.
-    `ingestion_checkpoint.record_chunk_progress` deliberately issues its offset UPDATE in
-    THIS session immediately before this call, so that "rows committed == offset
-    recorded" holds atomically (its own docstring is the contract). A rollback here
-    discards that UPDATE, and the replay commits the chunk with the offset unadvanced.
-    The consequence is exactly the degraded mode that module already documents and
-    accepts - a later crash re-processes this chunk, and the upserts are idempotent, so
-    it is re-ingestion, not loss. Restoring full atomicity needs the caller to re-issue
-    its pre-write statements on replay, which this wrapper cannot do from here.
+    [D3] Two writers of one new business key end on one row inside `write_lines`' claim (INSERT ... ON CONFLICT on
+    the key's unique index, read back under the lock) - the replay that turned the lost race's IntegrityError into a
+    merge is retired with the race (lead 11-11 ㄹ). Every IntegrityError is refused by name after a rollback.
     """
     from sqlalchemy.exc import IntegrityError
 
@@ -5902,93 +5836,27 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     # deletion and the two source controls reach the relation without passing through, so
     # 「관문이 여기 하나」 was true of this function and false of the relation.
     refuse_write_to_view(table_name)
-    # Before the snapshot, so a retry restores the FOLDED key - and before the loop, so it
-    # folds once however many attempts there are.
     _fold_written_notation(db, table_name, batch, notation_report)
-
-    # [D3-F1] Captured BEFORE attempt 1, because by the time the conflict is raised the
-    # payload has already been written into. See `_replay_sensitive_key_column`.
-    replay_key_col = _replay_sensitive_key_column(table_name, batch)
-    pristine_payload = (_snapshot_payload_identity(batch, replay_key_col)
-                        if replay_key_col else None)
-    rewind_write_steps = alignment_batch_counts.write_steps_rewind()
-
-    for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
-        if attempt and pristine_payload is not None:
-            _restore_payload_identity(pristine_payload, replay_key_col)
-        # A rolled-back attempt wrote nothing, so its drops - and the write steps' seconds
-        # and rows the chunk and group lines print - describe a transaction that never
-        # happened. Only the committing attempt may be reported.
-        if drop_report is not None:
-            drop_report.clear()
-        if deleted_edits is not None:
-            deleted_edits.clear()
-        rewind_write_steps()
+    if drop_report is not None:
+        drop_report.clear()
+    if deleted_edits is not None:
+        deleted_edits.clear()
+    try:
+        return _apply_batch_updates_once(db, table_name, batch, replace_report, drop_report, deleted_edits)
+    except IntegrityError as exc:
+        # 🔴 [S-269] REFUSED BY NAME, AND AFTER A ROLLBACK - raising on an aborted transaction leaves the caller's next
+        # read saying 「Instance is not bound to a Session」 instead of the constraint (owner 2026-09-16).
+        from session_contract import undo_step
+        undo_step(db)
+        # 🔴 [S-275] the line that explains the refusal may not replace it (「진단기는 자기가 진단하는 것을 죽일 수 없다」)
         try:
-            return _apply_batch_updates_once(db, table_name, batch, replace_report,
-                                             drop_report, deleted_edits)
-        except IntegrityError as exc:
-            if not _is_business_key_unique_violation(exc):
-                # 🔴 [S-269] EVERY OTHER CONSTRAINT IS STILL REFUSED - BY NAME, AND AFTER A
-                # ROLLBACK. Only the business-key race is recoverable here and that
-                # narrowness stays; what was wrong was the EXIT. Raising without rolling
-                # back leaves the session on an aborted transaction, so the caller's next
-                # attribute read raises 「Instance is not bound to a Session」 / 「current
-                # transaction is aborted」 - an error naming SQLAlchemy instead of the
-                # constraint, with no action in it. The owner met exactly that on
-                # 2026-09-16: 「인제션 세션에 바운드 안 되어 있다고 안 들어감」, on a table
-                # that had been working, while every other table went in.
-                from session_contract import undo_step
-                undo_step(db)
-                # 🔴 [S-275] THE LINE THAT EXPLAINS THE REFUSAL MAY NOT REPLACE IT.
-                # 「진단기는 자기가 진단하는 것을 죽일 수 없다」. This call reads
-                # `batch.updates`, asks the exception for a constraint name and imports
-                # two modules; any of that can raise, and then the `raise` below is never
-                # reached and the operator gets something other than the named
-                # `IntegrityError` S-269 exists to hand them.
-                #
-                # ⚠️ AND THE CLASS WAS NAMED NINE MINUTES *AFTER* THIS CALL WAS WRITTEN
-                # (`503b6129` 10:27:06, `d00ac580` 10:36:18). Nobody swept back over the
-                # seats that already existed, which is why the other refusal seats are
-                # owed a census rather than a guess - a wrapper applied where nobody
-                # measured is how a repair becomes a habit.
-                # ⚠️ THE FOLD IS SAID OUT LOUD. A diagnostic that quietly stops being
-                # written is a diagnostic nobody knows to miss.
-                try:
-                    _say_the_constraint_refused_this_batch(table_name, batch, exc)
-                except Exception as line_err:                          # noqa: BLE001
-                    logger.warning(
-                        "[Ingest] %s refusal line skipped (%s: %s) - the batch is still "
-                        "refused and the original error is raised unchanged",
-                        table_name, type(line_err).__name__, told(line_err))
-                raise
-            from session_contract import undo_step
-            undo_step(db)           # this batch's try only - a held group's earlier steps stay
-            if attempt >= BK_CONFLICT_MAX_RETRIES:
-                # 🔴 [S-247] THE OPPOSITE REPAIR OF THE TWO LINES ABOVE, AND IT
-                # READS THE SAME. 「중복 키」 here means the TABLE'S OWN identity does not
-                # tell two rows apart - so folding the data would destroy a fact, and what
-                # has to change is the declaration. An operator who reads 「duplicate」 and
-                # reaches for the fix that worked last time gets it backwards.
-                import operator_line
-
-                logger.error("%s", operator_line.line(
-                    "BKConflict", table_name,
-                    "업무키가 다시 읽은 뒤에도 계속 충돌해 이 배치(%s 행, tx %s)를 "
-                    "«거절»했습니다 — 경합이 아니라 «같은 신원»이 둘입니다"
-                    % (len(batch.updates), batch.transaction_id),
-                    operator_line.widen_the_key(
-                        "table_config 의 '%s' 의 `composite_key_source`" % table_name,
-                        "두 행을 가르는 컬럼")))
-                raise
+            _say_the_constraint_refused_this_batch(table_name, batch, exc)
+        except Exception as line_err:                          # noqa: BLE001
             logger.warning(
-                f"⚠️ [BK Conflict Recovered] Table: '{table_name}' | "
-                f"TX: {batch.transaction_id} | Rows: {len(batch.updates)} | "
-                f"attempt {attempt + 1} lost a business_key_val race to another writer; "
-                f"re-prefetching identity and merging into the committed row. "
-                f"({exc.__class__.__name__}: "
-                f"{str(getattr(exc, 'orig', exc)).strip().splitlines()[0]})"
-            )
+                "[Ingest] %s refusal line skipped (%s: %s) - the batch is still "
+                "refused and the original error is raised unchanged",
+                table_name, type(line_err).__name__, told(line_err))
+        raise
 
 
 def _fold_written_notation(db, table_name: str, batch, notation_report=None):
@@ -6285,246 +6153,60 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"uniqueness, so none can be written. The whole request was cancelled so the map is not emptied. "
                 + " / ".join(r.get("message", "") for r in vjoin_refusals[:3]))
 
-        with alignment_batch_counts.write_step("prefetch"):
-            target_ids = [u.row_id for u in batch.updates if u.row_id]
-            # 🔴 판정 191. BOTH of an item's identities, because `_get_or_create_row`
-            # may resolve on either: the assembled key, and - only when a caller sent a
-            # different one - the key it is renaming FROM. Asking about one of the two leaves
-            # the other unprefetched, and worse: the assembled key of a rename would enter
-            # `probed_identity` as "asked and absent" (true, and the right answer) while the
-            # supplied key it actually resolves on was never asked about at all.
-            target_bks = []
-            for u in batch.updates:
-                for value in (u.business_key_val, u._supplied_business_key_val):
-                    value = clean_str_value(value)      # the stored spelling (총괄 5c0a86cec)
-                    if value:
-                        target_bks.append(value)
+        # 🔴 THE CELLS GO IN AS LINES (cell-source overhaul, lead 11-10 ㄱ): each item is judged here as it always was
+        #    (`update_item_as_line` - system, undeclared, unmapped, refused, a blank its writer cannot mean emptied) and
+        #    written by `write_lines` in one call - it claims the rows (new keys under ON CONFLICT, so two writers of a
+        #    new key end on one row), judges the version, leaves out what changes nothing, writes the lines, the marks
+        #    and the pins, merges t again and stages the events. Its `items` answer names each item's row - what the
+        #    map diff, the drop report and the phantom-row guard below read.
+        from database.write_lines import write_lines
 
-            from sqlalchemy import or_
-            # 🔴 LOCKED AS READ (총괄 09f58844f ②): the cells below are computed from these rows and their layers,
-            #    so another writer of the same rows waits here until this one commits - the lost update of two
-            #    writers reading the layers unlocked. row_id order, one order for every writer.
-            existing_rows_list = db.query(table_model).filter(
-                or_(
-                    table_model.row_id.in_(target_ids) if target_ids else False,
-                    table_model.business_key_val.in_(target_bks) if target_bks else False
-                )
-            ).order_by(table_model.row_id).with_for_update().all()
-        
-            row_cache = {}
-            for r in existing_rows_list:
-                row_cache[r.row_id] = r
-                if r.business_key_val:
-                    row_cache[r.business_key_val] = r
-                
-            all_row_ids = list(set(r.row_id for r in existing_rows_list))
-
-            # [P2] Exactly the cells the two prefetch queries below cover: these rows, in the
-            # columns this batch writes. Handed to `apply_row_update_internal` so a cache miss
-            # on one of THESE cells is read as a proven absence instead of an unknown. It is a
-            # snapshot of the ids, not of the rows: any row resolved later in the loop
-            # (composite key assembled from column values, collision-merge conflict row) is
-            # correctly outside and is still read from the database.
-            written_columns = sorted({col for u in batch.updates for col in u.updates})
-            layers_read = LayersRead(all_row_ids, written_columns)
-
-            # [P3] The identity values the prefetch ASKED about MINUS the ones it brought
-            # back - i.e. exactly the values PROVEN not to exist in the table.
-            #
-            # 🔴 THE SUBTRACTION IS THE WHOLE CORRECTNESS ARGUMENT, and the first draft of
-            # this did not have it. Without it the sets say "we asked", and the loop then
-            # has to lean on `row_cache` to know whether an answer came back - but
-            # `row_cache` is MUTATED by the loop. `apply_row_update_internal` deletes the
-            # old key when it renames a row's business key (see the composite block), so a
-            # later item naming that same old key would find the cache empty, read "we
-            # asked" as "nothing exists", and mint a duplicate row where today's code
-            # resolves onto the renamed one. With the subtraction the sets are a statement
-            # about the DATABASE at prefetch time, which nothing in the loop can change:
-            # no row is flushed inside `no_autoflush`.
-            #
-            # The prefetch filters on equality, so every returned row's `row_id` /
-            # `business_key_val` IS one of these strings exactly - the difference is exact,
-            # not approximate.
-            _found_ids = {r.row_id for r in existing_rows_list}
-            _found_bks = {r.business_key_val for r in existing_rows_list if r.business_key_val}
-            probed_identity = ProbedIdentity(
-                row_ids=frozenset(target_ids) - _found_ids,
-                business_keys=frozenset(target_bks) - _found_bks,
-            )
-            # 🔴 AN ID HANDED IN AND NOT FOUND AS A ROW CAN STILL HOLD LAYERS - orphans of a row removed before its
-            #    layers were (box 11-07: 25 of 58 tables). Its layers are read with the rest, so a row made on it computes
-            #    from them (QA 11-08: it showed its new value over its own stored person's layer and pin).
-            layers_read.rows |= probed_identity.row_ids
-            layer_ids = sorted(layers_read.rows)
-
-            sources_cache = {}
-            overwrites_cache = {}
-
-            if layer_ids and written_columns:
-                all_sources = db.query(
-                    models.CellSource.table_name,
-                    models.CellSource.row_id,
-                    models.CellSource.column_name,
-                    models.CellSource.source_name,
-                    models.CellSource.value,
-                    models.CellSource.updated_by,
-                    models.CellSource.ingested_at,
-                    models.CellSource.origin_row_id
-                ).filter(
-                    models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(layer_ids),
-                    models.CellSource.column_name.in_(written_columns)
-                ).order_by(models.CellSource.row_id, models.CellSource.column_name,
-                           models.CellSource.source_name.asc()).with_for_update().all()
-                for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
-                    key = (r_id, col_name)
-                    if key not in sources_cache:
-                        sources_cache[key] = []
-                    sources_cache[key].append(LightCellSource(t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin))
-                
-                all_overwrites = db.query(
-                    models.CellOverwrite.table_name,
-                    models.CellOverwrite.row_id,
-                    models.CellOverwrite.column_name,
-                    models.CellOverwrite.is_overwrite,
-                    models.CellOverwrite.updated_by,
-                    models.CellOverwrite.updated_at,
-                    models.CellOverwrite.manual_priority_source
-                ).filter(
-                    models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(layer_ids),
-                    models.CellOverwrite.column_name.in_(written_columns)
-                ).all()
-                for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
-                    overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
-    
-        # [S-83 ③] ONE instant for this whole request, read from the DATABASE before the
-        # loop. It travels into every row so the UPDATE carries a VALUE instead of a SQL
-        # expression - which is the difference between one executemany and one statement per
-        # row. See `batch_write_instant` and `apply_row_update_internal`'s `batch_now`.
-        batch_now = batch_write_instant(db)
-
-        unique_results = {}
-        total_changed_cells = []
-        logs_to_cache = ByRowLogs()
-        
-        # Batch containers for bulk operations (deduplicated early via dict/set)
-        cell_sources_to_upsert = ByRow()                  # each knows its rows (`ByRow`)
-        cell_overwrites_to_upsert = ByRow()
-        cell_overwrites_to_delete = ByRowSet()
-        cell_sources_to_delete = set()
-        deleted_row_ids = []
-
-        # [Version gate] Per-batch accumulator. Only allocated for a table that declares
-        # a version column, so an ordinary table pays one dict lookup for the whole batch.
         version_col = TABLE_CONFIG.get(table_name, {}).get("version_column")
         version_stats = {"rows": len(batch.updates)} if version_col else None
         if map_note is not None and version_stats is not None:
             version_stats["counts"] = {map_note: len(batch.updates)}
-
-        # [Drop report] Allocated for EVERY batch, not only when a report was requested,
-        # because the phantom-row guard below reads it and that guard is not optional.
-        # A batch that discards nothing never writes into it.
         drop_stats = _new_drop_stats()
-        # Whole rows refused before the loop, by name. They are not cell drops - no cell
-        # was read - so they ride beside the cell accounting rather than inside it.
+        # Whole rows refused before the write, by name - not cell drops, they ride beside the cell accounting.
         drop_stats["row_refusals"] = vjoin_refusals
         _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats)
-
-        # [phantom row] Row ids that ended the loop having received CONTENT. A row is in
-        # here iff some item resolved onto it and produced at least one changed column,
-        # so it is per ROW and not per item: item 1 can drop every key of a row that
-        # item 2 then fills, and that row is not a phantom.
-        rows_with_content = set()
-
-        # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
-        plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
-                "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {},
-                "refused_times": refused_times}
+        plan = {"loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))), "unmapped": {},
+                "map_judged": map_judged, "receipts": {}, "refused_times": refused_times}
         alignment_batch_counts.write_count("cells offered", sum(len(item.updates) for item in batch.updates),
                                            "cells offered")
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
-            with db.no_autoflush:
-                for item in batch.updates:
-                    row, is_new, changed_cols = apply_row_update_internal(
-                        db, table_name, item,
-                        row_cache=row_cache,
-                        sources_cache=sources_cache,
-                        overwrites_cache=overwrites_cache,
-                        transaction_id=tx_id,
-                        logs_to_cache=logs_to_cache,
-                        cell_sources_to_upsert=cell_sources_to_upsert,
-                        cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                        cell_overwrites_to_delete=cell_overwrites_to_delete,
-                        deleted_row_ids=deleted_row_ids,
-                        deleted_edits=deleted_edits,
-                        version_stats=version_stats,
-                        layers_read=layers_read,
-                        probed_identity=probed_identity,
-                        drop_stats=drop_stats,
-                        batch_now=batch_now,
-                        cell_sources_to_delete=cell_sources_to_delete,
-                        plan=plan,
-                        replaces_map=bool(batch.replace_map)
-                    )
-                    prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
-                    unique_results[row.row_id] = (row, is_new or prev_is_new)
-                    # 총괄 bce43236b: a row THIS batch created has no stored cell history -
-                    # the creating item already reads it so (`is_new`), and nothing is
-                    # flushed inside this loop. Its later items (a copy rule's value, then
-                    # its hold) read the caches like a prefetched row's instead of one
-                    # SELECT per cell: ~2,000 of them for a 1,000-row chain group, measured.
-                    # Every column of it - nothing is stored in any - unless its id was read: an orphan's layers.
-                    if is_new and row.row_id not in layers_read.rows:
-                        layers_read.whole.add(row.row_id)
-
-                    if changed_cols:
-                        rows_with_content.add(row.row_id)
-
-                    for col in changed_cols:
-                        total_changed_cells.append((row.row_id, col))
+            said = [update_item_as_line(table_name, item, plan, drop_stats, bool(batch.replace_map))
+                    for item in batch.updates]
+            answer = write_lines(db, table_name, [it for it, _formulas in said], kind="funnel",
+                                 transaction_id=tx_id)
+            resolved = answer["items"]
+            total_changed_cells = _changed_cells(answer, resolved)
             count(len(total_changed_cells))
 
-        # [phantom row] A row that exists ONLY because we threw away what the caller sent
-        # is a FABRICATED RECORD, and it is worse than a refusal: downstream now has a row
-        # to trust. Measured before this guard (2026-08-11, sqlite harness): a payload
-        # whose every key was undeclared INSERTed a row carrying nothing but a `row_id` -
-        # `business_key_val` NULL, every column NULL - returned it as `is_new=True`, and
-        # staged a CREATE outbox event for it. The alignment worklist then met exactly
-        # that shape (`test_map_alignment_worklist._seed_unnamed_unit`) and 500'd.
-        #
-        # 🔴 THE PREDICATE IS "THE DISCARD IS THE ONLY REASON THIS ROW EXISTS", not
-        # "the row is empty". Three conditions, all required:
-        #   * the row is NEW - an existing row is never touched here. Nothing is deleted
-        #     by this guard, ever.
-        #   * it received no content - `has_changed` is unconditionally True on an insert,
-        #     so a new row with an empty `changed_cols` provably took no value from any
-        #     item, and therefore accumulated no `cell_sources`, no `cell_overwrites` and
-        #     no audit log either (they are all written inside `if has_changed`).
-        #   * at least one of its keys WAS discarded. An item that deliberately sends
-        #     `updates={}` keeps today's behaviour exactly - that is the caller's own
-        #     statement, not something we mangled - and widening this into "refuse every
-        #     contentless insert" is a POLICY change that is not this lane's to make.
-        #
-        # `expunge` and not `delete`: the object is pending (the loop runs inside
-        # `no_autoflush` and nothing has flushed yet), so this removes it from
-        # `session.new` before any INSERT is emitted and before `auto_stage_database_outbox`
-        # can see it. No DELETE statement, no DELETE event, no row that ever existed.
-        suppressed_row_ids = []
-        if drop_stats["rows_with_drops"]:
-            for r_id, (r_obj, was_new) in list(unique_results.items()):
-                if (was_new and r_id not in rows_with_content
-                        and r_id in drop_stats["rows_with_drops"]):
-                    db.expunge(r_obj)
-                    del unique_results[r_id]
-                    row_cache.pop(r_id, None)
-                    if r_obj.business_key_val:
-                        row_cache.pop(r_obj.business_key_val, None)
-                    suppressed_row_ids.append(r_id)
+        # an item's row: a new one, one that changed, one only named (left out, refused by its version)
+        unique_results, rows_with_content = {}, set()
+        for got in resolved:
+            if got["row_id"] is None:
+                continue
+            unique_results[got["row_id"]] = unique_results.get(got["row_id"], False) or got["work"] == "new"
+            if got["work"] not in ("left_out", "gated"):
+                rows_with_content.add(got["row_id"])
+        if version_stats is not None and answer["gated"]:
+            counts = version_stats.setdefault("counts", {})
+            for reason, n in answer["gated"].items():
+                counts[reason] = counts.get(reason, 0) + n
+        for (_it, formulas), got in zip(said, resolved):
+            for label in formulas:
+                if got["row_id"] is not None:
+                    plan["receipts"][label]["row_ids"].append(got["row_id"])
+
+        # [phantom row] An item whose every cell was dropped makes no row (write_lines claims none for a write of
+        # nothing) - said here by the name it came with, never silently. A row it names that is there stays named.
+        names = [item.row_id or item.business_key_val for item in batch.updates]
+        dropped_rows = {got["row_id"] for name, got in zip(names, resolved)
+                        if name in drop_stats["rows_with_drops"] and got["row_id"] is not None}
+        suppressed_row_ids = [name for name, (it, _f), got in zip(names, said, resolved)
+                              if name in drop_stats["rows_with_drops"] and got["row_id"] is None and not it["values"]]
         if suppressed_row_ids:
-            # WARNING, always, and not gated on `drop_report`: most callers do not ask for
-            # a report, and a write that silently produced nothing is the failure mode
-            # this whole change exists to end.
             logger.warning(
                 f"[Schema] Table: '{table_name}' | TX: {tx_id} | "
                 f"{len(suppressed_row_ids)} row(s) were NOT created because every update "
@@ -6534,175 +6216,65 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"{sorted(drop_stats['by_column'])[:8]}. Fix "
                 f"config/table_config.json or the sender's column names."
             )
-
-        # Reported before the flush so a later failure cannot swallow the reason a batch
-        # wrote nothing - "the file did not take" with no explanation is the exact class
-        # of silence this gate exists to end.
         if version_stats is not None:
             log_version_gate_summary(table_name, version_col, source_val, version_stats)
-
-        # 🔴 판정 207. THE ROWS THAT ARE IN THE ANSWER ONLY BECAUSE SOMETHING WAS DROPPED.
-        # Computed ONCE, here, and read twice: `_render_drop_report` publishes the count so
-        # the response path can subtract it, and the `results` filter below lets these rows
-        # through. Two spellings of "which rows are these" would let the answer and the count
-        # disagree about the same batch, which is the whole of what 207 is separating.
-        reported_only_for_drops = {
-            r_id for r_id, (_row, was_new) in unique_results.items()
-            if r_id in drop_stats["rows_with_drops"]
-            and not (was_new or r_id in rows_with_content)}
-
+        # 🔴 판정 207 - the rows in the answer only because something was dropped: computed once, read twice.
+        reported_only_for_drops = {r for r in dropped_rows
+                                   if r in unique_results and not (unique_results[r] or r in rows_with_content)}
         if drop_report is not None:
-            _render_drop_report(drop_report, table_name, drop_stats, version_stats,
-                                suppressed_row_ids,
+            _render_drop_report(drop_report, table_name, drop_stats, version_stats, suppressed_row_ids,
                                 reported_only_for_drops=len(reported_only_for_drops))
-
-        # 🔴 총괄 5c0a86cec (소유자 10-20): THE ROWS GO IN FIRST, the new ones in business-key order. Two writers
-        # inserting one new key meet at its unique index; the loser used to find out after writing its history and
-        # layers, so its rollback left them all dead (box: 6,002 per 1,000 rows x 5) - now it waits there first and
-        # leaves ~2. And two batches of the same new keys in opposite orders wait in one order instead of deadlocking
-        # (40P01, which nothing retries; box: 2 of 13). The steps below write by row id and read no data row.
         refused_cells = drop_stats["by_reason"].get(DROP_VALUE_REFUSED)
         if refused_cells:
             logger.warning("[Write] %s: %d cell(s) refused - %s - not entered, the rest of each row written",
                            table_name, refused_cells, "; ".join(
                                "%s=%d (first %r)" % (column, seen["cells"], seen["first"])
                                for column, seen in sorted(drop_stats["refused_values"].items())))
+        receipts = []
         for label, tally in plan["receipts"].items():
             if tally["blank"] or tally["refused"]:
                 logger.info("[Formula] %s: %d blank answer(s), %d not of the column's type - written blank",
                             label, tally["blank"], tally["refused"])
             if tally["row_ids"]:
-                logs_to_cache.extend(receipt_log(
+                receipts.extend(receipt_log(
                     db, table_name, str(uuid6.uuid7()), label, {"blank": tally["blank"], "refused": tally["refused"]},
                     CHAIN_SOURCE, tally["who"] or "system", tx_id, row_ids=tally["row_ids"]))
-        new_rows = sorted((row for row in db.new if isinstance(row, table_model)),
-                          key=lambda row: (row.business_key_val is None, row.business_key_val or ""))
-        for row in new_rows:
-            db.expunge(row)
-        db.add_all(new_rows)
-        from time import monotonic
-        flushed = monotonic()
-        with alignment_batch_counts.write_step("flush"):
-            db.flush()
-        _say_a_slow_flush(db, table_model, table_name, len(unique_results), monotonic() - flushed)
-
-        # Execute Bulk Upserts, Bulk Inserts, and Deletes - each its own step, so a chunk
-        # line says which of the four took the time and how many rows it wrote (소유자
-        # 2026-09-26 「헤비 레인 쓰기 속도 느린 거는 로그는 추가해 봐」). The counts are the
-        # lengths of the lists handed over; no query is added to count them.
         with alignment_batch_counts.write_step("audit logs") as count:
-            if logs_to_cache:
-                bulk_insert_audit_logs(db, logs_to_cache)
-            count(len(logs_to_cache or ()))
-        with alignment_batch_counts.write_step("cell sources") as count:
-            sources = list(cell_sources_to_upsert.values())
-            bulk_upsert_cell_sources(db, sources, new_rows={(table_name, r) for r in layers_read.whole})
-            count(len(sources))
-        with alignment_batch_counts.write_step("cell overwrites") as count:
-            overwrites = list(cell_overwrites_to_upsert.values())
-            bulk_upsert_cell_overwrites(db, overwrites)
-            count(len(overwrites))
-        with alignment_batch_counts.write_step("overwrite deletes") as count:
-            deletes = list(cell_overwrites_to_delete)
-            bulk_delete_cell_overwrites(db, deletes)
-            count(len(deletes))
-        with alignment_batch_counts.write_step("folded layers") as count:
-            # A layer written again later in this batch stays - the write outranks the fold.
-            folded = [k for k in cell_sources_to_delete if k not in cell_sources_to_upsert]
-            bulk_delete_cell_sources(db, folded)
-            count(len(folded))
+            if receipts:
+                bulk_insert_audit_logs(db, receipts)
+            count(len(receipts))
 
-        # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
-        # from what was in scope - never by asking the payload what to delete.
-        #
-        # 🔴 THE ITERATION SOURCE IS THE SCOPE, NOT THE PAYLOAD, and that is the whole
-        # safety property. A diff that walked the payload would read "not mentioned" as
-        # "unchanged" and leave a deleted cell in the database forever, which is worse
-        # than the dead tuples this change exists to remove: wrong data instead of slow
-        # data. Here a cell that vanished from the payload is in `scope - claimed` BY
-        # CONSTRUCTION, so absence cannot become a no-op.
-        #
-        # 🔴 DO NOT "OPTIMISE" THIS BY COMPUTING THE INCOMING BUSINESS KEYS DIRECTLY FROM
-        # THE PAYLOAD. They are derived from cast-and-cleaned STORED values, and a second
-        # implementation of that derivation is free to drift from the first - at which
-        # point every key misses, every row looks new, and the diff silently degrades
-        # into the purge it replaced (or worse, deletes the map and re-inserts it under
-        # new ids). `unique_results` is already keyed by the row each item actually
-        # resolved to, through the one derivation that exists. Use it.
-        #
-        # Rows from an older scheme, or any row the write machinery cannot match, land in
-        # this set and are deleted - exactly as the purge did. That is deliberate: "the
-        # diff cannot recognise it" and "no write could ever have matched it" are the
-        # same statement here, because both use the same resolver. Keeping such rows
-        # would make them immortal - nothing could ever address them again.
+        deleted_row_ids = []
+        # [scope diff] What disappeared: the scope MINUS what this write claimed - every row an item resolved to,
+        # the unchanged ones included (an unchanged re-push claims its rows; reading «changed» here would purge them).
         if batch.replace_map and use_diff:
-            claimed_row_ids = set(unique_results.keys()) | set(deleted_row_ids)
-            removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
+            removed_row_ids = [r for r in replace_scope_row_ids if r not in unique_results]
             removed_keys = []
             if removed_row_ids:
                 _write_deleted_edits(db, table_name, removed_row_ids, deleted_edits)     # before they go
                 purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
-            deleted_row_ids = list(deleted_row_ids) + removed_row_ids
+            deleted_row_ids = removed_row_ids
             logger.info(
                 f"🔄 [Map Diff] Table: '{table_name}' | TX: {tx_id} | "
-                f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(claimed_row_ids)} | "
-                f"Written: {len(unique_results)} | "
+                f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(unique_results)} | "
+                f"Written: {len(rows_with_content)} | "
                 f"Removed: {len(removed_row_ids)}{' (%s)' % removed_keys[0] if removed_keys else ''}"
             )
 
-        serialized_logs = []
-        for l in logs_to_cache:
-            ts_val = l["timestamp"]
-            serialized_logs.append({
-                "id": 0,
-                "table_name": l["table_name"],
-                "row_id": l["row_id"],
-                "column_name": l["column_name"],
-                "old_value": l["old_value"],
-                "new_value": l["new_value"],
-                "source_name": l["source_name"],
-                "updated_by": l["updated_by"],
-                "transaction_id": l["transaction_id"],
-                "timestamp": ts_val.isoformat() if hasattr(ts_val, "isoformat") else ts_val,
-                "business_key": l.get("business_key")
-            })
-            
+        # [adopt] Rows written from outside the scope a replace_map declared - read before the commit, said after.
+        adopted_row_ids = ([r for r, was_new in unique_results.items() if not was_new and r not in replace_scope_row_ids]
+                           if batch.replace_map else [])
+        if adopted_row_ids:
+            _write_deleted_edits(db, table_name, adopted_row_ids, deleted_edits)
+
         from session_contract import end_step
         end_step(db)                # a commit, or a held group's step (총괄 09f58844f)
-        
-        # [adopt] A replace_map write can resolve a row that was NOT in the scope it
-        # declared, and until now it said nothing about having done so.
-        #
-        # HOW: the row lookup is by business key alone (`_get_or_create_row` ->
-        # `get_row_by_business_key`, no scope filter, no unique index on the column).
-        # For a table whose map key sits INSIDE its composite business key that cannot
-        # happen - a key names its own map. `dt_log` is the one shipped table where it
-        # can, and deliberately: its key is the physical destination cell
-        # (dt_job, dt_x, dt_y) while (dt_lot, dt_slot) are inference targets kept out of
-        # the identity because "a guess must never sit inside an identity". So a push
-        # into map A can legitimately resolve, and re-attribute, a cell currently
-        # recorded under map B.
-        #
-        # ⚠️ THIS DOES NOT CHANGE WHICH ROW IS WRITTEN, ON PURPOSE. Making identity
-        # scope-local would give one physical tape cell TWO rows and break the
-        # uniqueness the config declares and the data upholds. The defect was never the
-        # write - it was that the write was invisible: `deleted: 0`, no delete event,
-        # and map B's viewers were never told the cell had left.
-        #
-        # WHY `is_new` IS NOT THE TEST - AND THIS IS NO LONGER HYPOTHETICAL. Under the
-        # purge the scope was emptied first, so "resolved an existing row" and "adopted
-        # from outside" happened to name the same set and either test would have worked.
-        # The diff is exactly what separates them: every surviving in-scope cell is now a
-        # resolved existing row, so `is_new` would count the whole map as adopted on every
-        # unchanged re-push. The set difference against the scope is the specification.
-        adopted_row_ids = []
+        from admin.audit_cache import audit_cache
+        audit_cache.add_changed(answer["audit"])   # this process's history list at once (a worker's is not loaded)
+
         if batch.replace_map:
-            adopted_row_ids = [
-                r_id for r_id, (_row, was_new) in unique_results.items()
-                if not was_new and r_id not in replace_scope_row_ids
-            ]
             if replace_report is not None:
                 replace_report["adopted"] = len(adopted_row_ids)
                 replace_report["adopted_row_ids"] = adopted_row_ids
@@ -6712,89 +6284,111 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     f"Filters: {scope_filters} | Rows written from OUTSIDE this scope: "
                     f"{len(adopted_row_ids)} | first: {adopted_row_ids[:5]}"
                 )
-            # The adopted rows left the map they used to belong to, so they are announced
-            # as departures. They are kept separately in `adopted_row_ids` above as well:
-            # a consumer of this list must be able to tell "gone" from "moved", and once
-            # both classes are in one list that distinction is not recoverable from it.
+            # adopted rows left the map they belonged to: announced as departures, kept apart in adopted_row_ids
             deleted_row_ids = list(deleted_row_ids) + adopted_row_ids
-            _write_deleted_edits(db, table_name, adopted_row_ids, deleted_edits)          # they stay: read now
 
-        # 🔴 판정 187 사실 ④ / 판정 192. AN UNCHANGED SAVE HAS NO ITEM AT ALL: a row this
-        # request neither inserted nor changed does not appear in the answer. It used to,
-        # and `updated_count` counted it - so an unchanged re-push reported "N updated"
-        # while changing nothing. That is a FALSE number, not a generous one.
-        #
-        # ⛔ `unique_results` ITSELF IS NOT FILTERED, and that is the whole care here.
-        # `claimed_row_ids` is built from its KEYS, so filtering there would make a
-        # replace_map re-push read every unchanged row as unclaimed and DELETE it - the
-        # worst branch available on this path. The filter lives on this line and nowhere
-        # earlier; `adopted_row_ids` reads the unfiltered mapping too.
-        #
-        # The predicate is per ROW and not per item, which is why `rows_with_content` is
-        # the right set rather than a per-item flag: item 1 can drop every key of a row
-        # that item 2 then fills, and that row did change.
-        # 🔴 판정 207 ADDED THE THIRD TERM. 판정 192 took an unchanged save out of the
-        # answer so `updated_count` would stop counting rows it did not change - correct
-        # about the COUNT, and it also removed a row whose keys were all DROPPED, which the
-        # caller does need to hear about: without it the API broadcasts nothing for that row
-        # and the grid never learns the write was processed. The two sentences are about
-        # different things, so they are separated rather than one of them relaxed: this list
-        # is the REPORTING set, and the count is built by subtracting the drop-only rows
-        # from it (`reported_only_for_drops`, in the drop report).
-        results = [(row, was_new)
-                   for r_id, (row, was_new) in unique_results.items()
-                   if was_new or r_id in rows_with_content
-                   or r_id in reported_only_for_drops]
+        # 🔴 판정 187 ④ / 192 / 207: the answer holds a row this request made, changed, or only dropped cells on -
+        # an unchanged save has no item. The rows are read once, as t holds them now.
+        shown = [r for r, was_new in unique_results.items()
+                 if was_new or r in rows_with_content or r in reported_only_for_drops]
+        rows = {}
+        for page in [shown[at:at + 1000] for at in range(0, len(shown), 1000)]:
+            for row in (db.query(table_model).filter(table_model.row_id.in_(page))
+                        .execution_options(populate_existing=True)):
+                rows[row.row_id] = row
+        results = [(rows[r], unique_results[r]) for r in shown if r in rows]
+        serialized_logs = _said_logs(table_name, answer, resolved, said, tx_id, rows)
         return results, total_changed_cells, serialized_logs, deleted_row_ids
+
+def _changed_cells(answer, resolved) -> list:
+    """(row_id, column) of each cell a funnel write moved - a new row's every column its items named, an edited row's
+    columns whose value t shows now differs from before (a pin taken off moves cells no item named). From
+    `write_lines`' answer - what the API counts, the worker reads for written blanks and the watcher tallies."""
+    named = {}
+    for got in resolved:
+        if got["row_id"] is not None and got["work"] not in (None, "left_out", "gated"):
+            named.setdefault(got["row_id"], set()).update(got["columns"])
+    out = []
+    for row_id, change in answer["changed"].items():
+        if change["new"] is None:
+            continue
+        if change["work"] == "new":
+            out.extend((row_id, c) for c in sorted(named.get(row_id, ())))
+        else:
+            old = change["old"] or {}
+            out.extend((row_id, c) for c in sorted(change["new"]) if old.get(c) != change["new"][c])
+    return out
+
+
+def _said_logs(table_name, answer, resolved, said, transaction_id, rows) -> list:
+    """The funnel's `serialized_logs` - the broadcast's payload, not the audit (lead 11-11 ㄱ1; the audit is
+    `audit_batches`, written by write_lines): a person's write a line per cell it moved, any other writer one
+    ROW_UPDATE line a row, today's shapes, `old_value` empty. A column of no history is not named
+    (`keeps_history`). A value is cut to the audit cap as the audit line cut it (`truncate_audit_value`)."""
+    from datetime import datetime
+
+    from event_constants import truncate_audit_value
+
+    def clip(value):
+        return truncate_audit_value(value)[0]
+
+    at = datetime.now().isoformat()
+    who = {}
+    for (it, _formulas), got in zip(said, resolved):
+        if got["row_id"] is not None and got["work"] not in (None, "left_out", "gated"):
+            who[got["row_id"]] = (it.get("source_name"), it.get("written_by"))
+    out = []
+    for row_id, change in answer["changed"].items():
+        if change["new"] is None:
+            continue
+        old, new, is_new = change["old"] or {}, change["new"], change["work"] == "new"
+        cols = [c for c in sorted(new) if keeps_history(table_name, c)
+                and ((new[c] is not None) if is_new else old.get(c) != new[c])]
+        if not cols:
+            continue
+        source, by = who.get(row_id, (None, None))
+        row = rows.get(row_id)
+        line = {"id": 0, "table_name": table_name, "row_id": row_id, "old_value": None, "source_name": source,
+                "transaction_id": transaction_id, "timestamp": at,
+                "business_key": getattr(row, "business_key_val", None)}
+        if source == "user":
+            out.extend(dict(line, column_name=c, new_value=clip(new[c]), updated_by=by or "user") for c in cols)
+        else:
+            parts = ", ".join("%s: %s" % (c, "empty" if new[c] is None else clip(new[c])) for c in cols)
+            out.append(dict(line, column_name="ROW_UPDATE", new_value=clip(("New row: " + parts) if is_new else parts),
+                            updated_by=by or "system"))
+    return out
+
 
 def create_empty_row(db: Session, table_name: str):
     """신규 빈 행을 하나 생성합니다."""
     new_rows = create_empty_rows_batch(db, table_name, 1)
     return new_rows[0] if new_rows else None
 
-def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system"):
-    """신규 빈 행을 일괄 생성하고 요약 히스토리를 남깁니다."""
+def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name: str = "system",
+                            created_lines: list = None):
+    """Make `count` rows with no value - a «created» line each (`write_lines`, the pair of «deleted»; C 11-11), its
+    CREATE event and one audit row - and commit. -> the new rows. `created_lines` (a list): their history entries put
+    on it (`line_history_entries`), for the notification."""
     # ⛔ A VIEW FIRST. Without this the owner's add-row button reached
     # `table_model(row_id=…)` and answered 500 (S-224).
     refuse_write_to_view(table_name)
+    from database.write_lines import write_lines
 
-    from sqlalchemy.sql import func
-    
     tx_id = str(uuid6.uuid7())
-    
+
     with transaction_context(user_name, tx_id, "batch_create"):
         table_model = models.DYNAMIC_TABLES.get(table_name)
         if not table_model:
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
-            
-        new_rows = []
-        for _ in range(count):
-            row = table_model(
-                row_id=str(uuid6.uuid7()),
-                updated_at=func.now()
-            )
-            new_rows.append(row)
-        
-        db.add_all(new_rows)
-        
-        logs_to_cache = []
-        if count > 0:
-            for row in new_rows:
-                log_dict = create_audit_log(
-                    db, table_name, row.row_id, "CREATE",
-                    None, "row created", "system", user_name,
-                    transaction_id=tx_id,
-                    business_key=row.business_key_val,
-                    add_to_cache=False
-                )
-                logs_to_cache.append(log_dict)
-
-        if logs_to_cache:
-            bulk_insert_audit_logs(db, logs_to_cache)
-
+        answer = write_lines(db, table_name, [{"line_kind": "created", "written_by": user_name}
+                                              for _ in range(max(0, count))], kind="create", transaction_id=tx_id)
+        made = [said["row_id"] for said in answer["items"] if said["work"] == "new"]
         db.commit()
-
-        return new_rows
+        if created_lines is not None:
+            created_lines.extend(line_history_entries(table_name, answer, "created", user_name, tx_id))
+        order = {row_id: n for n, row_id in enumerate(made)}
+        return sorted(db.query(table_model).filter(table_model.row_id.in_(made)).all(), key=lambda r: order[r.row_id])
 
 def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
     """단일 행을 삭제합니다 (배치 로직으로 통합).
@@ -6809,6 +6403,8 @@ def delete_row(db: Session, table_name: str, row_id: str, user_name: str):
 
 #: The column a row's deletion history line names - what 「this row was deleted」 is read by.
 ROW_DELETION_COLUMN = "DELETE"
+#: The column a row's creation history entry names - the grid's «add row» (a «created» line).
+ROW_CREATION_COLUMN = "CREATE"
 
 
 def deleted_rows(db: Session, table_name: str, row_ids) -> set:
@@ -6820,106 +6416,75 @@ def deleted_rows(db: Session, table_name: str, row_ids) -> set:
     return audit_history.deleted_line_rows(db, table_name, row_ids)
 
 
-def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
-                         transaction_id: str):
-    """The audit history for rows that are going away — ONE place, two callers.
+def record_row_deletions(db: Session, table_name: str, row_ids, user_name: str,
+                         transaction_id: str) -> dict:
+    """Rows going away - ONE place, every deleting door (the grid's delete, the map purge, the job retraction, a
+    shell): a «deleted» line a row (`write_lines`, kind delete), which takes the row out of t and stages its DELETE
+    event with the row's values as its old ones, in the caller's transaction - the caller owns the commit. The line is
+    the history «what was deleted?» asks (`deleted_rows`). -> write_lines' answer: `items` the line each row got
+    (`work` "delete"; `line_id` None for a row already gone), `at` its instant."""
+    from database.write_lines import write_lines
 
-    🔴 THE TWO DELETION PATHS WROTE DIFFERENT HISTORY, AND ONLY ONE WROTE ANY.
-    `delete_rows_batch` recorded every row it removed; `purge_map_rows` recorded none, so
-    「what was deleted?」 had an answer for one kind of deletion and not for the other. The
-    rows are gone either way — what went missing was the place to ask.
+    items = [{"row_id": row_id, "line_kind": "deleted", "written_by": user_name}
+             for row_id in dict.fromkeys(row_ids or ())]
+    return write_lines(db, table_name, items, kind="delete", transaction_id=transaction_id)
 
-    ⚠️ IT WRITES TO THE LEDGER TABLE, NOT TO THE IN-MEMORY CACHE. The cache is a
-    post-COMMIT concern and this function does not own the commit: `delete_rows_batch`
-    commits and then publishes, while the map purge runs inside a batch that commits later.
-    Publishing here would put entries in the cache for a transaction that can still roll
-    back. Callers that own a commit publish the returned dicts themselves.
 
-    Returns the log dicts so a caller can do exactly that.
-    """
-    logs = []
-    for row in rows or []:
-        logs.append(create_audit_log(
-            db, table_name, row.row_id, ROW_DELETION_COLUMN,
-            None, "row deleted", "system", user_name,
-            transaction_id=transaction_id,
-            business_key=getattr(row, "business_key_val", None),
-            add_to_cache=False))
-    if logs:
-        bulk_insert_audit_logs(db, logs)
-    return logs
+def line_history_entries(table_name: str, answer: dict, line_kind: str, written_by: str, transaction_id: str) -> list:
+    """The history entries (schemas.AuditLogResponse fields) of the «deleted» or «created» lines a write_lines answer
+    says it wrote - what a delete's or an add-row's notification carries, built from the answer without reading the
+    lines again (`audit_history.line_entries`)."""
+    from types import SimpleNamespace
+
+    from admin import audit_history
+
+    out = []
+    for said in answer.get("items") or ():
+        if said.get("line_id") is None:          # a row already gone or there, or a table without lines: no line
+            continue
+        was = (answer["changed"].get(said["row_id"]) or {}).get("old") or {}
+        line = SimpleNamespace(line_kind=line_kind, line_id=said["line_id"], row_id=said["row_id"],
+                               written_by=written_by, batch=transaction_id,
+                               business_key_val=was.get("business_key_val"), at=answer.get("at"))
+        out.extend(audit_history.line_entries(table_name, line, {}, {}, row_deleted=line_kind == "deleted"))
+    return out
 
 
 def delete_row_layers(db: Session, table_name: str, row_ids: list) -> None:
-    """Rows' cell layers and overwrite marks, gone with the rows - the one place a row's metadata
-    is deleted: a row delete, a map purge, and a merge's stored shell (총괄 a13fcf00c)."""
+    """Rows' overwrite marks, gone with the rows - the one place a row's metadata is deleted: a row delete, a map
+    purge, and a merge's stored shell (총괄 a13fcf00c). Their history is their lines, which stay."""
     db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name,
         models.CellOverwrite.row_id.in_(row_ids)
     ).delete(synchronize_session=False)
-    db.query(models.CellSource).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
 
 
-def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str):
-    """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
+def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str,
+                      deleted_lines: list = None):
+    """Delete rows - a «deleted» line each (`record_row_deletions`), their pins with them - and commit. -> how many
+    rows went. `deleted_lines` (a list): their history entries put on it (`line_history_entries`), for the
+    notification."""
     # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
-    # on what the caller sent. This path deletes the row's cell layers before it touches the
-    # relation, so on a view that declares `row_id` it destroyed metadata and only then let
-    # PostgreSQL refuse (S-224).
+    # on what the caller sent (S-224).
     refuse_write_to_view(table_name)
 
     if not row_ids:
         return 0
-        
+
     tx_id = str(uuid6.uuid7())
-    
+
     with transaction_context(user_name, tx_id, "batch_delete"):
-        table_model = models.DYNAMIC_TABLES.get(table_name)
-        if not table_model:
+        if not models.DYNAMIC_TABLES.get(table_name):
             raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")
-            
-        # 삭제하기 전 row_id와 business_key_val을 먼저 조회
-        rows_to_delete = db.query(table_model).filter(
-            table_model.row_id.in_(row_ids)
-        ).all()
-            
-        # 메타데이터 연쇄 삭제
-        delete_row_layers(db, table_name, row_ids)
-
-        # 기본 데이터 삭제
-        deleted_count = db.query(table_model).filter(
-            table_model.row_id.in_(row_ids)
-        ).delete(synchronize_session=False)
-                
-        if deleted_count > 0:
-            # 🔴 THE DELETE DOOR HAD TO BE TOLD (S-74). A bulk
-            # `.delete(synchronize_session=False)` never puts the objects in
-            # `session.deleted`, so the `before_flush` hook that stages every other write
-            # cannot see them: measured 2026-09-08, this box's whole outbox history holds
-            # 1,618 CREATE, one RETROACTIVE_RUN and ZERO DELETE, while an EDIT of the same
-            # row stages normally. Everything downstream of the outbox -- the chain, and the
-            # ledger's follow-up that withdraws a deleted row's facts -- had therefore never
-            # once received a live deletion.
-            #
-            # ⚠️ THE SAME CALL `purge_map_rows` ALREADY MAKES, not a second spelling of it.
-            # And it stages the ids that were actually removed rather than the ids asked
-            # for, so a delete of something already gone does not announce a deletion.
-            from database.database import row_values, stage_collapsed_event
-
-            # with each row's values as its old values (총괄 옛 키)
-            stage_collapsed_event(
-                db, "DELETE", table_name, [row.row_id for row in rows_to_delete],
-                old=[row_values(row) for row in rows_to_delete])
-            logs_to_cache = record_row_deletions(
-                db, table_name, rows_to_delete, user_name, tx_id)
+        answer = record_row_deletions(db, table_name, row_ids, user_name, tx_id)
+        gone = [said["row_id"] for said in answer["items"] if said["work"] == "delete"]
+        if gone:
+            delete_row_layers(db, table_name, gone)
             from session_contract import end_step
             end_step(db)
-
-            
-        return deleted_count
+            if deleted_lines is not None:
+                deleted_lines.extend(line_history_entries(table_name, answer, "deleted", user_name, tx_id))
+        return len(gone)
 
 def get_row_cell(db: Session, table_name: str, row_id: str):
     table_model = models.DYNAMIC_TABLES.get(table_name)

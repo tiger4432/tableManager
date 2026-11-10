@@ -270,3 +270,14 @@ def test_a_column_name_too_long_for_its_line_cell_is_refused():
     assert lines.value_column("x" * 61) == "v_" + "x" * 61
     with pytest.raises(ValueError, match="63 bytes"):
         lines.value_column("x" * 62)
+
+
+def test_a_declared_column_t_does_not_hold_yet_is_left_out_until_it_is_added(db):
+    make_table(db, "t", CFG)
+    wider = {"column_types": {**CFG["column_types"], "late": "string"}}
+    s = ensure(db, "t", wider)
+    assert "late" not in lines.current_table(db, "t", wider).c and "late" not in s["table"].c
+    assert "v_late" not in s["lines"].c and "late" not in lines.bit_map(db, "t")
+    lines.alter_columns(db, "t", wider, add=["late"])
+    assert "late" in lines.current_table(db, "t", wider).c
+    assert "v_late" in {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}

@@ -299,11 +299,14 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
 
 
 def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
-    """table_cfg with each column t already holds typed as STORED (the stored kind is what line_text reads)."""
+    """table_cfg as t is BUILT: once t exists, its columns are the ones it holds, typed as stored (the stored kind is
+    what line_text reads) - a declared column t does not hold yet is left out until the schema sync adds it (a
+    statement naming it would fail, A 11-11); before t exists, the declaration."""
     from sqlalchemy import inspect
 
-    stored = physical_kinds(db, table_name) if inspect(db.connection()).has_table(table_name) else {}
-    return {**table_cfg, "column_types": {**(table_cfg.get("column_types") or {}), **stored}}
+    if not inspect(db.connection()).has_table(table_name):
+        return table_cfg
+    return {**table_cfg, "column_types": physical_kinds(db, table_name)}
 
 
 def current_table(db, table_name: str, table_cfg: dict, won_by=None):
