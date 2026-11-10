@@ -6571,7 +6571,7 @@ def get_chain_rules(db: Session = Depends(get_db)):
         expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
         if expanded and rule_shape.is_switched_off(raw):
             why = [refused[rule.get("name")] for rule in expanded if rule.get("name") in refused]
-            listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+            listed.append(dict(_as_the_loader_reads(raw), rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
                                rule_state_detail=" | ".join(why) or (notes[0] if notes else "enabled=false")))
             continue
         # 🔴 [Q-191] PER STANDING RULE, NOT PER DECLARATION. One declaration can stand TWO
@@ -6597,7 +6597,7 @@ def get_chain_rules(db: Session = Depends(get_db)):
         # hands back its own refusal or note; the loader logs its refusal codes into a
         # local list and returns them to nobody, so a rule it dropped arrives here with a
         # state and no reason.
-        listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+        listed.append(dict(_as_the_loader_reads(raw), rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
                            rule_state_detail=refusal or (notes[0] if notes else None)))
     # 🔴 THE KIND, FROM ITS ONE SEAT, AND THE ORDER BY IT (소유자 「체인 탭에서 리스트를 항목별로
     #    정렬만」 · 「항목 = 종류」, 총괄 7085e2dc6). The screen draws the word and keeps this order:
@@ -6611,6 +6611,20 @@ def get_chain_rules(db: Session = Depends(get_db)):
     return {"status": "success", "data": listed,
             "not_adopted": {"at": lap.get("at"), "layers": lap.get("layers", 0), "names": lap.get("not_adopted") or []}
             if lap else None}
+
+
+def _as_the_loader_reads(raw: dict) -> dict:
+    """A declaration listed as not running, with the tables the loader reads in it: a unified one through the grammar's
+    own translation (`as_chain_rule`), its top-level cells the grammar does not read left off the row - a flat
+    `target_table` beside `into.table` is one of them (lead 11-10, aaa) - and `derive` kept for its kind. A flat one is
+    what the loader reads."""
+    from chain import rule_shape
+
+    if not isinstance(raw.get("derive"), dict):
+        return raw
+    unread = {cell for where, cells in rule_shape.unread_cells(raw) if where == "top-level" for cell in cells}
+    return dict({key: value for key, value in raw.items() if key not in unread},
+                **rule_shape.as_chain_rule(rule_shape.from_declaration(raw)))
 
 
 @app.get("/admin/chain/rules/replayable", dependencies=[Depends(require_admin_token)])
