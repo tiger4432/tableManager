@@ -77,3 +77,33 @@ def test_two_connections_claiming_one_new_key_leave_one_line(db, pg_engine):
     worker.join(10)
     assert done["rows"] == 0
     assert db.execute(text("SELECT row_id FROM lt__now WHERE business_key_val = 'K'")).scalars().all() == ["a"]
+
+
+def test_retype_changes_now_only(db):
+    lines.ensure_line_table(db, "lt", CFG)
+    db.commit()
+    cfg = {"column_types": {"lot": "number", "qty": "number"}}
+    lines.alter_columns(db, "lt", cfg, retype={"lot": '"lot"::double precision'})
+    db.commit()
+    kinds = dict(db.execute(text("SELECT table_name, data_type FROM information_schema.columns WHERE column_name = 'lot' "
+                                 "AND table_schema = current_schema() AND table_name IN ('lt__now', 'lt__lines')")).all())
+    assert kinds == {"lt__now": "double precision", "lt__lines": "character varying"}
+
+
+def test_a_65th_column_rebuilds_the_head_index_on_pg(db):
+    """A fresh name: slots outlive drop_line_table, so «lt» already holds slots from the tests above."""
+    cfg = {"column_types": {f"c{i}": "string" for i in range(64)}}
+    try:
+        lines.ensure_line_table(db, "lt65", cfg)
+        db.commit()
+        wider = {"column_types": {**cfg["column_types"], "c64": "string"}}
+        said = lines.alter_columns(db, "lt65", wider, add=["c64"])
+        db.commit()
+        assert any(x.startswith("CREATE INDEX") and "head_1" in x for x in said), said
+        where = db.execute(text("SELECT indexdef FROM pg_indexes WHERE indexname = 'lt65__lines_h' "
+                                "AND schemaname = current_schema()")).scalar()
+        assert "head_1" in where
+    finally:
+        db.rollback()
+        lines.drop_line_table(db, "lt65")
+        db.commit()

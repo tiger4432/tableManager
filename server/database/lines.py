@@ -224,7 +224,10 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     for family in BIT_FAMILIES:
         line_cols += [Column(name, BigInteger, nullable=False, server_default=text("0"))
                       for name in bit_columns(family, chunks)]
-    data = [c for c in _data_columns(table_cfg, sql_type_of, row_id_key=False) if c.name != "row_id"]
+    # a line's value cells are text whatever the declared type (crud.line_text) - retyping touches t__now only
+    framework = {n for n, _ in FRAMEWORK}
+    data = [c if c.name in framework else Column(c.name, String)
+            for c in _data_columns(table_cfg, sql_type_of, row_id_key=False) if c.name != "row_id"]
     lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
     head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
     Index(index_name(table_name, "ra"), lines.c.row_id, lines.c.at)
@@ -293,10 +296,11 @@ def _built_chunks(conn, table_name: str) -> int:
 
 
 def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=None) -> list:
-    """Column DDL on both tables in the caller's transaction: drop the view, change `t__now` and `t__lines` alike,
-    re-create the view. add: column names in table_cfg's column_types (the cfg AFTER the change); drop: column
-    names; retype: {column: USING expression} from admin/retype.using - the cast has one author there, and sqlite
-    skips it as today's retype does. A rename is a drop + a new column (a new bit).
+    """Column DDL in the caller's transaction: drop the view, give `t__now` and `t__lines` the same column names in
+    the same order, re-create the view. `t__lines` value cells are text, so retype changes `t__now` only.
+    add: column names in table_cfg's column_types (the cfg AFTER the change); drop: column names; retype: {column:
+    USING expression} from admin/retype.using - the cast has one author there, and sqlite skips it as today's
+    retype does. A rename is a drop + a new column (a new bit).
     -> the statements run (the same text an operator is shown)."""
     from .models import sql_type_of
 
@@ -314,12 +318,13 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     after = chunk_count(db, table_name)
     for rel in (now_relation(table_name), lines_relation(table_name)):
         for name in add:
-            type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
+            type_sql = (sql_type_of(types[name]) if rel == now_relation(table_name) else String()).compile(
+                dialect=conn.dialect)
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
         for name in drop:
             statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{name}"')
         for name, using in (retype or {}).items():
-            if dialect == "postgresql":
+            if dialect == "postgresql" and rel == now_relation(table_name):
                 type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
                 statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING {using}')
     for family in BIT_FAMILIES:
