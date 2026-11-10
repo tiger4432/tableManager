@@ -1611,6 +1611,16 @@ def _run_fold_withdrawal_events(db, params, log, control=None):
 
 
 
+def _refused_notation(table) -> str:
+    """«Declared but refused - ...» for this table's notation declarations the process refused, or ''."""
+    import notation_norm
+
+    said = ["%s: %s" % (refused["subject"] or "notation_rules.json", refused["detail"])
+            for refused in notation_norm.refused_declarations()
+            if refused["subject"] in (None, table) or str(refused["subject"]).startswith(table + ".")]
+    return ("Declared but refused - %s. " % "; ".join(said)) if said else ""
+
+
 def _count_fold_written_notation(db, params, scan_limit):
     from chain import replay
 
@@ -1619,16 +1629,18 @@ def _count_fold_written_notation(db, params, scan_limit):
     truncated = s["rows_scanned"] >= scan_limit
     # a row re-keyed or merged is a change too - a table keyed by a number may move nothing else
     affected = s["cells_folded"] + s["keys_changed"] + s["rows_merged"]
+    # a declaration this table wrote that the read refused: its 0 is not «none» (lead 11-10, owner «ㅇㅇ»)
+    refused = _refused_notation(params["table"])
     if not s["written_columns"] and not s["text_columns"] and not s["rows_scanned"]:
-        return {"affected": 0, "absence": ABSENCE_NOT_APPLICABLE,
+        return {"affected": 0, "absence": ABSENCE_CANNOT_POINT if refused else ABSENCE_NOT_APPLICABLE,
                 "affected_label": "cells and row keys whose spelling changes",
                 "count_kind": COUNT_EXACT, "scanned": 0, "scan_limit": scan_limit,
                 "truncated": False,
-                "detail": (f"'{params['table']}' has no \"write\" column in "
-                           f"notation_rules.json and no text column - nothing is folded."),
+                "detail": refused + (f"'{params['table']}' has no \"write\" column in "
+                                     f"notation_rules.json and no text column - nothing is folded."),
                 "extra": {}}
     left = s["time_left"]
-    detail = (
+    detail = refused + (
         f"{s['cells_folded']} cell(s) and {s['layers_folded']} stored layer(s) in {s['rows_scanned']} "
         f"row(s) of '{params['table']}' take the declared spelling; {s['keys_changed']} row "
         f"key(s) change. Cannot be undone - the spelling that was stored stays in each cell's "
@@ -1654,8 +1666,8 @@ def _count_fold_written_notation(db, params, scan_limit):
                "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {
         "affected": affected,
-        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
-                    else ABSENCE_TRULY_NONE if not affected else None),
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated else None if affected
+                    else ABSENCE_CANNOT_POINT if refused else ABSENCE_TRULY_NONE),
         "affected_label": "cells and row keys whose spelling changes",
         "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
         "scanned": s["rows_scanned"],

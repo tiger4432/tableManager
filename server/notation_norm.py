@@ -992,7 +992,7 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
             why = _value_rule_refusal(name, on)
             if why:
                 _record(rejections, SCOPE_TABLE, subject,
-                        f"rule '{name}' {why}; the rule is left off", CODE_SHAPE)
+                        f"rule '{name}' {why}; the whole rule is left off", CODE_SHAPE)
             elif on not in (None, False, 0, [], {}):
                 effective[name] = on
             continue
@@ -1219,20 +1219,41 @@ def normalized_by_table() -> dict:
     An unreadable declaration means NO column is normalized - failing the read here would turn a config problem into
     an outage, and the safe direction is the one that compares raw values, the behaviour every join had before this
     feature existed. One that stops reading after a good read keeps the good one."""
+    return _held()["by_table"]
+
+
+def refused_declarations() -> list:
+    """The declarations this process refused when it read notation_rules.json - `_record`'s entries, held with the
+    rules they left out. The one list the config resolution, the backfill count and the log line read (lead 11-10)."""
+    return _held()["rejections"]
+
+
+#: What a process that never read notation_rules.json holds - nothing folds, and that is said.
+_UNREAD = {"by_table": {}, "rejections": [{
+    "scope": SCOPE_FILE, "subject": None, "code": CODE_SHAPE,
+    "detail": "notation_rules.json could not be read - NO column is normalized (server.log [Config] says why)"}]}
+
+
+def _held() -> dict:
     from database import config_watcher, crud
 
     return config_watcher.held(config_watcher.names_of([NOTATION_RULES_PATH, crud.CONFIG_PATH]),
-                               "notation_norm.by_table", _read_by_table, fallback={})
+                               "notation_norm.by_table", _read_by_table, fallback=_UNREAD)
 
 
 def _read_by_table():
+    """{by_table, rejections}, and one log line per refused declaration - once per read, which is once per change."""
     from database import crud
 
     if not os.path.exists(NOTATION_RULES_PATH):
-        return {}
+        return {"by_table": {}, "rejections": []}
     with open(NOTATION_RULES_PATH, "r", encoding="utf-8") as f:
         raw_config = json.load(f)
-    return validate_notation_rules(raw_config, known_tables=crud.TABLE_CONFIG)
+    rejections = []
+    by_table = validate_notation_rules(raw_config, known_tables=crud.TABLE_CONFIG, rejections=rejections)
+    for refused in rejections:
+        logger.warning("[Notation] %s: %s - not folded", refused["subject"] or "notation_rules.json", refused["detail"])
+    return {"by_table": by_table, "rejections": rejections}
 
 
 def rules_for_column(table: str, column: str):
