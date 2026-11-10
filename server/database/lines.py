@@ -196,9 +196,14 @@ def bit_map(db, table_name: str) -> dict:
 
 
 def has_lines(db, table_name: str) -> bool:
-    """Whether t keeps lines (has slots in line_columns) - an audit row of a relation without lines has no
-    countable «changed rows»."""
-    return db.execute(select(LineColumn.bit).where(LineColumn.table_name == table_name).limit(1)).first() is not None
+    """Whether t's lines are BUILT (t__lines exists, so t carries won_by) - THE answer every read of won_by or
+    t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
+    unique business key index). Not the slots: those are assigned before building and outlive drop_line_table."""
+    from sqlalchemy import inspect
+
+    if table_name_refusal(table_name):
+        return False
+    return inspect(db.connection()).has_table(lines_relation(table_name))
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -317,27 +322,29 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else why not, in operator words. The index is built by the one command that builds it
-    (migrations/add_business_key_unique_index - CONCURRENTLY, so never inside this transaction)."""
+    (business_key_val)) needs; else the number of business keys held by more than one row (0: the index is just not
+    built). The index is built by the one command that builds it (migrations/add_business_key_unique_index -
+    CONCURRENTLY, so never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
     verdict = bk.plan_table(conn, table_name)
-    if verdict.get("verdict") == bk.OK_ALREADY:
-        return None
-    dups = verdict.get("dup_keys") or 0
-    return f"{dups} business keys appear more than once" if dups else "no unique index on business_key_val"
+    return None if verdict.get("verdict") == bk.OK_ALREADY else (verdict.get("dup_keys") or 0)
 
 
-def key_index_command(table_names) -> str:
-    """The command that builds the missing indexes - it names the duplicates to clean first."""
-    return ("python server/migrations/add_business_key_unique_index.py --apply "
-            + " ".join(f"--table {t}" for t in table_names))
+def key_index_next(missing) -> str:
+    """[(table, duplicate keys)] -> why, then the next action: duplicates fold first (the retroactive operation
+    fold_duplicate_rows), then the index command. ONE sentence for the pre-check line and ensure's refusal."""
+    why = ", ".join(f"{t} ({d} business keys appear more than once)" if d else f"{t} (no unique index on business_key_val)"
+                    for t, d in missing)
+    folds = [t for t, d in missing if d]
+    fold = (f"in the Retroactive tab run Fold duplicate rows on {', '.join(folds)}, then " if folds else "")
+    command = "python server/migrations/add_business_key_unique_index.py --apply " + " ".join(f"--table {t}" for t, _ in missing)
+    return f"{why} - first {fold}run {command}"
 
 
 def key_index_refusal(conn, table_name: str):
-    why = key_index_missing(conn, table_name)
-    return None if why is None else (f"table {table_name!r}: {why} - first run {key_index_command([table_name])}, "
-                                     f"then keep lines again")
+    dups = key_index_missing(conn, table_name)
+    return None if dups is None else f"Cannot keep lines: {key_index_next([(table_name, dups)])}, then keep lines again"
 
 
 def drop_line_table(db, table_name: str) -> None:
@@ -406,3 +413,113 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
         conn.exec_driver_sql(ddl)
         statements.append(ddl)
     return statements
+
+
+def _mask(bit: int) -> int:
+    """The signed bigint mask of a column's bit in its chunk (bit 63 is the sign bit)."""
+    m = 1 << (bit % BITS_PER_CHUNK)
+    return m - (1 << 64) if m >= 1 << 63 else m
+
+
+def spoken(db, table_name: str, row_ids) -> dict:
+    """{row_id: columns some line of that row has spoken in} - written OR withdrawn, any source. Read from the head
+    lines (the head index): every column a source ever wrote or withdrew keeps that source's head bit, so the OR of
+    head bits is the OR of written bits. A column NOT here keeps t's value (owner 11-11 «끊음»)."""
+    row_ids = list(row_ids)
+    if not row_ids:
+        return {}
+    conn = db.connection()
+    chunks = _built_chunks(conn, table_name)
+    heads = bit_columns("head", chunks)
+    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
+    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), *[Column(h, BigInteger) for h in heads])
+    from sqlalchemy import or_
+
+    rows = db.execute(select(lt.c.row_id, *[lt.c[h] for h in heads])
+                      .where(lt.c.row_id.in_(row_ids), or_(*[lt.c[h] != 0 for h in heads]))).all()
+    out = {}
+    for row in rows:
+        cols = out.setdefault(row[0], set())
+        for chunk, value in enumerate(row[1:]):
+            value &= (1 << 64) - 1
+            while value:
+                low = value & -value
+                bit = chunk * BITS_PER_CHUNK + low.bit_length() - 1
+                if bit in by_bit:
+                    cols.add(by_bit[bit])
+                value ^= low
+    return out
+
+
+def winners_sql(s: dict, table_name: str, column: str):
+    """For one column: (row_id, line_id, value, pinned) of the winning head line of each row in the expanding
+    bindparam `row_ids` - built from crud.rank_terms, the one order compute_priority_value walks. A head line that
+    withdrew the column is no candidate. A pin (cell_overwrites.manual_priority_source) admits only the pinned
+    source's head line; `pinned` says a pin was there. s = shape(...)."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import and_, bindparam, case, exists, func, literal, not_
+    from sqlalchemy.orm import aliased
+
+    from . import crud
+    from .models import CellOverwrite
+
+    lt = s["lines"]
+    bit = s["bits"][column]
+    head, withdrawn = f"head_{bit // BITS_PER_CHUNK}", f"withdrawn_{bit // BITS_PER_CHUNK}"
+    mask = _mask(bit)
+    src = LineSource.__table__
+    ov = CellOverwrite.__table__
+
+    def says(t):
+        return and_(t.c[head].op("&")(mask) != 0, t.c[withdrawn].op("&")(mask) == 0)
+
+    other = lt.alias("other")
+    other_src = src.alias("other_src")
+    unowned = exists().select_from(other.outerjoin(other_src, other_src.c.source_name == other.c.source_name)).where(
+        other.c.row_id == lt.c.row_id, says(other), other_src.c.ranks_as == crud.CHAIN_SOURCE,
+        other.c.owner_rule.is_(None))
+    pin = (select(ov.c.manual_priority_source)
+           .where(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id, ov.c.column_name == column)
+           .scalar_subquery())
+    cols = SimpleNamespace(ranks_as=src.c.ranks_as, owner_rule=lt.c.owner_rule, at=lt.c.at,
+                           source_name=lt.c.source_name)
+    order = [sql(cols, unowned) for _, sql in crud.rank_terms(table_name)]
+    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[column].label("value"), pin.isnot(None).label("pinned"),
+                     func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
+              .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
+              .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
+                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin))
+              .subquery())
+    return select(ranked.c.row_id, ranked.c.line_id, ranked.c.value, ranked.c.pinned).where(ranked.c.rn == 1)
+
+
+def merge(db, table_name: str, table_cfg: dict, row_ids) -> dict:
+    """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
+       a column no line spoke in is absent (t keeps its value - «끊음»);
+       a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
+       a spoken column with no candidate left (all withdrawn) is (None, None).
+    Values are read back as t's stored kind (crud.line_value)."""
+    from . import crud
+    from .models import CellOverwrite
+
+    row_ids = list(row_ids)
+    if not row_ids:
+        return {}
+    s = shape(db, table_name, table_cfg)
+    kinds = value_types(db, table_name)
+    said = spoken(db, table_name, row_ids)
+    ov = CellOverwrite.__table__
+    pins = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
+        ov.c.table_name == table_name, ov.c.row_id.in_(row_ids), ov.c.manual_priority_source.isnot(None)))}
+    out = {}
+    for column in {c for cols in said.values() for c in cols}:
+        rows = [r for r in row_ids if column in said.get(r, ())]
+        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column), {"row_ids": rows})}
+        for r in rows:
+            if r in won:
+                v, lid = won[r]
+                out.setdefault(r, {})[column] = (crud.line_value(v, kinds.get(column, "string")), lid)
+            elif (r, column) not in pins:
+                out.setdefault(r, {})[column] = (None, None)
+    return out
