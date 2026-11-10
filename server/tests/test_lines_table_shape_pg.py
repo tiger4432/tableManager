@@ -36,7 +36,7 @@ def db(pg_engine):
 
 def test_ensure_refuses_a_table_without_a_unique_business_key(db):
     make_table(db, "lt_nokey", CFG, unique_key=False)
-    with pytest.raises(ValueError, match="add_business_key_unique_index"):
+    with pytest.raises(ValueError, match="the scheduler builds it"):
         lines.ensure_line_table(db, "lt_nokey", CFG)
 
 
@@ -48,16 +48,22 @@ def test_the_pre_check_lists_tables_without_the_key_index_with_the_next_action(d
     make_table(db, "lt_dups", CFG, unique_key=False)
     db.execute(text("INSERT INTO lt_dups (row_id, business_key_val) VALUES ('a', 'K'), ('b', 'K')"))
     missing = line_migration.key_index_missing(db, ["lt", "lt_nokey", "lt_dups"])
-    assert missing == [("lt_nokey", 0), ("lt_dups", 1)]
+    assert missing == [("lt_nokey", (lines.KEY_BUILD, 0)), ("lt_dups", (lines.KEY_FOLD, 1))]
     line = line_migration.key_index_line(missing)
-    assert "lt_dups (1 business keys appear more than once)" in line
-    assert line.endswith("first in the Retroactive tab run Fold duplicate rows on lt_dups, then run python "
-                         "server/migrations/add_business_key_unique_index.py --apply --table lt_nokey --table lt_dups")
-    assert line_migration.key_index_line(line_migration.key_index_missing(db, ["lt_nokey"])).endswith(
-        "first run python server/migrations/add_business_key_unique_index.py --apply --table lt_nokey")
+    assert line == ("Tables without a unique business key index: lt_nokey (no unique index on business_key_val yet) - "
+                    "the scheduler builds it at start, a Reload or the table's own ask; wait; lt_dups (1 business keys "
+                    "appear more than once) - in the Retroactive tab run Fold duplicate rows on lt_dups; it builds the "
+                    "index after the merge")
+    assert "add_business_key_unique_index" not in line                  # the hand command: a broken index only
     assert line_migration.key_index_line([]) is None
     with pytest.raises(ValueError, match="Fold duplicate rows on lt_dups"):
         lines.ensure_line_table(db, "lt_dups", CFG)
+
+
+def test_a_broken_index_is_the_only_state_that_names_the_hand_command(db):
+    make_table(db, "lt_nokey", CFG, unique_key=False)
+    said = lines.key_index_next([("lt_nokey", (lines.KEY_INVALID, 0))])
+    assert "INVALID" in said and "add_business_key_unique_index.py" in said
 
 
 def test_alter_columns_changes_t_and_its_lines(db):

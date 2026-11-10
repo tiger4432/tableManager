@@ -196,14 +196,17 @@ def bit_map(db, table_name: str) -> dict:
 
 
 def has_lines(db, table_name: str) -> bool:
-    """Whether t's lines are BUILT (t__lines exists, so t carries won_by) - THE answer every read of won_by or
+    """Whether t's lines are BUILT - t__lines exists AND t carries won_by - THE answer every read of won_by or
     t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
-    unique business key index). Not the slots: those are assigned before building and outlive drop_line_table."""
+    unique business key index, an orphaned t__lines). Not the slots: those are assigned before building and outlive
+    drop_line_table."""
     from sqlalchemy import inspect
 
     if table_name_refusal(table_name):
         return False
-    return inspect(db.connection()).has_table(lines_relation(table_name))
+    insp = inspect(db.connection())
+    return (insp.has_table(lines_relation(table_name)) and insp.has_table(table_name)
+            and WON_BY in {c["name"] for c in insp.get_columns(table_name)})
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -331,6 +334,9 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
         conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
                              f'ON "{_checked(table_name)}" (business_key_val)')
+    if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)} and \
+            inspect(conn).has_table(lines_relation(table_name)):
+        raise ValueError(ORPHAN_REFUSAL % {"t": table_name, "lines": lines_relation(table_name)})
     s = shape(db, table_name, table_cfg)
     if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)}:
         conn.exec_driver_sql(f'ALTER TABLE "{_checked(table_name)}" ADD COLUMN "{WON_BY}" '
@@ -339,31 +345,64 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
     return s
 
 
+#: t was dropped and built again while its t__lines stayed: attaching it would show the old table's history as
+#: the new one's (lead 11-11) - refused, the operator decides
+ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again but %(lines)s still holds the history of the earlier "
+                  "%(t)s - drop %(lines)s to start its history afresh, or rebuild %(t)s from that history")
+
+
+def drop_every_line_table(engine) -> list:
+    """Drop every t__lines - what a whole-schema reset (setup/reset_db, the test fixtures' drop_all) does beside
+    Base.metadata.drop_all, which never sees them (each lives on shape's own MetaData). -> the names dropped."""
+    from sqlalchemy import inspect
+
+    names = [n for n in inspect(engine).get_table_names() if n.endswith(LINES_SUFFIX)]
+    with engine.begin() as conn:
+        for name in names:
+            conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{_checked(name)}"')
+    return names
+
+
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else the number of business keys held by more than one row (0: the index is just not
-    built). The index is built by the one command that builds it (migrations/add_business_key_unique_index -
-    CONCURRENTLY, so never inside this transaction)."""
+    (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
+    than one row · KEY_INVALID: a broken index holds the name). The index has one builder (ingestion_worker's,
+    CONCURRENTLY, never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
     verdict = bk.plan_table(conn, table_name)
-    return None if verdict.get("verdict") == bk.OK_ALREADY else (verdict.get("dup_keys") or 0)
+    if verdict.get("verdict") == bk.OK_ALREADY:
+        return None
+    if verdict.get("verdict") == bk.REFUSED_INVALID_INDEX:
+        return (KEY_INVALID, 0)
+    dups = verdict.get("dup_keys") or 0
+    return (KEY_FOLD, dups) if dups else (KEY_BUILD, 0)
+
+
+KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
 
 
 def key_index_next(missing) -> str:
-    """[(table, duplicate keys)] -> why, then the next action: duplicates fold first (the retroactive operation
-    fold_duplicate_rows), then the index command. ONE sentence for the pre-check line and ensure's refusal."""
-    why = ", ".join(f"{t} ({d} business keys appear more than once)" if d else f"{t} (no unique index on business_key_val)"
-                    for t, d in missing)
-    folds = [t for t, d in missing if d]
-    fold = (f"in the Retroactive tab run Fold duplicate rows on {', '.join(folds)}, then " if folds else "")
-    command = "python server/migrations/add_business_key_unique_index.py --apply " + " ".join(f"--table {t}" for t, _ in missing)
-    return f"{why} - first {fold}run {command}"
+    """[(table, state)] -> per table why + the ONE next action its state calls for (lead 11-11): the scheduler builds
+    a clean table's index, Fold duplicate rows builds it after its merge, only a broken index needs the hand command.
+    The pre-check line, ensure's refusal and the rules list (its business key part) say this sentence."""
+    said = []
+    for t, (kind, n) in missing:
+        if kind == KEY_FOLD:
+            said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
+                        f"rows on {t}; it builds the index after the merge")
+        elif kind == KEY_INVALID:
+            said.append(f"{t} (an INVALID index holds the name) - drop it with python "
+                        f"server/migrations/add_business_key_unique_index.py, an operator watching")
+        else:
+            said.append(f"{t} (no unique index on business_key_val yet) - the scheduler builds it at start, a Reload "
+                        f"or the table's own ask; wait")
+    return "; ".join(said)
 
 
 def key_index_refusal(conn, table_name: str):
-    dups = key_index_missing(conn, table_name)
-    return None if dups is None else f"Cannot keep lines: {key_index_next([(table_name, dups)])}, then keep lines again"
+    state = key_index_missing(conn, table_name)
+    return None if state is None else f"Cannot keep lines: {key_index_next([(table_name, state)])}"
 
 
 def drop_line_table(db, table_name: str) -> None:

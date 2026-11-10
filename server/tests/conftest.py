@@ -591,6 +591,9 @@ def db_session():
     yield db
     
     db.close()
+    from database import lines
+
+    lines.drop_every_line_table(engine)          # Base never sees t__lines - one test's lines must not reach the next
     Base.metadata.drop_all(bind=engine)
     models._RUN_COLUMNS.discard(engine)       # the run table went with its added columns (`ensure_run_columns`)
     crud.TABLE_CONFIG.clear()

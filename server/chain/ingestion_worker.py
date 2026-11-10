@@ -4346,7 +4346,7 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
     db = db_session_factory()
     try:
         engine = db.get_bind()
-        built, refused, invalid = [], [], []
+        built, refused, invalid, present = [], [], [], []
         with engine.connect() as conn:
             tables = uq.tables_with_business_key(conn)
             # a request for a table with no business key closes on a word (lead 11-08 ④c) - left open it held the
@@ -4361,6 +4361,8 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
                 if found is not None and not (not found[1] and found[0] == uq.unique_index_name(table)):
                     if not found[1]:
                         invalid.append((table, found[0]))
+                    else:
+                        present.append(table)
                     models.note_word(uq.unique_index_name(table), models.INDEX_PRESENT if found[1]
                                      else models.INDEX_REFUSED)
                     continue
@@ -4378,6 +4380,13 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
         for table, verdict, detail in built:
             logger.info("[Ledger] business-key unique index on %s: %s (%s)",
                         table, verdict, detail)
+        # a table whose key index stands can keep lines - the start, the index line's asks and a fold's merge all
+        # build here, so its lines are built here (lead 11-11 ㄱ)
+        standing = [t for t, verdict, _ in built if verdict == uq.OK_CREATED] + present
+        if standing:
+            from database import lines
+
+            lines.ensure_declared(engine, standing)
         # \U0001f534 NAMES AND NUMBERS, NOT A COUNT. "3 tables refused" tells an operator
         # nothing they can act on; the table and its surplus are what they clean.
         for table, surplus in refused:
