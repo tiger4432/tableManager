@@ -20,6 +20,9 @@ let viteUser;
 try { viteUser = import.meta.env.VITE_USER; } catch (e) { viteUser = undefined; }
 export const CURRENT_USER = viteUser || 'web_client';
 export const pageLimit = 1000; // Chunk size
+/** How long after an `updating` answer the same question is asked again - the server's work behind it has had its time
+ *  (Global history, the explorer's column counts). */
+export const READ_AGAIN_MS = 2000;
 
 // ── WebSocket reconnect tuning ────────────────────────────────────────────────
 // These live HERE, next to `pageLimit`, because they are the same kind of thing: a knob an

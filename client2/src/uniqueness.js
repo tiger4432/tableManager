@@ -21,6 +21,14 @@
 
 /** 묻지 않았거나 오는 중. 「없음」이 아닙니다. */
 export const UNIQUENESS_UNREAD = 'Unique · unknown';
+/** The exact count runs behind an estimated answer. */
+export const COUNTING = 'Counting rows…';
+/** The exact count passed the server's time limit and stopped; it is counted again only when asked. */
+export const COUNT_CUT = 'Count stopped';
+/** The exact count ended in an error (D 11-10: `ordering: {failed: true}`, the why in the answer's `failed.reason`); it is
+ *  counted again only when asked. The grid's footer says the same word. */
+import { COUNT_FAILED } from './match_count.js';
+export { COUNT_FAILED };
 
 /**
  * 서버가 잰 한 조합의 판정을 «상태»로.
@@ -76,6 +84,9 @@ export function uniquenessVerdict(measured, opts = {}) {
  * ⛔ 추천을 여기서 «다시 고르지» 않습니다. 서버가 「측정을 통과한 것 중 가장 짧은 것」으로
  *    이미 골랐고, 화면이 같은 규칙을 두 번째로 쓰면 두 규칙이 조용히 갈립니다.
  *
+ * 서버가 아직 세는 중이면 `{counting: true}`, 셈이 상한을 넘어 끊겼으면 `{cut: true}` 가 «통째로» 옵니다(D 11-10) —
+ * 둘 다 「모름」이지 「키 없음」이 아닙니다.
+ *
  * @param {object|null|undefined} ordering `/columns` 응답의 `ordering`
  * @param {{read?: boolean}} [opts]
  */
@@ -83,6 +94,9 @@ export function orderingVerdicts(ordering, opts = {}) {
   if (opts.read === false || !ordering) {
     return { read: false, keys: [], recommended: null, text: UNIQUENESS_UNREAD };
   }
+  if (ordering.counting === true) return { read: false, state: 'counting', keys: [], recommended: null, text: COUNTING };
+  if (ordering.cut === true) return { read: false, state: 'cut', keys: [], recommended: null, text: COUNT_CUT };
+  if (ordering.failed === true) return { read: false, state: 'failed', keys: [], recommended: null, text: COUNT_FAILED };
   const declared = Array.isArray(ordering.declared_keys) ? ordering.declared_keys : [];
   const keys = declared.map((item) => uniquenessVerdict(item));
   const recommended = Array.isArray(ordering.recommended) ? ordering.recommended : null;

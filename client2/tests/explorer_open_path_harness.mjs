@@ -1990,6 +1990,295 @@ function elsewhereSuite(seen, plain) {
   failed += scored.wrong;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [15] owner 11-10 «4 ㄱ» (D's /columns answer): the column counts answer at once from the statistics (`exact: false`,
+//      rows «≈»), the exact count runs behind it (`updating`) and the screen asks again every READ_AGAIN_MS - only while
+//      that relation is the one in effect and the screen is open. A count cut at the server's limit is counted again only
+//      when a person presses Recount. The clock is the walk's: setTimeout is caught, and fired by hand.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[15] column counts: an estimate first, the exact count behind it');
+const { READ_AGAIN_MS } = await import('../src/config.js');
+const COUNTING_ANSWER = { relation: 'r1', exact: false, updating: true, counted_at: null, count_cut: null,
+  total_rows: 1200, ordering: { counting: true }, combination: null };
+const EXACT_ANSWER = { relation: 'r1', exact: true, updating: false, counted_at: '2026-11-10T06:00:00+00:00', count_cut: null,
+  total_rows: 34939, ordering: { declared_keys: [{ relation: 'r1', columns: ['a', 'b'], total_rows: 34939,
+    distinct_combinations: 34939, duplicate_rows: 0, rows_in_duplicated_groups: 0, largest_group: 1, null_bearing_rows: 0,
+    unique: true }], recommended: ['a', 'b'] }, combination: null };
+const CUT_ANSWER = { relation: 'r1', exact: false, updating: false, counted_at: null,
+  count_cut: { seconds: 120, at: '2026-11-10T06:00:00+00:00' }, total_rows: 1200, ordering: { cut: true }, combination: null };
+// The exact count ended in an error (D 11-10): `ordering: {failed: true}`, the why at the top as an object - not a refusal.
+const FAILED_ANSWER = { relation: 'r1', exact: false, updating: false, counted_at: null, count_cut: null, total_rows: 1200,
+  ordering: { failed: true }, combination: null, failed: { reason: 'canceling statement due to statement timeout', at: '2026-11-10T06:00:00+00:00' } };
+// Today's answer, before the server says exact · updating · count_cut (lead 11-10: the client may ship first).
+const OLD_ANSWER = { relation: 'r1', total_rows: EXACT_ANSWER.total_rows, ordering: EXACT_ANSWER.ordering, combination: null };
+async function countsWalk(create, { first = COUNTING_ANSWER, then = EXACT_ANSWER } = {}) {
+  const clicks = [];
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  let relation = 'r1';
+  const asked = [];             // every /columns URL, in order
+  const answers = { r1: [first, then], r2: [{ ...COUNTING_ANSWER, relation: 'r2' }] };
+  const plan = () => ({ ...AUTHORING, fields: [planRow('bundle.sources.s1.read.relation', relation, false)] });
+  const adminFetchOf = async (url) => {
+    const u = String(url);
+    const path = u.split('?')[0];
+    let body = SELECTED;
+    if (path.endsWith('/columns')) {
+      asked.push(u);
+      const r = new URL(u, 'http://x').searchParams.get('relation');
+      const queue = answers[r] || [];
+      body = queue.length > 1 ? queue.shift() : queue[0];
+    } else if (path.endsWith('/authoring/schema')) body = SCHEMA;
+    else if (path.endsWith('/authoring/plan')) body = plan();
+    return { ok: true, status: 200, json: async () => body };
+  };
+  // The walk's clock: a timer is held, not run, until the walk fires it.
+  const timers = [];
+  const keepSet = globalThis.setTimeout;
+  const keepClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; };
+  globalThis.clearTimeout = (t) => { if (t && typeof t === 'object') t.live = false; };
+  const armed = () => timers.filter((t) => t.live && t.ms === READ_AGAIN_MS).length;
+  const fire = async () => {
+    for (const t of timers.filter((x) => x.live && x.ms === READ_AGAIN_MS)) { t.live = false; t.fn(); }
+    await settle();
+  };
+  const click = async (action) => {
+    const target = { dataset: { action }, disabled: false };
+    target.closest = () => target;
+    for (const fn of clicks) await fn({ target });
+    await settle();
+  };
+  const out = {};
+  try {
+    const controller = create({ root, apiBase: '', adminFetch: adminFetchOf, showToast: () => {} });
+    await controller.refresh();
+    await settle();
+    out.first = { asked: asked.length, armed: armed(), held: controller.getState().columnStats?.r1 };
+    if (first !== COUNTING_ANSWER) {
+      if (first === CUT_ANSWER || first === FAILED_ANSWER) await click('columns-recount');
+      out.recount = asked.slice(1);
+      return out;
+    }
+    await fire();
+    out.again = { asked: asked.length, armed: armed(), exact: controller.getState().columnStats?.r1?.exact };
+    await fire();
+    out.settled = { asked: asked.length };
+    // another relation in effect while its count runs, then back to the counted one: the running one stops
+    relation = 'r2';
+    await controller.tablesChanged();
+    await settle();
+    out.r2 = { asked: asked.length, armed: armed() };
+    relation = 'r1';
+    await controller.tablesChanged();
+    await settle();
+    out.back = { asked: asked.length };
+    await fire();
+    out.left = { asked: asked.length, r2After: asked.filter((u) => u.includes('relation=r2')).length };
+    // back on the relation still counting: asked again; then the screen closes while that count runs
+    relation = 'r2';
+    await controller.tablesChanged();
+    await settle();
+    const beforeClose = asked.length;
+    out.armedBeforeClose = armed();
+    const live = timers.filter((t) => t.ms === READ_AGAIN_MS && t.live);
+    controller.destroy();
+    for (const t of live) t.fn();          // even a timer that outlived its clear asks nothing
+    await settle();
+    out.closed = { asked: asked.length - beforeClose, armed: armed() };
+  } finally {
+    globalThis.setTimeout = keepSet;
+    globalThis.clearTimeout = keepClear;
+  }
+  return out;
+}
+function countsSuite(seen, cut, old, failedRun, drawn) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  const f = seen.first || {};
+  say('K1 the relation in effect is asked once on open, and a counting answer arms one read-again',
+    f.asked === 1 && f.armed === 1 && f.held?.updating === true, JSON.stringify(f));
+  say(`K2 the read-again asks the same relation once more after ${READ_AGAIN_MS} ms, and the exact answer is held`,
+    seen.again?.asked === 2 && seen.again?.exact === true, JSON.stringify(seen.again));
+  say('K3 an exact answer arms nothing - nothing more is asked', seen.again?.armed === 0 && seen.settled?.asked === 2,
+    `${JSON.stringify(seen.again)} ${JSON.stringify(seen.settled)}`);
+  say('K4 another relation is asked when it comes into effect, and its count arms a read-again',
+    seen.r2?.asked === 3 && seen.r2?.armed === 1, JSON.stringify(seen.r2));
+  say('K5 back on the counted relation nothing is asked, and the other relation\'s read-again asks nothing',
+    seen.back?.asked === 3 && seen.left?.asked === 3 && seen.left?.r2After === 1, `${JSON.stringify(seen.back)} ${JSON.stringify(seen.left)}`);
+  say('K6 the screen closed while a count runs: its read-again is cleared and asks nothing',
+    seen.armedBeforeClose === 1 && seen.closed?.asked === 0 && seen.closed?.armed === 0,
+    `${seen.armedBeforeClose} ${JSON.stringify(seen.closed)}`);
+  say('K12 today\'s answer (no exact · updating) arms nothing and asks nothing more',
+    old.first?.asked === 1 && old.first?.armed === 0, JSON.stringify(old.first));
+  say('K7 a cut count arms nothing, and Recount asks once with recount=true',
+    cut.first?.armed === 0 && cut.recount?.length === 1 && /relation=r1&recount=true$/.test(cut.recount[0] || ''),
+    JSON.stringify(cut));
+  // the box the ordering default carries - drawn by the view from the held answer
+  say('K8 a counting answer: rows «≈», Updating, «Counting rows…» - no keys, no «No unique key declared»',
+    drawn.counting.includes('Rows ≈ 1,200') && drawn.counting.includes('Updating')
+      && drawn.counting.includes('Counting rows…') && !drawn.counting.includes('No unique key'), drawn.counting);
+  say('K9 an estimate with no statistics is «≈ ?»', drawn.noStats.includes('Rows ≈ ?'), drawn.noStats);
+  say('K10 the exact answer: its keys say their rows, no «≈», no Updating',
+    drawn.exact.includes('Unique') && drawn.exact.includes('Rows 34,939') && !drawn.exact.includes('≈')
+      && !drawn.exact.includes('Updating'), drawn.exact);
+  say('K11 a cut count: «Count stopped», after the server\'s own seconds, and a Recount button',
+    drawn.cut.includes('Count stopped') && drawn.cut.includes('after 120 s') && drawn.cut30.includes('after 30 s')
+      && drawn.cutRecount === 1, `${drawn.cut} · ${drawn.cut30} · ${drawn.cutRecount}`);
+  say('K13 today\'s answer draws as today: its keys and rows, no «≈», no Updating, no Counting',
+    drawn.old === drawn.exact && drawn.old.includes('Rows 34,939'), `${drawn.old} | ${drawn.exact}`);
+  say('K14 a failed count: «Count failed», the server\'s why, Recount - never «No unique key declared»',
+    drawn.failed.includes('Count failed') && drawn.failed.includes('canceling statement due to statement timeout')
+      && drawn.failedRecount === 1 && !drawn.failed.includes('No unique key'), `${drawn.failed} · ${drawn.failedRecount}`);
+  say('K15 a failed count arms nothing, and Recount asks once with recount=true',
+    failedRun.first?.armed === 0 && failedRun.recount?.length === 1 && /relation=r1&recount=true$/.test(failedRun.recount[0] || ''),
+    JSON.stringify(failedRun));
+  return { ran: names.length, names, failures };
+}
+function countsDrawn(renderAuthoringRow) {
+  const row = { path: 'bundle.sources.s1.read.order_by', label: 'order_by', state: 'answered', value: ['a', 'b'],
+    tier: 'constrained_input', candidates: null, refusals: [],
+    ground: { rule: 'ordering_default_from_catalog_key', text: 'the shortest declared unique key' } };
+  const box = (stats) => {
+    const card = renderAuthoringRow(row, { [row.path]: true }, null, false, stats);
+    return walkAll(card).find((n) => n._classes?.includes('oe-uniqueness'));
+  };
+  const text = (stats) => box(stats)?.textContent || '';
+  const cutBox = box(CUT_ANSWER);
+  const failedBox = box(FAILED_ANSWER);
+  return {
+    counting: text(COUNTING_ANSWER),
+    noStats: text({ ...COUNTING_ANSWER, total_rows: null }),
+    exact: text(EXACT_ANSWER),
+    cut: text(CUT_ANSWER),
+    cut30: text({ ...CUT_ANSWER, count_cut: { ...CUT_ANSWER.count_cut, seconds: 30 } }),
+    old: text(OLD_ANSWER),
+    cutRecount: cutBox ? walkAll(cutBox).filter((n) => n.dataset?.action === 'columns-recount').length : 0,
+    failed: text(FAILED_ANSWER),
+    failedRecount: failedBox ? walkAll(failedBox).filter((n) => n.dataset?.action === 'columns-recount').length : 0,
+  };
+}
+{
+  const { renderAuthoringRow } = await import('../src/ontology_explorer_view.js');
+  const all = async (create, render) => countsSuite(await countsWalk(create), await countsWalk(create, { first: CUT_ANSWER }),
+    await countsWalk(create, { first: OLD_ANSWER }), await countsWalk(create, { first: FAILED_ANSWER }), countsDrawn(render));
+  const countsBase = await all(createOntologyExplorerController, renderAuthoringRow);
+  ran += countsBase.ran;
+  failed += countsBase.failures.length;
+  const onController = async (mutate) => [await withController(mutate), renderAuthoringRow];
+  const onView = async (mutate) => [createOntologyExplorerController, (await loadWithProbe(VIEW, { mutate })).module.renderAuthoringRow];
+  // the read-again judge is its own module (one for every answer that says `updating`): a mutant of it handed to the controller
+  const AGAIN = join(HERE, '..', 'src', 'read_again.js');
+  const onAgain = async (mutate) => {
+    const again = (await loadWithProbe(AGAIN, { mutate })).module;
+    return [(await loadWithProbe(CONTROLLER, { stubs: { './read_again.js': { ReadAgain: (...a) => new again.ReadAgain(...a) } } })).module
+      .createOntologyExplorerController, renderAuthoringRow];
+  };
+  const MUTANTS = [
+    { id: 'K-M1', what: 'a counting answer is never asked again', catches: 'K1 ', on: onAgain,
+      mutate: (text) => swap(text, "    if (!answer || answer.updating !== true) return;\n", '    return;\n') },
+    { id: 'K-M2', what: 'an answer once held is never asked again, counting or not', catches: 'K6', on: onController,
+      mutate: (text) => swap(text, '    if (held && held.updating !== true) return;\n', '    if (held) return;\n') },
+    { id: 'K-M3', what: 'the read-again asks without looking whether the screen still shows it', catches: 'K5', on: onAgain,
+      mutate: (text) => swap(text, '      if (onScreen()) ask();', '      ask();') },
+    { id: 'K-M9', what: 'the read-again asks whatever relation it was armed for', catches: 'K5', on: onController,
+      mutate: (text) => swap(text, '\n          && relationInEffect(state, state.authoring, PATH_TOOLS) === relation,', ',') },
+    { id: 'K-M4', what: 'closing the screen leaves the read-again running', catches: 'K6', on: onController,
+      mutate: (text) => swap(text, 'destroy: () => { alive = false; clearTimeout(searchTimer); columnsAgain.stop(); },',
+        'destroy: () => clearTimeout(searchTimer),') },
+    { id: 'K-M5', what: 'Recount asks without recount=true', catches: 'K7', on: onController,
+      mutate: (text) => swap(text, "${recount ? '&recount=true' : ''}", '') },
+    { id: 'K-M6', what: 'an estimate is drawn without «≈»', catches: 'K8', on: onView,
+      mutate: (text) => swap(text, 'if (answered && stats.exact === false) {', 'if (false) {') },
+    { id: 'K-M7', what: 'Updating is not said while the count runs', catches: 'K8', on: onView,
+      mutate: (text) => swap(text, "if (answered && stats.updating === true) head.append(h('span', 'oe-uniqueness-updating', ` · ${UPDATING}`));", '') },
+    { id: 'K-M10', what: 'a failed count offers no Recount and no why', catches: 'K14', on: onView,
+      mutate: (text) => swap(text, "if (view.state === 'cut' || view.state === 'failed') {", "if (view.state === 'cut') {") },
+    { id: 'K-M8', what: 'a cut count offers no Recount', catches: 'K11', on: onView,
+      mutate: (text) => swap(text, "      line.append(button('Recount', 'columns-recount', '', 'ctl-small'));\n", '') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => all(...(await m.on(m.mutate))),
+    { baselineRan: countsBase.ran, baselineNames: countsBase.names,
+      title: '\n  [15] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// [16] lead 11-10 (owner «컬럼명에 맨 식만 붙는데 fn 이런 거 없이»): a folded line that shows a formula wears the formula
+//      field's own mark (formula_input.formulaMark) beside each formula - a decide's aggregations map, a record's
+//      formula field - and a plain word wears none.
+console.log('\n[16] a folded line marks its formulas');
+{
+  const FORMULA_LEAF = { kind: 'leaf', hint: 'formula' };
+  const AGGREGATIONS = { kind: 'map', keyed_by: 'name', member: 'column', of: { kind: 'oneOf', hint: 'choice', pick: 'shape',
+    branches: { expression: FORMULA_LEAF, record: { kind: 'record', fields: [{ key: 'fn', node: { kind: 'leaf' } }] } } } };
+  const TAKE = { kind: 'record', fields: [{ key: 'fn', node: FORMULA_LEAF }, { key: 'separator', node: { kind: 'leaf', hint: 'free' } }] };
+  const fold = (render, under, node, value) => {
+    const row = { path: 'bundle.x', label: 'x', state: 'answered', value, tier: 'free_input', candidates: null, refusals: [] };
+    const card = render(row, { [row.path]: false }, null, true, null, under(node, (n) => n));
+    return walkAll(card).find((n) => n._classes?.includes('oe-folded-value'));
+  };
+  const marks = (box) => (box ? walkAll(box).filter((n) => n._classes?.includes('formula-mark')).length : -1);
+  const suite16 = (M) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    const agg = fold(M.renderAuthoringRow, M.formulaUnder, AGGREGATIONS, { stack_height: 'UniqueCount([stack_height])', n: 'Count()' });
+    say('F1 a decide\'s aggregations, folded: each formula wears the mark, after its column\'s name',
+      marks(agg) === 2 && agg.textContent === 'stack_height ƒUniqueCount([stack_height]) · n ƒCount()', agg?.textContent);
+    const take = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { fn: 'Min([t])', separator: ', ' });
+    say('F2 a record: its formula field wears it, a plain word beside it none',
+      marks(take) === 1 && take.textContent === 'fn ƒMin([t]) · separator , ', take?.textContent);
+    const plain = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { separator: ', ' });
+    const none = fold(M.renderAuthoringRow, () => () => false, AGGREGATIONS, { n: 'Count()' });
+    say('F3 no formula, or a row the tree hands no skeleton: the line as before, no mark',
+      marks(plain) === 0 && plain.textContent === 'separator , ' && marks(none) === 0 && none.textContent === 'n Count()',
+      `${plain?.textContent} | ${none?.textContent}`);
+    const leaf = fold(M.renderAuthoringRow, M.formulaUnder, FORMULA_LEAF, 'Max([t])');
+    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'ƒMax([t])', leaf?.textContent);
+    // the read-only tree (the explorer's read mode): its leaves are values, and a formula wears the same mark (lead 11-10 ㄱ)
+    const tree = M.renderSkeletonForm(M.readContext({}, {}), TAKE, '', { fn: 'Min([t])', separator: ', ' });
+    const read = walkAll(tree).filter((n) => n._classes?.includes('oe-value'));
+    const readFn = read.find((n) => n.textContent.includes('Min'));
+    const readSep = read.find((n) => n.textContent.includes(','));
+    say('F5 read, a formula wears the mark and a plain word beside it none',
+      marks(readFn) === 1 && readFn.textContent === 'ƒMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
+      read.map((n) => n.textContent).join(' | '));
+    return { ran: names.length, names, failures };
+  };
+  const base16 = suite16(await import('../src/ontology_explorer_view.js'));
+  ran += base16.ran;
+  failed += base16.failures.length;
+  const MUTANTS = [
+    { id: 'F-M1', what: 'the folded line draws no mark', catches: 'F1',
+      mutate: (text) => swap(text, '        if (formula(v, k)) shown.append(formulaMark(document));\n', '') },
+    { id: 'F-M2', what: 'a oneOf picked by its shape is not looked through', catches: 'F1',
+      mutate: (text) => swap(text, "    if (at && at.kind === 'oneOf' && at.pick === 'shape') at = deref((at.branches || {})[shapeBranch(at, value, deref)]);\n", '') },
+    { id: 'F-M3', what: 'every value is a formula', catches: 'F2',
+      mutate: (text) => swap(text, "at && at.hint === 'formula' && typeof value", 'at && typeof value') },
+    { id: 'F-M5', what: 'a formula read wears no mark', catches: 'F5',
+      mutate: (text) => swap(text, "      read.append(formulaMark(document), document.createTextNode(value));", '      read.append(document.createTextNode(value));') },
+    { id: 'F-M4', what: 'a record\'s field is not looked up', catches: 'F2',
+      mutate: (text) => swap(text, "shape.kind === 'record' ? ((shape.fields || []).find((f) => f.key === key) || {}).node : null", 'null') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => suite16((await loadWithProbe(VIEW, { mutate: m.mutate })).module),
+    { baselineRan: base16.ran, baselineNames: base16.names, title: '\n  [16] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

@@ -3399,8 +3399,11 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
    chain rule's formula cell. The field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
 .formula-input { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .formula-input [hidden] { display: none; }
-.formula-input__field { position: relative; display: flex; flex-direction: column; }
-.formula-input__input { font-family: var(--font-mono); }
+.formula-input__field { position: relative; display: flex; align-items: center; gap: var(--space-2); }
+.formula-input__input { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); }
+/* «this is a formula» (formula_input.formulaMark) - on the field and on a folded line that shows one */
+.formula-mark { flex: none; font-family: var(--font-mono); font-style: italic; font-weight: 600; color: var(--accent); }
+.formula-mark + * { font-family: var(--font-mono); }
 .formula-input__input[aria-invalid="true"] { border-color: var(--danger); }
 /* what the caret stands in, over what follows (owner's mockup 11-07): the names offered under the field, or the call's
    arguments with the one being typed in bold under the field and its refusal */

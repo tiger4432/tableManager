@@ -13,6 +13,13 @@ export const REFUSED = 'Refused';
 export const NONE = 'None';
 export const NO_VALUE = 'No value';
 export const CHOOSE = '— choose —';
+/** The server answered and is still working behind it (`updating: true`). */
+export const UPDATING = 'Updating';
+
+/** A number the server estimated wears «≈ »; one it has no estimate for is «≈ ?». */
+export function approxText(words) {
+  return `≈ ${words === null || words === undefined || words === '' ? '?' : words}`;
+}
 
 /** A count and its unit — the one place a number meets «row(s)» · «col(s)» · «cell(s)». */
 export function unitText(n, singular, plural = `${singular}s`) {

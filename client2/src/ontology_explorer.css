@@ -1241,12 +1241,15 @@
 #ontology-explorer-root .oe-uniqueness-row[data-state="unique"] .oe-uniqueness-verdict {
   color: var(--oe-ok);
 }
-#ontology-explorer-root .oe-uniqueness-row[data-state="duplicated"] .oe-uniqueness-verdict {
+#ontology-explorer-root .oe-uniqueness-row[data-state="duplicated"] .oe-uniqueness-verdict,
+#ontology-explorer-root .oe-uniqueness-row[data-state="failed"] .oe-uniqueness-verdict {
   color: var(--oe-warn);
 }
 #ontology-explorer-root .oe-uniqueness-row[data-state="unmeasurable"] .oe-uniqueness-verdict,
 #ontology-explorer-root .oe-uniqueness-row[data-state="empty"] .oe-uniqueness-verdict,
-#ontology-explorer-root .oe-uniqueness-row[data-state="unread"] .oe-uniqueness-verdict {
+#ontology-explorer-root .oe-uniqueness-row[data-state="unread"] .oe-uniqueness-verdict,
+#ontology-explorer-root .oe-uniqueness-row[data-state="counting"] .oe-uniqueness-verdict,
+#ontology-explorer-root .oe-uniqueness-row[data-state="cut"] .oe-uniqueness-verdict {
   color: var(--oe-ink-meta);
 }
 #ontology-explorer-root .oe-uniqueness-pick > small { color: var(--oe-ink-meta); }
