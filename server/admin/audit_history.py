@@ -301,15 +301,15 @@ def line_table(table_name, bits):
                     sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
                     *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
                       for kind in ("written", "head", "withdrawn")],
-                    *[sa.Column(name, sa.Text) for name in bits])
+                    *[sa.Column(lines.value_column(name), sa.Text) for name in bits])
 
 
 def line_cell(types, row, name):
     """A line's value of `name` as its table holds it - `types` is `lines.value_types` (t's physical types, the
     write's own, C 1986aa74b), read once a request - through `crud.line_value`, the one read-side cast."""
-    from database import crud
+    from database import crud, lines
 
-    return crud.line_value(getattr(row, name), types.get(name, "string"))
+    return crud.line_value(getattr(row, lines.value_column(name)), types.get(name, "string"))
 
 
 def bit_said(row, bit, kind="written"):

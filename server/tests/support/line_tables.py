@@ -71,7 +71,8 @@ def line(conn, table, bits, row_id, *, kind="write", source="probe.csv", at=None
         row["head_%d" % chunk] = written.get(chunk, 0) if head else 0
         row["withdrawn_%d" % chunk] = gone.get(chunk, 0)
     types = lines.value_types(Session(bind=conn), table)        # the write's own types (C 1986aa74b)
-    row.update({name: crud.line_text(value, types.get(name, "string")) for name, value in values.items()})
+    row.update({lines.value_column(name): crud.line_text(value, types.get(name, "string"))
+                for name, value in values.items()})
     return conn.execute(shape["lines"].insert().values(row)).inserted_primary_key[0]
 
 
