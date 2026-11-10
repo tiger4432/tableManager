@@ -1,17 +1,19 @@
 // The last freeze of the API process, on the admin header (owner 10-29 «ㄴ», A 63a69b97a; off the grid page again - owner
 // 10-29 «스톨 뱃지 빼고 원래대로»): /health's `stall` - {line, at} once a freeze has ended, null before one - drawn as the
-// server wrote it in a fixed-width face, with its time, so the owner can type it from a phone. No request of its own: the
-// page hands in the /health body it already read (admin.js chainPauseFrom).
+// server wrote it in a fixed-width face, with its time, so the owner can type it from a phone. Under it, the same face,
+// the server.log [Slow] line the stalled request left when it ended (`slow`, B 6dcab008e) - none while it is open or was
+// not slow. No request of its own: the page hands in the /health body it already read (admin.js chainPauseFrom).
 import { localShort } from './server_time.js';
 import './stall_line.css';
 
 export const LAST_STALL = 'Last stall';
 
-/** /health's last freeze: {line, at} · null (none since the server started) · undefined (not read - keep what is drawn). */
+/** /health's last freeze: {line, at, slow} · null (none since the server started) · undefined (not read - keep what is drawn). */
 export function stallOf(health) {
   if (!health || typeof health !== 'object' || !('stall' in health)) return undefined;
   const s = health.stall;
-  return s && typeof s.line === 'string' && s.line ? { line: s.line, at: s.at || null } : null;
+  return s && typeof s.line === 'string' && s.line
+    ? { line: s.line, at: s.at || null, slow: typeof s.slow === 'string' && s.slow ? s.slow : null } : null;
 }
 
 export class StallLine {
@@ -25,6 +27,8 @@ export class StallLine {
     this.label = this.el('span', 'stall-line__label', label);
     this.at = this.el('span', 'stall-line__at', '');
     this.text = this.el('span', 'stall-line__text', '');
+    this.slow = this.el('span', 'stall-line__slow', '');
+    this.slow.hidden = true;
     mount.appendChild(this.root);
   }
 
@@ -42,5 +46,7 @@ export class StallLine {
     this.root.hidden = !stall;
     this.at.textContent = stall && stall.at ? localShort(stall.at) : '';
     this.text.textContent = stall ? stall.line : '';
+    this.slow.textContent = stall && stall.slow ? stall.slow : '';
+    this.slow.hidden = !(stall && stall.slow);
   }
 }

@@ -100,6 +100,7 @@ import { LedgerSourcesPanel } from './ledger_sources_panel.js';
 import { censusBySource, censusNames } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
 import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.js';
+import { adminRouteOf, ruleAddressed } from './admin_route.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 import { HelpPanel } from './help_panel.js';
@@ -509,17 +510,15 @@ function mapperModuleToPath(mod) {
 
 // ── 해시 라우터 (구 탭 딥링크 호환 포함) ───────────────────
 
+// the address's one spelling is admin_route.js - the pages that open the admin at a place build it there
 function parseRoute() {
-  let raw = (window.location.hash || '').replace(/^#/, '');
-  if (!raw) raw = new URLSearchParams(window.location.search).get('tab') || '';
-  const eq = raw.indexOf('=');
-  const key = (eq >= 0 ? raw.slice(0, eq) : raw).toLowerCase();
-  let value = null;
-  if (eq >= 0) {
-    try { value = decodeURIComponent(raw.slice(eq + 1)); } catch (e) { value = raw.slice(eq + 1); }
-  }
-  return { key, value };
+  return adminRouteOf(window.location.hash, window.location.search);
 }
+
+// A rule an address names (`#chain=<name>`, owner 11-10 «플로우 ㄱ»): the chain tab's next read opens it; when the file
+// lacks it, why - held until a person opens a rule or leaves the tab.
+let chainRuleAsked = '';
+let chainNotFound = null;
 
 /** 🔴 THE MAP ADDRESSES ITSELF WITH QUERY PARAMS, AND THAT PROPERTY IS THE ONE BEING PRESERVED.
  *
@@ -541,6 +540,12 @@ function applyRoute(isInitial) {
     // 구 Code Editor 탭 URL → 공용 에디터 뷰. #editor=<path>는 해당 파일 즉시 오픈.
     if (isInitial) switchTab('overview');
     openInlineEditor(value || null);
+    return;
+  }
+  if (key === 'chain' && value) {
+    chainRuleAsked = value;
+    if (isInitial || currentTab !== 'chain') switchTab('chain');
+    else { void refreshChainRule(chainRuleAsked); chainRuleAsked = ''; }
     return;
   }
   const tab = TAB_ALIASES[key] || 'overview';
@@ -589,6 +594,7 @@ function switchTab(tabName, opts = {}) {
   if (!t) return;
 
   currentTab = t.tab;
+  if (t.tab !== 'chain') chainNotFound = null;
 
   // Update Tab Button styles
   tabDefs.forEach(o => o.btn.classList.remove('active'));
@@ -941,7 +947,8 @@ async function fetchData(options = {}) {
     } else if (tab === 'chain') {
       // 규칙 편집기는 «따로» 받습니다 — 이 라우트가 없는 옛 서버에서 Chain 탭 전체가
       // 안 뜨는 것을 막는, 대기열과 같은 이유입니다.
-      void refreshChainRule();
+      void refreshChainRule(chainRuleAsked);
+      chainRuleAsked = '';
       // 체인 그래프도 «따로» — Overview 에서 이 탭으로 옮겨 왔다 (시안 A).
       void refreshChainGraph();
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
@@ -1200,6 +1207,11 @@ async function refreshChainRule(name, extra = {}) {
   } catch (e) {                                              // noqa
     opts.unavailable = fetchFailureLine(null, 'Rule registry read failed');
   }
+  // an address (or a stale pick) naming a rule the file lacks: nothing open, and why (owner 11-10 «플로우 ㄱ»)
+  const addressed = ruleAddressed(body, name, chainNotFound, Boolean(extra.forNew));
+  body = addressed.body;
+  chainNotFound = addressed.held;
+  if (addressed.refusal && !opts.refusal) opts.refusal = addressed.refusal;
   chainRulePanel.setLists({
     ...(mappers === null ? {} : { mappers }),
     ...(tables === null ? {} : { tables }),

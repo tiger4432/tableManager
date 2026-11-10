@@ -32,6 +32,8 @@ function makeDoc() {
         get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
         set textContent(v) { this._text = String(v); this.children = []; },
         appendChild(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.push(c); return c; },
+        append(...cs) { cs.forEach((c) => this.appendChild(c)); },
+        querySelector() { return null; },
         remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter((x) => x !== this); this.parentNode = null; },
         setAttribute(k, v) { this.attrs[k] = String(v); },
         getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
@@ -48,6 +50,8 @@ function makeDoc() {
       };
       return el;
     },
+    createTextNode(text) { const n = this.createElement('#text'); n.textContent = text; return n; },
+    createDocumentFragment() { return this.createElement('#fragment'); },
   };
 }
 const has = (el, cls) => String(el.className).split(' ').includes(cls);
@@ -113,6 +117,21 @@ const DECL = { op: 'declaration', label: 'Write a declaration', why: 'The questi
     check: { ok: true, said: null }, refused: null, retrieval: 'embedding' } };
 const EMBED_FAILED = "bm25 (embedding failed: LlmRefused: no embedding_model in config/llm_config.json)";
 const declWith = (patch) => ({ ...DECL, declaration: { ...DECL.declaration, ...patch } });
+
+// «why is it slow · what to do» (B 191a50532 · c7c49019f): the model's sentences and what they rest on
+const OPS_SECTION = 'OPERATIONS_GUIDE.md: Slow screens > Lock waits';
+const OPS = { op: 'operations', label: 'Why it is slow - what to do', params: {}, unfilled: [], similar: [], refused: null,
+  tries: 1, help_id: 'h-ops', count: null, count_refused: null,
+  operations: { answer: 'The grid read of dt_log waited 9 s on a lock the chain worker held.', why: 'The question asks why the screen is slow.',
+    lines: ['2026-11-10T09:00:00+00:00 STALL 12s P /tables/dt_log/data SELECT cell_sources 9s Lock:relation',
+      '[Slow] GET /tables/dt_log/data 200 - 9120 ms · layers 9.01 s (SQL 8.95 s · rows 2,000)'],
+    dropped_lines: 1, sections: [OPS_SECTION],
+    cited_sections: [{ name: OPS_SECTION, file: 'OPERATIONS_GUIDE.md', path: ['Slow screens', 'Lock waits'] }],
+    dropped_sections: 0, refused: null, retrieval: 'bm25' } };
+const opsWith = (patch) => ({ ...OPS, operations: { ...OPS.operations, ...patch } });
+const GUIDES = { ok: true, body: { guides: [{ path: 'docs/guide/OPERATIONS_GUIDE.md', file: 'OPERATIONS_GUIDE.md',
+  updated: '2026-11-10T00:00:00+00:00', tabs: ['overview'], sections: [
+    { path: ['Slow screens'], level: 1, text: 'first' }, { path: ['Slow screens', 'Lock waits'], level: 2, text: 'second' }] }] } };
 
 /** A send whose answers the harness releases by hand, in order; every request kept. */
 function makeSend() {
@@ -337,6 +356,44 @@ console.log('\n── G. HOW TO WRITE A DECLARATION ─────────�
   ok('G15 ...no line when the server says none (the guide was not found)', !find(card(q), 'help-card__retrieval'));
 }
 
+console.log('\n── O. WHY IT IS SLOW - THE ANSWER AND WHAT IT RESTS ON ─────────────');
+{
+  const v = X.answerView(OPS, FORMS);
+  ok('O1 the model\'s sentences, the reading lines as written, the sections and where each opens',
+    v.operations && v.operations.answer === OPS.operations.answer && v.operations.lines.join('|') === OPS.operations.lines.join('|')
+      && v.operations.droppedLines === 1 && v.operations.sections.length === 1 && v.operations.sections[0].name === OPS_SECTION
+      && v.operations.sections[0].at.file === 'OPERATIONS_GUIDE.md' && v.why === OPS.operations.why, v.operations);
+  const m = mount(X);
+  await asked(m, 'why is it slow', { ok: true, body: OPS });
+  ok('O2 the card: the answer, each line whole in its own row, the made-up readings counted',
+    text(card(m), 'help-card__answer') === OPS.operations.answer
+      && findAll(card(m), 'help-card__line').map((l) => l.textContent).join('|') === OPS.operations.lines.join('|')
+      && text(card(m), 'help-card__dropped') === '1 reading the model made up was dropped' && !find(card(m), 'help-card__uncited'));
+  const link = find(card(m), 'help-card__section-open');
+  ok('O3 a cited section is a press in the Guide\'s name', Boolean(link) && link.textContent === OPS_SECTION);
+  if (link) link.click();
+  m.s.answer(GUIDES);
+  await tick();
+  ok('O4 ...that opens the Guide at that guide\'s section', m.panel.view === 'guide' && m.panel.reader.file === 'OPERATIONS_GUIDE.md'
+    && m.panel.reader.section === 1, { view: m.panel.view, file: m.panel.reader.file, section: m.panel.reader.section });
+  const n = mount(X);
+  await asked(n, 'q', { ok: true, body: opsWith({ cited_sections: [] }) });
+  ok('O5 a section the server says no place for is a name, not a press',
+    !find(card(n), 'help-card__section-open') && text(card(n), 'help-card__section') === OPS_SECTION);
+  const u = mount(X);
+  await asked(u, 'q', { ok: true, body: opsWith({ lines: [], sections: [], cited_sections: [], dropped_lines: 0 }) });
+  ok('O6 an answer resting on nothing says so', text(card(u), 'help-card__uncited') === X.UNCITED && !find(card(u), 'help-card__dropped'));
+  const r = mount(X);
+  await asked(r, 'q', { ok: true, body: opsWith({ answer: null, lines: [], sections: [], cited_sections: [], dropped_lines: 0,
+    refused: 'llm_config.json has no operations model' }) });
+  ok('O7 the model not asked: its refusal, and no «cites nothing» beside it',
+    text(card(r), 'help-card__refused') === 'llm_config.json has no operations model' && !find(card(r), 'help-card__uncited'));
+  const d = mount(X);
+  await asked(d, 'q', { ok: true, body: declWith({ cited_sections: [{ name: DECL.declaration.sections[0], file: 'chain_rules.md',
+    path: ['`chain_rules.json` 세팅 — 체인 인제션 룰', '0. 한눈에 보기'] }] }) });
+  ok('O8 a declaration\'s cited section opens the same way', Boolean(find(card(d), 'help-card__section-open')));
+}
+
 console.log('\n── F. EARLIER · TWO PANELS ─────────────────────────────────────────');
 {
   const m = mount(X);
@@ -404,7 +461,7 @@ const DEFECTS = [
   ['M17 a needs line on every tool', swap('if (v.unfilled.length) box', 'if (true) box')],
   ['M18 not checked drawn as passed', swap("if ('not_checked' in c) return { state: 'not', said: shown(c.not_checked) };", "if ('not_checked' in c) return { state: 'ok', said: '' };")],
   ['M19 a failed copy says Copied', swap("ok === false ? 'Copy failed' : 'Copied'", "'Copied'")],
-  ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || base.why', 'why: base.why')],
+  ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || (operations && operations.why) || base.why', 'why: (operations && operations.why) || base.why')],
   ['M21 the example on one line', swap('JSON.stringify(body, null, 2)', 'JSON.stringify(body)')],
   ['M22 the made-up count said when there is none', swap('    if (d.dropped) {', '    if (true) {')],
   ['M23 the retrieval not drawn', swap('if (d.retrieval) box', 'if (false) box')],
@@ -412,6 +469,12 @@ const DEFECTS = [
   ['M25 a failed embedding cut to its first word', swap('`via ${d.retrieval}`', "`via ${d.retrieval.split(' ')[0]}`")],
   ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
+  ['M26 the reading lines not drawn', swap("o.lines.forEach((l) => list.appendChild(this.el('div', 'help-card__line', l)));", '')],
+  ['M27 a cited section never opens', swap('d.sections.forEach((s) => list.appendChild(s.at', 'd.sections.forEach((s) => list.appendChild(false')],
+  ['M28 the made-up readings not counted', swap('    if (o.droppedLines) {', '    if (false) {')],
+  ['M29 an answer resting on nothing is not said', swap('if (!o.refused && !o.lines.length && !o.sections.length) box', 'if (false) box')],
+  ['M30 the operations answer\'s why not in the why\'s seat', swap('(operations && operations.why) || ', '')],
+  ['M31 a cited section opens the guide at its top', swap('() => this.openGuide(this.tab(), s.at.file, s.at.path)', '() => this.openGuide(this.tab(), s.at.file)')],
   ['M9 a page link drawn for a door that names none',
     swap("open: d.open && d.open.href ? {", "open: { label: '', href: '#' } || d.open && d.open.href ? {")],
 ];
@@ -475,6 +538,21 @@ async function verdict(M) {
   if (text(card(dc), 'help-card__retrieval') !== `via ${EMBED_FAILED}`) return true;
   await asked(dc, 't', { ok: true, body: declWith({ retrieval: null }) });
   if (find(card(dc), 'help-card__retrieval')) return true;
+
+  const op = mount(M);
+  await asked(op, 'q', { ok: true, body: OPS });
+  if (findAll(card(op), 'help-card__line').length !== 2) return true;
+  if (text(card(op), 'help-card__dropped') !== '1 reading the model made up was dropped') return true;
+  if (text(card(op), 'help-card__why') !== OPS.operations.why) return true;
+  const go = find(card(op), 'help-card__section-open');
+  if (!go) return true;
+  go.click();
+  op.s.answer(GUIDES);
+  await tick();
+  if (op.panel.reader.section !== 1) return true;
+  const none = mount(M);
+  await asked(none, 'q', { ok: true, body: opsWith({ lines: [], sections: [], cited_sections: [], dropped_lines: 0 }) });
+  if (!find(card(none), 'help-card__uncited')) return true;
   return false;
 }
 

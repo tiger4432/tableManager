@@ -50,8 +50,9 @@ export class GuideReader {
     return b;
   }
 
-  /** Shows the guides for `tab` - `file` when given, else the one shown before when it is this tab's, else its first. */
-  async show(tab, file = null) {
+  /** Shows the guides for `tab` - `file` when given, else the one shown before when it is this tab's, else its first;
+   *  at the section whose heading path is `at` when given and found. */
+  async show(tab, file = null, at = null) {
     if (!this.root) this.build();
     this.tab = tab;
     if (file) this.pick(file);
@@ -71,7 +72,16 @@ export class GuideReader {
     if (!known || (!file && mine.length && !mine.some((g) => g.file === this.file))) {
       this.pick((mine[0] || this.guides[0] || {}).file || null);
     }
+    if (file && at) this.goTo(at);
     this.render();
+  }
+
+  /** The section of the guide shown whose heading path is `at` - none such leaves the one shown. */
+  goTo(at) {
+    const g = this.guide;
+    const key = JSON.stringify(at);
+    const n = g ? g.sections.findIndex((s) => JSON.stringify(s.path) === key) : -1;
+    if (n >= 0) { this.section = n; this.hit = 0; }
   }
 
   forTab() { return (this.guides || []).filter((g) => g.tabs.includes(this.tab)); }

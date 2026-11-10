@@ -587,7 +587,9 @@ const NOT_ADOPTED = { on: false, next: null };
 const NOT_ADOPTED_ROWS = { at: 1762560000, layers: 2598311, names: [
   { name: 'chain_worker', layers: 2412004, tables: [['dt_map', 2100422], ['lot_event', 290118], ['wafer_lot', 21464]] },
   { name: 'retired_lot_copy', layers: 186307, tables: [['lot_event', 186307]] }] };
-const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00' };
+const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00',
+  // the stalled request's server.log line under it (B 6dcab008e) - both lines are typed from the screen
+  slow: '[Slow] GET /tables/wafer_process_inspection_result_by_lot_and_slot/data 200 - 36120 ms · layers 35.80 s (SQL 35.62 s · rows 2,000)' };
 // The whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page - a
 // line that does not fit goes down at a space, it is not cut or slid.
 const UI_STALL_SAID = "[...document.querySelectorAll('#status-panel .stall-line')].some((l) => !l.hidden && /Last UI stall/.test(l.textContent))";
@@ -609,9 +611,11 @@ const FLOW_ONE_HEIGHT = `(() => { const s = document.querySelector('.flow-strip.
   return s.getBoundingClientRect().height <= cap + 1 ? null : 'the strip is ' + h(s) + ' px, its cap ' + Math.round(cap) + ' px'; })()`;
 const STALL_WHOLE = `(() => { const box = document.querySelector('.stall-line:not([hidden])'); if (!box) return false;
   const t = box.querySelector('.stall-line__text');
+  const s = box.querySelector('.stall-line__slow');
   if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
+  if (!s || s.hidden || s.textContent !== ${JSON.stringify(STALL_LINE.slow)} || s.scrollWidth > s.clientWidth + 1) return false;
   const b = box.getBoundingClientRect(); if (b.left < 0 || b.right > innerWidth) return false;
-  return [...t.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5); })()`;
+  return [t, s].every((e) => [...e.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5)); })()`;
 const answerOf = (u) => {
   if (NOT_ADOPTED.on && u.pathname === '/admin/chain/rules') {
     const a = ANSWERS['/admin/chain/rules'];
@@ -1228,6 +1232,13 @@ CELLS.push({ entry: 'admin.html', after: 'Overview, Apply declared refused', rul
   const said = document.querySelector('.index-apply ~ .refusal');
   return said && said.textContent === ${JSON.stringify("audit_logs is in use - try again in a minute")} ? null
     : 'the refusal says ' + (said ? said.textContent : 'nothing');
+})()` });
+// The chain editor at the rule its address names (owner 11-10 «플로우 ㄱ»): that rule open, no refusal said.
+CELLS.push({ entry: 'admin.html', after: 'Chain, a rule opened by its address', rule: 'contents', at: 'chain-rule-picker', expr: `(() => {
+  const picked = (document.querySelector('select.chain-rule-picker') || {}).value;
+  if (picked !== 'dt_log_to_dt_map') return 'the editor has ' + (picked || 'nothing') + ' open';
+  const said = document.querySelector('.chain-rule-refusal-why');
+  return said ? 'it says ' + said.textContent : null;
 })()` });
 // The four formula inputs (owner 11-09 «ㄴ»): its list open under it, then its refusal line - one field, four places.
 const FIELD_OPEN = (field) => `(() => { const f = document.querySelector(${JSON.stringify(field)});
@@ -4065,6 +4076,14 @@ const DRIVE = {
       await until(c, "!!document.querySelector('[data-path=\"target_table\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="target_columns"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // The chain editor opened by its address (owner 11-10 «플로우 ㄱ»: the grid's Flow box opens it in a new tab), the
+    // address admin_route.js builds: the rule open, nothing picked by hand.
+    ["Chain, a rule opened by its address", async (c) => {
+      await evaluate(c, "location.hash = '#overview'; true");
+      await until(c, "!!document.querySelector('#overview-status-mount .ov-row')");
+      await evaluate(c, "location.hash = '#chain=dt_log_to_dt_map'; true");
+      await until(c, "(document.querySelector('select.chain-rule-picker') || {}).value === 'dt_log_to_dt_map' && !!document.querySelector('[data-path=\"target_table\"]')");
     }],
     ['Chain, a join whose take holds a record', async (c) => {
       // the rule as recorded: a draft is kept across reloads (C-106 ④), and the states below leave one at the size before
