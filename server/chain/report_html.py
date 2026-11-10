@@ -48,7 +48,11 @@ thead th:first-child { position: sticky; left: 0; z-index: 2; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
 .gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
                       background: var(--head); }
-.gallery figure img[hidden] { display: none; }
+.gallery [hidden] { display: none; }
+.gallery figure.stack { grid-column: 1 / -1; }
+.gallery figure.stack.folded { grid-column: auto; }
+.stack .strip { display: flex; flex-wrap: wrap; gap: 12px; }
+.stack.folded .strip figcaption { display: none; }
 a.rpt-original { display: contents; }
 figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -332,12 +336,15 @@ def _images(embedded, spec) -> str:
     return "".join(out) + (STACK_SCRIPT if 'class="stack"' in "".join(out) else "")
 
 
-#: a chip's layers one figure - the wheel over it turns them (owner 10-24 «슬라이드쇼 느낌으로 각 이미지 패치»)
+#: where a script runs (the server's page, the signed link) a chip's strip folds to one picture the wheel turns (owner
+#: 10-24 «슬라이드쇼 느낌으로 각 이미지 패치»); a mail client blocks it and the file shows every layer (owner 11-10)
 STACK_SCRIPT = ("<script>document.querySelectorAll('figure.stack').forEach(function(f){"
-                "var im=f.querySelectorAll('img'),cap=f.querySelector('.layer'),i=0;"
-                "f.addEventListener('wheel',function(e){e.preventDefault();im[i].hidden=true;"
-                "i=(i+(e.deltaY>0?1:-1)+im.length)%im.length;im[i].hidden=false;"
-                "cap.textContent=im[i].dataset.layer+' ('+(i+1)+'/'+im.length+')';},{passive:false});});</script>")
+                "var sh=f.querySelectorAll('.strip > figure'),cap=f.querySelector('.layer'),i=0;"
+                "function show(){sh.forEach(function(s,k){s.hidden=k!==i;});"
+                "cap.textContent=sh[i].querySelector('img').dataset.layer+' ('+(i+1)+'/'+sh.length+')';}"
+                "f.classList.add('folded');show();"
+                "f.addEventListener('wheel',function(e){e.preventDefault();"
+                "i=(i+(e.deltaY>0?1:-1)+sh.length)%sh.length;show();},{passive:false});});</script>")
 
 
 #: the page opened by its signed link (/shared/report/<file>?k=): its pictures' links carry the same ?k= - the key
@@ -354,11 +361,14 @@ LINK_SCRIPT = ("<script>document.querySelectorAll('a.%s').forEach(function(a){"
 
 
 def _stack(item, picture):
+    """A chip's layers, every one drawn with its layer as caption, one strip across the gallery row - true with no
+    script. STACK_SCRIPT folds it where it runs; nothing in the file is hidden."""
     layers = picture["layers"]
-    images = "".join(_img(p, "%s on %s" % (_e(item), _e(picture["wafer"])), ' data-layer="%s"%s' % (
-        _e(p.get("layer")), "" if at == 0 else " hidden")) for at, p in enumerate(layers))
-    return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s &middot; <span class="layer">%s (1/%d)</span>'
-            '</figcaption></figure>' % (images, _e(picture["wafer"]), _e(layers[0].get("layer")), len(layers)))
+    shots = "".join('<figure>%s<figcaption>%s</figcaption></figure>' % (
+        _img(p, "%s on %s" % (_e(item), _e(picture["wafer"])), ' data-layer="%s"' % _e(p.get("layer"))),
+        _e(p.get("layer"))) for p in layers)
+    return ('<figure class="stack" title="wheel: layers"><div class="strip">%s</div><figcaption>%s &middot; '
+            '<span class="layer">%d layers</span></figcaption></figure>' % (shots, _e(picture["wafer"]), len(layers)))
 
 
 def _table(fill, tables, spec, lent=None):
