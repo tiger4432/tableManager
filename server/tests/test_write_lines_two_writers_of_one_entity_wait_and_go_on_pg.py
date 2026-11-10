@@ -12,7 +12,7 @@ import expression
 from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
-from database import crud, lines
+from database import crud, lines, models
 from database.write_lines import write_lines
 from test_write_lines_writes_a_line_a_change_and_its_current_line import stand_in_winners
 
@@ -27,6 +27,7 @@ def fixture_sessions(pg_engine, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     lines.LineColumn.__table__.create(pg_engine, checkfirst=True)
     lines.AuditBatch.__table__.create(pg_engine, checkfirst=True)
+    models.DatabaseOutbox.__table__.create(pg_engine, checkfirst=True)
     faulthandler.dump_traceback_later(90, exit=True)      # a hung lock gate says where, then stops
     make = sessionmaker(bind=pg_engine, autoflush=False)
     setup = make()

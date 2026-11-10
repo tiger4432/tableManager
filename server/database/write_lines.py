@@ -104,6 +104,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     audit = _audit(db, table, items, kept, targets, work, transaction_id, at)
+    _stage(db, table, cfg, shape["view_columns"], changed, keys,
+           {targets[i]: set(items[i].get("values") or ()) for i in kept if items[i]["line_kind"] == WRITE})
     return {"changed": changed, "lines": len(kept), "left_out": left_out, "audit": audit, "gated": gated}
 
 
@@ -331,6 +333,49 @@ def _merge_now(db, table, cfg, shape, row_ids, at):
         {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])
     return merged
+
+
+def _stage(db, table, cfg, view_columns, changed, keys, wrote):
+    """Step 7 - this write's outbox events, in its transaction, from its answer - the one author the broadcast reads
+    too (owner rule: the chain wakes on these). Today's shapes (the ORM flush hook's, kept letter for letter): a new
+    row CREATE - per row its values, collapsed the columns it wrote with row_id and business_key_val; a current line
+    whose shown values changed EDIT - those columns, their old values; none when nothing shown changed; a deleted row
+    DELETE, collapsed always, its values as the old ones (`crud.delete_rows_batch`'s)."""
+    from database.context import request_outbox_mode
+    from database.database import json_value, stage_collapsed_event, stage_event
+    from event_constants import OUTBOX_MODE_COLLAPSED, OUTBOX_PAYLOAD_EXCLUDED_COLUMNS
+    from types import SimpleNamespace
+
+    types = cfg.get("column_types") or {}
+    shown = [c for c in view_columns if c not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS]
+    collapsed = request_outbox_mode.get() == OUTBOX_MODE_COLLAPSED
+    table_shape = SimpleNamespace(columns=[SimpleNamespace(name=c) for c in view_columns])
+    events = {"CREATE": [], "EDIT": [], "DELETE": []}
+    for row_id, change in changed.items():
+        old, new = change["old"] or {}, change["new"]
+        if new is None:
+            events["DELETE"].append((row_id, None, {c: json_value(old.get(c)) for c in shown}, old))
+            continue
+        row = SimpleNamespace(__table__=table_shape, row_id=row_id,
+                              business_key_val=keys.get(row_id, old.get("business_key_val")),
+                              **{c: new.get(c) for c in shown})
+        if change["old"] is None:
+            events["CREATE"].append((row_id, sorted(wrote.get(row_id, set()) | {"row_id", "business_key_val"}),
+                                     None, row))
+            continue
+        moved = [c for c in shown if crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
+        if moved:
+            events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, row))
+    for event_type, rows in events.items():
+        if not rows:
+            continue
+        if collapsed or event_type == "DELETE":
+            stage_collapsed_event(db, event_type, table, [r[0] for r in rows],
+                                  sorted({c for r in rows for c in r[1] or ()}) or None,
+                                  old=[r[2] or {} for r in rows] if event_type != "CREATE" else None)
+        else:
+            for _row_id, _columns, old, row in rows:
+                stage_event(db, event_type, table, row, old=old)
 
 
 def _audit(db, table, items, kept, targets, work, transaction_id, at):

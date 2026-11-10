@@ -11,7 +11,7 @@ from sqlalchemy import bindparam, create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 import event_constants
-from database import crud, lines
+from database import crud, lines, models
 from database.write_lines import write_lines
 
 TABLE = "wl_probe"
@@ -37,6 +37,7 @@ def fixture_db(monkeypatch):
     engine = create_engine("sqlite://")
     lines.LineColumn.__table__.create(engine)
     lines.AuditBatch.__table__.create(engine)
+    models.DatabaseOutbox.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
     monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(db, TABLE, CFG)), raising=False)
@@ -185,6 +186,7 @@ def test_two_sqlite_writers_of_one_row_wait_for_the_write_lock_before_they_read(
     engine = create_engine("sqlite:///" + str(tmp_path / "wl.db"), connect_args={"check_same_thread": False})
     lines.LineColumn.__table__.create(engine)
     lines.AuditBatch.__table__.create(engine)
+    models.DatabaseOutbox.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     make = sessionmaker(bind=engine)
     setup = make()
