@@ -20,6 +20,9 @@ LINE_KINDS = ("write", "withdraw", "deleted", "mark")
 BIT_FAMILIES = ("written", "head", "withdrawn")
 BITS_PER_CHUNK = 64
 REFUSAL = "a write to the view {view} is refused - write through database.lines (write_lines)"
+#: «A person wrote this line» in SQL - the same answer as crud.layer_writer(source_name) == "user" (the key merge
+#: backup «user (old_exist_…)» included). A partial index below carries this exact text; a query must repeat it.
+HUMAN_SOURCE_SQL = "(source_name = 'user' OR source_name LIKE 'user (%')"
 
 #: The columns every data table carries before its declared ones (today's framework columns, same types).
 FRAMEWORK = (("row_id", String), ("business_key_val", String), ("created_at", DateTime(timezone=True)),
@@ -199,6 +202,8 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     head_any = " OR ".join(f"{name} <> 0" for name in bit_columns("head", chunks))
     Index(f"ix_{lines.name}_row_at", lines.c.row_id, lines.c.at)
     Index(f"ix_{lines.name}_batch", lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
+    Index(f"ix_{lines.name}_person_at", lines.c.at, postgresql_include=["row_id", "batch"],
+          postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(f"ix_{lines.name}_head", lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
     return {"now": now, "lines": lines, "view": table_name, "bits": bits, "chunks": chunks,
