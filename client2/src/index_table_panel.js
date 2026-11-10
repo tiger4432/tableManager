@@ -6,6 +6,7 @@
 // declared» (admin; the server's refusal said under it).
 import { ABSENT, countText, isCount } from './absent.js';
 import { localHourMinute } from './server_time.js';
+import { approxText } from './ui_words.js';
 
 /** The tone of a state's tag, one the base layer draws (`.tag[data-tone]`); a token not here wears none. */
 const STATE_TONE = Object.freeze({ present: 'ok', building: 'warn', missing: 'danger', invalid: 'danger',
@@ -24,7 +25,7 @@ export function sizeText(bytes) {
 const text = (v) => (v === null || v === undefined || v === '' ? ABSENT : String(v));
 
 /** A row's size: the catalogue's estimate (`size_estimate`) wears «≈ », one not yet counted «≈ ?» - never «0 B» (B 11-06). */
-const sizeOf = (r) => (r.size_estimate === true ? `≈ ${isCount(r.size_bytes) ? sizeText(r.size_bytes) : '?'}` : sizeText(r.size_bytes));
+const sizeOf = (r) => (r.size_estimate === true ? approxText(isCount(r.size_bytes) ? sizeText(r.size_bytes) : null) : sizeText(r.size_bytes));
 
 /** The answer -> what the table draws. `unread` when no answer came: an empty table would read as no index. */
 export function indexTableView(body) {

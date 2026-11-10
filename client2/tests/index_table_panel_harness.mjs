@@ -185,7 +185,7 @@ const MUTANTS = [
     mutate: swap('  return `${unit && value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;', '  return String(bytes);') },
   { id: 'XI12', what: 'an estimate reads as a measured size', catches: ['I1c'], mutate: swap('(r.size_estimate === true ?', '(false ?') },
   { id: 'XI13', what: 'an index not yet counted reads 0 B', catches: ['I1c'],
-    mutate: swap("isCount(r.size_bytes) ? sizeText(r.size_bytes) : '?'", 'sizeText(Number(r.size_bytes))') },
+    mutate: swap("isCount(r.size_bytes) ? sizeText(r.size_bytes) : null", 'sizeText(Number(r.size_bytes))') },
   { id: 'XI2', what: 'a building index wears no tone', catches: ['I2'], mutate: swap(" building: 'warn',", '') },
   { id: 'XI3', what: 'an invalid index reads as present', catches: ['I2'], mutate: swap(" invalid: 'danger',", " invalid: 'ok',") },
   { id: 'XI4', what: 'the state is the screen\'s word, not the server\'s token', catches: ['I2'],

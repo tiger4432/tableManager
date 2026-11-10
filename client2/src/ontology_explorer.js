@@ -13,6 +13,7 @@ import { editDeclaration, refusalIssues, BAR_WORDS } from './ledger_declaration_
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
+import { ReadAgain } from './read_again.js';
 import { BranchPicker } from './branch_picker.js';
 import { WorldFacts } from './world_facts.js';
 import {
@@ -135,6 +136,10 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   const askPublic = withWorld((url, init) => fetch(url, init), () => state.world);
   let generation = 0;
   let searchTimer = null;
+  const columnsAgain = new ReadAgain();   // the column counts asked again while the server counts behind its answer
+  let columnsAgainFor = '';     // the relation that read-again is for
+  let columnsAsked = '';        // the relation being asked now
+  let alive = true;             // false once destroyed - nothing answered after that is drawn or asked again
 
   // ㄱ ㄴ (lead 619befe8c) — where the hand is in the form. The bar is its own part; the view only
   //    leaves it a seat, which every render rebuilds, so every render seats it again (`render`).
@@ -1040,18 +1045,36 @@ No effect`;
     }
   };
 
-  /** Ask once per relation. Anything already known -- answer OR failure -- is not re-asked. */
-  const loadColumnStats = async (relation) => {
-    if (!relation || (state.columnStats || {})[relation]) return;
+  /** Ask once per relation. Anything already known -- answer OR failure -- is not re-asked, except an answer the server
+   *  is still counting behind (`updating`, owner 11-10 «4 ㄱ»): that one is asked again every READ_AGAIN_MS while its
+   *  relation is the one in effect and the screen is open, and never once either stops. */
+  const askColumnStats = async (relation, recount = false) => {
+    columnsAgain.stop();
+    columnsAsked = relation;
     try {
       const stats = await jsonRequest(
-        `/columns?relation=${encodeURIComponent(relation)}`);
+        `/columns?relation=${encodeURIComponent(relation)}${recount ? '&recount=true' : ''}`);
+      if (!alive) return;
       dispatch({ type: 'COLUMNS_RECEIVED', relation, stats });
+      if (columnsAsked === relation) {
+        columnsAgainFor = relation;
+        columnsAgain.after(stats, () => alive && !(typeof document !== 'undefined' && document.hidden)
+          && relationInEffect(state, state.authoring, PATH_TOOLS) === relation,
+          () => void askColumnStats(relation));
+      }
     } catch (error) {
       // ⚠️ Not a toast. Nothing the operator did failed, and the plan is still correct
       //    -- what is missing is one annotation, which the row says for itself.
-      dispatch({ type: 'COLUMNS_FAILED', relation, message: errorMessage(error) });
+      if (alive) dispatch({ type: 'COLUMNS_FAILED', relation, message: errorMessage(error) });
+    } finally {
+      if (columnsAsked === relation) columnsAsked = '';
     }
+  };
+  const loadColumnStats = (relation) => {
+    if (!relation || relation === columnsAsked || (columnsAgain.armed && columnsAgainFor === relation)) return;
+    const held = (state.columnStats || {})[relation];
+    if (held && held.updating !== true) return;
+    void askColumnStats(relation);
   };
 
   // A refused save's rows on the source's paths go to the bar, beside their chips; the toast only counts them (lead 10-14).
@@ -1214,6 +1237,11 @@ No effect`;
     }
     else if (action === 'decl-type') dispatch({ type: 'DECL_UI', decl: { typing: target.dataset.path } });
     else if (action === 'decl-json') dispatch({ type: 'DECL_UI', decl: { json: !state.decl.json } });
+    else if (action === 'columns-recount') {
+      // A count cut at the server's limit is counted again only when a person asks (D 11-10).
+      const relation = relationInEffect(state, state.authoring, PATH_TOOLS);
+      if (relation) void askColumnStats(relation, true);
+    }
     else if (action === 'decl-pick' || action === 'decl-add' || action === 'decl-remove') {
       let value;
       try { value = action === 'decl-pick' ? JSON.parse(target.dataset.value) : undefined; } catch { return; }
@@ -1714,7 +1742,7 @@ No effect`;
       allowContextSwitch: true,
       editorCheckpoint: state.dirty ? checkpoint() : null,
     }),
-    destroy: () => clearTimeout(searchTimer),
+    destroy: () => { alive = false; clearTimeout(searchTimer); columnsAgain.stop(); },
     tablesChanged: () => { dispatch({ type: 'AUTHORING_INVALIDATED', tables: true }); return loadAuthoring(planSelection); },
     getState: () => state,
   };

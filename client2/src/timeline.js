@@ -1,6 +1,6 @@
-import { API_BASE, pageLimit } from './config.js';
+import { API_BASE, pageLimit, READ_AGAIN_MS } from './config.js';
 import { ABSENT, isCount } from './absent.js';
-import { LOADING, unitText } from './ui_words.js';
+import { LOADING, UPDATING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
 import { localStamp, localClock, NO_TIME } from './server_time.js';
 import { widestCell } from './cell_fit.js';
@@ -28,8 +28,6 @@ export function loadHistory() {
   return state.historyReads.ask(question, readHistory);
 }
 
-/** How long after an `updating` answer the Global list is read again - the server's walk or merge has had its time. */
-const HISTORY_REREAD_MS = 2000;
 let historyRereadTimer = null;
 
 /** The server or the operator says read again: the held Global list is old, and the shown tab is read again. */
@@ -109,7 +107,7 @@ async function readHistory(read) {
         clearTimeout(historyRereadTimer);
         historyRereadTimer = setTimeout(() => {
           if (state.activeHistoryTab === 'global') rereadHistory();
-        }, HISTORY_REREAD_MS);
+        }, READ_AGAIN_MS);
       }
       readWhole = true;
     } catch (err) {
@@ -1158,7 +1156,7 @@ export function renderGlobalTimeline() {
     // the server has not read it yet (its walk runs behind the answer) - not «none»
     elements.timeline.innerHTML = updating ? '<li class="timeline-empty">Reading history…</li>'
       : '<li class="timeline-empty">No database history recorded.</li>';
-    if (count) count.textContent = updating ? 'Updating' : '';
+    if (count) count.textContent = updating ? UPDATING : '';
     return;
   }
 
