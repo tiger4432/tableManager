@@ -259,14 +259,10 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's line table as a Core Table on a private MetaData, with the bit map it was built from. A column t already
     holds is typed as STORED (the stored kind is what line_text reads). Assigns slots to new declared columns (the
     caller commits)."""
-    from sqlalchemy import inspect
-
     from .models import sql_type_of
 
-    stored = physical_kinds(db, table_name) if inspect(db.connection()).has_table(table_name) else {}
-    types = dict(table_cfg.get("column_types") or {})
-    types.update(stored)
-    table_cfg = {**table_cfg, "column_types": types}
+    table_cfg = _as_stored(db, table_name, table_cfg)
+    types = table_cfg["column_types"]
     declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
     bits = assign_bits(db, table_name, declared)
     chunks = chunk_count(db, table_name)
@@ -291,11 +287,29 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
     Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
-    # t itself on its own MetaData (ensure creates the lines only): declared columns typed as stored, plus won_by
-    table = Table(table_name, MetaData(), *_data_columns(table_cfg, sql_type_of, row_id_key=True),
-                  Column(WON_BY, won_by_type()))
+    table = current_table(db, table_name, table_cfg, won_by=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
     return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
+
+
+def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
+    """table_cfg with each column t already holds typed as STORED (the stored kind is what line_text reads)."""
+    from sqlalchemy import inspect
+
+    stored = physical_kinds(db, table_name) if inspect(db.connection()).has_table(table_name) else {}
+    return {**table_cfg, "column_types": {**(table_cfg.get("column_types") or {}), **stored}}
+
+
+def current_table(db, table_name: str, table_cfg: dict, won_by=None):
+    """t itself as a Core Table on its own MetaData - framework and declared columns typed as stored, plus won_by
+    when t carries it (won_by None: has_lines asks). THE answer to «t's columns and types»: shape and write_lines
+    (a table without lines too - no slots, no t__lines) bind to it."""
+    from .models import sql_type_of
+
+    if won_by is None:
+        won_by = has_lines(db, table_name)
+    cols = _data_columns(_as_stored(db, table_name, table_cfg), sql_type_of, row_id_key=True)
+    return Table(table_name, MetaData(), *cols, *([Column(WON_BY, won_by_type())] if won_by else []))
 
 
 def won_by_type():
@@ -386,8 +400,13 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     if drop:
         retire_bits(db, table_name, list(drop))
     after = chunk_count(db, table_name)
+    from sqlalchemy import inspect
+
     for rel in (_checked(table_name), lines_relation(table_name)):
+        present = {c["name"] for c in inspect(conn).get_columns(rel)} if add else set()
         for name in add:
+            if name in present:                  # t already has it (the schema sync added it first)
+                continue
             type_sql = (sql_type_of(types[name]) if rel == table_name else String()).compile(
                 dialect=conn.dialect)
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{name}" {type_sql}')
@@ -413,3 +432,167 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
         conn.exec_driver_sql(ddl)
         statements.append(ddl)
     return statements
+
+
+def _mask(bit: int) -> int:
+    """The signed bigint mask of a column's bit in its chunk (bit 63 is the sign bit)."""
+    m = 1 << (bit % BITS_PER_CHUNK)
+    return m - (1 << 64) if m >= 1 << 63 else m
+
+
+def spoken(db, table_name: str, row_ids) -> dict:
+    """{row_id: columns some line of that row has spoken in} - written OR withdrawn, any source. Read from the head
+    lines (the head index): every column a source ever wrote or withdrew keeps that source's head bit, so the OR of
+    head bits is the OR of written bits. A column NOT here keeps t's value (owner 11-11 «끊음»)."""
+    row_ids = list(row_ids)
+    if not row_ids:
+        return {}
+    conn = db.connection()
+    chunks = _built_chunks(conn, table_name)
+    heads = bit_columns("head", chunks)
+    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
+    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), *[Column(h, BigInteger) for h in heads])
+    from sqlalchemy import or_
+
+    rows = db.execute(select(lt.c.row_id, *[lt.c[h] for h in heads])
+                      .where(lt.c.row_id.in_(row_ids), or_(*[lt.c[h] != 0 for h in heads]))).all()
+    out = {}
+    for row in rows:
+        cols = out.setdefault(row[0], set())
+        for chunk, value in enumerate(row[1:]):
+            value &= (1 << 64) - 1
+            while value:
+                low = value & -value
+                bit = chunk * BITS_PER_CHUNK + low.bit_length() - 1
+                if bit in by_bit:
+                    cols.add(by_bit[bit])
+                value ^= low
+    return out
+
+
+def winners_sql(s: dict, table_name: str, column: str):
+    """For one column: (row_id, line_id, value, pinned) of the winning head line of each row in the expanding
+    bindparam `row_ids` - built from crud.rank_terms, the one order compute_priority_value walks. A head line that
+    withdrew the column is no candidate. A pin (cell_overwrites.manual_priority_source) admits only the pinned
+    source's head line; `pinned` says a pin was there. s = shape(...)."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import and_, bindparam, case, exists, func, literal, not_
+    from sqlalchemy.orm import aliased
+
+    from . import crud
+    from .models import CellOverwrite
+
+    lt = s["lines"]
+    bit = s["bits"][column]
+    head, withdrawn = f"head_{bit // BITS_PER_CHUNK}", f"withdrawn_{bit // BITS_PER_CHUNK}"
+    mask = _mask(bit)
+    src = LineSource.__table__
+    ov = CellOverwrite.__table__
+
+    def says(t):
+        return and_(t.c[head].op("&")(mask) != 0, t.c[withdrawn].op("&")(mask) == 0)
+
+    other = lt.alias("other")
+    other_src = src.alias("other_src")
+    unowned = exists().select_from(other.outerjoin(other_src, other_src.c.source_name == other.c.source_name)).where(
+        other.c.row_id == lt.c.row_id, says(other), other_src.c.ranks_as == crud.CHAIN_SOURCE,
+        other.c.owner_rule.is_(None))
+    pin = (select(ov.c.manual_priority_source)
+           .where(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id, ov.c.column_name == column)
+           .scalar_subquery())
+    cols = SimpleNamespace(ranks_as=src.c.ranks_as, owner_rule=lt.c.owner_rule, at=lt.c.at,
+                           source_name=lt.c.source_name)
+    order = [sql(cols, unowned) for _, sql in crud.rank_terms(table_name)]
+    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[column].label("value"), pin.isnot(None).label("pinned"),
+                     func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
+              .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
+              .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
+                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin))
+              .subquery())
+    return select(ranked.c.row_id, ranked.c.line_id, ranked.c.value, ranked.c.pinned).where(ranked.c.rn == 1)
+
+
+def merge(db, table_name: str, table_cfg: dict, row_ids) -> dict:
+    """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
+       a column no line spoke in is absent (t keeps its value - «끊음»);
+       a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
+       a spoken column with no candidate left (all withdrawn) is (None, None).
+    Values are read back as t's stored kind (crud.line_value)."""
+    from . import crud
+    from .models import CellOverwrite
+
+    row_ids = list(row_ids)
+    if not row_ids:
+        return {}
+    s = shape(db, table_name, table_cfg)
+    kinds = value_types(db, table_name)
+    said = spoken(db, table_name, row_ids)
+    ov = CellOverwrite.__table__
+    pins = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
+        ov.c.table_name == table_name, ov.c.row_id.in_(row_ids), ov.c.manual_priority_source.isnot(None)))}
+    out = {}
+    for column in {c for cols in said.values() for c in cols}:
+        rows = [r for r in row_ids if column in said.get(r, ())]
+        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column), {"row_ids": rows})}
+        for r in rows:
+            if r in won:
+                v, lid = won[r]
+                out.setdefault(r, {})[column] = (crud.line_value(v, kinds.get(column, "string")), lid)
+            elif (r, column) not in pins:
+                out.setdefault(r, {})[column] = (None, None)
+    return out
+
+
+def ensure_declared(engine, tables=None) -> dict:
+    """Every declared table that keeps lines gets them: t__lines + won_by where missing (empty - old rows are not
+    copied, «끊음»), and t__lines catches up with columns t was given. ONE function: the schema sync calls it for all
+    declared tables, the index line for a table whose business key index it just built (lead 11-11 ㄱ), the test
+    fixtures after building tables. A built table costs reads only, no DDL. The DDL waits for its lock as every
+    runtime DDL does (db_safety.short_ddl - lock_timeout, then the holder named); not had, the table is refused and
+    the next sync or index build tries again. -> {table: refusal sentence}."""
+    import logging
+
+    from sqlalchemy import inspect
+    from sqlalchemy.orm import Session
+
+    import db_safety
+
+    from . import crud, models
+
+    log = logging.getLogger(__name__)
+    refused = {}
+    for name in list(tables if tables is not None else models.DYNAMIC_TABLES):
+        cfg = crud.TABLE_CONFIG.get(name)
+        if not isinstance(cfg, dict) or not keeps_lines(name, cfg) or table_name_refusal(name):
+            continue
+        with Session(engine) as db:
+            insp = inspect(db.connection())
+            if not insp.has_table(name):
+                continue
+            built = has_lines(db, name)
+            have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
+            missing = [c for c in (cfg.get("column_types") or {}) if c not in have] if built else []
+        if built and not missing:
+            continue
+
+        def work(conn, name=name, cfg=cfg, built=built, missing=missing):
+            db = Session(bind=conn)
+            if built:
+                alter_columns(db, name, cfg, add=missing)
+            else:
+                ensure_line_table(db, name, cfg)            # refuses (ValueError) a table without the key index
+            db.flush()
+
+        try:
+            db_safety.short_ddl(engine, name, work, "lines")
+        except ValueError as err:
+            refused[name] = str(err)
+            log.error("[Lines] %s", err)
+        except Exception as err:                             # noqa: BLE001 - said; the next sync tries again
+            held = getattr(err, "ddl_holders", None)
+            refused[name] = (f"Cannot keep lines: {name} (held by {held}) - the next schema sync or index build "
+                             f"tries again" if held else f"Cannot keep lines: {name} ({err}) - the next schema sync "
+                             f"tries again")
+            log.error("[Lines] %s", refused[name], exc_info=None if held else err)
+    return refused
