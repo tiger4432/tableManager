@@ -16,7 +16,7 @@
 // Run: node client2/tests/walk_wire_harness.mjs
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWalkBoxWalk, entitySeedId, fetchSubgraph } from '../src/rnd_board/api.js';
+import { createWalkBoxWalk, entitySeedId, fetchSubgraph, notReadOf } from '../src/rnd_board/api.js';
 import { loadWithProbe } from './lib/probe.mjs';
 
 let pass = 0;
@@ -763,6 +763,12 @@ for (const [name, mutate] of RENAME_CONTROLS) {
 // 변이가 만든 실패는 «대상의» 실패가 아닙니다. 보고되는 수는 실물 run 의 것입니다.
 pass = base.pass;
 failures.length = base.failed;
+
+// a source the virtual read could not read is said with its why (engine.left_out, owner 11-10)
+ok('NR1 a left-out source is one Not read line with the server\'s why',
+  JSON.stringify(notReadOf({ engine: { name: 'virtual', left_out: [{ source: 'dt_log', why: 'no time column' }] } }))
+    === JSON.stringify(['Not read: dt_log — no time column']));
+ok('NR2 no engine, or nothing left out, says nothing', notReadOf({}).length === 0 && notReadOf({ engine: { left_out: [] } }).length === 0);
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length + REFUSAL_DEFECTS.length + ONE_BUILDER_DEFECTS.length} caught, ${wrong.length} wrong`);

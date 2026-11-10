@@ -570,6 +570,20 @@ async function suite(mod) {
       JSON.stringify([empty, none, plain]) === JSON.stringify([[['empty · No ledger evidence is connected to the selected node'], 0],
         [['empty · This walk reached no node beyond its seeds'], 0], [[], 0]]),
       JSON.stringify([empty, none, plain]));
+    // a source the read could not read (engine.left_out via notReadOf, owner 11-10): its line, and with no node it
+    // stands where «No node reached» would; with nothing left out, the empty line as before
+    const notes = async (result) => {
+      const { host, handle } = await render(mod, result);
+      handle.state.asked = { type: 'die@1', keys: {} };
+      handle.render();
+      return byClass(host, 'wk-note').map((e) => e.textContent)
+        .filter((t) => t.startsWith('Not read: ') || t === 'No node reached');
+    };
+    const leftOut = await notes({ nodes: [], edges: [], notRead: ['Not read: dt_log — no time column'] });
+    const bare = await notes({ nodes: [], edges: [] });
+    ok('H2 a walk that read nothing says which source it did not read and why, in place of «No node reached»',
+      JSON.stringify([leftOut, bare]) === JSON.stringify([['Not read: dt_log — no time column'], ['No node reached']]),
+      JSON.stringify([leftOut, bare]));
   }
 
   console.log(`${LF}-- E1: one basket walked = a Next from that row (owner 10-10) --`);
