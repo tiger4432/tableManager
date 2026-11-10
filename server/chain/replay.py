@@ -1223,30 +1223,31 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
     """
     from sqlalchemy import and_, case, func
 
+    from chain.cell_layer import claimed_lines
     from database import models
 
-    claimed = db.query(func.count()).select_from(models.CellSource).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by)).scalar() or 0
+    # lines now: a claimed line may say several columns - B rewrites this body to cells (C 11-11 handover)
+    lt, bits = claimed_lines(db, table_name)
+    claims = _claimed_filter(lt, bits, source_name, columns, written_by)
+    claimed = db.query(func.count()).select_from(lt).filter(*claims).scalar() or 0
 
     # Cells this source claims AND a human pinned TO this source. Joined rather
     # than counted separately: a pin naming this source on a cell it does not
     # claim changes nothing, and counting it would understate the result.
-    pinned = db.query(func.count()).select_from(models.CellSource).join(
+    pinned = db.query(func.count()).select_from(lt).join(
         models.CellOverwrite,
-        and_(models.CellOverwrite.table_name == models.CellSource.table_name,
-             models.CellOverwrite.row_id == models.CellSource.row_id,
-             models.CellOverwrite.column_name == models.CellSource.column_name),
+        and_(models.CellOverwrite.table_name == table_name,
+             models.CellOverwrite.row_id == lt.c.row_id,
+             models.CellOverwrite.column_name.in_(list(columns or bits))),
     ).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by),
-        models.CellOverwrite.manual_priority_source == models.CellSource.source_name,
+        *claims,
+        models.CellOverwrite.manual_priority_source == lt.c.source_name,
     ).scalar() or 0
 
     # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
     # a pinned cell, or a value no layer carries, keeps one.
-    cs = models.CellSource
-    whole = (db.query(cs.row_id).filter(cs.table_name == table_name).group_by(cs.row_id)
-             .having(func.min(case((and_(*_claimed_filter(table_name, source_name, columns, written_by)), 1),
-                                   else_=0)) == 1).subquery())
+    whole = (db.query(lt.c.row_id).filter(lt.c.head_0 != 0).group_by(lt.c.row_id)
+             .having(func.min(case((and_(*claims), 1), else_=0)) == 1).subquery())
     emptied = db.query(func.count()).select_from(whole).scalar() or 0
 
     return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}

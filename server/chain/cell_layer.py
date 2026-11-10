@@ -54,31 +54,57 @@ PROTECTED_SOURCES = frozenset({"user"})
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
 
-def _claimed_filter(table_name: str, source_name: str, columns: list = None, written_by=None):
-    """The predicate for "cells `source_name` claims on `table_name`".
+def claimed_lines(db, table_name: str, table_cfg=None):
+    """(t__lines Core Table, column -> bit) the claim filter is built over - read, no slots."""
+    from database import crud, lines
 
-    Extracted so `count_withdrawable` and `withdraw_source` cannot answer
-    different questions: a count that used a slightly different filter from the
-    operation it previews is a count that lies, and it would lie silently.
+    s = lines.shape(db, table_name, table_cfg if table_cfg is not None else crud.TABLE_CONFIG.get(table_name) or {})
+    return s["lines"], s["bits"]
 
-    A name whose bracketed layers rank as it (`crud.layer_ranks_as` - the chain's layer per source
-    row, 총괄 8ec008914) claims those layers too.
+
+def _claimed_filter(lt, bits: dict, source_name: str, columns: list = None, written_by=None, batch=None):
+    """The predicate for "lines `source_name` claims on a table" over its t__lines `lt` (`claimed_lines`): its head
+    lines naming one of `columns` (every column when None). A head line that withdrew the column still matches - the
+    reader drops it by its withdrawn bit, as `lines.layers` does.
+
+    Extracted so `count_withdrawable` and `withdraw_source` cannot answer different questions: a count that used a
+    slightly different filter from the operation it previews is a count that lies, and it would lie silently.
+
+    A name whose bracketed layers rank as it (`crud.layer_ranks_as` - the chain's layer per source row, 총괄
+    8ec008914) claims those layers too. `batch`: one write's lines only (B's R2 batch, after 11-14).
     """
     from sqlalchemy import or_
 
-    from database import crud, models
+    from database import crud, lines
 
-    named = models.CellSource.source_name == source_name
+    named = lt.c.source_name == source_name
     tag = "\x00"
     copy = crud.merged_layer_name(source_name, tag)
     if crud.layer_ranks_as(copy) == source_name:
-        named = or_(named, models.CellSource.source_name.startswith(copy.split(tag)[0], autoescape=True))
-    conds = [models.CellSource.table_name == table_name, named]
-    if columns:
-        conds.append(models.CellSource.column_name.in_(list(columns)))
+        named = or_(named, lt.c.source_name.startswith(copy.split(tag)[0], autoescape=True))
+    masks = {}
+    for col, bit in bits.items():
+        if not columns or col in columns:
+            chunk = bit // lines.BITS_PER_CHUNK
+            masks[chunk] = masks.get(chunk, 0) | lines._mask(bit)
+    conds = [named, or_(*[lt.c[f"head_{c}"].op("&")(m) != 0 for c, m in sorted(masks.items())])]
     if written_by:      # one rule's layers - the declaration that wrote them (`replay.unwritten_scope`)
-        conds.append(models.CellSource.updated_by.in_(list(written_by)))
+        conds.append(lt.c.written_by.in_(list(written_by)))
+    if batch is not None:
+        conds.append(lt.c.batch == batch)
     return conds
+
+
+def _claimed_cells(row, bits: dict, columns=None) -> list:
+    """The columns a claimed line still says (head, not withdrawn) - of `columns` when given."""
+    from database import lines
+
+    by_bit = {bit: col for col, bit in bits.items() if not columns or col in columns}
+    chunks = 1 + max((b // lines.BITS_PER_CHUNK for b in bits.values()), default=0)
+    heads = [row[f"head_{c}"] for c in range(chunks)]
+    gone = [row[f"withdrawn_{c}"] for c in range(chunks)]
+    return sorted(lines._columns_of(heads, by_bit) - lines._columns_of(gone, by_bit))
+
 
 def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
     """Stored sources + human pins for a chunk of rows: TWO batched queries, not two per cell.
@@ -423,8 +449,6 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         counted as `pinned_skipped`. The pin is a human saying "show me this
         one"; silently honouring the withdrawal would override that choice.
     """
-    from database import models
-
     if source_name in PROTECTED_SOURCES:
         raise ReplayRefused(
             f"refusing to withdraw source '{source_name}': it is the layer that means "
@@ -438,9 +462,10 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    no progress line and no stop meanwhile (box, 1M). The price, kept by the owner's 5-second rule: where the
     #    source claims few rows the whole run pages the whole table, 3.0-4.4x longer and 6.3x at most (1M rows, 9M
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
-    cs = models.CellSource
-    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by))
+    from sqlalchemy import select
+
+    lt, bits = claimed_lines(db, table_name)
+    q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
     asked = [chunk_size]
 
     class _Asked:
@@ -458,8 +483,9 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
             return None
         ids = [row_id for (row_id,) in page]
         claims = {}
-        for row_id, col, name in q.filter(cs.row_id.in_(ids)):
-            claims.setdefault((row_id, col), []).append(name)
+        for line in db.execute(q.where(lt.c.row_id.in_(ids))).mappings():
+            for col in _claimed_cells(line, bits, columns):
+                claims.setdefault((line["row_id"], col), []).append(line["source_name"])
         claimed = {row_id for row_id, _col in claims}
         return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
