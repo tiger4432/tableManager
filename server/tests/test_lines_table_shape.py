@@ -194,3 +194,15 @@ def test_shape_types_a_built_column_as_stored(db):
     assert type(s["now"].c.event_time.type).__name__ == "String"
     db.execute(s["now"].insert().values(row_id="r1", event_time="2026-01-01T13:00:00"))
     assert db.execute(text("SELECT event_time FROM u__now")).scalar() == "2026-01-01T13:00:00"
+
+
+def test_which_tables_keep_lines():
+    import shipped
+
+    system = sorted(shipped.tables())[0]
+    assert system.startswith("sys_")                                             # canary: a shipped table exists
+    assert lines.keeps_lines("t", CFG)
+    assert not lines.keeps_lines("v", {"kind": "view", "column_types": {}})
+    assert not lines.keeps_lines(system, shipped.tables()[system])
+    assert not lines.keeps_lines("ledger_atom_rows", None)                       # undeclared: the ledger's own
+    assert lines.stored_relation(system, shipped.tables()[system]) == system

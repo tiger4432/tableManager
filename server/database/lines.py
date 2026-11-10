@@ -125,14 +125,20 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
-def stored_relation(table_name: str, table_cfg) -> str:
-    """The physical relation an index, plan or catalogue question about t names: `t__now` for a declared data
-    table, the name itself for an operator view (kind: view) or a system table (no table_cfg)."""
+def keeps_lines(table_name: str, table_cfg) -> bool:
+    """Does t become `t__now` + `t__lines` - THE answer the migration, the catalogue and the index seats ask: an
+    operator-declared table (kind table). Not a view, not a table the product ships (system tables), and not an
+    undeclared relation - the ledger's own tables are already append-only history and are left as they are."""
+    import shipped
     from ledger.setup_bundle import catalog_kind
 
-    if not table_cfg or catalog_kind(table_cfg) == "view":
-        return table_name
-    return now_relation(table_name)
+    return bool(table_cfg) and catalog_kind(table_cfg) != "view" and table_name not in shipped.tables()
+
+
+def stored_relation(table_name: str, table_cfg) -> str:
+    """The physical relation an index, plan or catalogue question about t names: `t__now` when t keeps lines,
+    else the name itself."""
+    return now_relation(table_name) if keeps_lines(table_name, table_cfg) else table_name
 
 
 def declared_of(relation: str, tables: dict):
