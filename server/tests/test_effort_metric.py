@@ -435,10 +435,14 @@ def test_a_measured_correction_stores_its_raw_counts_against_the_audit_tx(client
     row = db_session.query(models.InteractionEffortLog).one()
     assert (row.key_count, row.mouse_count, row.nav_count) == (7, 2, 1)
     assert row.session_id == S1
-    # The key is the SAME tx id the audit trail already uses - no new correlation concept.
-    audit_txs = {a.transaction_id for a in db_session.query(models.AuditLog)
-                 .filter(models.AuditLog.source_name == crud.USER_SOURCE).all()}
-    assert row.transaction_id in audit_txs
+    # The key is the SAME tx id the audit trail already uses - no new correlation concept: the write's audit batch
+    # (cell-source overhaul - audit_batches, its page tail folded by group_of).
+    from admin.audit_cache import group_of
+    from database import lines
+
+    audit_txs = {group_of(a.transaction_id) for a in db_session.query(lines.AuditBatch)
+                 .filter(lines.AuditBatch.table_name == "raw_table_1").all()}
+    assert group_of(row.transaction_id) in audit_txs
 
 
 @pytest.mark.parametrize("bad_effort, why", [
@@ -541,12 +545,14 @@ def test_a_broken_counter_never_costs_the_user_their_correction(client, db_sessi
     the real consequence was that a client-side counter bug refused every save the
     operator attempted. The correction is the product; the measurement is not.
     """
-    before = db_session.query(models.AuditLog).count()
+    from database import lines
+
+    before = db_session.query(lines.AuditBatch).count()
     res = _put(client, {"session_id": S1, "key": -3, "mouse": 0, "nav": 0},
                value="EFF_ALWAYS_LANDS")
     assert res.status_code == 200
     assert res.json()["change_count"] == 1
-    assert db_session.query(models.AuditLog).count() > before, \
+    assert db_session.query(lines.AuditBatch).count() > before, \
         "the correction must be applied even when the effort payload is refused"
     assert db_session.query(models.InteractionEffortLog).count() == 0, \
         "...and the refused counts must still not be stored"
