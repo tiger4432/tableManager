@@ -288,7 +288,7 @@ def line_bits(db, table_name) -> dict:
     return dict(sorted(lines.bit_map(db, table_name).items(), key=lambda kv: kv[1]))
 
 
-def _line_table(table_name, bits):
+def line_table(table_name, bits):
     from database import lines, models
 
     model = models.DYNAMIC_TABLES.get(table_name)
@@ -300,7 +300,7 @@ def _line_table(table_name, bits):
                     sa.Column("written_by", sa.String), sa.Column("batch", sa.String),
                     sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
                     *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
-                      for kind in ("written", "withdrawn")],
+                      for kind in ("written", "head", "withdrawn")],
                     *[sa.Column(name, typed.get(name, sa.String())) for name in bits])
 
 
@@ -313,7 +313,7 @@ def line_page(db, table_name, row_id, limit, cursor=None, column=None):
     """One page of `row_id`'s lines, newest first by (at, line_id) - the (row_id, at) index - with `column`, the lines
     that said it and the row's deletion. -> (rows, bits, truncated, next_cursor); a page counts lines, not entries."""
     bits = line_bits(db, table_name)
-    t = _line_table(table_name, bits)
+    t = line_table(table_name, bits)
     query = sa.select(t).where(t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS))
     if column is not None:
         if column not in bits:
@@ -350,7 +350,7 @@ def line_entries(table_name, row, bits, column=None, business_key=None, row_dele
 def count_row_lines(db, table_name, row_id, cap: int = None):
     """How many history lines a row has, as `(count, is_floor)` - `count_row_history`'s bound, over the lines."""
     cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     n = len(db.execute(sa.select(sa.literal(1)).select_from(t).where(
         t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS)).limit(cap + 1)).fetchall())
     return (cap, True) if n > cap else (n, False)
@@ -358,7 +358,7 @@ def count_row_lines(db, table_name, row_id, cap: int = None):
 
 def line_keys(db, table_name, row_ids) -> dict:
     """{row_id: its business key} - the newest line of each row that names one: a deleted row's key, its history's."""
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     ids, out = list(dict.fromkeys(str(r) for r in row_ids or () if r)), {}
     for i in range(0, len(ids), 1000):
         for row_id, key in db.execute(sa.select(t.c.row_id, t.c.business_key_val).where(
@@ -370,7 +370,7 @@ def line_keys(db, table_name, row_ids) -> dict:
 
 def deleted_line_rows(db, table_name, row_ids) -> set:
     """The rows among `row_ids` with a «deleted» line - gone, not unreadable."""
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     ids, found = list(dict.fromkeys(str(r) for r in row_ids or () if r)), set()
     for i in range(0, len(ids), 1000):
         found.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
@@ -383,7 +383,7 @@ def changed_rows(db, table_name, group) -> int:
     owner 11-10 «바뀐 행수», counted, never stored)."""
     from admin.audit_cache import in_group
 
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     return db.execute(sa.select(sa.func.count(sa.distinct(t.c.row_id))).where(in_group(t.c.batch, group))).scalar()
 
 
@@ -392,7 +392,7 @@ def group_line_rows(table_name, group):
     transaction filter)."""
     from admin.audit_cache import in_group
 
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     return sa.select(t.c.row_id).where(in_group(t.c.batch, group))
 
 
@@ -402,7 +402,7 @@ def group_rows(db, table_name, group, limit) -> list:
     value: owner 11-10 «바뀐 행 네비»). -> [entry fields]"""
     from admin.audit_cache import in_group
 
-    t = _line_table(table_name, {})
+    t = line_table(table_name, {})
     first = sa.func.min(t.c.line_id)
     picked = db.execute(sa.select(t.c.row_id, first).where(in_group(t.c.batch, group))
                         .group_by(t.c.row_id).order_by(first.asc()).limit(limit)).fetchall()
@@ -415,3 +415,46 @@ def group_rows(db, table_name, group, limit) -> list:
              "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
              "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
              "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
+
+
+def winners(db, table_name, row_ids) -> dict:
+    """{(row_id, column): the source of the line its current line names} - `won_by` of `t__now` (the merge at write
+    time, pins included), each line by its id: what a grid cell's colour asks, no ranking read again."""
+    from database import lines
+
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    now = sa.Table(lines.now_relation(table_name), sa.MetaData(), sa.Column("row_id", sa.String),
+                   sa.Column("won_by", sa.JSON))
+    won = {}
+    for i in range(0, len(ids), 1000):
+        for row_id, by in db.execute(sa.select(now.c.row_id, now.c.won_by).where(now.c.row_id.in_(ids[i:i + 1000]))):
+            for column, line_id in (by or {}).items():
+                won[(row_id, column)] = int(line_id)
+    t = line_table(table_name, {})
+    named = sorted(set(won.values()))
+    source = {}
+    for i in range(0, len(named), 1000):
+        source.update(db.execute(sa.select(t.c.line_id, t.c.source_name).where(
+            t.c.line_id.in_(named[i:i + 1000]))).fetchall())
+    return {cell: source.get(line_id) for cell, line_id in won.items()}
+
+
+def head_lines(db, table_name, row_ids, columns=None) -> dict:
+    """{(row_id, column): {source: {"value", "at", "written_by"}}} - each source's newest line of the cell (its head
+    bit), a withdrawn one left out (the source says nothing): the layers a Sources window shows. The head index -
+    (row_id, source_name) WHERE a head bit is set."""
+    bits = line_bits(db, table_name)
+    if columns is not None:
+        bits = {name: bit for name, bit in bits.items() if name in set(columns)}
+    t = line_table(table_name, bits)
+    heads = [t.c[name] != 0 for name in t.c.keys() if name.startswith("head_")]
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    out = {}
+    for i in range(0, len(ids), 1000):
+        for row in db.execute(sa.select(t).where(t.c.row_id.in_(ids[i:i + 1000]), sa.or_(*heads))):
+            for name, bit in bits.items():
+                if _said(row, bit, "head") and not _said(row, bit, "withdrawn"):
+                    out.setdefault((row.row_id, name), {})[row.source_name] = {
+                        "value": getattr(row, name), "at": row.at, "written_by": row.written_by}
+    return out
+

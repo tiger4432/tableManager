@@ -561,37 +561,11 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     for row_id, column_name, is_ow, updated_by, manual_priority_source in overwrites:
         overwrites_map[(row_id, column_name)] = (is_ow, updated_by, manual_priority_source)
         
-    # 2. cell_sources 일괄 로딩 (include_sources가 True일 때만 실행)
-    sources_map = {}
-    ingested_map = {}
-    if include_sources:
-        # [ORDER BY source_name] Same reason as the crud SELECTs: this list feeds
-        # `compute_priority_value`, so its order is stated rather than inherited from
-        # the heap. `source_name` is UNIQUE per cell (`idx_sources_lookup_source`).
-        #
-        # [tiebreak] `ingested_at` is selected because recency breaks a tie between
-        # equally-ranked sources. Without it this READ path would resolve ties
-        # alphabetically while the WRITE path resolved them by recency, so the
-        # `priority_source` badge could name a different layer than the materialised
-        # `value` actually came from.
-        sources = db.query(
-            models.CellSource.row_id,
-            models.CellSource.column_name,
-            models.CellSource.source_name,
-            models.CellSource.value,
-            models.CellSource.ingested_at
-        ).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id.in_(row_ids)
-        ).order_by(models.CellSource.source_name.asc()).all()
+    # 2. the winners (t__now.won_by) and, for the sources, each source's head line (cell-source overhaul)
+    from admin import audit_history
 
-        for row_id, column_name, source_name, value, ingested_at in sources:
-            key = (row_id, column_name)
-            if key not in sources_map:
-                sources_map[key] = {}
-                ingested_map[key] = {}
-            sources_map[key][source_name] = value
-            ingested_map[key][source_name] = ingested_at
+    won = audit_history.winners(db, table_name, row_ids)
+    heads = audit_history.head_lines(db, table_name, row_ids) if include_sources else {}
 
     data_list = []
     for row in rows:
@@ -606,33 +580,12 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             key = (r_id, col)
             
             ow_info = overwrites_map.get(key)
-            col_srcs = sources_map.get(key, {})
-            
+            col_srcs = {name: wire_text(one["value"]) for name, one in heads.get(key, {}).items()}
+
             is_ow = ow_info[0] if ow_info else False
             updated_by = ow_info[1] if ow_info else "system"
             manual_pin = ow_info[2] if ow_info else None
-            
-            # [성능 최적화] include_sources=False 일 때는 소스 쿼리를 건너뛰었으므로 Overwrite 테이블 정보로 즉시 유도
-            if not include_sources:
-                # a pin answers first - a cell pinned to a file's layer shows that layer, whoever pinned it (owner
-                # 11-08 ㄱ: the overwrite row a pin writes names the person who pinned, and read as «user» it painted
-                # the cell «Written by person»)
-                # the layers the overwrite row shows; the ranking stays compute_priority_value's
-                shown = {}
-                if manual_pin is not None:
-                    shown[manual_pin] = {}
-                elif updated_by == "collision_merge":
-                    shown["collision_merge"] = {}
-                elif is_ow or updated_by == "user":
-                    shown["user"] = {}
-                _, priority_source = crud.compute_priority_value(shown, manual_pin, table_name, cell=(table_name, col, row))
-            else:
-                # `col_srcs` is `{source: value}` because that dict IS the client-facing
-                # cell contract and cannot carry a timestamp; the timestamps travel
-                # beside it. The response shape is unchanged.
-                _, priority_source = crud.compute_priority_value(
-                    col_srcs, manual_pin, table_name,
-                    ingested_at_by_source=ingested_map.get(key), cell=(table_name, col, row))
+            priority_source = won.get(key)
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
@@ -684,31 +637,26 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
 
 def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
     """{(row_id, column): {"sources", "manual_priority_source", "priority_source", "value"}} - each of `cells` (of
-    `rows`, {row_id: row}) as the sources panel reads it: every layer with its time and writer, the pin, and the
-    winner `crud.compute_priority_value` picks."""
-    from database import crud, models
+    `rows`, {row_id: row}) as the sources panel reads it: each source's head line with its time and writer, the pin,
+    and the winner its current line names (`audit_history.winners`)."""
+    from admin import audit_history
 
     if not cells:
         return {}
     row_ids = sorted({row_id for row_id, _ in cells})
     columns = sorted({column for _, column in cells})
-    layers = {}
-    # [ORDER BY source_name] this feeds `compute_priority_value`; a SELECT that feeds a decision states its order
-    for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name, models.CellSource.row_id.in_(row_ids),
-            models.CellSource.column_name.in_(columns)).order_by(models.CellSource.source_name.asc()):
-        layers.setdefault((s.row_id, s.column_name), {})[s.source_name] = {
-            "value": s.value, "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
-            "updated_by": s.updated_by}
+    heads = audit_history.head_lines(db, table_name, row_ids, columns)
+    won = audit_history.winners(db, table_name, row_ids)
     pins = {(ow.row_id, ow.column_name): ow.manual_priority_source for ow in db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name, models.CellOverwrite.row_id.in_(row_ids),
         models.CellOverwrite.column_name.in_(columns))}
     out = {}
     for row_id, column in cells:
-        sources, pin, row = layers.get((row_id, column), {}), pins.get((row_id, column)), rows[row_id]
-        _, winner = crud.compute_priority_value(sources, pin, table_name, cell=(table_name, column, row))
-        out[(row_id, column)] = {"sources": sources, "manual_priority_source": pin, "priority_source": winner,
-                                 "value": getattr(row, column)}
+        sources = {name: {"value": wire_text(one["value"]), "updated_by": one["written_by"],
+                          "timestamp": one["at"].isoformat() if one["at"] else None}
+                   for name, one in heads.get((row_id, column), {}).items()}
+        out[(row_id, column)] = {"sources": sources, "manual_priority_source": pins.get((row_id, column)),
+                                 "priority_source": won.get((row_id, column)), "value": getattr(rows[row_id], column)}
     return out
 
 

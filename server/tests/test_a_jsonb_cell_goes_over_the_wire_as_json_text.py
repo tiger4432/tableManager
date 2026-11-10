@@ -102,7 +102,7 @@ def test_the_csv_export_and_the_grid_read_one_function():
     assert body.count("wire_text(r)") == 2, (
         "both the sample sizer and the streamed rows must fold the same way")
     merge = inspect.getsource(main.fetch_and_merge_metadata)
-    assert merge.count("wire_text(") == 2, "the view arm and the ordinary arm"
+    assert merge.count("wire_text(") == 3, "the view arm, the ordinary arm and its sources (the head lines' values)"
 
 
 # ---------------------------------------------------------------------------

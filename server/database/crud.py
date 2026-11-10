@@ -900,29 +900,6 @@ def writer_kind(source_name):
     return "file"
 
 
-def writer_kind_clause(column, kinds):
-    """The SQL of «`writer_kind`(the layer name in `column`) is one of `kinds`» - built from the same names
-    (`WRITER_KINDS`, `machine_layer_names`) and the same reading of a name by what comes before « (»
-    (`layer_writer`), so a page reads only the layers a rule asks about (lead 11-09)."""
-    from sqlalchemy import and_, false, not_, or_
-
-    bases = {}
-    for name in machine_layer_names() | set(WRITER_KINDS):
-        bases.setdefault(WRITER_KINDS.get(name, "chain"), set()).add(name)
-
-    def escaped(name):
-        return name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-    def named(names):
-        return or_(false(), *(or_(column == name, column.like(escaped(name) + " (%", escape="\\"))
-                              for name in sorted(names)))
-
-    picked = [named(names) for kind, names in sorted(bases.items()) if kind in kinds and kind != "file"]
-    if "file" in kinds:
-        picked.append(not_(named({name for kind, names in bases.items() if kind != "file" for name in names})))
-    return or_(false(), *picked) if picked else and_(false())
-
-
 def is_file_layer(source_name) -> bool:
     """A layer a file wrote - any name outside `machine_layer_names`, because a file parser
     writes under the ingested file name, an open set.
