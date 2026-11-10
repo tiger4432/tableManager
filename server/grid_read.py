@@ -488,11 +488,9 @@ from utils.wire_format import wire_text  # noqa: E402
 
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
-    """
-    기본 데이터 테이블의 row 객체들에 cell_overwrites 및 cell_sources 정보를 병합하여 
-    API 응답 포맷인 { value, is_overwrite, sources, updated_by } 딕셔너리로 합성합니다.
-    include_sources=False이면 cell_sources 조회를 생략하여 대량 조회 성능을 최적화합니다.
-    """
+    """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
+    priority_source}` a cell: the winner from t__now.won_by (`audit_history.winners`), the pins from cell_overwrites,
+    and with `include_sources` each source's head line (`audit_history.head_lines`)."""
     if not rows:
         return []
 
