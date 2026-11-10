@@ -103,6 +103,20 @@ def test_two_writers_of_one_row_end_on_it_one_after_the_other(sessions):
     assert {r for r, *_ in rows} <= alive, "no orphan line"
 
 
+def test_two_writers_by_the_key_of_a_committed_row_one_after_the_other(sessions):
+    make = sessions
+    s = make()
+    out = write_lines(s, TABLE, [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "0"}, "source_name": "f0"}],
+                      kind="funnel", transaction_id="tx-0")
+    s.commit()
+    s.close()
+    [row_id] = out["changed"]
+    answer, waited = _second_waits(make, [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "1"}, "source_name": "f1"}],
+                                   [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "2"}, "source_name": "f2"}])
+    assert waited >= 0.9 and list(answer["changed"]) == [row_id]
+    assert answer["changed"][row_id]["old"]["a"] == "1", "the second read the row before the first let it go"
+
+
 def test_two_writers_of_one_new_key_end_on_one_row(sessions):
     make = sessions
     item = {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "f1"}

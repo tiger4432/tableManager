@@ -18,6 +18,7 @@ CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "stri
 def stand_in_winners(shape):
     """Stand-in for C's lines.winners_sql until it lands (11-11): the latest head line of the column wins - no rank, no
     pin. The two write_lines test files share it."""
+    assert not hasattr(lines, "winners_sql"), "C's winners_sql landed - drop this stand-in, gate the real one"
     def winners(table, cfg, column, param):
         k, m = shape["bits"][column] // 64, 1 << (shape["bits"][column] % 64)
         head = "h.line_kind = 'write' AND (h.head_{k} & {m}) != 0 AND (h.withdrawn_{k} & {m}) = 0".format(k=k, m=m)
@@ -148,3 +149,10 @@ def test_the_answer_says_each_audit_row_and_the_distinct_rows_it_wrote(db):
         {"transaction_id": "tx2", "table_name": TABLE, "changed_rows": 2, "kind": "new", "written_by": "loader"}]
     rows = db.execute(select(lines.AuditBatch.__table__).where(lines.AuditBatch.transaction_id == "tx2")).mappings()
     assert sorted((a["work_kind"], a["written_by"]) for a in rows) == [(a["kind"], a["written_by"]) for a in out["audit"]]
+
+
+def test_a_write_the_database_gives_no_time_for_is_refused(db, monkeypatch):
+    monkeypatch.setattr(crud, "batch_write_instant", lambda _db: None)
+    with pytest.raises(RuntimeError, match="gave no time"):
+        _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})
+    assert _lines(db) == [] and _now(db) == {}
