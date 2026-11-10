@@ -93,17 +93,9 @@ Usage::
         --apply --i-accept-writing-to-owner-database
     conda run -n assy_manager python server/scripts/seed_syn_k1_lot.py --verify-rollback
 
-ROLLBACK - a predicate, and it has been RUN (as SELECT count) rather than assumed
----------------------------------------------------------------------------------
-    DELETE FROM void_obs       WHERE base_wafer_id LIKE 'SYN-BW-K1-201-%';
-    DELETE FROM inspection_run WHERE base_wafer_id LIKE 'SYN-BW-K1-201-%';
-    DELETE FROM bonding_log    WHERE bond_lot = 'SYN-K1-201';
-    DELETE FROM wafer_map_metadata WHERE target_table = 'bonding_log'
-       AND (map_id LIKE 'SYN-K1-201\\_%' ESCAPE '\\'
-         OR map_id LIKE 'SYN-K1DT-201\\_%' ESCAPE '\\'
-         OR map_id LIKE 'SYN-K1CL-201\\_%' ESCAPE '\\');
-    DELETE FROM cell_sources    WHERE updated_by = 'seed_syn_k1_lot';
-    DELETE FROM cell_overwrites WHERE updated_by = 'seed_syn_k1_lot';
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
 
 🔴 `updated_by` IS THIS MODULE'S OWN, AND THAT IS NOT A DETAIL. A helper imported from
 another seeder closes over ITS OWN module-level constants: calling `vbj._write` would
@@ -388,6 +380,7 @@ def _batch(rows):
     from database import schemas
 
     return schemas.GeneralUpdateBatch(
+        transaction_id=RUN_TX,
         updates=[schemas.GeneralUpdateItem(updates=row, source_name=SOURCE_NAME,
                                            updated_by=UPDATED_BY) for row in rows],
         replace_map=False, scope=None)
@@ -431,7 +424,7 @@ def guard_database(db, allow_owner_database=False):
     return name
 
 
-#: The rollback block from the docstring, as executable predicates. `--verify-rollback`
+#: The rows this run wrote, by their markers - counted, not SQL to paste. `--verify-rollback`
 #: runs them as SELECT count(*) so the block is a MEASUREMENT rather than a promise: a
 #: predicate that has never been run is a predicate that matches zero rows exactly as
 #: convincingly as one that works.
@@ -469,7 +462,7 @@ def verify_rollback(db):
             "REFUSED: `cell_sources WHERE updated_by = '%s'` matched 0 rows. Either "
             "nothing was written yet, or the cells landed under ANOTHER module's "
             "`updated_by` - which is the imported-helper trap this script re-declares "
-            "`_write` to avoid. The rollback block is not verified." % UPDATED_BY)
+            "`_write` to avoid. The markers are not verified." % UPDATED_BY)
     return out
 
 
@@ -496,6 +489,10 @@ def build():
             "__negatives": negatives}
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--apply", action="store_true", help="write; default is a dry run")
@@ -517,7 +514,7 @@ def main(argv=None):
     try:
         if args.verify_rollback:
             print("database: %s" % guard_database(db, allow_owner_database=True))
-            print("\n--- ROLLBACK PREDICATES, COUNTED ---")
+            print("\n--- ROWS THIS RUN WROTE, COUNTED BY ITS MARKERS (not SQL to paste - ask before undoing) ---")
             for table, predicate, n in verify_rollback(db):
                 print("  %-19s %7d rows   WHERE %s" % (table, n, predicate))
             return 0
@@ -556,7 +553,7 @@ def main(argv=None):
             db.commit()
             print("  wrote %-19s %7d changed row(s) in %.1fs"
                   % (table, n, time.time() - t0))
-        print("\n--- ROLLBACK PREDICATES, COUNTED (not assumed) ---")
+        print("\n--- ROWS THIS RUN WROTE, COUNTED BY ITS MARKERS (not SQL to paste - ask before undoing) ---")
         for table, predicate, n in verify_rollback(db):
             print("  %-19s %7d rows   WHERE %s" % (table, n, predicate))
         print("\nDONE. Confirm with:")
@@ -567,4 +564,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     raise SystemExit(main())

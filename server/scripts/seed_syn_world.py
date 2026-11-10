@@ -69,7 +69,7 @@ bond_y). The re-mint is an UPDATE, never a re-key.
 🔴 THE RE-MINT IS DONE HERE AND NOT IN `seed_syn_void_base_join`, ON PURPOSE. That
 generator stays byte-identical, so re-running it with the same seed restores the original
 values exactly - which turns "undo the re-mint" from a stored backup into a PREDICATE,
-the same standard as every DELETE in the rollback block below.
+the same standard as a seed's undo by its batch (UNDO below).
 
 🔴 core_slot != bond_slot, AND THE FIXTURE WAS NOT BENT TO HIDE THAT
 ---------------------------------------------------------------------
@@ -149,26 +149,12 @@ Usage::
     # both directions, every axis
     ... seed_syn_world.py --prove
 
-ROLLBACK - a predicate, not a list
------------------------------------
-    DELETE FROM core_wafer_map      WHERE core_lot LIKE 'SYN-CL-%';
-    DELETE FROM dt_log              WHERE dt_job  LIKE 'SYN-DTJ-%';
-    DELETE FROM dt_map              WHERE dt_job  LIKE 'SYN-DTJ-%';
-    DELETE FROM lot_event           WHERE lot LIKE 'SYN-CL-%';
-    DELETE FROM wafer_process       WHERE lot LIKE 'SYN-CL-%';
-    DELETE FROM wafer_map_metadata  WHERE map_id LIKE 'SYN-CL-%' OR map_id LIKE 'SYN-DT-%';
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
+    The ledger atoms it writes straight into the ledger, not through a source - as before:
     DELETE FROM ledger_events       WHERE source_translator_ver LIKE 'syn_world/%';
     DELETE FROM ledger_translator_cursor WHERE source = 'syn_world';
-    DELETE FROM cell_sources        WHERE updated_by = 'seed_syn_world';
-    DELETE FROM cell_overwrites     WHERE updated_by = 'seed_syn_world';
-    -- ⚠️ the cell layers key on `row_id`; `business_key_val` is NOT a column on them, so
-    -- a delete written against that name fails with UndefinedColumn rather than 0 rows.
-    UPDATE bonding_log SET core_lot=NULL, core_slot=NULL, cx=NULL, cy=NULL
-      WHERE bond_lot LIKE 'SYN-VOID-%';
-    -- and dt_x/dt_y, which is the one UPDATE a DELETE cannot express:
-    --   conda run -n assy_manager python server/scripts/seed_syn_void_base_join.py \
-    --       --apply --i-accept-writing-to-owner-database
-    -- that generator is pure and seeded, so it restores the original formula's values.
 """
 from __future__ import annotations
 
@@ -923,6 +909,7 @@ def _batch(rows):
     from database import schemas
 
     return schemas.GeneralUpdateBatch(
+        transaction_id=RUN_TX,
         updates=[schemas.GeneralUpdateItem(updates=row, source_name=SOURCE_NAME,
                                            updated_by=UPDATED_BY) for row in rows],
         replace_map=False, scope=None)
@@ -1090,6 +1077,10 @@ def assert_bijection(plan):
     return len(seen), len(dies)
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--apply", action="store_true", help="write; default is a dry run")
@@ -1191,4 +1182,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     raise SystemExit(main())

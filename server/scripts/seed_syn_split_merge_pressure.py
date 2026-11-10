@@ -92,17 +92,12 @@ explicit that the observation-bias gate must not ring on this lot.
 Ratios are aimed away from the excursion ladder (measured 2.30 / 3.38 / 4.97x) so nobody
 reading a coloured cell has to ask which fixture produced it.
 
-SEPARATION AND ROLLBACK
------------------------
-    DELETE FROM void_obs        WHERE base_wafer_id LIKE 'SYN-BW-SPL-400-%';
-    DELETE FROM delam_obs       WHERE base_wafer_id LIKE 'SYN-BW-SPL-400-%';
-    DELETE FROM inspection_run  WHERE base_wafer_id LIKE 'SYN-BW-SPL-400-%';
-    DELETE FROM bonding_log     WHERE bond_lot LIKE 'SYN-SPL-400%';
-    DELETE FROM lot_event       WHERE lot LIKE 'SYN-SPL-400%' OR lot = 'SYN-MRG-400';
-    DELETE FROM wafer_map_metadata WHERE map_id LIKE 'SYN-SPL-400%';
+SEPARATION AND UNDO
+-------------------
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
+    The ledger atoms it writes straight into the ledger, not through a source - as before:
     DELETE FROM ledger_events   WHERE source_translator_ver LIKE 'syn_split_merge/%';
     DELETE FROM ledger_translator_cursor WHERE source = 'syn_split_merge';
-    DELETE FROM cell_sources    WHERE updated_by = 'seed_syn_split_merge_pressure';
 
 `--verify-rollback` COUNTS every one of those and REFUSES if the ledger predicate matches
 zero, because a rollback predicate that matches nothing is the failure mode this lane hit
@@ -463,6 +458,7 @@ def _write(db, table, rows):
     for start in range(0, len(rows), CHUNK):
         report = {}
         batch = schemas.GeneralUpdateBatch(
+        transaction_id=RUN_TX,
             updates=[schemas.GeneralUpdateItem(updates=r, source_name=SOURCE_NAME,
                                                updated_by=UPDATED_BY)
                      for r in rows[start:start + CHUNK]],
@@ -548,6 +544,10 @@ def verify_rollback(db):
     return counts
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Seed a split/merge lot whose arms differ only in bond pressure. "
@@ -616,7 +616,7 @@ def main():
         print("lot_event written         : %d" % _write(db, "lot_event", events))
         print("ledger                    : %s" % write_atoms(atoms))
         print()
-        print("rollback predicates, counted:")
+        print("rows this run wrote, counted by its markers (not SQL to paste - ask before undoing):")
         verify_rollback(db)
         print()
         print("🔴 NOT DONE YET - nothing translates these rows on its own:")
@@ -628,4 +628,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     main()
