@@ -1,15 +1,16 @@
 # 지금 돌리면 되는 것
 
-> ## [11-11] **도움말이 운영 안내서 10 개를 더 읽는다 (9 -> 19)** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
+> ## [11-11] **도움말이 운영 안내서 11 개를 더 읽는다 (9 -> 20)** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
 >
 > ```
-> 무엇     수집기(AUTO_UPDATE) · 파일 인제스트 · 원장 · 텍스트 연결 · 표기 규칙 · 맵 프리셋 · 맵 오버레이
+> 무엇     수집기(AUTO_UPDATE) · 소급(BACKFILL) · 파일 인제스트 · 원장 · 텍스트 연결 · 표기 규칙 · 맵 프리셋 · 맵 오버레이
 >          · DOE · 유효 다이 맵 · 롤백 안내서가 Help 답의 근거와 Guide 목록에 든다
 >          맵 · DOE · 유효 다이 · 롤백은 어드민 탭이 아니라 Guide 의 «All N» 에만 보임
 > 볼 것    Help 에서 «수집기 하나 만들기» 를 물으면 AUTO_UPDATE_GUIDE.md 의 «0. 한눈에 보기 — 수집기 하나 만들기» 절이 답에 실림
 >          Auto Update 탭 Guide 칩에 AUTO_UPDATE_GUIDE.md
 > 답의 뜻  안 나오면 API 가 재기동 전
->          체인(chain_ingestion_guide) · 소급(BACKFILL) 안내서는 낡은 문장을 고칠 때까지 뺌
+>          체인(chain_ingestion_guide) 안내서는 낡은 문장을 고칠 때까지 뺌. 소급(BACKFILL) 은 고쳐서 다시 넣음
+>          (BACKFILL 이 이제 말함: ledger.backfill --source · --catch-up 과 run_here 줄은 --apply 없이 바로 씀)
 >          소급 연산의 pace 도움말이 «ONE AT A TIME» 대신 «같은 곳에 쓰는 run 만 기다린다» 로 나옴
 >          새 안내서에 지금 코드와 다른 문장이 남아 있음(목록은 총괄에게) — 도우미가 그 문장을 인용하면 안내서가 낡은 것
 > 끄기     server/admin/help_guides.json 에서 그 줄을 빼고 API 재기동
