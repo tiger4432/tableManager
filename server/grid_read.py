@@ -312,20 +312,17 @@ def apply_search_filter(query, table_model, table_name, q, cols,
 
 
 def transaction_rows(db, table_model, table_name, transaction_id):
-    """The rows transaction `transaction_id` touched, as a filter: the rows its history lines name, and the rows its
-    receipts name in `row_ids` (`crud.receipt_log` - a formula's batch leaves no line a row, lead 10-28)."""
+    """The rows transaction `transaction_id` changed, as a filter: the rows of its lines (cell-source overhaul - the
+    (batch) index; a formula writes lines too, C 11-10); none in a relation without lines."""
     import sqlalchemy as sa
 
-    from admin.audit_cache import in_group
-    from ledger.runtime_v2 import RECEIPT_COLUMN
+    from admin import audit_history
+    from database import lines
 
     refuse_row_address(table_name)
-    in_tx = (models.AuditLog.table_name == table_name, in_group(models.AuditLog.transaction_id, transaction_id))
-    named = [row_id for (value,) in db.query(models.AuditLog.new_value).filter(
-                 *in_tx, models.AuditLog.column_name == RECEIPT_COLUMN)
-             for row_id in ((value or {}).get("row_ids") or () if isinstance(value, dict) else ())]
-    lined = table_model.row_id.in_(db.query(models.AuditLog.row_id).filter(*in_tx))
-    return sa.or_(lined, table_model.row_id.in_(named)) if named else lined
+    if not lines.has_lines(db, table_name):
+        return sa.false()
+    return table_model.row_id.in_(audit_history.group_line_rows(table_name, transaction_id))
 
 
 def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,

@@ -509,74 +509,25 @@ def test_internal_events_endpoints(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_internal_events_updates_cache_and_broadcasts(client):
+def test_internal_events_updates_cache_and_broadcasts(client, monkeypatch):
+    """Both relays put a message's `changed` items on the recent history's list at once (cell-source overhaul)."""
     from admin.audit_cache import audit_cache
-    # Initialize cache & force loaded state for testing add_logs_batch
-    audit_cache.groups = []
-    audit_cache.is_loaded = True
+    monkeypatch.setattr(audit_cache, "groups", [])
+    monkeypatch.setattr(audit_cache, "is_loaded", True)
+    item = {"table_name": "inventory_master", "changed_rows": 3, "kind": "edit", "written_by": "batch_ingester"}
 
-    # 1. Test batch-refresh updates web server's audit cache
-    payload_refresh = {
-        "table_name": "inventory_master",
-        "change_count": 1,
-        "created_logs": [
-            {
-                "id": 9999,
-                "table_name": "inventory_master",
-                "row_id": "test_row_123",
-                "column_name": "unit_price",
-                "old_value": "10.0",
-                "new_value": "20.0",
-                "source_name": "batch_ingester",
-                "updated_by": "test_agent",
-                "transaction_id": "tx_refresh_test",
-                "business_key": "bk_refresh_test",
-                "timestamp": "2026-06-14T20:30:00+09:00"
-            }
-        ]
-    }
-    response = client.post("/internal/events/batch-refresh", json=payload_refresh)
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    response = client.post("/internal/events/batch-refresh", json={
+        "table_name": "inventory_master", "change_count": 3, "changed": [dict(item, transaction_id="tx_refresh")]})
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
+    assert [(g["transaction_id"], g["changed"]) for g in audit_cache.groups] == [
+        ("tx_refresh", {"inventory_master": 3})]
 
-    # Verify audit cache updated
-    assert len(audit_cache.groups) > 0
-    assert audit_cache.groups[0]["transaction_id"] == "tx_refresh_test"
-    from admin.audit_cache import representative
-    assert representative(audit_cache.groups[0]).row_id == "test_row_123"
-
-    # Reset cache
-    audit_cache.groups = []
-
-    # 2. Test broadcast updates cache and routes
-    payload_broadcast = {
-        "event": "batch_row_upsert",
-        "table_name": "inventory_master",
-        "transaction_id": "tx_broadcast_test",
-        "created_logs": [
-            {
-                "id": 9998,
-                "table_name": "inventory_master",
-                "row_id": "test_row_456",
-                "column_name": "qty",
-                "old_value": "5",
-                "new_value": "15",
-                "source_name": "chain_ingestion",
-                "updated_by": "chain_worker",
-                "transaction_id": "tx_broadcast_test",
-                "business_key": "bk_broadcast_test",
-                "timestamp": "2026-06-14T20:45:00+09:00"
-            }
-        ]
-    }
-    response = client.post("/internal/events/broadcast", json=payload_broadcast)
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-    # Verify audit cache updated
-    assert len(audit_cache.groups) > 0
-    assert audit_cache.groups[0]["transaction_id"] == "tx_broadcast_test"
-    assert representative(audit_cache.groups[0]).row_id == "test_row_456"
+    response = client.post("/internal/events/broadcast", json={
+        "event": "batch_row_upsert", "table_name": "inventory_master", "transaction_id": "tx_broadcast",
+        "changed": [dict(item, transaction_id="tx_broadcast", kind="new")]})
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
+    top = audit_cache.groups[0]
+    assert (top["transaction_id"], top["tables"]["inventory_master"]["kinds"]) == ("tx_broadcast", ["new"])
 
 
 def test_automatic_schema_alteration(db_session):

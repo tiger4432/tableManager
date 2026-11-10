@@ -2388,9 +2388,6 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         "business_key": business_key,
         "timestamp": ts
     }
-    if add_to_cache:
-        from admin.audit_cache import audit_cache
-        audit_cache.add_log(log_dict)
         
     return log_dict
 
@@ -5848,8 +5845,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     payload's own columns, so a second pass over the same `batch.updates` computes the
     same key and the keys are identical. (Until 판정 190 this said it was "guarded on
     neither id nor key supplied" — that guard is gone, and the property it was credited
-    with was the function's all along, which is why replay is unaffected.) `audit_cache.add_logs_batch` runs only AFTER `db.commit()`
-    returns, so a failed attempt contributes no cached logs. `db.rollback()` discards the
+    with was the function's all along, which is why replay is unaffected.) `db.rollback()` discards the
     pending rows of the failed attempt, and the outbox rows staged by `before_flush` go
     with them - the replay stages them again.
 
@@ -6641,10 +6637,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         from session_contract import end_step
         end_step(db)                # a commit, or a held group's step (총괄 09f58844f)
         
-        if logs_to_cache:
-            from admin.audit_cache import audit_cache
-            audit_cache.add_logs_batch(logs_to_cache)
-
         # [adopt] A replace_map write can resolve a row that was NOT in the scope it
         # declared, and until now it said nothing about having done so.
         #
@@ -6766,10 +6758,6 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
             bulk_insert_audit_logs(db, logs_to_cache)
 
         db.commit()
-
-        if logs_to_cache:
-            from admin.audit_cache import audit_cache
-            audit_cache.add_logs_batch(logs_to_cache)
 
         return new_rows
 
@@ -6895,12 +6883,6 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
             from session_contract import end_step
             end_step(db)
 
-            if logs_to_cache:
-                from admin.audit_cache import audit_cache
-                audit_cache.add_logs_batch(logs_to_cache)
-                
-            from admin.audit_cache import audit_cache
-            audit_cache.remove_deleted_rows(row_ids)
             
         return deleted_count
 
@@ -7064,10 +7046,6 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 
     db.commit()
-
-    if logs_to_cache:
-        from admin.audit_cache import audit_cache
-        audit_cache.add_logs_batch(logs_to_cache)
 
     serialized_logs = []
     for log in logs_to_cache:
@@ -7281,10 +7259,6 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
 
     db.commit()
     
-    if logs_to_cache:
-        from admin.audit_cache import audit_cache
-        audit_cache.add_logs_batch(logs_to_cache)
-        
     serialized_logs = []
     for log in logs_to_cache:
         log_copy = log.copy()

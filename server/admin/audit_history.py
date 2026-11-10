@@ -282,11 +282,10 @@ def entry_id(line_id, column):
 
 
 def line_bits(db, table_name) -> dict:
-    """{column: bit} of `table_name`'s lines (`line_columns`, a column not retired), in bit order."""
-    rows = db.execute(sa.text("SELECT column_name, bit FROM line_columns WHERE table_name = :t AND retired_at IS NULL "
-                              "ORDER BY bit"),
-                      {"t": table_name}).fetchall()
-    return {name: int(bit) for name, bit in rows}
+    """{column: bit} of `table_name`'s live columns (`lines.bit_map`), in bit order - a line says its columns so."""
+    from database import lines
+
+    return dict(sorted(lines.bit_map(db, table_name).items(), key=lambda kv: kv[1]))
 
 
 def _line_table(table_name, bits):
@@ -299,6 +298,7 @@ def _line_table(table_name, bits):
                     sa.Column("line_id", sa.Integer), sa.Column("line_kind", sa.String),
                     sa.Column("source_name", sa.String), sa.Column("at", sa.DateTime(timezone=True)),
                     sa.Column("written_by", sa.String), sa.Column("batch", sa.String),
+                    sa.Column("input_row", sa.String),
                     sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
                     *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
                       for kind in ("written", "withdrawn")],
@@ -377,3 +377,43 @@ def deleted_line_rows(db, table_name, row_ids) -> set:
         found.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
             t.c.row_id.in_(ids[i:i + 1000]), t.c.line_kind == "deleted").distinct()).fetchall())
     return found
+
+
+def changed_rows(db, table_name, group) -> int:
+    """How many rows history group `group` changed in `table_name` - its lines' distinct rows (the (batch) index;
+    owner 11-10 «바뀐 행수», counted, never stored)."""
+    from admin.audit_cache import in_group
+
+    t = _line_table(table_name, {})
+    return db.execute(sa.select(sa.func.count(sa.distinct(t.c.row_id))).where(in_group(t.c.batch, group))).scalar()
+
+
+def group_line_rows(table_name, group):
+    """The rows history group `group` wrote lines of in `table_name`, as a statement of row_ids (the grid's
+    transaction filter)."""
+    from admin.audit_cache import in_group
+
+    t = _line_table(table_name, {})
+    return sa.select(t.c.row_id).where(in_group(t.c.batch, group))
+
+
+def group_rows(db, table_name, group, limit) -> list:
+    """The rows history group `group` changed in `table_name`, the input's first first (then row_id), each with its
+    first line in the group - who wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no
+    value: owner 11-10 «바뀐 행 네비»). -> [entry fields]"""
+    from admin.audit_cache import in_group
+
+    t = _line_table(table_name, {})
+    first = sa.func.min(t.c.input_row)
+    picked = db.execute(sa.select(t.c.row_id, sa.func.min(t.c.line_id)).where(in_group(t.c.batch, group))
+                        .group_by(t.c.row_id).order_by(sa.nulls_last(first.asc()), t.c.row_id.asc())
+                        .limit(limit)).fetchall()
+    if not picked:
+        return []
+    said = {row.line_id: row for row in db.execute(sa.select(
+        t.c.line_id, t.c.source_name, t.c.written_by, t.c.at, t.c.batch, t.c.business_key_val).where(
+        t.c.line_id.in_([line_id for _row, line_id in picked]))).fetchall()}
+    return [{"id": str(line_id), "table_name": table_name, "row_id": row_id,
+             "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
+             "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
+             "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
