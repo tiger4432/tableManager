@@ -1602,6 +1602,7 @@ def _rule_outcome_before_running(rule, events):
         # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게. 묶음마다 한 번, 실제로 안 돌 때만.
         logger.info("[Chain] rule %s skipped: none of %s changed",
                     rule.get("name") or rule.get("target_table"), sorted(wake_columns(rule)))
+        return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, FIRE_REFUSED_COLUMNS
     return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, None
 
 
@@ -1610,8 +1611,12 @@ def _record_pre_run_outcomes(rules, events):
 
     🔴 걸린 것만 남기면, «평가돼서 할 일이 없던» 규칙이 영원히 `never_evaluated` 로 남는다.
        그건 이 라운드가 없애려는 그 침묵이고, 부재는 「옛 서버」 «하나»만 뜻해야 한다.
+    🔴 «평가된» = 이 묶음이 그 규칙의 표를 건드렸다(`watches_table`) 또는 꺼져 있다. 안 건드린 규칙에
+       「not triggered」를 쓰면 상관없는 쓰기가 모든 규칙의 마지막 결과를 덮는다(총괄 11-10 D1).
     """
     for rule in rules or ():
+        if not (rule_shape.is_switched_off(rule) or any(watches_table(rule, e.table_name) for e in events)):
+            continue
         outcome, reason = _rule_outcome_before_running(rule, events)
         if outcome is not None:
             activity.registry.record_outcome(
