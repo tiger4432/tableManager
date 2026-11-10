@@ -781,6 +781,15 @@ SOURCE_PRIORITY = {
 # human writes must be selected POSITIVELY by this constant and never by blacklisting
 # automatic ones.
 USER_SOURCE = "user"
+#: The key merge's own layer and pin - the value a merge chose (`write_lines._merge_into`).
+COLLISION_SOURCE = "collision_merge"
+
+
+def writes_as_person(source_name, written_by) -> bool:
+    """Whether a write's cells count as a person's in a key merge (`human_columns`): written as «user», or by a
+    named hand that is not the system nor a parser - the write seat's rule, one seat."""
+    return source_name == USER_SOURCE or bool(
+        written_by and written_by != "system" and "parser" not in str(written_by).lower())
 
 #: Who wrote a cell, in the words a colour rule's written_by picks (owner 11-06, lead 11-07), by a layer's base name
 #: (`layer_writer`). None = no word, said here so it is not mistaken for one left out: a merge's value is other writers'
@@ -4519,27 +4528,37 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
 def merge_into_key_holders(db: Session, table_name: str, pairs, *, source_name: str,
                            updated_by: str, transaction_id: str) -> list:
     """Each (row_id, holder row_id) - a row whose rebuilt key the holder already carries - merged
-    into the holder through `_merge_into_key_holder`, for a caller that writes no value: no cell
-    is a person's this time (`human_columns` empty), so both rows' overwrite marks keep a
-    person's value. The audit lines, layers and marks are written; the caller commits. Returns
-    the merged rows' ids. Not undone. (rebuild_blank_business_keys --apply, the notation backfill)"""
-    model = models.DYNAMIC_TABLES[table_name]
-    sources, overwrites, overwrites_gone, logs, merged = ByRow(), ByRow(), ByRowSet(), ByRowLogs(), []
-    for row_id, holder_id in pairs:
-        shell = db.query(model).filter(model.row_id == row_id).one()
-        holder = db.query(model).filter(model.row_id == holder_id).one()
-        _merge_into_key_holder(
-            db, table_name, model, shell, holder, explicit={}, human_columns=set(),
-            source_name=source_name, updated_by=updated_by, transaction_id=transaction_id,
-            changed_cols=[], overwrites_cache={}, cell_sources_to_upsert=sources,
-            cell_overwrites_to_upsert=overwrites, cell_overwrites_to_delete=overwrites_gone,
-            logs_to_cache=logs, deleted_row_ids=merged)
-    if logs:
-        bulk_insert_audit_logs(db, logs)
-    bulk_upsert_cell_sources(db, list(sources.values()))
-    bulk_upsert_cell_overwrites(db, list(overwrites.values()))
-    bulk_delete_cell_overwrites(db, list(overwrites_gone))
-    return merged
+    into the holder by the one merge body (`write_lines.merge_rows`, the step every write's key
+    rebuild takes), for a caller that writes no value: no cell is a person's this time, so both
+    rows' overwrite marks keep a person's value. The caller commits. Returns the merged rows' ids.
+    Not undone. (rebuild_blank_business_keys --apply, the notation backfill)"""
+    from database.write_lines import merge_rows
+
+    if not pairs:
+        return []
+    db.flush()                                     # a caller's ORM edits of these rows go before the merge reads them
+    answer = merge_rows(db, table_name, list(pairs), source_name=source_name, written_by=updated_by,
+                        transaction_id=transaction_id)
+    model = models.DYNAMIC_TABLES.get(table_name)
+    for obj in [o for o in db.identity_map.values() if model is not None and isinstance(o, model)]:
+        if obj.row_id in answer["merged"]:
+            db.expunge(obj)                        # its row is gone - the session must not write it back
+    return list(answer["merged"])
+
+
+def merged_away(table_name: str, answer: dict, deleted_edits: Optional[dict] = None) -> list:
+    """The rows a write merged into their key's holder (`write_lines`' «merged»), for the caller's row-delete
+    message; `deleted_edits` (the caller's out-argument) takes what each was an edit of, read from its line before."""
+    shells = list(answer.get("merged") or ())
+    if deleted_edits is not None and shells:
+        from types import SimpleNamespace
+
+        from admin import access
+        for shell in shells:
+            edit = access.edit_of_row(table_name, SimpleNamespace(**(answer["changed"][shell]["old"] or {})))
+            if edit is not None:
+                deleted_edits[shell] = edit
+    return shells
 
 
 def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem, plan: dict, drop_stats: dict,
@@ -5115,10 +5134,7 @@ def apply_row_update_internal(
                             explicit=update_item.updates,
                             human_columns=(
                                 set(update_item.updates)
-                                if (update_item.source_name == "user" or (
-                                    update_item.updated_by and update_item.updated_by != "system"
-                                    and "parser" not in str(update_item.updated_by).lower()))
-                                else set()),
+                                if writes_as_person(update_item.source_name, update_item.updated_by) else set()),
                             source_name=update_item.source_name,
                             updated_by=update_item.updated_by, transaction_id=transaction_id,
                             changed_cols=changed_cols, overwrites_cache=overwrites_cache,
@@ -6244,7 +6260,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 bulk_insert_audit_logs(db, receipts)
             count(len(receipts))
 
-        deleted_row_ids = []
+        deleted_row_ids = merged_away(table_name, answer, deleted_edits)     # rows merged into their key's holder
         # [scope diff] What disappeared: the scope MINUS what this write claimed - every row an item resolved to,
         # the unchanged ones included (an unchanged re-push claims its rows; reading «changed» here would purge them).
         if batch.replace_map and use_diff:
@@ -6255,7 +6271,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
-            deleted_row_ids = removed_row_ids
+            deleted_row_ids = deleted_row_ids + removed_row_ids
             logger.info(
                 f"🔄 [Map Diff] Table: '{table_name}' | TX: {tx_id} | "
                 f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(unique_results)} | "
@@ -6554,9 +6570,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     """A person pins the source cells show (Pin), or takes the pin off (`source_name` None, or the source already
     pinned there - a toggle), and commit. The pin stays in cell_overwrites (outside the overhaul); a row whose pin
     moved gets one «mark» line (`write_lines`), which merges it again - the shown value moves when the pin moves it.
-    A cell whose pinned source has no head line there is skipped. -> (the rows asked whose cells were not all
-    skipped, as ORM rows; one history entry a cell whose shown value moved - no before value; the rows a key merge
-    took away - none yet: a pin that moves a key part's shown value rebuilds no key here)."""
+    A cell whose pinned source has no head line there is skipped. A pin that moves a key part's shown value
+    rebuilds the key, and a row whose new key another row holds is merged into it (write_lines' step 5½). -> (the
+    rows asked whose cells were not all skipped - a merged row's holder in its place -, as ORM rows; one history
+    entry a cell whose shown value moved - no before value; the rows merged away)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
     from admin.audit_history import head_lines
@@ -6608,19 +6625,25 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                           for r, cols in moved.items()], kind="mark", transaction_id=tx_id)
     at = (answer.get("at") or datetime.now(timezone.utc)).isoformat()
     types = TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
+    gone = merged_away(table_name, answer, deleted_edits)
+    landed = answer["merged"]
+    on = {}                                        # the row a cell is on now -> its cells (a merged row's: its holder)
+    for row_id, cols in asked.items():
+        for col in cols:
+            on.setdefault(landed.get(row_id, row_id), {})[col] = pins[(row_id, col)]
     logs = []
     for row_id, change in answer["changed"].items():
         was, now = change["old"] or {}, change["new"] or {}
-        for col in asked.get(row_id, ()):
+        for col, pin in on.get(row_id, {}).items():
             if values_differ(was.get(col), now.get(col), types.get(col, "string")) and keeps_history(table_name, col):
                 logs.append({"id": 0, "table_name": table_name, "row_id": row_id, "column_name": col,
                              "old_value": None, "new_value": event_constants.truncate_audit_value(now.get(col))[0],
-                             "source_name": "set_priority:%s" % pins[(row_id, col)], "updated_by": updated_by,
+                             "source_name": "set_priority:%s" % pin, "updated_by": updated_by,
                              "transaction_id": tx_id, "timestamp": at, "business_key": was.get("business_key_val")})
     db.commit()
-    order = {row_id: n for n, row_id in enumerate(asked)}
-    changed_rows = db.query(table_model).filter(table_model.row_id.in_(list(asked))).all()
-    return sorted(changed_rows, key=lambda r: order[r.row_id]), logs, []
+    order = {row_id: n for n, row_id in enumerate(on)}
+    changed_rows = db.query(table_model).filter(table_model.row_id.in_(list(on))).all()
+    return sorted(changed_rows, key=lambda r: order[r.row_id]), logs, gone
 
 def set_cell_manual_priority(db: Session, table_name: str, row_id: str, col_name: str, source_name: Optional[str], updated_by: str = "user",
                              deleted_edits: Optional[dict] = None):

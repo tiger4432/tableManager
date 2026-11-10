@@ -7,6 +7,7 @@ of an edit_by table carries `edits_of` - the rows' own tables, read before they 
            replace_map (a row its scope no longer claims - purge_map_rows - and a row it adopts from outside)
   tables   edit_probe (access edit_by target) -> edits_of the deleted rows' own targets · plain_probe -> no edits_of
   rows     A (M1|a, T1) · B (M1|b, T2) · C (M2|c, T3): a shell is A merged into B - its target T1, not B's T2
+           written as lines: A's «k» said «b» by lots.csv first, then «a» by seed.csv - the layer a pin picks
 """
 import json
 import uuid
@@ -15,7 +16,8 @@ import pytest
 import uuid6
 
 from conftest import retire_dynamic_model
-from database import crud, models
+from database import crud, lines, models
+from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
 EDIT, PLAIN = "edit_probe", "plain_probe"
 COLUMNS = {"m": "string", "k": "string", "target": "string", "v": "string"}
@@ -35,16 +37,32 @@ def fixture_board(db_session, client, monkeypatch, request):
         monkeypatch.setattr(crud, name, {})
     models.init_dynamic_models({table: ENTRIES[table]})
     monkeypatch.setitem(crud.TABLE_CONFIG, table, ENTRIES[table])
+    from sqlalchemy import Index
+
+    from database.write_lines import write_lines
+
     bind = db_session.get_bind()
     models.DYNAMIC_TABLES[table].__table__.create(bind=bind)
     model = models.DYNAMIC_TABLES[table]
+    Index("uq_%s_bk" % table, model.__table__.c.business_key_val, unique=True).create(bind=bind)
+    lines.ensure_line_table(db_session, table, ENTRIES[table])
+    ticking_clock(monkeypatch)                                        # one write a second: seed.csv is the newer
     ids = {name: str(uuid6.uuid7()) for name in ROWS}
-    db_session.add_all([model(row_id=ids[name], m=m, k=k, target=target,
-                              business_key_val=crud.compose_business_key(table, [m, k], ["m", "k"]))
-                        for name, (m, k, target) in ROWS.items()])
-    db_session.add(models.CellSource(table_name=table, row_id=ids["A"], column_name="k", source_name="lots.csv",
-                                     value="b"))
+
+    def say(source, name, values, **named):
+        write_lines(db_session, table, [{"values": values, "source_name": source, "written_by": "loader", **named}],
+                    kind="funnel", transaction_id=str(uuid6.uuid7()))
+
+    m, k, target = ROWS["A"]
+    say("lots.csv", "A", {"m": m, "k": "b", "target": target}, row_id=ids["A"],
+        key={"m": m, "k": "b"})                                       # lots.csv said «b» first
+    say("seed.csv", "A", {"k": k}, row_id=ids["A"])                   # then «a» - A is M1|a
+    for name in ("B", "C"):
+        m, k, target = ROWS[name]
+        say("seed.csv", name, {"m": m, "k": k, "target": target}, row_id=ids[name], key={"m": m, "k": k})
     db_session.commit()
+    assert {r.row_id: r.business_key_val for r in db_session.query(model)} == {
+        ids[name]: crud.compose_business_key(table, [m, k], ["m", "k"]) for name, (m, k, _t) in ROWS.items()},         "canary: three rows on their keys"
     sent = []
 
     async def capture(message):
@@ -56,6 +74,8 @@ def fixture_board(db_session, client, monkeypatch, request):
         db_session.rollback()
         for gone in (models.CellSource, models.CellOverwrite, models.AuditLog):
             db_session.query(gone).filter(gone.table_name == table).delete()
+        db_session.commit()
+        lines.drop_line_table(db_session, table)
         db_session.commit()
         models.DYNAMIC_TABLES[table].__table__.drop(bind=bind)
         retire_dynamic_model(table)
