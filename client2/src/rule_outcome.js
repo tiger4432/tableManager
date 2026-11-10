@@ -62,13 +62,14 @@ export function ruleStateView(rule) {
  *      키 «없음»  옛 서버 -> «안 그린다**. 부재는 이 뜻 «하나»여야 한다
  */
 export function ruleOutcomeView(entry) {
-  const none = { read: false, outcome: '', badge: '', reason: '', age: null };
+  const none = { read: false, outcome: '', failed: false, badge: '', reason: '', age: null };
   if (!entry || typeof entry !== 'object') return none;
   const outcome = typeof entry.last_outcome === 'string' ? entry.last_outcome.trim() : '';
   if (!outcome) return none;
   return {
     read: true,
     outcome,
+    failed: outcome === 'failed',
     // 🔴 «모르는» 토큰도 그립니다 — 다만 강조는 «안 붙입니다**. 여기서 안 그리면 서버가 낸
     //    진짜 결과(예: 새 실패 종류)를 화면이 «삼킵니다**. 토큰을 그대로 내는 것은 «거짓일
     //    수 없고**, 등급을 지어내는 것만 거짓일 수 있습니다 — 그래서 낱말은 내고 색은 안 냅니다.

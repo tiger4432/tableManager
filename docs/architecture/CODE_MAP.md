@@ -5872,6 +5872,10 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - 🆕 **[09-29 `29de5321c`] `failureRecordCells(errorLog) -> [[label, value]]` — 실패 기록을 «읽는» 한 자리** — 워커의 `error_log`(`_failure_record`: rules · tables · rows · row · reason)를 다섯 칸 `Rule · Table · Rows · Row · Reason` 으로. 칸이 없던 옛 기록은 `not recorded`(`NOT_RECORDED`), 행을 안 댄 오류(null · 빈 목록 · 워커 문장)는 `not given by the error`(`ROW_NOT_GIVEN`). 진단 서랍(`admin.showEventDiagnostics`)이 이 다섯 칸을 그리고, Edit Mapper 링크는 기록이 규칙을 «정확히 하나» 댈 때만 선다 — ⚰️ 「트리거 · 대상 표가 맞는 첫 규칙」 짐작 은퇴. 기록이 위에 그려지니 아래 페이로드 보기는 사건 자기 것.
 - `failureSummaryView(body, sentZone)` 순수 — 한 줄 = (표 · 종류 · 날) 「dt_inventory EDIT 33 · 09-23 00:14–00:39 · attempts 1」, 폭은 `server_time.localSpan`. 요청이 zone 을 못 보냈으면 줄이 「(UTC day)」 를 단다. `lineKey(line)` · `class FailureSummary` 부품 — 줄을 열면 그 줄의 행 표(행 재시도 · 진단)가 그 아래로 옮겨 온다(둘째 표 없음). 재시도 답은 `retry_verdict.outboxRetryMessage` 가 읽음(refused → 거절 토스트 · 서버 문장). 읽는 자: `admin.js`
 
+### 🆕 `chain_rule_groups.js` (**180줄**, 11-11 신설) — Chain 탭 규칙 목록을 «표별로» 접는 부품
+- `chainRuleGroups(rules, {by, query, outcomes}) -> [{key, rules, off, failing}]` 순수 — 키는 행의 Data Flow 양 끝(`trigger_table` · `target_table`), 표 없는 규칙은 «—» 맨 뒤. off = `ruleStateView`(서버 rule_state), failing = `ruleOutcomeView(...).failed` (소유자 11-11 「트리거표.규칙명 … 많아지니 안 보이더라」)
+- `ruleWords` · `ruleMatches` — 찾기 한 칸: 이름 · 두 표 · 선언(derive · into)의 키와 글자. `ChainRuleGroups(mount, {body, rowOf, columns, key, storage})` — 기본 접힘, 펼침은 이 브라우저(«group by» 마다), 찾는 동안은 남은 그룹 모두 펼침. 행은 admin.js `chainRuleRow`
+
 ### 🆕 `paste_box.js` (**69줄**, 09-30 `4c46b3268` 신설) — 클립보드를 못 읽는 곳의 붙여넣기 상자
 - `PasteBox(mount)` — 형식 선택 모달의 껍데기에 포커스 가능한 칸 「Paste here (Ctrl+V)」(캐럿이 그 안) · 「Esc to cancel」. 상자는 아무것도 «안 읽는다»: 붙여넣기는 `clipboard.js` 의 붙여넣기 리스너 «하나»로 올라가 걸쇠가 걸린 동안 `smartPasteFromPasteEvent` 로 간다. 칸이 입력 요소가 아니라 div 인 까닭은 그 리스너가 input · textarea · contenteditable 에 포커스가 있으면 건너뛰기 때문. 스마트 붙여넣기 버튼과 🆕 `Ctrl+Shift+V`(`f5de87625` — 브라우저의 「서식 없이 붙여넣기」를 막고 버튼과 같은 진입 `smartPasteViaIngestion`)가 읽을 수 있으면 `navigator.clipboard.read` 로 모든 형식을, 못 읽거나 거절되면 이 상자를 연다. 상자가 열린 동안 단축키는 아무것도 안 함. 상자가 «유일한» 걸쇠 — ⚰️ 1.5 초 키 걸쇠 · 0.6 초 승격 · 15 초 걸쇠와 그 토스트는 은퇴
 
