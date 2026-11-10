@@ -19,7 +19,8 @@ function ok(name, cond, saw) {
 }
 function die(msg) { console.log(`HARNESS FAILURE: ${msg}`); console.log(`ASSERTIONS ${passed} ${failed + 1}`); process.exit(1); }
 
-const NAMES = ['dt_log_to_dt_map', 'rule with spaces', '한글 규칙', 'a#b=c&d%e?f/g'];
+// 'x%41y': a name that is also a valid escape - put in the address unencoded it would read back as 'xAy'
+const NAMES = ['dt_log_to_dt_map', 'rule with spaces', '한글 규칙', 'a#b=c&d%e?f/g', 'x%41y'];
 // what a browser hands the router: the hash of the address it was opened at
 const hashOf = (href) => new URL(href, 'http://box:8080').hash;
 const READ = { rules: ['dt_log_to_dt_map', '한글 규칙'], skeleton: {}, lists: {}, grammar: 'unified', name: '한글 규칙',
@@ -75,7 +76,7 @@ const DEFECTS = [
   ['M1 a name put in the address as typed', swap('=${encodeURIComponent(value)}', '=${value}')],
   ['M2 the value not decoded', swap('try { value = decodeURIComponent(raw.slice(eq + 1)); }', 'try { value = raw.slice(eq + 1); }')],
   ['M3 a missing rule opens its empty form', swap('  const { name: _asked, declaration: _none, raw: _empty, ...list } = body;\n', '  const list = body;\n')],
-  ['M4 a missing rule is not said', swap("return { body: list, refusal: { code: '', path: '', message: ruleNotFound(name) } };", 'return { body: list, refusal: null };')],
+  ['M4 a missing rule is not said', swap("const refusal = { code: '', path: '', message: ruleNotFound(name) };", 'const refusal = null;')],
   ['M6 the 30 s list read takes the line away', swap('if (!name) return { body, refusal: byPerson ? null : held, held: byPerson ? null : held };',
     'if (!name) return { body, refusal: null, held: null };')],
   ['M7 the line outlives a rule a person opened', swap("body.rules.includes(name)) return { body, refusal: null, held: null };",
