@@ -39,14 +39,14 @@ def grid(db_session, client, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
     monkeypatch.setitem(crud.TABLE_CONFIG, LOOKS, shipped.tables()[LOOKS])
     bind = db_session.get_bind()
-    bits = line_tables.build(bind, TABLE)                  # t with won_by and its line table
+    line_tables.build(bind, TABLE)                         # t with won_by and its line table
     model = models.DYNAMIC_TABLES[TABLE]
     ids = sorted(str(uuid6.uuid7()) for _ in ROWS)
     db_session.add_all([model(row_id=rid, lot=lot, itemid=item, value=0.1 * (n + 1), note="n%d" % n,
                               business_key_val="%s|%s" % (lot, item)) for n, (rid, (lot, item)) in enumerate(zip(ids, ROWS))])
     db_session.commit()
     try:
-        yield client, ids, bits
+        yield client, ids
     finally:
         db_session.rollback()
         looks = models.DYNAMIC_TABLES[LOOKS]
@@ -63,11 +63,11 @@ def _look(client, axis, key, **cells):
     assert answer.status_code == 200, answer.text
 
 
-def _layers(db_session, bits, row_id, column, *names):
+def _layers(db_session, row_id, column, *names):
     """A line of `column` from each source in `names`, the LAST the one the write ranked first: t.won_by names it."""
     from sqlalchemy import MetaData, Table
 
-    bind = db_session.get_bind()
+    bind, bits = db_session.get_bind(), line_tables.bits_of(TABLE)
     with bind.begin() as conn:
         ids = [line_tables.line(conn, TABLE, bits, row_id, source=name, at=T0 + timedelta(minutes=n),
                                 values={column: 1.5 if column == "value" else "x"}) for n, name in enumerate(names)]
@@ -111,7 +111,7 @@ def test_a_layer_is_written_by_a_person_the_chain_a_model_a_file_or_a_merge():
 
 
 def test_a_page_carries_the_rules_in_order_and_the_paints_of_its_rows_and_nothing_without_looks(grid):
-    client, ids, bits = grid
+    client, ids = grid
     every = [(r["id"], r["role"], r["shape"], r["every"]) for r in _read(client)["looks"]["rules"]]
     assert every == [("written-by-person", "warn", "line", True), ("written-by-merge", "danger", "fill", True),
                      ("written-by-ai", "accent", "line", True)], "no rule of its own: the rules every table has"
@@ -131,12 +131,12 @@ def test_a_page_carries_the_rules_in_order_and_the_paints_of_its_rows_and_nothin
 
 
 def test_a_written_by_rule_has_its_cells_say_their_writer_by_the_values_own_ranking(grid, db_session):
-    client, ids, bits = grid
-    _layers(db_session, bits, ids[0], "value", "llm_draft", "user")
-    _layers(db_session, bits, ids[1], "value", "llm_draft")
-    _layers(db_session, bits, ids[2], "value", "chain_ingestion (r1 k1)")
-    _layers(db_session, bits, ids[3], "value", "lots.csv", "collision_merge")
-    _layers(db_session, bits, ids[1], "note", "llm_draft")
+    client, ids = grid
+    _layers(db_session, ids[0], "value", "llm_draft", "user")
+    _layers(db_session, ids[1], "value", "llm_draft")
+    _layers(db_session, ids[2], "value", "chain_ingestion (r1 k1)")
+    _layers(db_session, ids[3], "value", "lots.csv", "collision_merge")
+    _layers(db_session, ids[1], "note", "llm_draft")
     _look(client, "rule", "r-ai", position="8", role="accent", written_by="ai", rule_columns='["value"]')
     data = {row["row_id"]: row["data"] for row in _read(client)["data"]}
     assert [data[rid]["value"].get("written_by") for rid in ids] == ["person", "ai", None, "merge"],         "no rule asks the chain (lead 11-09)"
