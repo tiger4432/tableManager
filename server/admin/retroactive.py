@@ -1611,24 +1611,39 @@ def _run_fold_withdrawal_events(db, params, log, control=None):
 
 
 
+def _refused_notation(table) -> str:
+    """«Declared but refused - ...» for this table's notation declarations the process refused, or ''."""
+    import notation_norm
+
+    said = ["%s: %s" % (refused["subject"] or "notation_rules.json", refused["detail"])
+            for refused in notation_norm.refused_declarations()
+            if refused["subject"] in (None, table) or str(refused["subject"]).startswith(table + ".")]
+    return ("Declared but refused - %s. " % "; ".join(said)) if said else ""
+
+
 def _count_fold_written_notation(db, params, scan_limit):
     from chain import replay
 
     s = replay.fold_written_notation(db, params["table"], apply=False, limit=scan_limit,
-                                     log=lambda m: logger.debug(m))
+                                     log=lambda m: logger.debug(m), row_ids=params.get("row_ids"))
     truncated = s["rows_scanned"] >= scan_limit
     # a row re-keyed or merged is a change too - a table keyed by a number may move nothing else
     affected = s["cells_folded"] + s["keys_changed"] + s["rows_merged"]
+    # a declaration this table wrote that the read refused, or a picked row it does not hold: its 0 is not «none»
+    # (lead 11-10, owner «ㅇㅇ» · «노테이션 소급 ㄱ»)
+    missing = s.get("row_ids_not_found") or []
+    refused = _refused_notation(params["table"]) + (
+        "'%s' holds no row %s. " % (params["table"], replay.named_ids(missing)) if missing else "")
     if not s["written_columns"] and not s["text_columns"] and not s["rows_scanned"]:
-        return {"affected": 0, "absence": ABSENCE_NOT_APPLICABLE,
+        return {"affected": 0, "absence": ABSENCE_CANNOT_POINT if refused else ABSENCE_NOT_APPLICABLE,
                 "affected_label": "cells and row keys whose spelling changes",
                 "count_kind": COUNT_EXACT, "scanned": 0, "scan_limit": scan_limit,
                 "truncated": False,
-                "detail": (f"'{params['table']}' has no \"write\" column in "
-                           f"notation_rules.json and no text column - nothing is folded."),
+                "detail": refused + (f"'{params['table']}' has no \"write\" column in "
+                                     f"notation_rules.json and no text column - nothing is folded."),
                 "extra": {}}
     left = s["time_left"]
-    detail = (
+    detail = refused + (
         f"{s['cells_folded']} cell(s) and {s['layers_folded']} stored layer(s) in {s['rows_scanned']} "
         f"row(s) of '{params['table']}' take the declared spelling; {s['keys_changed']} row "
         f"key(s) change. Cannot be undone - the spelling that was stored stays in each cell's "
@@ -1648,13 +1663,14 @@ def _count_fold_written_notation(db, params, scan_limit):
                    f"stops there; fix the declaration first.")
     if left:
         detail += (f" The time rule leaves values as written - no matching format: "
-                   f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}.")
+                   f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}, "
+                   f"no year and no time it came in: {left.get('no_arrival', 0)}.")
     detail += (" Afterwards run Fold file layers on this table, then give the space back: "
                "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {
         "affected": affected,
-        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
-                    else ABSENCE_TRULY_NONE if not affected else None),
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated else None if affected
+                    else ABSENCE_CANNOT_POINT if refused else ABSENCE_TRULY_NONE),
         "affected_label": "cells and row keys whose spelling changes",
         "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
         "scanned": s["rows_scanned"],
@@ -1672,11 +1688,13 @@ def _run_fold_written_notation(db, params, log, control=None):
 
     s = replay.fold_written_notation(db, params["table"], apply=True, log=log,
                                      checkpoint=_checkpoint(control),
-                                     **_given(params, "limit", "chunk_size", "pace"))
+                                     **_given(params, "limit", "chunk_size", "pace", "row_ids"))
     _final_progress(control, s.get("rows_scanned"), s)
     out = {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
                                    "rows_merged", "same_key_groups", "split_key_groups", "keys_not_rebuilt",
                                    "moves_again", "stopped_on_moves_again", "rows_scanned")}
+    if s.get("row_ids_not_found"):
+        out["row_ids_not_found"] = s["row_ids_not_found"]
     if s["rows_merged"] and not s["stopped"]:
         # a table that held a key twice could not take its uq_bk_ index, and the builder runs at the scheduler's
         # start only - so it builds it here, after the merge (총괄 10-20)
@@ -2401,6 +2419,10 @@ OPERATIONS = {
         "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
         "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
         "params": [_p("table"),
+                   # the cell chain_replay takes (S-254): the grid holds row_id on every table
+                   _p("row_ids", required=False, kind="csv",
+                      help="fold only these rows, by row_id - the identity a grid holds for every table; "
+                           "omit for the whole table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
                       help="bound the rows scanned"),
@@ -2410,8 +2432,8 @@ OPERATIONS = {
         "run": _run_fold_written_notation,
         "judge": _judge_table,
         "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
-                "'fold_written_notation', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
-                "'chunk_size': N})\" - pace, limit and chunk_size optional"),
+                "'fold_written_notation', {'table': '<table>', 'row_ids': ['<row_id>', ...], 'pace': '<pace>', "
+                "'limit': N, 'chunk_size': N})\" - row_ids, pace, limit and chunk_size optional"),
         # 총괄 2dc2c1baf · c6a8c069c ㉡: in place - a layer's value, the shown value and the key
         # move; no layer is created or deleted and no `ingested_at` moves. A row whose folded key
         # another row holds, or whose cells no longer spell its key, is skipped; a value a second
@@ -3932,6 +3954,12 @@ def unfilled(op: str, params: dict) -> list:
         ["one of: " + ", ".join(none_of)] if none_of else [])
 
 
+def _csv_values(raw) -> list:
+    """A csv parameter's values - a comma-joined text or a list - stripped, the blank ones out."""
+    return [c.strip() for c in str(raw).split(",") if c.strip()] if isinstance(raw, str) \
+        else [str(c).strip() for c in raw if str(c).strip()]
+
+
 def validate(op: str, params: dict, partial: bool = False) -> dict:
     """-> the normalized parameter dict, or raise `RetroactiveRefused`. `partial` (the admin help only, lead 10-29):
     the fields given are judged, a required one left blank is not refused, and the operation's own judgement runs once
@@ -3947,14 +3975,20 @@ def validate(op: str, params: dict, partial: bool = False) -> dict:
     out = {}
     for p in spec["params"]:
         raw = params.get(p["name"])
+        if p["type"] == "csv" and raw is not None and not partial and not _csv_values(raw):
+            # a selection SENT empty is not one left out: dropped, it ran on everything (lead 11-10, a data guard).
+            # A draft (`partial`, the admin help) keeps a blank field for the operator to fill.
+            from chain import replay
+
+            raise RetroactiveRefused(replay.EMPTY_SELECTION.format(
+                name=p["name"], whole="run %s on everything" % op, everything="run %s on everything" % op))
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             if p["required"] and not partial:
                 raise RetroactiveRefused(
                     f"'{op}' requires parameter '{p['name']}' ({p['help'] or p['type']})")
             continue
         if p["type"] == "csv":
-            value = [c.strip() for c in str(raw).split(",") if c.strip()] \
-                if isinstance(raw, str) else [str(c).strip() for c in raw if str(c).strip()]
+            value = _csv_values(raw)
             if not value:
                 continue
         elif p["type"] == "int":

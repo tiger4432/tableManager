@@ -687,12 +687,9 @@ def _resolve_notation() -> dict:
       · 「이 조인이 승인됐는가」     → `/admin/chain/join/verify` (함수 인덱스)
     """
     import notation_norm as nn
-    from database import crud
 
     rules_path = nn.NOTATION_RULES_PATH
-    rejections = []
-    by_table = nn.load_notation_rules(known_tables=crud.TABLE_CONFIG,
-                                      rejections=rejections)
+    by_table, rejections = nn.normalized_by_table(), nn.refused_declarations()
 
     effective, ineffective, rejected = [], [], []
 

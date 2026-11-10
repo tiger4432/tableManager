@@ -374,10 +374,11 @@ def with_declared_cells(rule: dict, internal: dict) -> dict:
     # 🔴 [총괄 49052cbdd] `on.require` names the TRIGGER rows' columns, so every rule this
     #   declaration stands on `on.table` carries it - a mapper, a join's source side,
     #   decide's dedup half - and a rule on another table (the `:target` half, decide's
-    #   confirm half) does not.
+    #   confirm half) does not. Nor does a half the loader made (`companion_rules` drops the gates
+    #   where it is known): a self-join's `:target` half sits on `on.table` too (lead 11-10).
     on = internal.get("on") or {}
     for key in chain_bindings.ROW_GATE_KEYS:
-        if key in on and rule.get("trigger_table") == on.get("table"):
+        if key in on and rule.get("trigger_table") == on.get("table") and not rule.get(COMPANION_CELL):
             rule[key] = list(on[key])
     # `enabled` 는 «생략된 것»과 «적힌 것»이 다른 문장이므로 «적혀 있었을 때만» 되돌린다
     if internal.get("enabled_written"):
@@ -546,9 +547,13 @@ def companion_rules(internal: dict) -> list:
     if derive.get("kind") != "join" or "table" not in into or not name:
         return []
     source = (internal.get("on") or {}).get("table")
-    if not source or source == into["table"]:
+    gated = any((internal.get("on") or {}).get(key) for key in chain_bindings.ROW_GATE_KEYS)
+    if not source or source == into["table"] and not gated:
         # One table is both sides; a second rule would be the same rule twice and the
-        # dispatcher would run the join twice per event.
+        # dispatcher would run the join twice per event. 🔴 [lead 11-10, owner «date 가 복사되어야 함»] NOT WHEN
+        # THE SOURCE SIDE HAS A ROW GATE: `on.require` / `on.exclude` hold back the target rows of its own table (an
+        # unpivot's other items under `item_id = date`), so a row that came after its value row was woken by nobody.
+        # The companion carries no gate (below) - the halves differ, and a value row wakes both to the same answer.
         return []
     companion = dict(as_chain_rule(internal))
     companion["name"] = str(name) + COMPANION_SUFFIX

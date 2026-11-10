@@ -1,5 +1,32 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **언피벗 날짜 · «3월 5일» 접기 · 표기 거절이 보임 · 고른 행만 표기 소급** — git pull · 런처 재기동(전부)
+>
+> ```
+> 자기 표 조인   on.require/exclude 가 있는 자기 표 조인(언피벗: item_id = date 행의 value 를 같은 batch 의 다른 행
+>               date 로)은 이제 «다른 행이 나중에 와도» 채움. 짝 규칙 <이름>:target 이 하나 더 섬(문 없는 자기 표 조인은 그대로 하나)
+> 볼 줄         [ChainRule] rule=<이름>:target kind=declared:join … rows_out=N — 다른 행이 들어올 때 이 줄이 뜸
+>               날짜 행이 바뀌면 두 규칙이 다 깨고, 둘째는 «every value was already the same» (쓰기 0)
+> time 규칙     notation_rules.json 의 칸에 "rules": {"time": {"from": ["%m월 %d일", "%m월%d일"], "year": "arrival"}}
+>               «3월 5일» -> <들어온 해>-03-05 00:00:00. 쓰기는 지금 해, 소급은 그 층이 들어온(ingested_at) 해
+>               꼴에 안 맞는 값(다른 item 의 21 · 40 …)은 그대로
+> ⚠️ 같이 접힘   그 칸에 «월·일» 꼴 값이 다른 item 에도 있으면 그것도 날짜로 접힘(item 조건 없음)
+> ⚠️ 해 틀림     12월 값이 1월에 들어오면 새해로 접힘(12-xx 가 다음 해). 그런 값은 손으로 고침
+> ⚠️ 새 거절     해가 없는 꼴(%m/%d · %H:%M 등)을 "year" 없이 적은 time 규칙은 이제 거절(전에는 1900 년으로 조용히 접음).
+>               이미 그렇게 적은 선언이 있으면 아래 거절 줄이 뜸 -> "year": "arrival" 을 붙이거나 꼴에 %Y 를 넣음
+> 소급 몫       "year": "arrival" 칸이 있는 표는 소급이 행 길(층마다 해)로 돔 — PG 의 «값으로 한꺼번에»보다 느림, 박스 시간 안 잼
+>               층 없이 보이는 값만 있는 칸은 그대로 두고 «no year and no time it came in: N» 으로 셈
+> 거절 줄       [Notation] <표>.<칸>: <사유> - not folded   — 파일이 바뀌어 다시 읽을 때 거절마다 한 줄
+>               replace 짝 하나가 거절되면 «the whole rule is left off» — replace 목록 통째가 꺼짐(join · pad 는 섬)
+> 같은 목록     어드민 Config resolution 표기 상자 rejected 줄 · 소급 dry-run detail «Declared but refused - …», 0 이면 «Cannot point»
+> 고른 행 소급   소급 «Fold stored values into the declared spelling» 에 row_ids(그리드의 row_id, chain_replay 와 같은 칸)
+>               python -c "from admin import retroactive; retroactive.run_here('fold_written_notation', {'table': '<표>', 'row_ids': ['<row_id>']})"
+>               없는 row_id 는 «'<표>' holds no row <id>» 로 이름이 나옴. 화면 배너 단추는 클라 착지 뒤
+> 끄기          자기 표 짝: 선언에서 on.require/exclude 를 빼면 짝이 안 섬 · time: "year" 칸을 지우면(거절되어) 접지 않음
+> ```
+>
+> ---
+>
 > ## [11-09] **색 규칙 · 칠하기에 아무 색이나 — Colours 탭에서 색을 고르고, 모양은 Left line | Fill** — git pull · 브라우저 새로 고침 (서버 재기동 없음)
 >
 > ```

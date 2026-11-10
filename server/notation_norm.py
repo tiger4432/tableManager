@@ -129,6 +129,7 @@ the uniqueness the gate is asking about, because two rows that are distinct raw
 ('CL-1' and 'CL_1') fold to one value. See `chain.join_key_index` for the DDL and
 the measured cost.
 """
+import functools
 import json
 import logging
 import os
@@ -151,7 +152,9 @@ RULE_ZERO_PAD = "zero_pad"
 #   join             the separator run collapses to THIS one character (separator = join '-')
 #   pad_last_number  a trailing digit run shorter than n is zero-padded to n (longer: as is)
 #   replace          ordered [[pattern, replacement], ...] - the case the two above cannot say
-#   time             {"from": [input format, ...]} -> TS_FMT. WRITE ONLY: see `fold_time`
+#   time             {"from": [input format, ...], "year": "arrival"} -> TS_FMT. WRITE ONLY: see `fold_time`.
+#                    A format that reads no year («%m월 %d일») takes the year the value came in, and
+#                    stands only with `"year": "arrival"` (lead 11-10, owner «value 노테이션만 먹으면 쉽잖아»)
 #   collapse_repeats the one character that splits segments; a segment equal to the one before
 #                    it goes (a.a.b -> a.b). WRITE ONLY, last (총괄 c1ddec935, 소유자 「가로 접어」)
 RULE_JOIN = "join"
@@ -189,6 +192,11 @@ DEFAULT_RULES = {RULE_SEPARATOR: True, RULE_CASE: True, RULE_ZERO_PAD: False}
 
 #: The `fold_time` verdicts that leave a value as it was written - counted, never changed.
 TIME_LEFT_AS_WRITTEN = ("unmatched", "zoned")
+#: The `time` rule's year cell and its one value: the year the value came in.
+TIME_YEAR, TIME_YEAR_ARRIVAL = "year", "arrival"
+#: `fold_time`'s `arrived` when no time the value came in is held, and its verdict on a year-less value -
+#: left as written; the backfill counts the ones its layers do not decide again (a shown cell with no layer).
+ARRIVAL_UNKNOWN, NO_ARRIVAL = "unknown", "no_arrival"
 
 #: The characters `join` may collapse a separator run to.
 JOIN_CHARACTERS = ("-", "_", ".", " ")
@@ -357,8 +365,11 @@ def _value_rule_refusal(name, value):
         formats = value.get("from") if isinstance(value, dict) else None
         if not isinstance(formats, list) or not formats:
             return "must be {\"from\": [input format, ...]}"
+        year = value.get(TIME_YEAR)
+        if year not in (None, TIME_YEAR_ARRIVAL):
+            return "\"year\" must be \"arrival\" - the year the value comes in (%r)" % (year,)
         for fmt in formats:
-            why = _time_format_refusal(fmt)
+            why = _time_format_refusal(fmt, year)
             if why:
                 return why
         return None
@@ -444,7 +455,7 @@ def _replace_pair_refusal(pair):
     return None
 
 
-def _time_format_refusal(fmt):
+def _time_format_refusal(fmt, year=None):
     from datetime import datetime
     if not isinstance(fmt, str) or not fmt:
         return "an input format must be text"
@@ -452,18 +463,45 @@ def _time_format_refusal(fmt):
         return "reads a time zone (%r) - converting zones is not a notation fold" % fmt
     sample = datetime(2026, 9, 26, 13, 5, 7, 123456)
     try:
-        datetime.strptime(sample.strftime(fmt), fmt)
+        if _reads_no_year(fmt):
+            if year != TIME_YEAR_ARRIVAL:
+                return ("input format %r reads no year - add \"year\": \"arrival\" to take the year the value "
+                        "comes in" % fmt)
+            datetime.strptime("%d %s" % (sample.year, sample.strftime(fmt)), "%Y " + fmt)
+        else:
+            datetime.strptime(sample.strftime(fmt), fmt)
     except ValueError as e:
         return "input format %r does not read back what it writes: %s" % (fmt, e)
     return None
 
 
-def fold_time(text, spec: dict):
+@functools.lru_cache(maxsize=256)
+def _reads_no_year(fmt) -> bool:
+    """True when a value written in `fmt` reads back without its year (strptime's 1900)."""
+    from datetime import datetime
+    sample = datetime(2026, 9, 26, 13, 5, 7, 123456)
+    try:
+        return datetime.strptime(sample.strftime(fmt), fmt).year != sample.year
+    except ValueError:
+        return False
+
+
+def reads_arrival(rules: dict) -> bool:
+    """True when the column's `time` rule takes a year from when a value came in - its fold is not a
+    function of the spelling alone."""
+    spec = (rules or {}).get(RULE_TIME)
+    return isinstance(spec, dict) and spec.get(TIME_YEAR) == TIME_YEAR_ARRIVAL
+
+
+def fold_time(text, spec: dict, arrived=None):
     """A time text in one of the declared input shapes -> `utils.time_format.TS_FMT`.
 
-    Returns (value, verdict): `already` · `folded` · `unmatched` · `zoned` · `blank`. Only
-    `folded` changes the value. The moment is never moved: no zone conversion, and a format
+    Returns (value, verdict): `already` · `folded` · `unmatched` · `zoned` · `blank` · `no_arrival`.
+    Only `folded` changes the value. The moment is never moved: no zone conversion, and a format
     that reads fractions keeps them (`TS_FMT` + `.%f`), so nothing below the second is dropped.
+    A format that reads no year takes `arrived`'s year in local time - None is now, the write;
+    `ARRIVAL_UNKNOWN` leaves a matching value as written (`no_arrival`). The year is read WITH the
+    value, so 「2월 29일」 matches only in a leap year.
     """
     from datetime import datetime
     from utils.time_format import TS_FMT, has_time_offset
@@ -481,7 +519,15 @@ def fold_time(text, spec: dict):
         return text, "zoned"
     for fmt in (spec or {}).get("from") or ():
         try:
-            moment = datetime.strptime(s, fmt)
+            if not _reads_no_year(fmt):
+                moment = datetime.strptime(s, fmt)
+            elif arrived == ARRIVAL_UNKNOWN:
+                datetime.strptime("2000 " + s, "%Y " + fmt)
+                return text, NO_ARRIVAL
+            else:
+                year = (arrived or datetime.now().astimezone())
+                year = (year.astimezone() if year.tzinfo else year).year
+                moment = datetime.strptime("%d %s" % (year, s), "%Y " + fmt)
         except ValueError:
             continue
         return moment.strftime(TS_FMT + (".%f" if "%f" in fmt else "")), "folded"
@@ -946,7 +992,7 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
             why = _value_rule_refusal(name, on)
             if why:
                 _record(rejections, SCOPE_TABLE, subject,
-                        f"rule '{name}' {why}; the rule is left off", CODE_SHAPE)
+                        f"rule '{name}' {why}; the whole rule is left off", CODE_SHAPE)
             elif on not in (None, False, 0, [], {}):
                 effective[name] = on
             continue
@@ -1173,20 +1219,41 @@ def normalized_by_table() -> dict:
     An unreadable declaration means NO column is normalized - failing the read here would turn a config problem into
     an outage, and the safe direction is the one that compares raw values, the behaviour every join had before this
     feature existed. One that stops reading after a good read keeps the good one."""
+    return _held()["by_table"]
+
+
+def refused_declarations() -> list:
+    """The declarations this process refused when it read notation_rules.json - `_record`'s entries, held with the
+    rules they left out. The one list the config resolution, the backfill count and the log line read (lead 11-10)."""
+    return _held()["rejections"]
+
+
+#: What a process that never read notation_rules.json holds - nothing folds, and that is said.
+_UNREAD = {"by_table": {}, "rejections": [{
+    "scope": SCOPE_FILE, "subject": None, "code": CODE_SHAPE,
+    "detail": "notation_rules.json could not be read - NO column is normalized (server.log [Config] says why)"}]}
+
+
+def _held() -> dict:
     from database import config_watcher, crud
 
     return config_watcher.held(config_watcher.names_of([NOTATION_RULES_PATH, crud.CONFIG_PATH]),
-                               "notation_norm.by_table", _read_by_table, fallback={})
+                               "notation_norm.by_table", _read_by_table, fallback=_UNREAD)
 
 
 def _read_by_table():
+    """{by_table, rejections}, and one log line per refused declaration - once per read, which is once per change."""
     from database import crud
 
     if not os.path.exists(NOTATION_RULES_PATH):
-        return {}
+        return {"by_table": {}, "rejections": []}
     with open(NOTATION_RULES_PATH, "r", encoding="utf-8") as f:
         raw_config = json.load(f)
-    return validate_notation_rules(raw_config, known_tables=crud.TABLE_CONFIG)
+    rejections = []
+    by_table = validate_notation_rules(raw_config, known_tables=crud.TABLE_CONFIG, rejections=rejections)
+    for refused in rejections:
+        logger.warning("[Notation] %s: %s - not folded", refused["subject"] or "notation_rules.json", refused["detail"])
+    return {"by_table": by_table, "rejections": rejections}
 
 
 def rules_for_column(table: str, column: str):
@@ -1223,7 +1290,7 @@ def aliases_by_column(db) -> dict:
     return out
 
 
-def fold_for_write(table: str, column: str, value, aliases=None):
+def fold_for_write(table: str, column: str, value, aliases=None, arrived=None):
     """(stored value, verdict) for a value written into `table.column` - THE write fold.
 
     An alias (exact spelling) first, then the column's rules - or, on a time column, `fold_time`,
@@ -1238,7 +1305,7 @@ def fold_for_write(table: str, column: str, value, aliases=None):
     spec = write_spec(table, column)
     if spec is None or not isinstance(value, str):
         return value, None
-    return _write_fold(value, spec["rules"], (aliases or {}).get((table, column)) or {})
+    return _write_fold(value, spec["rules"], (aliases or {}).get((table, column)) or {}, arrived)
 
 
 def written_columns(table: str) -> list:
@@ -1287,12 +1354,12 @@ def moves_again(stored, rules: dict, column_aliases: dict):
     return again if again != stored else None
 
 
-def _write_fold(value: str, rules: dict, column_aliases: dict):
+def _write_fold(value: str, rules: dict, column_aliases: dict, arrived=None):
     """(stored, verdict) - alias, then `time` or the rules. The one body `fold_for_write` and
-    the write preview share."""
+    the write preview share. `arrived`: `fold_time`'s."""
     out = column_aliases.get(value, value)
     if rules.get(RULE_TIME):
-        return fold_time(out, rules[RULE_TIME])
+        return fold_time(out, rules[RULE_TIME], arrived)
     out = fold_notation(out, rules)
     if rules.get(RULE_COLLAPSE_REPEATS):
         out = collapse_repeats(out, rules[RULE_COLLAPSE_REPEATS])

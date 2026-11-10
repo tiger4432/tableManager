@@ -109,6 +109,11 @@ R3_AUDIT_SOURCE = "resolution_recompute"
 # rows it writes are the permanent, unbounded enumeration; this only bounds what one
 # call hands back to a CLI or a report. `truncated["changes"]` says when it bit.
 DEFAULT_MAX_REPORT = 10000
+#: How many picked row ids a table does not hold a line names, before «and N more».
+NAMED_IDS = 20
+#: The one sentence for a selection sent empty - it would be everything, not nothing.
+EMPTY_SELECTION = ("{name} was given but empty; an empty selection would {whole} instead of nothing. "
+                   "Omit it to {everything}, on purpose.")
 
 # R1 never writes a blank value. See the module docstring: "the rule produces
 # nothing here" is R2's statement to make, not R1's.
@@ -287,6 +292,21 @@ def order_rules(rules: list) -> list:
     return _ordered(rules)
 
 
+def named_ids(ids) -> str:
+    """`ids` for a sentence: the first `NAMED_IDS`, then «and N more»."""
+    more = len(ids) - NAMED_IDS
+    return ", ".join(str(i) for i in ids[:NAMED_IDS]) + (f" and {more} more" if more > 0 else "")
+
+
+def selected_row_ids(row_ids, whole: str, everything: str) -> list:
+    """The row ids a screen sent, stripped - the grid's identity for every table (S-254). An empty list is refused by
+    name: it would be `whole` instead of nothing."""
+    ids = [str(value).strip() for value in row_ids if str(value).strip()]
+    if not ids:
+        raise ReplayRefused(EMPTY_SELECTION.format(name="row_ids", whole=whole, everything=everything))
+    return ids
+
+
 def is_self_triggering(rule: dict) -> bool:
     return bool(rule.get("trigger_table")) and rule.get("trigger_table") == rule.get("target_table")
 
@@ -459,11 +479,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             "both row_ids and business_keys were given; they are two answers to 「which "
             "rows」. Send one - the grid holds row_ids, the CLI takes business keys.")
     if row_ids is not None:
-        ids = [str(value).strip() for value in row_ids if str(value).strip()]
-        if not ids:
-            raise ReplayRefused(
-                "row_ids was given but empty; an empty selection would replay the whole "
-                "rule instead of nothing. Omit it to replay everything, on purpose.")
+        ids = selected_row_ids(row_ids, "replay the whole rule", "replay everything")
         selection = trg_model.row_id.in_(ids)
         log(f"[replay] selection: {len(ids)} row id(s)")
     elif business_keys is not None:
@@ -472,9 +488,8 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             # An empty selection would scan the whole table and replay ALL of it, which is
             # the opposite of what the caller asked for. Refused by name rather than
             # treated as "no filter".
-            raise ReplayRefused(
-                "business_keys was given but empty; an empty selection would replay the "
-                "whole rule instead of nothing. Omit it to replay everything, on purpose.")
+            raise ReplayRefused(EMPTY_SELECTION.format(name="business_keys", whole="replay the whole rule",
+                                                       everything="replay everything"))
         selection = trg_model.business_key_val.in_(keys)
         log(f"[replay] selection: {len(keys)} business key(s)")
     # ⚰️ [총괄 2026-09-23] `hands_row_ids` AND `stats["self_writing_kind"]` STOOD HERE, both
@@ -2225,8 +2240,11 @@ FOLD_BY_VALUE_DIALECTS = ("postgresql",)
 def fold_written_notation(db, table_name: str, apply: bool = False,
                           chunk_size: int = NOTATION_FOLD_PAGE, limit: int = None,
                           pace: str = None, max_report: int = DEFAULT_MAX_REPORT,
-                          log=logger.info, checkpoint=None) -> dict:
-    """Notation stage three (총괄 2dc2c1baf), widened to the whole write fold (총괄 c6a8c069c ㉡):
+                          log=logger.info, checkpoint=None, row_ids=None) -> dict:
+    """`row_ids`: only these rows, the cell chain_replay takes (lead 11-10, owner «노테이션 소급 ㄱ»); an id the
+    table does not hold is named in `row_ids_not_found`.
+
+    Notation stage three (총괄 2dc2c1baf), widened to the whole write fold (총괄 c6a8c069c ㉡):
     what a column stored before today's fold is folded IN PLACE by the two steps the write funnel
     runs - a `write` column's notation fold (`notation_norm.fold_for_write`), then, on every text
     column, the cast (`crud.cast_value_by_type`, which stores a number in `clean_str_value`'s
@@ -2287,6 +2305,14 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
              "merged": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
              "moves_again": 0, "again": [], "time_left": {},
              "stopped": False, "stopped_on_moves_again": False}
+    selection = None
+    if row_ids is not None:
+        ids = selected_row_ids(row_ids, "fold the whole table", "fold everything")
+        selection = model.row_id.in_(ids)
+        held = {row_id for (row_id,) in db.query(model.row_id).filter(selection)}
+        stats["row_ids_not_found"] = [row_id for row_id in ids if row_id not in held]
+        if stats["row_ids_not_found"]:
+            log(f"[notation] '{table_name}' holds no row {named_ids(stats['row_ids_not_found'])}")
     if not folded and not numbered:
         log(f"[notation] '{table_name}' has no \"write\" column, no text column and no number key - "
             f"nothing to fold")
@@ -2294,11 +2320,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     aliases = notation_norm.aliases_by_column(db)
     claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
-    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS
+    # a column whose year is when its value came in folds by each layer's time, not by spelling (lead 11-10)
+    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS and not any(
+        notation_norm.reads_arrival(notation_norm.write_spec(table_name, column)["rules"]) for column in written)
 
-    def fold_value(column, value):
+    def fold_value(column, value, arrived=None):
         """(stored, verdict, [column, value, stored, again] or None) - THE fold of one stored value."""
-        stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases)
+        stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases, arrived)
         again = None
         if stored != value:
             moved = notation_norm.moves_again(
@@ -2311,13 +2339,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                              table_name)
         return stored, verdict, again
 
-    def fold(column, value, again):
-        stored, verdict, moved = fold_value(column, value)
+    def fold(column, value, again, arrived=None):
+        stored, verdict, moved = fold_value(column, value, arrived)
         if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
             stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + 1
         if moved:
             again.append(moved)
-        return stored
+        return stored, verdict
 
     def twins_of(rows):
         """{row_id: the key's first row} - rows whose stored key a row with a smaller row_id stores too: a
@@ -2336,26 +2364,30 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     def plan_rows(page, again, fold, twins=None):
         """The row path over `page` (rows of the model): each row's cells, layers, key and merge."""
         twins = twins_of(page) if twins is None else twins
-        plans = {}
+        plans, unknown = {}, set()
         for row in page:
             cells = {}
             for column in folded:
                 old = getattr(row, column, None)
-                new = fold(column, old, again)
+                # a shown value holds no time it came in - its layers below have one
+                new, verdict = fold(column, old, again, notation_norm.ARRIVAL_UNKNOWN)
+                if verdict == notation_norm.NO_ARRIVAL:
+                    unknown.add((row.row_id, column))
                 if new != old:
                     cells[column] = (old, new)
             plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
         if not plans:
             return plans
-        moved = {}
-        for layer_id, row_id, column, source, value in (
+        moved, layered = {}, set()
+        for layer_id, row_id, column, source, value, arrived in (
                 db.query(models.CellSource.id, models.CellSource.row_id,
                          models.CellSource.column_name, models.CellSource.source_name,
-                         models.CellSource.value)
+                         models.CellSource.value, models.CellSource.ingested_at)
                 .filter(models.CellSource.table_name == table_name,
                         models.CellSource.row_id.in_(list(plans)),
                         models.CellSource.column_name.in_(folded)).all()):
-            new = fold(column, value, again)
+            layered.add((row_id, column))
+            new = fold(column, value, again, arrived)[0]
             if new != value:
                 plans[row_id]["layers"].append({"id": layer_id, "value": new})
                 moved.setdefault((row_id, column), {})[source] = new
@@ -2372,6 +2404,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     cells[column] = (old, new)
                 else:
                     cells.pop(column, None)
+        left = len(unknown - layered)       # a year-less shown value with no layer to take a year from
+        if left:
+            stats["time_left"][notation_norm.NO_ARRIVAL] = stats["time_left"].get(notation_norm.NO_ARRIVAL, 0) + left
         for plan in plans.values():
             row, cells = plan["row"], plan["cells"]
             if not any(column in cells for column in parts_of_key):
@@ -2427,17 +2462,17 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                             "folded_key": plan["row"].business_key_val, "into": twins[row_id]})
         return plans
 
-    def quiet(column, value, _again):
+    def quiet(column, value, _again, arrived=None):
         """The row path's fold on a page folded by value - that page already counted every value."""
-        return fold_value(column, value)[0]
+        return fold_value(column, value, arrived)[:2]
 
-    total = db.query(func.count(model.row_id)).scalar() or 0
+    total = (len(held) if selection is not None else db.query(func.count(model.row_id)).scalar()) or 0
     total = min(total, limit) if limit is not None else total
     columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
     step, size = keyset_scan.step_of(checkpoint), keyset_scan.PageSize(chunk_size)
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
-        for page in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=chunk_size, limit=limit,
-                                           size=size):
+        for page in keyset_scan.iter_pages(db, model, columns=columns, condition=selection, chunk_size=chunk_size,
+                                           limit=limit, size=size):
             step("read", stats["pages"] + 1, None, len(page))
             if checkpoint is not None and checkpoint(stats["rows_scanned"], total):
                 stats["stopped"] = True
