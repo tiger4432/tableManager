@@ -1,23 +1,27 @@
 # -*- coding: utf-8 -*-
 """The one write's lock gate (docs/design/CELL_SOURCE_OVERHAUL.md «쓰기» rules, A 11-10): two connections writing one
 entity - an existing one, and a new key both name - the second waits for the first, then goes on without an error on
-the same row_id; head lines = sources, no orphan line. PostgreSQL (sqlite has no row locks)."""
+the same row_id; head lines = sources, no orphan line. And a time without a zone is the declared zone's instant
+whatever the session's zone (design «쓰기» 2). PostgreSQL (sqlite has no row locks)."""
 import faulthandler
 import threading
 import time
 
 import pytest
-from sqlalchemy import select
+from types import SimpleNamespace
+
+import expression
+from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
-from database import crud, lines
+from database import crud, lines, models
 from database.write_lines import write_lines
 from test_write_lines_writes_a_line_a_change_and_its_current_line import stand_in_winners
 
 pytestmark = pytest.mark.pg
 
 TABLE = "wl_gate"
-CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
+CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string", "d": "datetime"}}
 
 
 @pytest.fixture(name="sessions")
@@ -125,3 +129,24 @@ def test_two_writers_of_one_new_key_end_on_one_row(sessions):
     assert waited >= 0.9 and len(alive) == 1, alive
     assert {r for r, *_ in rows} == alive and len(rows) == 2, rows
     assert list(answer["changed"]) == list(alive)
+
+
+def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_session_says(sessions, monkeypatch):
+    # the product's live model knows every declared table (models.init_dynamic_models); the cast reads it to decide
+    # whether the column is a time column - with no model it says «text» and the session's zone wins (measured 11-10)
+    monkeypatch.setitem(models.DYNAMIC_TABLES, TABLE,
+                        SimpleNamespace(d=SimpleNamespace(type=models.sql_type_of("datetime"))))
+    make = sessions
+    s = make()
+    said = []
+    for spelling in ("2026-03-05 09:00:00", "2026-03-05T09:00:00+09:00", "2026-03-05 09:00"):
+        s.execute(text("SET LOCAL TimeZone = 'UTC'"))
+        out = write_lines(s, TABLE, [{"key": {"k": "K4"}, "values": {"k": "K4", "d": spelling}, "source_name": "f1"}],
+                          kind="funnel", transaction_id="tx-z")
+        s.commit()
+        said.append((out["lines"], out["left_out"]))
+    ln = lines.shape(s, TABLE, CFG)["lines"]
+    stored = s.execute(select(ln.c.d).where(ln.c.business_key_val == "K4")).scalars().all()
+    s.close()
+    assert said == [(1, 0), (0, 1), (0, 1)], said
+    assert stored == [expression._wall("2026-03-05 09:00:00", expression.time_zone())], stored
