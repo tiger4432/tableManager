@@ -22,7 +22,7 @@ from __future__ import annotations
 from sqlalchemy import Integer, String, bindparam, case, delete, exists, insert, literal, or_, select
 from sqlalchemy import union_all, update
 
-from database import crud, lines, models
+from database import crud, lines
 
 WRITE, WITHDRAW, DELETED, MARK = "write", "withdraw", "deleted", "mark"
 LINE_KINDS = (WRITE, WITHDRAW, DELETED, MARK)
@@ -331,7 +331,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, held):
             for row_id, value, line_id in db.execute(query, {"row_ids": page}):
                 merged[row_id][c], won_by[row_id][c] = crud.line_value(value, held.get(c, "string")), line_id
     db.execute(update(now).where(now.c.row_id == bindparam("r")).values(
-        {**{c: bindparam("v_" + c, type_=models.sql_type_of(held.get(c, "string"))) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
+        {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])
     return merged
 
