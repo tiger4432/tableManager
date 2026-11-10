@@ -92,7 +92,9 @@
 - 목적은 네비게이션이다: 패널 클릭 → 그 트랜잭션의 줄(`t__lines` (묶음) 인덱스) → row_id → 행. 오늘의 행 점프(timeline.js navigator)가 끊기지 않는 것이 게이트다.
 - 순위 선언 바뀜의 다시 합치기와 고정 걸기/풀기도 쓰기다 — 감사 행이 남고(종류 = 소급 · 핀), «mark» 줄 하나씩을 써서 점프가 닿는다 — 고정은 고정이 걸리거나 풀린 행마다(보이는 값이 안 바뀌어도), 순위 다시 합치기는 지금 줄이 바뀐 행마다. 고정 자체는 이 착지 밖이라 cell_overwrites 에 있다 — «mark» 줄은 합치기 후보가 아니다.
 - 인덱스: 감사 로그 (표, 언제) · (트랜잭션) · (언제, id).
-- 감사 표는 착지 날 하나다 (총괄 11-10 조건): 새 표 `audit_batches` 가 감사 로그이고, audit_logs 는 그날 은퇴한다 — 쓰기 0, 읽기는 전부 audit_batches + 줄. 걸리는 것 하나(물음): «이 착지 밖» 첫 줄의 소유자 ㄴ(데이터 아닌 기록은 그동안 audit_logs 에 씀)과 «쓰기 0»이 같이 설 수 없다 — ㄱ 데이터 아닌 기록도 착지 날 audit_batches 로(작업 종류 낱말을 그만큼 더함) / ㄴ audit_logs 를 그 기록만의 표로 남김(감사 표 둘).
+- 감사 표는 착지 날 하나다 — 소유자 11-10 밤 «데이터가 아닌 감사 기록은 본 적이 없는데»: 감사 표 하나, 데이터 아닌 기록도 audit_batches (값 칸 없음). audit_logs 는 그날 완전 은퇴한다 — 쓰기 0, 읽기는 전부 audit_batches + 줄.
+- 데이터 아닌 기록을 쓰는 자리 (origin/main 2b09c2bdf 의 server/, 시험 밖, AST 로 create_audit_log · bulk_insert_audit_logs · _insert_audit_row · AuditLog( 를 부르는 자리 28 — 카나리아: 세 쓰는 함수의 def 3. 셈 명령: C 의 scratchpad wl/census_audit_writers.py): 6. 기준은 «데이터 행 하나를 가리키지 않음»(row_id «*» · 영수증 · 원장)이다. 작업 종류 낱말을 이만큼 더한다: «set_aside»(chain/set_aside.set_aside_line · chain/ingestion_worker._ran_though_set_aside) · «reset»(chain/replay.full_reset) · «receipt»(crud.receipt_log · ledger/followup._write_failure_receipt) · «ledger»(ledger/store.write_batch). 낱말 이름은 C 의 짐작이고 A 가 쓰기 자리를 옮길 때 확정한다.
+  - 행 단위 표시(CREATE · ROW_DELETION_COLUMN · ROW_UPDATE 칸)는 데이터 아닌 기록이 아니다 — 작업 종류 new · delete · edit 이다.
 - 옛 audit_logs 행: 이주가 (transaction_id, table_name, 누가, 작업) 묶음마다 audit_batches 한 행으로 접는다 — 네비는 줄 표의 (묶음) 인덱스로 닿는다(이주 3 단계의 옛 줄이 같은 transaction_id 를 든다). 옛 표는 이름을 `audit_logs__old` 로 바꿔 되돌리기 창 동안 두고, 아무도 읽지 않는다.
 - audit_logs 를 묻는 자리 (origin/main 2b09c2bdf 의 server/, 시험 밖 함수, AST — AuditLog 이름 또는 «audit_logs» 문자열. 카나리아 `def create_audit_log` 1. 셈 명령: C 의 scratchpad wl/census_audit_logs.py — 저장소에 없음): 44 함수. 읽기/쓰기 갈래는 본문 낱말로 가른 짐작이다.
   - 쓰기 (10): crud.create_audit_log · crud.bulk_insert_audit_logs · crud._merge_into_key_holder · ledger/store._insert_audit_row · chain/replay._write_by_values · admin/audit_cache._merge · scripts/migrate_to_postgres.migrate · scripts/probe_ingestion_stages.run · .report · setup/seed_data.clear_db
@@ -244,7 +246,6 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 
 ## 이 착지 밖
 
-- 감사 이력의 데이터 아닌 기록 — 그동안 audit_logs 에 쓴다 (소유자 ㄴ 11-10). 다음 착지: 감사 로그의 작업 종류 칸으로. 쓰는 함수 셋(create_audit_log · bulk_insert_audit_logs · ledger/store._insert_audit_row) · 부르는 자리 28(origin/main 93bb81aa7, git grep «<함수>(» 시험 밖, 각 def = 1), +1 일 추정(안 쟀다). 그 뒤 audit_logs 은퇴.
 - 고정(cell_overwrites) 접기.
 - 오래된 줄 정리.
 - `t__lines` 의 물리 순서(CLUSTER · 읽는 순서).
