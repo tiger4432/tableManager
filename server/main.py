@@ -54,6 +54,7 @@ import db_safety  # [#16a] "a test process may not touch a real database", as a 
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 import grid_pivot  # the main grid's pivot read (소유자 10-22)
 import grid_order  # a table read in its entered order, and the places people dragged (소유자 11-06)
+import grid_look  # a page's looks, and its cells' writers read after it (owner 11-10)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
@@ -2489,6 +2490,7 @@ def grid_page(
     before: str = None,                 # 뒤 쪽의 첫 행 row_id - 앞 쪽을 열쇠로
     counted: dict = None,               # the door's count (`grid_count`) - taken in the server process, not here
     pivot: bool = False,                # one row per key group, one cell per item (`grid_pivot`, 소유자 10-22)
+    part: str = None,                   # `grid_look.WRITERS`: this page's cells' writers alone (owner 11-10 ㄱ)
     db: Session = None
 ):
     """
@@ -2708,8 +2710,12 @@ def grid_page(
     # [성능 최적화] 그리드 목록 조회에서는 cell_sources 로딩을 생략(include_sources=False)하여
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
+    if part == grid_look.WRITERS:
+        with request_timing.stage("writers"):
+            merged, _looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
+        return {"table_name": table_name, "skip": skip, "written_by": grid_look.written_of(merged)}
     with request_timing.stage("layers"):
-        data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False)
+        data_list, looks = read_as_page(db, table_name, raw_rows, user_cols, include_sources=False, writers=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
     t_dict = time.time() - t_dict_start
@@ -2849,6 +2855,7 @@ def get_table_data(
     before: str = None,
     pivot: bool = False,
     marking: str = None,
+    part: str = None,
     request: Request = None,
     db: Session = Depends(get_db)
 ):
@@ -2856,11 +2863,14 @@ def get_table_data(
     its page in the grid pool (`grid_page`, `grid_processes` - 0: here). Every caller of /data passes this door - the
     grid, the map editor, the R&D board, the admin cards; no code calls the two halves apart. A sort name it cannot
     sort by is refused before anything is counted. `marking`: the reader's marking of this table narrows it, as its
-    set filter (`markings.as_filters`) - the values never ride the URL."""
+    set filter (`markings.as_filters`) - the values never ride the URL. `part=writers`: the page's cells' writers
+    alone, read after the page is drawn (`grid_look.WRITERS`) - nothing counted."""
+    if part not in (None, grid_look.WRITERS) or (part and pivot):
+        raise HTTPException(status_code=422, detail="part=%s: a row page's part is only 'writers'" % part)
     if marking:
         filters = markings.as_filters(db, table_name, marking, filters, access.person(request))
     counted = None
-    if not defer_total:
+    if not defer_total and not part:
         table_model = grid_model(table_name, world)
         if not table_model:
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
@@ -2876,7 +2886,7 @@ def get_table_data(
                      order_desc=order_desc, target_row_id=target_row_id, transaction_id=transaction_id,
                      filters=filters, enrichment_queue=enrichment_queue,
                      enrichment_queue_scope=enrichment_queue_scope, defer_total=defer_total, world=world,
-                     after=after, before=before, counted=counted, pivot=pivot, db=db)
+                     after=after, before=before, counted=counted, pivot=pivot, part=part, db=db)
 
 
 @app.get("/tables/{table_name}/data/count")

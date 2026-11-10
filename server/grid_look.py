@@ -22,6 +22,9 @@ DECLARED = "rules"
 FILL, LINE = "fill", "line"
 #: The writers a page read's `priority_source` names without the layers - a cell it leaves unnamed is neither's.
 NAMED_WRITERS = frozenset({"person", "merge"})
+#: A grid page's read of its cells' writers alone - GET /tables/{t}/data?part=writers, the page's own arguments (owner
+#: 11-10 ㄱ: the page answers without the layers its rules ask; its colours come by this second read).
+WRITERS = "writers"
 
 
 def paint_key(row_id, column):
@@ -76,10 +79,12 @@ def fold(*layers) -> list:
     return sorted(out.values(), key=lambda rule: (rule["position"], rule["id"]))
 
 
-def read(db, table_name, rows):
+def read(db, table_name, rows, writers=True):
     """The looks of a page of `rows` (dicts with row_id and data, `fetch_and_merge_metadata`'s): {"rules": [in order],
     "paints": {paint_key: {"role", "row_id"}}} - None when the table has neither. A rule that asks who wrote a cell has
-    each cell of its columns that one of the asked writers wrote given `written_by` (`crud.writer_kind`, `_writers`)."""
+    each cell of its columns that one of the asked writers wrote given `written_by` (`crud.writer_kind`, `_writers`) -
+    `writers` False: only the cells the page read names (`_named`), and `updating` says whether others are left for the
+    page's `WRITERS` read."""
     look = _looks()
     if look is None:
         return None
@@ -96,12 +101,42 @@ def read(db, table_name, rows):
     rules = [dict(rule, shape=rule["shape"] or FILL) for rule in fold(_declared(), layers[EVERY], layers[table_name])]
     if not rules and not paints:
         return None
+    looks = {"rules": rules, "paints": paints}
+    if not writers:
+        looks["updating"] = False
     asking = [rule for rule in rules if rule["role"] and rule["written_by"]]
     if asking:
         columns = [rule["columns"] for rule in asking]
-        _writers(db, table_name, rows, None if None in columns else {name for names in columns for name in names},
-                 {rule["written_by"] for rule in asking})
-    return {"rules": rules, "paints": paints}
+        columns = None if None in columns else {name for names in columns for name in names}
+        kinds = {rule["written_by"] for rule in asking}
+        if writers:
+            _writers(db, table_name, rows, columns, kinds)
+        else:
+            looks["updating"] = bool(_named(rows, columns, kinds) and set(kinds) - NAMED_WRITERS)
+    return looks
+
+
+def written_of(rows) -> dict:
+    """{paint_key: writer} of the cells of `rows` a rule's writer was said on - the `WRITERS` read's answer."""
+    return {paint_key(row.get("row_id"), column): cell["written_by"]
+            for row in rows for column, cell in (row.get("data") or {}).items()
+            if isinstance(cell, dict) and cell.get("written_by")}
+
+
+def _named(rows, columns, kinds):
+    """The cells of `columns` (None = all) the page read's `priority_source` names say it in `written_by` when it is
+    one of `kinds`. -> the row ids of the cells it leaves unnamed."""
+    from database import crud
+
+    ids = set()
+    for row in rows:
+        for column, cell in (row.get("data") or {}).items():
+            if (columns is None or column in columns) and isinstance(cell, dict) and "priority_source" in cell:
+                if cell["priority_source"] is not None:
+                    _said(cell, crud.writer_kind(cell["priority_source"]), kinds)
+                elif row.get("row_id") is not None:
+                    ids.add(row.get("row_id"))
+    return ids
 
 
 def _writers(db, table_name, rows, columns, kinds):
@@ -114,14 +149,7 @@ def _writers(db, table_name, rows, columns, kinds):
     model, and every page read every layer of its cells - 0.22 s -> 0.99 s on a 1,000-row page of the box's dt_log)."""
     from database import crud, models
 
-    ids = set()     # the rows of the cells the page read left unnamed
-    for row in rows:
-        for column, cell in (row.get("data") or {}).items():
-            if (columns is None or column in columns) and isinstance(cell, dict) and "priority_source" in cell:
-                if cell["priority_source"] is not None:
-                    _said(cell, crud.writer_kind(cell["priority_source"]), kinds)
-                elif row.get("row_id") is not None:
-                    ids.add(row.get("row_id"))
+    ids = _named(rows, columns, kinds)      # the rows of the cells the page read left unnamed
     asked = set(kinds) - NAMED_WRITERS
     if not ids or not asked:
         return

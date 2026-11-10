@@ -715,10 +715,11 @@ def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
     return out
 
 
-def read_as_page(db, table_name: str, rows: list, user_cols: list, include_sources: bool):
+def read_as_page(db, table_name: str, rows: list, user_cols: list, include_sources: bool, writers: bool = True):
     """(merged rows, looks): `rows` as the page reads them - the page read and every batch_row_upsert item, so a
-    screen that did not make the write colours a cell as a read would (lead 11-08, 클라B's L2)."""
+    screen that did not make the write colours a cell as a read would (lead 11-08, 클라B's L2). `writers` False: the
+    cells' writers the layers would name are left to the page's `grid_look.WRITERS` read (owner 11-10 ㄱ)."""
     import grid_look
 
     merged = fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=include_sources)
-    return merged, grid_look.read(db, table_name, merged)
+    return merged, grid_look.read(db, table_name, merged, writers=writers)
