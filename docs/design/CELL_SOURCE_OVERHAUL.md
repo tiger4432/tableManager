@@ -150,7 +150,7 @@
 - deleted_rows(«지워졌나»)는 줄 종류 «deleted» 를 읽는다 (D). 감사 행 = 종류 «지움» · 바뀐 행 N. 체인 대기열의 DELETE 사건은 오늘 그대로 (A).
 - 거두기 = 그 출처의 «withdraw» 줄(withdrawn_bits) + 지금 줄 다시 합침.
 - 체인 줄의 거두기 단위 = 규칙 + 입력 행 (소유자 11-10 «체인 규칙 + 낸 행으로»). 원천 행 S1 이 사라지면 «규칙 R · 입력 행 S1» 인 머리 줄만 거둔다. 같은 규칙이 S2 로 그 칸을 이미 다시 썼으면 거둘 것이 없다. 오늘의 cell_layer.cells_stamped_by(그 입력 행이 먹인 칸 중 그 출처의 최신이 아직 그 입력 행인 것)와 같은 답이다.
-- 체인이 자기가 낸 행을 거둘 때(소유자 11-10 «체인이 낸 행 부분만 없애면 됨»): 그 체인 출처의 줄만 거두고, 행이 «껍데기»일 때만 «deleted» 줄 + 지금 줄 DELETE. 껍데기 판정은 오늘의 chain.cell_layer.shells · delete_shells 를 줄로 옮긴 것 하나다(원천 없어진 키는 ingestion_worker._settle + cell_layer.person_rows): 키 밖 칸에 값 있는 머리 줄 없음 · 키 칸 머리 줄은 전부 체인 것 · 사람(출처 user) 줄은 빈 것이라도 없음 · 핀 없음 · 지금 줄이 키 밖에 보이는 값 없음. 핀만 있는 칸도 «사람 몫이 남음» — cell_layer.person_rows 한 함수가 «사람 줄 또는 핀»을 세고 shells · _settle 이 둘 다 부른다 (A 11-10). old_exist 백업 줄(출처 이름이 user 가 아님)을 사람 몫으로 세는지는 오늘 person_rows 의 답을 따른다 — A 가 시험으로 확인한다.
+- 체인이 자기가 낸 행을 거둘 때(소유자 11-10 «체인이 낸 행 부분만 없애면 됨»): 그 체인 출처의 줄만 거두고, 행을 «붙드는 것»이 남지 않았을 때만 «deleted» 줄 + 지금 줄 DELETE. 판정은 오늘의 cell_layer.person_rows 한 함수 «무엇이 이 행을 붙드나»를 줄로 옮긴 것이다(release-2026-11-10d 96e0fa44d 부터 shells · delete_shells · ingestion_worker._settle 이, 10i 5ea5e3ec0 부터 소급 «Remove rows with no source left» 도 이것을 부른다). 붙드는 것 넷: ① 사람 줄(빈 것 포함 — 출처를 crud.layer_writer 로 접어 «user» 인 줄, 그래서 키 병합의 «user (old_exist_…)» 백업 줄도 사람 몫이다) ② 핀 ③ 체인 아닌 작성자(파일의 키 줄 또는 값) ④ 그 행을 «만든» 체인의 값 — 줄에서는 «그 출처의 줄이 그 행의 키 칸을 written_bits 에 든 적이 있나»로 읽는다. 다른 체인이 «붙이기만» 한 값은 행을 붙들지 않는다(소유자 공식 마스터 모양: 체인 1 이 거두면 체인 2 의 값과 같이 지워지고 체인 2 는 DELETE 를 받는다). 시험: 키 병합 뒤 백업 줄만 남은 행이 체인 거두기에 지워지지 않는다(A 쓰기 몫).
 - 오래된 줄 정리: 이번 착지 밖 — 다 남긴다. 운영 크기를 잰 뒤 다시 본다.
 
 ## 읽기 — D 분야
