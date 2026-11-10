@@ -80,6 +80,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         if unknown:
             raise ValueError("write_lines: %r is not a column of %r" % (unknown[0], table))
     at = crud.batch_write_instant(db)
+    if at is None:                                 # a line's at is its history - never NULL (C 11-10)
+        raise RuntimeError("write_lines: the database gave no time for %r's lines" % table)
 
     targets, old, keys = _claim(db, table, cfg, now, items)
     kept, left_out = _leave_out(db, table, cfg, ln, bits, chunks, items, targets)

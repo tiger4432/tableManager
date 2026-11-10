@@ -15,6 +15,19 @@ TABLE = "wl_probe"
 CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string", "n": "number"}}
 
 
+def stand_in_winners(shape):
+    """Stand-in for C's lines.winners_sql until it lands (11-11): the latest head line of the column wins - no rank, no
+    pin. The two write_lines test files share it."""
+    def winners(table, cfg, column, param):
+        k, m = shape["bits"][column] // 64, 1 << (shape["bits"][column] % 64)
+        head = "h.line_kind = 'write' AND (h.head_{k} & {m}) != 0 AND (h.withdrawn_{k} & {m}) = 0".format(k=k, m=m)
+        return text("SELECT h.row_id, h.{c}, h.line_id FROM {t} h WHERE h.row_id IN :{p} AND {head} AND h.line_id = "
+                    "(SELECT max(line_id) FROM {t} h2 WHERE h2.row_id = h.row_id AND {head2})".format(
+                        c=column, t=shape["lines"].name, p=param, head=head, head2=head.replace("h.", "h2."))
+                    ).bindparams(bindparam(param, expanding=True))
+    return winners
+
+
 @pytest.fixture(name="db")
 def fixture_db(monkeypatch):
     engine = create_engine("sqlite://")
@@ -22,17 +35,7 @@ def fixture_db(monkeypatch):
     lines.AuditBatch.__table__.create(engine)
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
     db = sessionmaker(bind=engine)()
-    shape = lines.ensure_line_table(db, TABLE, CFG)
-
-    def winners(table, cfg, column, param):
-        # stand-in until C's lines.winners_sql (11-11): the latest head line of the column wins, no rank, no pin
-        k, m = shape["bits"][column] // 64, 1 << (shape["bits"][column] % 64)
-        head = "h.line_kind = 'write' AND (h.head_{k} & {m}) != 0 AND (h.withdrawn_{k} & {m}) = 0".format(k=k, m=m)
-        return text("SELECT h.row_id, h.{c}, h.line_id FROM {t} h WHERE h.row_id IN :{p} AND {head} AND h.line_id = "
-                    "(SELECT max(line_id) FROM {t} h2 WHERE h2.row_id = h.row_id AND {head2})".format(
-                        c=column, t=shape["lines"].name, p=param, head=head, head2=head.replace("h.", "h2."))
-                    ).bindparams(bindparam(param, expanding=True))
-    monkeypatch.setattr(lines, "winners_sql", winners, raising=False)
+    monkeypatch.setattr(lines, "winners_sql", stand_in_winners(lines.ensure_line_table(db, TABLE, CFG)), raising=False)
     try:
         yield db
     finally:
