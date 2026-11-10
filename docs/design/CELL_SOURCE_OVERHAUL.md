@@ -95,6 +95,7 @@
 - 감사 표는 착지 날 하나다 — 소유자 11-10 밤 «데이터가 아닌 감사 기록은 본 적이 없는데»: 감사 표 하나, 데이터 아닌 기록도 audit_batches (값 칸 없음). audit_logs 는 그날 완전 은퇴한다 — 쓰기 0, 읽기는 전부 audit_batches + 줄.
 - 데이터 아닌 기록을 쓰는 자리 (origin/main 2b09c2bdf 의 server/, 시험 밖, AST 로 create_audit_log · bulk_insert_audit_logs · _insert_audit_row · AuditLog( 를 부르는 자리 28 — 카나리아: 세 쓰는 함수의 def 3. 셈 명령: C 의 scratchpad wl/census_audit_writers.py): 6. 기준은 «데이터 행 하나를 가리키지 않음»(row_id «*» · 영수증 · 원장)이다. 작업 종류 낱말을 이만큼 더한다: «set_aside»(chain/set_aside.set_aside_line · chain/ingestion_worker._ran_though_set_aside) · «reset»(chain/replay.full_reset) · «receipt»(crud.receipt_log · ledger/followup._write_failure_receipt) · «ledger»(ledger/store.write_batch). 낱말 이름은 C 의 짐작이고 A 가 쓰기 자리를 옮길 때 확정한다.
   - 행 단위 표시(CREATE · ROW_DELETION_COLUMN · ROW_UPDATE 칸)는 데이터 아닌 기록이 아니다 — 작업 종류 new · delete · edit 이다.
+- 선언 저장도 감사다 (소유자 11-10 밤 «시스템 표에 감사 로그 적용 못 해? 표인데»): 선언을 저장하는 순간 그 시스템 표 이름으로 audit_batches 한 행(누가 · 작업 종류 «declare» · 시각). 시스템 표를 다시 짓는 것(system_catalog.wake)은 감사를 쓰지 않는다(잡음). 작업 종류 낱말: edit · new · delete · withdraw · merge · mark · declare + 위의 데이터 아닌 기록 낱말.
 - 옛 audit_logs 행: 이주가 (transaction_id, table_name, 누가, 작업) 묶음마다 audit_batches 한 행으로 접는다 — 네비는 줄 표의 (묶음) 인덱스로 닿는다(이주 3 단계의 옛 줄이 같은 transaction_id 를 든다). 옛 표는 이름을 `audit_logs__old` 로 바꿔 되돌리기 창 동안 두고, 아무도 읽지 않는다.
 - audit_logs 를 묻는 자리 (origin/main 2b09c2bdf 의 server/, 시험 밖 함수, AST — AuditLog 이름 또는 «audit_logs» 문자열. 카나리아 `def create_audit_log` 1. 셈 명령: C 의 scratchpad wl/census_audit_logs.py — 저장소에 없음): 44 함수. 읽기/쓰기 갈래는 본문 낱말로 가른 짐작이다.
   - 쓰기 (10): crud.create_audit_log · crud.bulk_insert_audit_logs · crud._merge_into_key_holder · ledger/store._insert_audit_row · chain/replay._write_by_values · admin/audit_cache._merge · scripts/migrate_to_postgres.migrate · scripts/probe_ingestion_stages.run · .report · setup/seed_data.clear_db
@@ -246,6 +247,7 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 
 ## 이 착지 밖
 
+- 다음 라운드 (소유자 ㄱ 11-10 밤, 갈아엎기 · 트리거 찾기 다음): 선언의 원본을 파일 대신 시스템 표 행으로 두고 같은 쓰기 입구를 지나게 한다 — 선언도 이력 줄 · 되돌리기 · 전후 비교를 얻는다.
 - 고정(cell_overwrites) 접기.
 - 오래된 줄 정리.
 - `t__lines` 의 물리 순서(CLUSTER · 읽는 순서).
