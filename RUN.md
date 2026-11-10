@@ -22,6 +22,8 @@
 > 고른 행 소급   소급 «Fold stored values into the declared spelling» 에 row_ids(그리드의 row_id, chain_replay 와 같은 칸)
 >               python -c "from admin import retroactive; retroactive.run_here('fold_written_notation', {'table': '<표>', 'row_ids': ['<row_id>']})"
 >               없는 row_id 는 «'<표>' holds no row <id>» 로 이름이 나옴. 화면 배너 단추는 클라 착지 뒤
+>               ⚠️ row_ids 를 «빈 채로» 보내면 이제 거절(전에는 칸을 지워 표 전체를 돌림) — chain_replay 도 같음.
+>               거절 문장 «row_ids was given but empty; an empty selection would run <작업> on everything …». 칸을 안 보내면 전체 그대로
 > 끄기          자기 표 짝: 선언에서 on.require/exclude 를 빼면 짝이 안 섬 · time: "year" 칸을 지우면(거절되어) 접지 않음
 > ```
 >

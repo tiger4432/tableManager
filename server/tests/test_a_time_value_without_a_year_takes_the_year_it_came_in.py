@@ -13,7 +13,7 @@ from chain import ingestion_worker as worker
 from chain import replay
 from database import models
 from test_a_written_column_is_stored_folded import (DECLARED, PLAIN, TABLES, _declare, _rows, _stored,  # noqa: F401
-                                                    _write, env, watcher)
+                                                    _write, env, fixture_watcher)
 from test_a_written_column_takes_the_declared_spelling import _refusals
 
 KOREAN = {"time": {"from": ["%m월 %d일", "%m월%d일"], "year": "arrival"}}
@@ -98,7 +98,7 @@ def test_the_backfill_folds_each_layer_with_the_year_it_came_in(env, tmp_path, m
         ("K-01", "2024-03-05 00:00:00"), ("K-02", "2025-03-05 00:00:00"),
         ("K-03", "2024-02-29 00:00:00"), ("K-04", "2월 29일"), ("K-05", "21")]
     assert _layers(env) == [("f24.csv", "2024-02-29 00:00:00"), ("f24.csv", "2024-03-05 00:00:00"),
-                            ("f25.csv", "21"), ("f25.csv", "2025-03-05 00:00:00"), ("f25.csv", "2월 29일")]
+                            ("f25.csv", "2025-03-05 00:00:00"), ("f25.csv", "21"), ("f25.csv", "2월 29일")]
     # counted as the cell and as the layer: 21's two, and 2025's 2월 29일 layer - its cell had no year to say
     assert stats["time_left"] == {"unmatched": 3}
     assert replay.fold_written_notation(env, PLAIN)["layers_folded"] == 0, "a second run moves nothing"
@@ -122,7 +122,9 @@ def test_a_shown_value_with_no_layer_is_left_and_counted(env, tmp_path, monkeypa
 ])
 def test_a_format_without_a_year_is_refused_unless_the_year_is_its_arrival(time, says):
     specs, rejections = _refusals({"seen_at": {"write": True, "rules": {"time": time}}})
-    assert "seen_at" not in specs and any(says in r["detail"] for r in rejections), rejections
+    # the time rule is off; the column stands with its defaults (as for every refused value rule)
+    assert not (specs.get("seen_at") or {}).get("rules", {}).get("time")
+    assert any(says in r["detail"] for r in rejections), rejections
 
 
 @pytest.mark.parametrize("formats", [["%m월 %d일", "%m월%d일"], ["%Y/%m/%d", "%m월 %d일"], ["%Y/%m/%d"]])

@@ -35,9 +35,10 @@ def test_a_refused_rule_is_logged_once_per_read_and_says_the_whole_rule_is_off(e
 
 def test_the_resolution_box_reads_the_held_list(env, tmp_path, monkeypatch):
     _declare(tmp_path, monkeypatch, REFUSED)
+    (held,) = nn.refused_declarations()
     rejected = [entry for entry in config_resolve_report._resolve_notation()["rejected"]
-                if SAYS in str(entry)]
-    assert len(rejected) == 1 and nn.refused_declarations()[0]["detail"] in str(rejected[0]), rejected
+                if held["detail"] in str(entry) and held["subject"] in str(entry)]
+    assert len(rejected) == 1, config_resolve_report._resolve_notation()["rejected"]
 
 
 @pytest.mark.parametrize("declared, absence, says", [
