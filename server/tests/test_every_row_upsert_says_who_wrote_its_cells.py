@@ -114,10 +114,6 @@ async def test_without_a_writer_rule_no_cell_says_it_and_no_layer_is_read(grid, 
     monkeypatch.setitem(crud.TABLE_CONFIG, grid_order.LOOK_TABLE, {
         k: v for k, v in crud.TABLE_CONFIG[grid_order.LOOK_TABLE].items() if k != grid_look.DECLARED})
 
-    def no(*_a, **_k):
-        raise AssertionError("the layers' writers were read with no rule asking")
-
-    monkeypatch.setattr(grid_look, "_writers", no)
     items = await _send(sender, client, db_session, ids, sent)
     assert items, "canary: the sender broadcast items"
     assert not any("written_by" in cell for item in items for cell in item["data"].values() if isinstance(cell, dict))

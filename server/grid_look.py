@@ -20,8 +20,6 @@ DECLARED = "rules"
 #: A rule's shape (owner 11-08 2ㄱ): FILL its role's tint behind the text (blank = FILL), LINE a left edge and the text
 #: in its role's colour - drawn over a fill, so a person's cell still says so under another rule's colour.
 FILL, LINE = "fill", "line"
-#: The writers a page read's `priority_source` names without the layers - a cell it leaves unnamed is neither's.
-NAMED_WRITERS = frozenset({"person", "merge"})
 #: A grid page's read of its cells' writers alone - GET /tables/{t}/data?part=writers, the page's own arguments (owner
 #: 11-10 ㄱ: the page answers without the layers its rules ask; its colours come by this second read).
 WRITERS = "writers"
@@ -109,10 +107,7 @@ def read(db, table_name, rows, writers=True):
         columns = [rule["columns"] for rule in asking]
         columns = None if None in columns else {name for names in columns for name in names}
         kinds = {rule["written_by"] for rule in asking}
-        if writers:
-            _writers(db, table_name, rows, columns, kinds)
-        else:
-            looks["updating"] = bool(_named(rows, columns, kinds) and set(kinds) - NAMED_WRITERS)
+        _named(rows, columns, kinds)
     return looks
 
 
@@ -137,44 +132,6 @@ def _named(rows, columns, kinds):
                 elif row.get("row_id") is not None:
                     ids.add(row.get("row_id"))
     return ids
-
-
-def _writers(db, table_name, rows, columns, kinds):
-    """A cell of `columns` (None = all) whose winning layer's writer is one of `kinds`, the writers the rules ask,
-    says it in `written_by`; any other cell says none - no rule's writer is its (lead 11-09). The page read's
-    `priority_source` names the winner when set (a person's or a merge's layer, a pinned one; every winner when the
-    sources were read). A cell it leaves unnamed is ranked from the layers' names and times
-    (`crud.compute_priority_value`) when `kinds` asks a writer beyond `NAMED_WRITERS`, and then only the cells holding
-    a layer of a writer `kinds` asks - the winner is one of its layers (lead 11-09: the rules every table has ask a
-    model, and every page read every layer of its cells - 0.22 s -> 0.99 s on a 1,000-row page of the box's dt_log)."""
-    from database import crud, models
-
-    ids = _named(rows, columns, kinds)      # the rows of the cells the page read left unnamed
-    asked = set(kinds) - NAMED_WRITERS
-    if not ids or not asked:
-        return
-    S = models.CellSource
-    query = db.query(S.row_id, S.column_name).filter(S.table_name == table_name, S.row_id.in_(sorted(ids)),
-                                                     crud.writer_kind_clause(S.source_name, kinds))
-    if columns is not None:
-        query = query.filter(S.column_name.in_(sorted(columns)))
-    held = set(query.distinct().all())
-    if not held:
-        return
-    layers, ranks = {}, {}   # ranks: the declared rank of each name, asked once for the page
-    for row_id, column, name, at in db.query(S.row_id, S.column_name, S.source_name, S.ingested_at).filter(
-            S.table_name == table_name, S.row_id.in_(sorted({row for row, _c in held})),
-            S.column_name.in_(sorted({column for _r, column in held}))):
-        if (row_id, column) in held:
-            layers.setdefault((row_id, column), {})[name] = at
-    by_id = {row.get("row_id"): row for row in rows}
-    for (row_id, column), said in layers.items():
-        cell = (by_id[row_id].get("data") or {}).get(column)
-        if not isinstance(cell, dict) or "priority_source" not in cell or cell["priority_source"] is not None:
-            continue
-        _, source = crud.compute_priority_value({name: {} for name in said}, cell.get("manual_priority_source"),
-                                                table_name, ingested_at_by_source=said, ranks=ranks)
-        _said(cell, crud.writer_kind(source), kinds)
 
 
 def _said(cell, writer, kinds):

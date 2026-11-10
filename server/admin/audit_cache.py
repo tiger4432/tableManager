@@ -1,153 +1,54 @@
-"""The in-memory projection behind `GET /audit_logs/recent`.
+"""The in-memory projection behind `GET /audit_logs/recent` - the newest transaction groups of `audit_batches`
+(cell-source overhaul «감사 로그», owner 11-10 ㄱ: every audit record is a batch; audit_logs retires).
 
-WHAT WAS WRONG (measured on an isolated 2,900,000-row fixture, 2026-08-11,
-widths copied from production's own catalogue)
+A group is a transaction (`group_of` - a replay's pages are one group). Per table it shows the kinds and the writers
+as written, the newest time, the batches' count, and the rows it changed - counted from the table's lines
+(`audit_history.changed_rows`), None for a relation without lines (`lines.has_lines`).
 
-    `load_initial` paged `audit_logs` newest-first in 5,000-row chunks with a
-    GROWING OFFSET until it had 100 DISTINCT `transaction_id`s. Two independent
-    things made that unbounded:
-
-    1. NO `timestamp`-LEADING INDEX EXISTED, so every chunk was a parallel
-       sequential scan of the whole table followed by a full sort that spilled
-       to disk. One chunk, on the fixture:
-
-           Parallel Seq Scan on audit_logs -> Sort (timestamp DESC, id DESC)
-           Sort Method: external merge  Disk: 400,848 kB
-           OFFSET 0        3,658 ms   153,307 buffers, 287,412 temp written
-           OFFSET 100,000  3,698 ms   153,307 buffers, 287,408 temp written
-           OFFSET 200,000  7,167 ms   153,307 buffers, 287,408 temp written
-
-    2. A BULK INGESTION WRITES ONE `transaction_id` PER FILE, so 100,000 rows
-       are ONE group. Finding group #2 means walking past all of them. On the
-       fixture the newest 200,000 rows carry 2 transaction_ids, so the walk
-       needed ~41 chunks of that plan.
-
-    On top of that every scanned row was turned into an ORM entity AND run
-    through `AuditLogResponse.model_validate` - including the ~200,000 rows that
-    were counted and immediately thrown away, because a group keeps only 500.
-
-WHAT IT DOES NOW
-
-    DISCOVERY is a keyset walk over `(timestamp, id)` selecting three columns,
-    so it is an index scan instead of a sort, and it carries a hard ceiling
-    (`recent_max_scan_rows`). Each chunk's one GROUP BY also carries what the
-    list shows of a group - its columns, its receipts per world, the id of its
-    representative (`_tally`) - so HYDRATION reads one row per group by id, not
-    a group's logs (owner 10-29 «경량화»: the list is navigation, a group's rows
-    are read when it is opened, `/audit_logs/transaction/{id}`).
-
-    The keyset predicate, the sort order and the cursor encoding are IMPORTED
-    from `audit_history`, not re-typed. That module is the one place this
-    project spells "newest-first page of audit history", and a second spelling
-    of `(timestamp, id) < (ts, id)` that drifted would put two different orders
-    on the same table.
-
-WHY A CEILING NEEDS A WORD, AND WHY IT IS `truncated`
-
-    A walk that gives up returns FEWER than `limit_groups` groups, and a short
-    list is indistinguishable from a complete one. That is the silent-failure
-    class this project keeps paying for, so the walk publishes `truncated` and
-    `next_cursor` - the same two words `audit_history.fetch_page` returns, with
-    the same meaning: `truncated` is "there is more history below the last
-    entry", `next_cursor` is where to resume. Exactness comes from the same
-    trick too: ask for one row more than the chunk needs.
-
-    Both facts reach the wire twice: in `/audit_logs/recent`'s body, which is the
-    envelope `{groups, truncated, next_cursor, limit_groups, returned}` since
-    2026-08-11, and in the `X-Audit-Truncated` / `X-Audit-Next-Cursor` response
-    headers, which were the whole channel before the body could move (client2
-    iterated the bare list) and are kept because callers read them. See the route
-    in `main.py`.
-
-THE WATERMARK, AND THE COUNT IT WAS DOUBLING
-
-    `_db_max_id` means "every audit row at or below this id is already
-    reflected here". Only `load_initial` and `refresh_if_stale` ever advanced
-    it. `add_logs_batch` - the path `/internal/events/batch-refresh` and every
-    in-process `crud` write use - could not, and still cannot, because the log
-    dicts it receives carry `"id": 0` verbatim (crud.create_audit_log writes the
-    literal, and `bulk_insert_mappings` never writes the assigned key back).
-
-    So the rows an event had already merged sat above the watermark and were
-    read a SECOND time by the next `refresh_if_stale` - and counted a second
-    time. Measured before this change: 300 rows written, event reports 300,
-    `total_count` reads 600.
-
-    The repair is not a watermark write (there is no id to write). It is a
-    CREDIT: an event records how much it has already claimed for a group, and
-    the next refresh - which reads the same rows from the database - absorbs
-    its own count against that credit instead of adding to it. The database
-    stays the single authority for the number; the event only buys latency.
+    walk     newest first by (at, id) - the (at, id) index - in chunks, until `limit_groups` groups; a page after a
+             cursor resumes below it and drops the groups with a batch at or above it (an earlier page named them)
+    behind   the walk and the merge of later batches run behind the reads, one at a time (`behind`, owner 11-09
+             «읽기는 쓰기에 영향 안 받음»); a notification's `changed` reaches the list at once (`add_changed`) and
+             the next merge reads its groups again whole, so a count is never added twice
+    bounds   each statement `recent_statement_seconds` (PostgreSQL cancels it), each walk or merge
+             `recent_walk_seconds`, a walk `recent_max_scan_rows` - past one: what was named, `truncated`, one line
 """
 import logging
 import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Optional
 
 import sqlalchemy as sa
+from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
 
 import error_said
 import event_constants
 from admin import audit_history
-from database import models
-from database import schemas
+from database import lines, models
 
 logger = logging.getLogger("Server")
 
-# Every knob is a DEFAULT that `audit_history_config.json` overrides - the same
-# file the row/cell history endpoints read, because this is the same feature and
-# an operator should not have to find two files to bound one table's reads.
+# Every knob is a DEFAULT that `audit_history_config.json` overrides - the file the row/cell history reads too.
 RECENT_DEFAULTS = {
-    # Hard ceiling on how far the discovery walk goes before it gives up on
-    # reaching `limit_groups`. This is the number that makes the first call
-    # bounded: the cost stops depending on how many rows one ingestion happened
-    # to write.
-    #
-    # WHY HALF A MILLION AND NOT A HUNDRED THOUSAND. The ceiling is not only a
-    # latency budget, it decides HOW MUCH HISTORY THE PANEL CAN SHOW after a
-    # bulk load: an ingestion writes one transaction_id per FILE, so K freshly
-    # ingested files of 100,000 rows hide the older transactions behind K x
-    # 100,000 rows. At the measured 0.64-1.11 us/row of the aggregate walk this
-    # ceiling costs ~400 ms in the worst case and covers four such files; at
-    # 200,000 it cost ~220 ms and the fixture's panel fell to TWO entries.
-    "recent_max_scan_rows": 500_000,
-    # Rows per discovery round trip. It is also the walk's FLOOR - even a
-    # projection that finds its hundred groups in the first 1,400 rows reads one
-    # whole chunk - so it trades round trips against that floor. 20,000 is ~22 ms.
-    "recent_scan_chunk_rows": 20_000,
-    # 🔴 THE PANEL NEVER HOLDS THE SERVER (owner 11-06 «STALL 303s P /audit_logs/recent ... D9/228s SELECT audit_logs»):
-    # each statement of the walk and of the merge runs at most this many seconds (PostgreSQL cancels it) ...
-    "recent_statement_seconds": 5,
-    # ... and the walk, or the merge, stops after this many - answered as far as it got, truncated with its cursor;
-    # a merge's rest is the next read's.
+    "recent_max_scan_rows": 500_000,        # batches a walk reads at most before it says truncated
+    "recent_scan_chunk_rows": 20_000,       # batches a statement reads; a merge's slice
+    "recent_statement_seconds": 5,          # 🔴 owner 11-06 «STALL 303s P /audit_logs/recent»: never holds the server
     "recent_walk_seconds": 10,
 }
-
-
-#: A read starts the walk or the merge behind it (`AuditLogCache.behind`) when none runs and the last one ended at
-#: least this long ago. 🔴 Well past the screen's read-again after an `updating` answer (timeline HISTORY_REREAD_MS,
-#: 2 s): at 2 s here every read-again started the next catch-up and the panel said «Updating» for ever (Chrome look
-#: 11-09). What another process wrote reaches the list by its notification at once; this merge is the reconciliation.
+#: A read starts the walk or the merge behind it when none runs and the last ended at least this long ago - well past
+#: the screen's read-again after `updating` (timeline HISTORY_REREAD_MS, 2 s; Chrome look 11-09).
 CATCH_UP_GAP_SECONDS = 10
-
-
-# Sort placeholder for a null `timestamp`. Never compared against a real value -
-# the `is not None` term of the sort key separates them first - it exists only so
-# that the tuple comparison has something of the right TYPE to look at.
+#: Groups a notification keeps on the list (`add_changed`) - the route's default page.
+LIVE_GROUPS = 100
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def resolve_recent_settings(config: dict = None) -> dict:
-    """Resolved scan settings - always every key, always usable.
-
-    A malformed knob falls back to its default with a warning rather than
-    taking the endpoint down or silently folding a typo into a number.
-    """
+    """Every knob, usable: a malformed one falls back to its default with a warning."""
     declared = config if isinstance(config, dict) else audit_history.load_config()
     resolved = dict(RECENT_DEFAULTS)
     for key, default in RECENT_DEFAULTS.items():
@@ -164,335 +65,49 @@ def resolve_recent_settings(config: dict = None) -> dict:
 
 
 class AuditLogCache:
-    """최신 히스토리 로그(트랜잭션 단위 100그룹)의 인메모리 프로젝션.
-
-    단일 프로세스 멀티스레딩 환경에서 Thread-Safe하게 동작한다.
-    """
+    """The newest groups, newest first; one process's, thread-safe."""
 
     def __init__(self):
         self.groups: List[Dict] = []
         self.is_loaded = False
         self._lock = threading.Lock()
-        # One rebuild at a time, and not under `_lock` (총괄 10-22 굳음 측정: a rebuild held `_lock` up to 5.2 s and
-        # every notification's `add_logs_batch` waited on it, up to 4.4 s).
+        # One rebuild at a time, and not under `_lock` (총괄 10-22: a rebuild under it held every notification).
         self._build_lock = threading.Lock()
-        self._db_max_id = None
-        # [P2 #10] 다중 tx 혼재 배치 경고 1회 게이트 (핫패스 로그 홍수 방지)
-        self._multi_tx_warned = False
-        # Published by the scan; read by the route. See the module docstring.
+        self._batch_max_id = None           # every audit batch at or below this id is in the projection
         self.truncated = False
         self.next_cursor: Optional[str] = None
         self.scanned_rows = 0
-        self._behind: Optional[threading.Thread] = None     # the walk or the merge running behind the reads
+        self._behind: Optional[threading.Thread] = None
         self._behind_ended = float("-inf")
 
-    # ------------------------------------------------------------------
-    # The scan
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _ordered_rows(query, floor):
-        """Restrict to rows that HAVE a position, at or above `floor`.
-
-        `>= floor` is the mirror of `audit_history.apply_cursor`'s `< ceiling`,
-        and it lives here because a range floor is not something a page walk
-        needs. Row-value comparison in both directions, never the OR expansion:
-        `audit_history`'s module docstring carries the measurement showing
-        PostgreSQL cannot push an OR-expanded bound into the btree.
-
-        🔴 `timestamp IS NOT NULL` IS THE LOAD-BEARING PART, and it is stated
-        rather than left to emerge. `timestamp` is nullable, and a row-value
-        comparison against a NULL yields NULL, not true - so every chunk after
-        the first ALREADY dropped null-stamped rows silently, while the first
-        chunk (which has no cursor) kept them. On PostgreSQL that difference is
-        not academic: `ORDER BY timestamp DESC` is NULLS FIRST there, so a
-        null-stamped row would be the very first chunk's edge, its position
-        cannot be encoded as a cursor, and a null cursor reads as "no cursor" -
-        the walk would restart at the top of the table and count the head rows
-        once per lap until the ceiling stopped it. SQLite sorts NULLs last and
-        so hides the whole thing.
-
-        Excluding them is the right answer and not merely the safe one: this
-        projection is "the newest transactions BY TIME", and a row with no time
-        has no place in it. It is still in `audit_logs`, and every other view of
-        the audit trail still shows it.
-        """
-        m = models.AuditLog
-        query = query.filter(m.timestamp.isnot(None))
-        if floor is None:
-            return query
-        return query.filter(sa.tuple_(m.timestamp, m.id) >= sa.tuple_(*floor))
-
-    def _chunk_edge(self, db: Session, cursor: Optional[str], want: int):
-        """`(last_row_of_this_chunk, there_is_more_below_it)`.
-
-        Two index entries, read at depth `want - 1`: the first is where this
-        chunk ends, the second exists only if the table continues past it. That
-        second row is the same has-more probe `audit_history.fetch_page` makes
-        by asking for `limit + 1` - one extra index entry instead of a count(*)
-        that would re-walk everything.
-
-        `(None, False)` means fewer than `want` rows remain: the walk has
-        reached the end of the table and nothing below it is unread.
-        """
-        m = models.AuditLog
-        rows = self._ordered_rows(
-            audit_history.apply_cursor(db.query(m.timestamp, m.id), m, cursor), None) \
-            .order_by(*audit_history.order_desc(m)) \
-            .offset(want - 1).limit(2).all()
-        if not rows:
-            return None, False
-        return (rows[0][0], rows[0][1]), len(rows) > 1
-
-    def _groups_seen_at_or_above(self, db: Session, floor, keys):
-        """Of `keys`, which transactions ALREADY have a row at or above `floor`?
-
-        🔴 [판정 473] THIS IS WHAT MAKES A SECOND PAGE POSSIBLE WITHOUT A SECOND
-        AUTHOR. Groups are ordered by their NEWEST row, so a page boundary is a
-        position in that order - but a group's OLDER rows lie scattered below it,
-        and a resumed walk meets them again. Without this they would be named as
-        fresh groups and page 2 would repeat what page 1 already returned.
-
-        One query, not one per group: the `transaction_id` btree answers all the
-        keys of a window together, and the window holds at most `limit_groups`
-        of them. The cost is therefore bounded by the PAGE, not by history.
-
-        A key is a GROUP (`group_of`), so it is asked by `in_group`: the
-        unattributed rows for `no_tid`, a run's pages for a replay.
-        """
-        m = models.AuditLog
-        if not keys:
-            return set()
-        q = self._ordered_rows(db.query(m.transaction_id).distinct(), floor)
-        q = q.filter(sa.or_(*[in_group(m.transaction_id, key) for key in keys]))
-        return {group_of(r[0]) for r in q.all()}
-
-    def _count_by_transaction(self, db: Session, cursor: Optional[str], edge, want: int):
-        """One row per transaction inside `(cursor, edge]`, counted BY POSTGRES.
-
-        🔴 THIS IS THE WHOLE REPAIR OF THE WALK. The previous version pulled
-        every scanned row into Python to count it, which cost 5.4 us/row and
-        made the ceiling on the walk a ceiling on how much history the panel
-        could show. Counting in the aggregate costs 0.64-1.11 us/row measured on
-        the 2,900,000-row fixture, so the same latency budget buys roughly five
-        times the walk - and the walk is what decides whether a user who just
-        ingested two files sees 2 recent transactions or 100.
-
-        `max(timestamp), max(id)` is the group's newest position, which is also
-        its DISCOVERY position: the first time a newest-first scan meets a
-        transaction is at its newest row. Sorting the aggregate by that pair
-        therefore reproduces the order the old row-by-row walk produced.
-
-        The chunk is counted by its ids (총괄 11-06, 소유자 ㄴ): the planner reads two row-value bounds as 150,000-200,000
-        rows when the chunk is 20,000, and from ~250,000 rows deep it scanned the whole table for each chunk (box: 982 ms,
-        325,284 buffers read a chunk; 27.7 s a walk under a 470,000-row transaction). The ids are the index walk
-        `_chunk_edge` takes, its LIMIT the estimate (box: 64-84 ms a chunk 20,000-480,000 deep; that walk's 25 chunks
-        2.1 s). Floor and LIMIT each name the same rows; the LIMIT is there for the planner.
-        """
-        m = models.AuditLog
-        chunk = audit_history.apply_cursor(sa.select(m.id), m, cursor)
-        chunk = self._ordered_rows(chunk, edge).order_by(*audit_history.order_desc(m)).limit(want)
-        tallied = _tally(db, lambda q: q.filter(m.id.in_(chunk)))
-        rows = [(tid, *one) for tid, one in tallied.items()]
-        # Belt and braces on the `IS NOT NULL` above: comparing a None against a
-        # datetime raises, and a sort that raises takes the whole projection
-        # down. Ordered as oldest rather than allowed to do that.
-        rows.sort(key=lambda r: (r[2] is not None, r[2] or _EPOCH, r[3]), reverse=True)
-        return rows
-
-    def _discover_groups(self, db: Session, limit_groups: int, settings: dict,
-                         start: Optional[str] = None):
-        """Walk newest-first over `(timestamp, id)` and name the groups.
-
-        Returns `(order, counts, tops, bottom, truncated, next_cursor, scanned, summaries)`.
-
-        `start` RESUMES the same walk for a later page (판정 473). There is one
-        author of "which groups come next" and this is it; the row-paging route
-        answers a different question (one row's history) and is not a second
-        spelling of this one.
-
-        No ORM entity and no pydantic here at all: this pass answers only "which
-        transactions are the newest ones and how big are they". Everything
-        expensive happens in `_hydrate`, over the bounded set this returns.
-
-        THE COUNT IS A COUNT WITHIN THE WINDOW THE WALK COVERED, and that is
-        what it always was: the previous implementation stopped the moment it
-        met transaction #101, so any of the first 100 with older rows below that
-        point was already undercounted. The window is now a chunk boundary
-        rather than a single row, which can only make a count MORE complete.
-        """
-        max_scan = settings["recent_max_scan_rows"]
-        chunk_rows = settings["recent_scan_chunk_rows"]
-
-        order: List[str] = []
-        counts: Dict[str, int] = {}
-        summaries: Dict[str, dict] = {}
-        tops: Dict[str, Tuple] = {}
-        cursor = start
+    def _discover(self, db: Session, limit_groups: int, settings: dict, start: Optional[str] = None):
+        """The groups of a page. -> (groups, truncated, next_cursor, scanned, cut)"""
         floor = audit_history.decode_cursor(start) if start else None
-        bottom = None
-        scanned = 0
-        more_below = False
-        stop_at = None
-        started, cut = time.monotonic(), None
-
-        while len(order) < limit_groups and scanned < max_scan:
-            if time.monotonic() - started > settings["recent_walk_seconds"]:
-                cut = "past recent_walk_seconds %d" % settings["recent_walk_seconds"]
-                break
-            want = min(chunk_rows, max_scan - scanned)
-            step = "a chunk's edge"
-            try:
-                edge, more_below = self._chunk_edge(db, cursor, want)
-                step = "a chunk's count"
-                rows = self._count_by_transaction(db, cursor, edge, want)
-                # 🔴 [판정 473] ON A RESUMED WALK, DROP THE GROUPS AN EARLIER PAGE
-                # ALREADY NAMED. A group is placed by its NEWEST row, so everything
-                # a previous page returned has its newest row at or above `floor` -
-                # and the older rows it left scattered below are exactly what this
-                # window meets. Asked once per chunk, for the chunk's own keys only.
-                step = "the groups an earlier page named"
-                if rows and floor is not None:
-                    fresh = {group_of(tid) for tid, *_ in rows}
-                    already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
-                else:
-                    already = ()
-            except OperationalError as exc:
-                if not _cut(exc):
-                    raise
-                db.rollback()
-                cut = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
-                break
-            if not rows:
-                break
-            for tid, n, newest_ts, newest_id, summary in rows:
-                scanned += n
-                key = group_of(tid)
-                if key in already:
-                    continue
-                if key in counts:
-                    counts[key] += n
-                    summaries[key] = _fold(summaries[key], summary)
-                elif len(order) < limit_groups:
-                    order.append(key)
-                    counts[key] = n
-                    summaries[key] = summary
-                    tops[key] = (newest_ts, newest_id)
-                elif stop_at is None:
-                    # 🔴 [판정 473] THE FIRST GROUP THIS PAGE DID NOT TAKE. The
-                    # walk keeps going to the end of the chunk so the counts of
-                    # the groups it DID take stay as complete as they were, but
-                    # the page is full and the chunk's remaining rows are the
-                    # next page's business.
-                    stop_at = (newest_ts, newest_id)
-            bottom = edge if edge is not None else bottom
-            if stop_at is not None:
-                break
-            if edge is None:
-                break
-            # ⚰️ [판정 473] THIS PARAGRAPH USED TO CLAIM THE TWO POSITIONS COULD
-            # NEVER DIFFER: 「carried as the SAME opaque token the response
-            # publishes, so the position the walk resumes from and the position a
-            # caller is handed can never be two different things」. They are two
-            # different things, and sharing one token did not merge them - it let
-            # the SCAN position speak with a PAGE position's authority.
-            #
-            #   scan position   where the next chunk of ROWS begins (this line)
-            #   page position   where the next GROUP begins - and a group is not
-            #                   at one position at all: its rows are scattered
-            #                   down the whole table, and it is PLACED by its
-            #                   newest one
-            #
-            # Publishing the scan position as `next_cursor` lost every group
-            # between "the page filled" and "the chunk ended" - up to one chunk
-            # (`recent_scan_chunk_rows`) of groups, silently, with no error on
-            # either page. The two are now computed separately below: this stays
-            # the scan position, and the published cursor is the last EMITTED
-            # GROUP's newest row (판정 473 ②, the Lead PM withdrawing 429 ②).
-            #
-            # The `is None` branch below is BELT AND BRACES and is expected to
-            # be unreachable: `_ordered_rows` already keeps null-stamped rows
-            # out of `_chunk_edge`, so an edge always has a position to encode.
-            # It stays because the failure it would prevent is not a crash - a
-            # `None` cursor reads as "no cursor" and restarts the walk at the
-            # top of the table, so the projection would return an ANSWER with
-            # the head rows counted once per lap. Nothing downstream would look
-            # wrong. There is no test on this branch, deliberately: the tested
-            # guarantee is the `IS NOT NULL`, and a second alarm for a branch
-            # that cannot fire would be an alarm nobody has ever heard.
-            cursor = _cursor_token(edge)
-            if cursor is None:
-                more_below = True
-                break
-
-        if cut:
-            more_below = True
-            logger.warning("[Audit] recent walk cut at %d s - %s; answered %d group(s), truncated",
-                           time.monotonic() - started, cut, len(order))
-        # 🔴 [판정 473] `stop_at` IS PART OF "THERE IS MORE", NOT JUST `more_below`.
-        # A page that fills on the LAST chunk has no rows below its edge, so
-        # `more_below` is false - and a group it declined to take is still
-        # waiting. Reporting that as complete is the same silence in a shorter
-        # table.
-        truncated = bool(more_below or stop_at is not None)
-        # 🔴 THE PUBLISHED CURSOR IS A GROUP POSITION: the newest row of the last
-        # group this page EMITTED. Resuming there and dropping the groups already
-        # seen at or above it (`_groups_seen_at_or_above`) is what makes the two
-        # pages a partition - no group in both, none in neither. `bottom` is the
-        # fallback only when the page named no group at all, where there is no
-        # group position to publish and the scan position is all there is.
-        resume = tops.get(order[-1]) if order else bottom
-        return (order, counts, tops, bottom, truncated,
-                _cursor_token(resume) if truncated else None, scanned, summaries, cut)
-
-    def _hydrate(self, db: Session, order, counts, summaries) -> List[Dict]:
-        """The groups as the list serves them - each one's count and summary (`_tally`), its representative read by
-        id: one statement for the page, never a group's logs (owner 10-29 «경량화»)."""
-        _resolve(db, [summaries[key] for key in order])
-        return [{"transaction_id": key, "total_count": counts[key], "summary": summaries[key]} for key in order]
+        keys, more, scanned, cut = _batch_walk(db, floor, limit_groups, settings)
+        facts = _batch_facts(db, keys)
+        changed = _changed(db, facts)
+        groups = [{"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})}
+                  for key in keys]
+        cursor = None
+        if more and keys:
+            at, batch_id = _newest(facts.get(keys[-1], {}))
+            cursor = audit_history.encode_cursor(at, batch_id)
+        return groups, more, cursor, scanned, cut
 
     def page_from_cursor(self, db: Session, cursor: str, limit_groups: int = 100):
-        """The groups AFTER `cursor`, as `(groups, truncated, next_cursor, scanned)`.
-
-        🔴 [판정 473] THE SECOND PAGE IS THE SAME WALK, NOT A SECOND AUTHOR.
-        429 ② had said a cursor should be answered by `audit_history.fetch_page`
-        and the Lead PM withdrew that line: page 1 counts GROUPS and `fetch_page`
-        counts ROWS, so one question ("the next N transactions") would have had
-        two implementations and they would disagree without erroring. Both pages
-        are groups and `_discover_groups` is the one place that names them.
-
-        ⚠️ THIS DOES NOT TOUCH THE CACHE. The projection is page 1 - it is what
-        the panel re-renders, what live writes merge into, and what other
-        requests read. A later page is a one-shot answer to one request; writing
-        it into `self.groups` would make the newest transactions disappear from
-        the panel for everyone the moment anybody scrolled.
-
-        No lock for the same reason: it reads the database and shares no mutable
-        state with the projection.
-        """
+        """The groups AFTER `cursor`, as `(groups, truncated, next_cursor, scanned)` - the same walk, a one-shot answer
+        that does not touch the projection (page 1 is what the panel and the live merges share)."""
         settings = resolve_recent_settings()
         with _bounded(db, settings):
-            order, counts, _tops, _bottom, truncated, nxt, scanned, summaries, _cut_at = \
-                self._discover_groups(db, limit_groups, settings, start=cursor)
-            return self._hydrate(db, order, counts, summaries), truncated, nxt, scanned
+            groups, truncated, nxt, scanned, _cut_at = self._discover(db, limit_groups, settings, start=cursor)
+            return groups, truncated, nxt, scanned
 
-    def load_initial(self, db: Session, limit_groups: int = 100,
-                     force: bool = False, refresh_above: int = None):
-        """Build the projection from the database.
-
-        `refresh_above` is the staleness stamp a caller observed BEFORE it
-        decided a rebuild was needed. It exists so that N threads that all see
-        the same new write collapse into ONE rebuild instead of N: whoever gets
-        the lock second finds the watermark already past that stamp and leaves.
-
-        The walk runs OUTSIDE `_lock` - only the swap is inside - so live merges never wait on it; one builder at a
-        time (`_build_lock`), and while one builds, a loaded projection is answered as it is. What a merge adds to the
-        old groups during the walk goes with them at the swap: each of its rows is at or under the walk's watermark (in
-        the walk) or above it (the next refresh merges it).
-        """
+    def load_initial(self, db: Session, limit_groups: int = 100, force: bool = False, refresh_above: int = None):
+        """Build the projection. The walk runs outside `_lock` - only the swap is inside; one builder at a time.
+        `refresh_above`: the batch id a caller saw before it asked for a rebuild - a builder already past it leaves."""
         def done():
             return self.is_loaded and (not force or (
-                refresh_above is not None and (self._db_max_id or 0) >= refresh_above))
+                refresh_above is not None and (self._batch_max_id or 0) >= refresh_above))
 
         with self._lock:
             if done():
@@ -507,47 +122,32 @@ class AuditLogCache:
             settings = resolve_recent_settings()
             with _bounded(db, settings):
                 try:
-                    # 🔴 The watermark is read BEFORE the walk, not after. A row
-                    # committed WHILE the walk runs is not in the walk's result; if the
-                    # watermark were taken afterwards it would sit ABOVE that row and
-                    # the projection would never merge it. Taken first, such a row stays
-                    # above the watermark and the next refresh picks it up.
-                    watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
-
-                    order, counts, _tops, _bottom, truncated, cursor, scanned, summaries, cut = \
-                        self._discover_groups(db, limit_groups, settings)
-                    groups = self._hydrate(db, order, counts, summaries)
+                    # 🔴 Read BEFORE the walk: a batch committed during it stays above the watermark for the merge.
+                    watermark = db.query(func.max(lines.AuditBatch.id)).scalar() or 0
+                    groups, truncated, cursor, scanned, cut = self._discover(db, limit_groups, settings)
                 except OperationalError as exc:
                     if not _cut(exc):
                         raise
-                    logger.warning("[Audit] recent walk cut - the newest id or the groups' representatives past "
+                    logger.warning("[Audit] recent walk cut - the newest id or the groups' facts past "
                                    "recent_statement_seconds %d; not loaded, the next read walks again",
                                    settings["recent_statement_seconds"])
                     return
-            if cut and not order:
+            if cut and not groups:
                 return                          # nothing named: the next read walks again rather than show none
             with self._lock:
                 self.groups = groups
                 self.is_loaded = True
-                self._db_max_id = watermark
+                self._batch_max_id = watermark
                 self.truncated = truncated
                 self.next_cursor = cursor
                 self.scanned_rows = scanned
         finally:
             self._build_lock.release()
 
-        if truncated and len(order) < limit_groups:
-            print(f"[AuditCache] recent scan gave up after {scanned:,} rows with "
-                  f"{len(order)}/{limit_groups} transaction groups "
-                  f"(recent_max_scan_rows={settings['recent_max_scan_rows']:,}). "
-                  f"The response is marked truncated.")
-
     def behind(self, bind, limit_groups: int = 100) -> bool:
-        """The walk and the merge behind the read (owner 11-09 «읽기는 쓰기에 영향 안 받음»): the route answers the
-        projection it holds, and one thread at a time builds it (`load_initial`) or merges what other processes wrote
-        (`refresh_if_stale`) on a session of its own on `bind` - started when none runs and the last ended
-        `CATCH_UP_GAP_SECONDS` ago or more. -> whether one runs now, or none has built the projection yet (a walk
-        cut before naming a group) - the answer's `updating`: never «no history» for «not read yet»."""
+        """Start the walk or the merge behind the read on a session of its own on `bind` when none runs and the last
+        ended `CATCH_UP_GAP_SECONDS` ago. -> whether one runs, or none has built the projection yet - the answer's
+        `updating`: never «no history» for «not read yet»."""
         from sqlalchemy.orm import sessionmaker
 
         with self._lock:
@@ -559,8 +159,7 @@ class AuditLogCache:
             return not self.is_loaded or (self._behind is not None and self._behind.is_alive())
 
     def _catch_up(self, session_factory, limit_groups: int):
-        """The walk, then the merge, on a session of its own; over the slow-request budget it says where its time went
-        (owner 11-09 «로그 촘촘히») - the read no longer carries it on its own [Slow] line."""
+        """The walk, then the merge; over the slow-request budget it says where its time went."""
         from runtime import request_timing
 
         db = session_factory()
@@ -582,37 +181,24 @@ class AuditLogCache:
                 self._behind_ended = time.monotonic()
 
     def refresh_if_stale(self, db: Session, limit_groups: int = 100) -> bool:
-        """Merge audit rows committed by a separate process.
-
-        The audit cache belongs to the API process, while chain replay and file
-        ingestion write from workers. A primary-key MAX probe keeps the common
-        read path cheap; when it advances, the delta is merged - whatever its size (총괄 10-22: a rebuild per
-        2,000-row file re-read up to 30,500 rows each time, 94 % of it the database's). Its cost is one GROUP BY
-        over the id range (`_tally`: each group's count and summary) and one row per touched group, its
-        representative - C 10-29: the newest 500 rows of each touched group were 27 of a 38 s delta. A group's count is
-        cumulative - what was there plus what came, less what a notification already claimed (`_absorb`).
-        A rebuild or another refresh that moved the watermark meanwhile leaves this merge out: the next read starts
-        from the watermark it left.
-        The delta is merged in id slices of `recent_scan_chunk_rows`, each moving the watermark, under the walk's
-        two limits (owner 11-06): past `recent_walk_seconds`, or a statement past `recent_statement_seconds`, the
-        rest is the next read's - a large delta is merged over reads, never in one that holds the server.
-        """
-        m = models.AuditLog
+        """Merge the batches committed since the projection read them (other processes, and what a notification
+        already showed) in id slices of `recent_scan_chunk_rows`, each moving the watermark; past
+        `recent_walk_seconds` or a statement past its limit, the rest is the next read's. -> whether any came"""
         settings = resolve_recent_settings()
-        merged, started, step, latest_id = False, time.monotonic(), "the newest id", None
+        merged, started, step, latest = False, time.monotonic(), "the newest id", None
         with _bounded(db, settings):
             try:
-                latest_id = db.query(func.max(m.id)).scalar() or 0
+                latest = db.query(func.max(lines.AuditBatch.id)).scalar() or 0
                 while True:
                     with self._lock:
-                        if not self.is_loaded or latest_id <= (self._db_max_id or 0):
+                        if not self.is_loaded or latest <= (self._batch_max_id or 0):
                             return merged
-                        previous_id = self._db_max_id or 0
+                        previous = self._batch_max_id or 0
                     if time.monotonic() - started > settings["recent_walk_seconds"]:
                         step = "past recent_walk_seconds %d" % settings["recent_walk_seconds"]
                         break
-                    step = "a slice's count"
-                    one = self._merge(db, previous_id, min(latest_id, previous_id + settings["recent_scan_chunk_rows"]),
+                    step = "a slice"
+                    one = self._merge(db, previous, min(latest, previous + settings["recent_scan_chunk_rows"]),
                                       limit_groups)
                     if one is None:
                         return merged
@@ -622,172 +208,56 @@ class AuditLogCache:
                     raise
                 step = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
         with self._lock:
-            left = "?" if latest_id is None else latest_id - (self._db_max_id or 0)
+            left = "?" if latest is None else latest - (self._batch_max_id or 0)
         logger.warning("[Audit] recent merge cut at %d s - %s; %s id(s) left for the next read",
                        time.monotonic() - started, step, left)
         return merged
 
-    def _merge(self, db: Session, previous_id: int, latest_id: int, limit_groups: int):
-        """One slice `(previous_id, latest_id]` of `refresh_if_stale`: counted, folded in, the watermark moved to
-        `latest_id`. -> whether it held rows, or None when another merge or a rebuild moved the watermark meanwhile."""
-        m = models.AuditLog
-        in_range = (m.id > previous_id, m.id <= latest_id)
-        counted = {}
-        tallied = sorted(_tally(db, lambda q: q.filter(*in_range)).items(), key=lambda kv: kv[1][2], reverse=True)
-        for tid, (n, _newest_ts, newest, summary) in tallied:       # newest first, so each fold is (newer, older)
-            key = group_of(tid)
-            had = counted.get(key)
-            counted[key] = (n, newest, summary) if had is None else (had[0] + n, had[1], _fold(had[2], summary))
-        touched = sorted(counted, key=lambda key: counted[key][1], reverse=True)[:limit_groups]
-        _resolve(db, [counted[key][2] for key in touched])
-
-        popped = False
+    def _merge(self, db: Session, previous: int, latest: int, limit_groups: int):
+        """One slice `(previous, latest]`: its groups read again whole, each to the top, the watermark to `latest`.
+        -> whether it held batches, or None when another merge or a rebuild moved the watermark meanwhile."""
+        b = lines.AuditBatch
+        keys = list({group_of(tid) for (tid,) in db.query(b.transaction_id).filter(b.id > previous, b.id <= latest)})
+        facts = _batch_facts(db, keys)
+        changed = _changed(db, facts)
+        touched = sorted(keys, key=lambda key: _newest(facts.get(key, {})), reverse=True)[:limit_groups]
         with self._lock:
-            if (self._db_max_id or 0) != previous_id:
+            if (self._batch_max_id or 0) != previous:
                 return None
             for key in reversed(touched):           # the newest ends on top
-                count, summary = counted[key][0], counted[key][2]
-                group = next((g for g in self.groups if g["transaction_id"] == key), None)
-                if group is None:
-                    self.groups.insert(0, {"transaction_id": key, "summary": summary, "total_count": count})
-                    continue
-                # 🔴 ABSORB, DO NOT ADD, WHAT AN EVENT ALREADY CLAIMED.
-                # `add_logs_batch` cannot advance the watermark (its log
-                # dicts carry id 0), so these very rows were merged once
-                # already. Counting them again is how 300 rows read 600.
-                _absorb(group, count)
-                group["summary"] = _fold(summary, group["summary"])
-                self.groups.remove(group)
-                self.groups.insert(0, group)
-            while len(self.groups) > limit_groups:
-                self.groups.pop()
-                popped = True
-            if popped:
-                # The projection now ends EARLIER than the scan that built it,
-                # so its recorded resume point is behind the new tail and would
-                # hand back groups this list still holds. Say "there is more"
-                # and admit the position is gone rather than name a wrong one.
-                self.truncated = True
-                self.next_cursor = None
-            # A row committed between the MAX probe and range query is left
-            # above this watermark and is safely picked up by the next read.
-            self._db_max_id = latest_id
-        return bool(counted)
+                self._to_top({"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})},
+                             limit_groups)
+            self._batch_max_id = latest
+        return bool(keys)
 
-    # ------------------------------------------------------------------
-    # Live merges (WebSocket / in-process writes)
-    # ------------------------------------------------------------------
-
-    def add_log(self, log_dict: dict):
-        """단일 로그 발생 시 캐시에 동적으로 편입합니다."""
-        with self._lock:
-            if not self.is_loaded:
-                return
-
-            tid = group_of(log_dict.get("transaction_id"))
-            summary = _summary_of([schemas.AuditLogResponse.model_validate(log_dict)])
-
-            # [Fix] 기존 그룹 중에 같은 transaction_id가 있는지 전체 검색
-            for group in self.groups:
-                if group["transaction_id"] == tid:
-                    _claim(group, 1)
-                    group["summary"] = _fold(summary, group["summary"])
-
-                    # 해당 그룹을 최상단으로 이동 (최신 활동 트랜잭션 순서 유지)
-                    if self.groups.index(group) > 0:
-                        self.groups.remove(group)
-                        self.groups.insert(0, group)
-                    return
-
-            # 없으면 새 그룹 생성
-            new_group = {"transaction_id": tid, "summary": summary, "total_count": 0}
-            _claim(new_group, 1)
-            self.groups.insert(0, new_group)
-
-    def add_logs_batch(self, logs_list: List[dict], message_total_count: int = None):
-        """대량의 로그를 단일 락(Lock) 획득으로 캐시에 일괄 편입합니다.
-
-        [P2 이슈 #10 / QA D-1] `message_total_count`의 의미론 = **이 메시지 1건이 나르는
-        로그의 절단 전 실건수(=이 tx에 대한 이 메시지의 기여분)**이며, 그룹 total_count에는
-        **누적(+=)** 된다. 종전 이름(`override_total_count`)과 SET 대입은 "같은 tx id로
-        메시지가 2회 이상 도착하는 경로"에서 마지막 메시지가 이전 총계를 지워 과소 표기를
-        일으켰다. 실제 도달 경로(2026-07-26 실측):
-
-          - 체인 워커: 한 소스 tx가 여러 target_table 룰을 트리거하면 `chain_{tx}` 하나로
-            target_table 수만큼 broadcast가 발신된다(chain_ingestion_worker target_table 루프).
-            600건 → 50건 순 도착 시 종전 SET는 total_count를 50으로 만들었다(실제 650).
-          - 워처(파일 인제션): 파일당 file_tx_id가 유일하고 통지도 1회 → 신·구 의미론 동일.
-          - override 미전달(crud 내부 호출): 종전과 동일하게 len(logs) 누적.
-
-        `logs_list` 하나에 서로 다른 tx가 섞여 있으면 기여분을 tx별로 나눌 근거가 없으므로
-        message_total_count를 적용하지 않고 그룹별 len(logs)로 폴백한다(경고 1회).
-
-        🔴 이 경로는 **워터마크(`_db_max_id`)를 전진시킬 수 없다** — 받는 log dict의
-        `id`가 전부 0이기 때문이다(crud.create_audit_log가 리터럴 0을 쓰고,
-        bulk_insert_mappings는 채번된 키를 되돌려 쓰지 않는다). 그래서 여기서 센 건수는
-        **선불(credit)** 로 기록하고, 같은 행을 DB에서 다시 읽는 `refresh_if_stale`이
-        자기 카운트를 그 선불에서 **상계**한다. 그러지 않으면 300행이 600으로 읽힌다.
-        """
-        if not logs_list:
+    def add_changed(self, items):
+        """A notification's `changed` ([{transaction_id, table_name, changed_rows, kind, written_by?}] - one write
+        statement's share each) on the list at once: its group to the top, the share added to its table. An
+        approximation until the next merge reads the group's batches again whole."""
+        if not items:
             return
         with self._lock:
             if not self.is_loaded:
                 return
+            now = datetime.now(timezone.utc)
+            for item in items:
+                key = group_of(item.get("transaction_id"))
+                group = next((g for g in self.groups if g["transaction_id"] == key),
+                             {"transaction_id": key, "tables": {}, "changed": {}})
+                name = item.get("table_name")
+                one = group["tables"].setdefault(name, _fresh_table())
+                _said(one, item.get("kind"), item.get("written_by"), now, one["id"])
+                if item.get("changed_rows") is not None:
+                    group["changed"][name] = (group["changed"].get(name) or 0) + int(item["changed_rows"])
+                self._to_top(group, LIVE_GROUPS)
 
-            from collections import defaultdict
-            logs_by_tx = defaultdict(list)
-            for log_dict in logs_list:
-                tid = group_of(log_dict.get("transaction_id"))
-                try:
-                    log_model = schemas.AuditLogResponse.model_validate(log_dict)
-                    logs_by_tx[tid].append(log_model)
-                except Exception:
-                    continue
-
-            # 다중 tx가 섞인 메시지에서는 message_total_count를 어느 tx에 귀속시킬지 알 수 없다.
-            # (현행 발신 경로는 메시지당 단일 tx — 방어적 폴백 + 1회 경고)
-            effective_total = message_total_count
-            if effective_total is not None and len(logs_by_tx) > 1:
-                if not self._multi_tx_warned:
-                    self._multi_tx_warned = True
-                    print(
-                        "[AuditCache] message_total_count ignored: batch contains "
-                        f"{len(logs_by_tx)} transactions — falling back to per-group len(logs). "
-                        "(Sender should emit one transaction per message.)"
-                    )
-                effective_total = None
-
-            for tid, logs in logs_by_tx.items():
-                contribution = effective_total if (effective_total is not None) else len(logs)
-
-                found = False
-                for group in self.groups:
-                    if group["transaction_id"] == tid:
-                        # [P2 #10] SET → 누적. 같은 tx가 여러 메시지로 나뉘어 도착해도
-                        # 총계가 마지막 메시지 값으로 덮어써지지 않는다.
-                        _claim(group, contribution)
-                        group["summary"] = _fold(_summary_of(logs), group["summary"])
-
-                        idx = self.groups.index(group)
-                        if idx > 0:
-                            self.groups.pop(idx)
-                            self.groups.insert(0, group)
-                        found = True
-                        break
-
-                if not found:
-                    new_group = {"transaction_id": tid, "summary": _summary_of(logs), "total_count": 0}
-                    _claim(new_group, contribution)
-                    self.groups.insert(0, new_group)
-
-            while len(self.groups) > 100:
-                self.groups.pop()
-                self.truncated = True
-                self.next_cursor = None
-
-    def remove_deleted_rows(self, row_ids: List[str]):
-        """삭제된 행의 과거 로그를 캐시에서 제거하지 않고 보존합니다."""
-        pass
+    def _to_top(self, group: dict, limit_groups: int):
+        """`group` first - replacing the one of its key -, the list cut at `limit_groups` (under `_lock`)."""
+        self.groups = [group] + [g for g in self.groups if g["transaction_id"] != group["transaction_id"]]
+        if len(self.groups) > limit_groups:
+            del self.groups[limit_groups:]
+            # The list now ends earlier than the walk that built it: «there is more», and its position is gone.
+            self.truncated, self.next_cursor = True, None
 
 
 def _cut(exc) -> bool:
@@ -811,19 +281,6 @@ def _bounded(db: Session, settings):
         db.rollback()
 
 
-# ---------------------------------------------------------------------------
-# The event credit
-# ---------------------------------------------------------------------------
-#
-# `_event_credit` is "how much of this group's total_count was claimed by a
-# notification whose rows the database has not yet been asked about". It is not
-# a second count: `total_count` remains the ONE number the route serves, and the
-# credit only decides whether the next database read ADDS to it or is absorbed
-# by it.
-#
-# It cannot leak upward. An event claims N; the refresh that reads those same N
-# rows absorbs exactly N. If a group is evicted and later rebuilt, the credit
-# goes with it and the count is derived from the database alone.
 def group_of(transaction_id) -> str:
     """The history group an audit label belongs to - the one answer the walk, the merges and the detail route ask.
     A label's part after `GROUP_PART` is one commit of its group (a replay page, 총괄 ㄴ 10-21), so a run is one
@@ -840,125 +297,107 @@ def in_group(column, key):
     return sa.or_(column == key, column.startswith(key + event_constants.GROUP_PART, autoescape=True))
 
 
-# ---------------------------------------------------------------------------
-# The summary - what the list shows of a group (owner 10-29 «경량화»)
-# ---------------------------------------------------------------------------
-#
-# `{"newest", "nonreceipt", "columns", "worlds"}`: the newest log and the newest that is not a ledger receipt (an id
-# from `_tally` until `_resolve` reads it, a log after), the columns written, the receipts per world in the order the
-# worlds were first written as [receipts, failed]. Every path - the walk's chunks, a refresh's delta, a notification's
-# logs - meets the others in `_fold`.
-
-def _receipt_names():
-    from ledger.runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED
-    return RECEIPT_COLUMN, RECEIPT_FAILED
+def _aware(at: datetime) -> datetime:
+    """A batch time comparable with another - SQLite hands a timezone column back without its zone, stored as UTC."""
+    return at.replace(tzinfo=timezone.utc) if at.tzinfo is None else at
 
 
-def _tally(db: Session, restrict) -> Dict[str, list]:
-    """Per transaction label `[rows, newest timestamp, newest id, summary]` of the rows `restrict` keeps - ONE
-    GROUP BY (label, column, receipt world, receipt failed), so a group's logs are never read for the list. The two
-    receipt facts are keys, not aggregate inputs: as an input the JSON value rode the sort to disk (seed 10-29:
-    20,000 rows, external merge 6.8 MB, 118 ms a chunk)."""
-    receipt_column, failed_status = _receipt_names()
-    m = models.AuditLog
-    receipt = m.column_name == receipt_column
-    world = sa.case((receipt, m.new_value["world"].as_string()), else_=None)
-    failed = sa.case((receipt, m.new_value["status"].as_string() == failed_status), else_=None)
-    q = restrict(db.query(m.transaction_id, m.column_name, world, failed, func.count(), func.max(m.timestamp),
-                          func.max(m.id), func.min(m.id)))
-    tallied, receipts = {}, []
-    for tid, column, in_world, is_failed, n, newest_ts, newest_id, first_id in q.group_by(sa.text("1, 2, 3, 4")):
-        one = tallied.setdefault(tid, [0, None, 0, {"newest": 0, "nonreceipt": None, "columns": set(), "worlds": {}}])
-        one[0] += n
-        if newest_ts is not None and (one[1] is None or newest_ts > one[1]):
-            one[1] = newest_ts
-        one[2] = max(one[2], newest_id)
-        summary = one[3]
-        summary["newest"] = one[2]
-        if column:
-            summary["columns"].add(column)
-        if column == receipt_column:
-            receipts.append((first_id, tid, in_world, n, n if is_failed else 0))
-        else:
-            summary["nonreceipt"] = max(summary["nonreceipt"] or 0, newest_id)
-    for _first, tid, in_world, n, n_failed in sorted(receipts, key=lambda r: r[0]):
-        counted = tallied[tid][3]["worlds"].setdefault(in_world, [0, 0])
-        counted[0] += n
-        counted[1] += n_failed
-    return tallied
+def _newest(tables: dict):
+    """A group's newest batch position `(at, id)` over its tables, `(_EPOCH, 0)` with none."""
+    return max(((_aware(one["at"] or _EPOCH), one["id"]) for one in tables.values()), default=(_EPOCH, 0))
 
 
-def _summary_of(logs) -> dict:
-    """A notification's logs, first is newest, as a summary - what `_tally` says of the same rows."""
-    receipt_column, failed_status = _receipt_names()
-    worlds = {}
-    for log in reversed(logs):
-        if log.column_name == receipt_column:
-            value = log.new_value if isinstance(log.new_value, dict) else {}
-            counted = worlds.setdefault(value.get("world"), [0, 0])
-            counted[0] += 1
-            counted[1] += value.get("status") == failed_status
-    return {"newest": logs[0], "nonreceipt": next((log for log in logs if log.column_name != receipt_column), None),
-            "columns": {log.column_name for log in logs if log.column_name}, "worlds": worlds}
+def _fresh_table() -> dict:
+    return {"kinds": [], "written_by": [], "at": None, "id": 0, "records": 0}
 
 
-def _fold(newer: dict, older: dict) -> dict:
-    """One group's summary from two slices of it, `newer` written after `older`."""
-    worlds = {name: list(counted) for name, counted in older["worlds"].items()}
-    for name, (receipts, failed) in newer["worlds"].items():
-        counted = worlds.setdefault(name, [0, 0])
-        counted[0] += receipts
-        counted[1] += failed
-    return {"newest": newer["newest"], "nonreceipt": newer["nonreceipt"] or older["nonreceipt"],
-            "columns": older["columns"] | newer["columns"], "worlds": worlds}
+def _said(one: dict, kind, who, at, batch_id):
+    """One batch of a table into its facts - kinds and writers in the order first written, the newest time."""
+    one["records"] += 1
+    for listed, word in ((one["kinds"], kind), (one["written_by"], who)):
+        if word and word not in listed:
+            listed.append(word)
+    one["at"], one["id"] = at, batch_id
 
 
-def representative(group: dict):
-    """The one log a group's line shows: the newest that is not a ledger receipt - the write the transaction was
-    about (클라 9cdbda108 · 총괄) - else the newest receipt. None when its row is gone."""
-    summary = group["summary"]
-    return summary["nonreceipt"] or summary["newest"]
+def _batch_walk(db: Session, floor, limit_groups: int, settings: dict):
+    """The newest `limit_groups` groups the batches name, newest first by (at, id), below `floor` (a page's cursor)
+    and without the groups seen at or above it. -> (keys, there are more, batches read, cut or None)"""
+    b = lines.AuditBatch
+    keys, skipped, position, scanned, started = [], set(), floor, 0, time.monotonic()
+    step = "a chunk"
+    try:
+        while scanned < settings["recent_max_scan_rows"]:
+            if time.monotonic() - started > settings["recent_walk_seconds"]:
+                return _said_cut(keys, scanned, started, "past recent_walk_seconds %d" % settings["recent_walk_seconds"])
+            want = min(settings["recent_scan_chunk_rows"], settings["recent_max_scan_rows"] - scanned)
+            q = db.query(b.transaction_id, b.at, b.id).filter(b.at.isnot(None))
+            if position is not None:
+                q = q.filter(sa.tuple_(b.at, b.id) < sa.tuple_(*position))
+            step = "a chunk"
+            rows = q.order_by(b.at.desc(), b.id.desc()).limit(want).all()
+            met = [key for key in dict.fromkeys(group_of(tid) for tid, _at, _id in rows)
+                   if key not in keys and key not in skipped]
+            if floor is not None and met:
+                step = "the groups an earlier page named"
+                seen = _seen_at_or_above(db, floor, met)
+                skipped |= seen
+                met = [key for key in met if key not in seen]
+            for key in met:
+                if len(keys) == limit_groups:
+                    return keys, True, scanned + len(rows), None
+                keys.append(key)
+            scanned += len(rows)
+            if len(rows) < want:
+                return keys, False, scanned, None
+            position = (rows[-1][1], rows[-1][2])
+        return keys, True, scanned, None
+    except OperationalError as exc:
+        if not _cut(exc):
+            raise
+        db.rollback()
+        return _said_cut(keys, scanned, started, "%s past recent_statement_seconds %d" % (
+            step, settings["recent_statement_seconds"]))
 
 
-def _resolve(db: Session, summaries):
-    """Read each summary's representative by the id `_tally` named - all of them in one statement."""
-    for summary in summaries:
-        if summary["nonreceipt"] is not None:
-            summary["newest"] = None
-    ids = {summary[k] for summary in summaries for k in ("newest", "nonreceipt") if isinstance(summary[k], int)}
-    if not ids:
-        return
-    m = models.AuditLog
-    rows = {}
-    for obj in db.query(m).filter(m.id.in_(ids)):
-        log_dict = obj.__dict__.copy()
-        log_dict["business_key"] = obj.business_key
-        rows[obj.id] = schemas.AuditLogResponse.model_validate(log_dict)
-    for summary in summaries:
-        for k in ("newest", "nonreceipt"):
-            if isinstance(summary[k], int):
-                summary[k] = rows.get(summary[k])
+def _said_cut(keys, scanned, started, why):
+    logger.warning("[Audit] recent walk cut at %d s - %s; answered %d group(s), truncated",
+                   time.monotonic() - started, why, len(keys))
+    return keys, True, scanned, why
 
 
-def _claim(group: dict, contribution: int):
-    """A notification adds to the total AND records that it did."""
-    group["total_count"] = group.get("total_count", 0) + contribution
-    group["_event_credit"] = group.get("_event_credit", 0) + contribution
+def _seen_at_or_above(db: Session, floor, keys) -> set:
+    """Of the groups `keys`, those with a batch at or above `floor` - named by an earlier page. One statement."""
+    b = lines.AuditBatch
+    return {group_of(tid) for (tid,) in db.query(b.transaction_id).filter(
+        sa.tuple_(b.at, b.id) >= sa.tuple_(*floor), sa.or_(*[in_group(b.transaction_id, key) for key in keys]))
+        .distinct()}
 
 
-def _absorb(group: dict, count: int):
-    """`count` rows read back from the database: absorbed against credit, the rest added."""
-    credit = group.get("_event_credit", 0)
-    taken = min(credit, count)
-    group["_event_credit"] = credit - taken
-    group["total_count"] = group.get("total_count", 0) + count - taken
+def _batch_facts(db: Session, keys) -> Dict[str, dict]:
+    """{group: {table: {"kinds", "written_by", "at", "id", "records"}}} - every batch of the groups `keys`. One
+    statement."""
+    if not keys:
+        return {}
+    b = lines.AuditBatch
+    facts = {}
+    for tid, name, who, kind, at, batch_id in db.query(
+            b.transaction_id, b.table_name, b.written_by, b.work_kind, b.at, b.id).filter(
+            sa.or_(*[in_group(b.transaction_id, key) for key in keys])).order_by(b.at.asc(), b.id.asc()):
+        _said(facts.setdefault(group_of(tid), {}).setdefault(name, _fresh_table()), kind, who, at, batch_id)
+    return facts
 
 
-def _cursor_token(cursor) -> Optional[str]:
-    """`(timestamp, id)` -> the opaque token `audit_history` already defines."""
-    if not cursor or cursor[0] is None:
-        return None
-    return audit_history.encode_cursor(cursor[0], cursor[1])
+def _changed(db: Session, facts) -> Dict[str, dict]:
+    """{group: {table: rows changed}} - counted from each table's lines; None for a relation without lines."""
+    lined = {}
+    out = {}
+    for key, tables in facts.items():
+        for name in tables:
+            if name not in lined:
+                lined[name] = lines.has_lines(db, name)
+            out.setdefault(key, {})[name] = audit_history.changed_rows(db, name, key) if lined[name] else None
+    return out
 
 
 audit_cache = AuditLogCache()

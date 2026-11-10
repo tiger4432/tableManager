@@ -6,9 +6,9 @@ when a rule asks who wrote a cell - each cell of that rule's columns says its wr
   writer   crud.writer_kind: a person · the chain (a bracketed layer by its base name, the enrichment chain) · a
            language model · a file · a merge (owner 11-08 1ㄱ - TURNED, was «no word», lead 11-07 ②); no layer none
   looks    rules in their order, a wiped role gone; the paints of the page's rows only; none - no "looks" at all
-  writers  the cell's winning layer by the value's own ranking (a person over a model's draft); asked only by a
-           written_by rule, on its columns, and said only when it is a writer a rule asks (lead 11-09); the
-           pivot's cells carry it too
+  writers  the source of the line t.won_by names (the write ranked it - a person over a model's draft; the
+           cell-source overhaul's lines, here written by hand); asked only by a written_by rule, on its columns, and
+           said only when it is a writer a rule asks (lead 11-09); the pivot's cells carry it too
 """
 from datetime import datetime, timedelta, timezone
 
@@ -19,6 +19,7 @@ import grid_look
 import shipped
 from conftest import retire_dynamic_model
 from database import crud, models
+from tests.support import line_tables
 
 TABLE = "look_probe"
 LOOKS = "sys_looks"
@@ -38,7 +39,7 @@ def grid(db_session, client, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
     monkeypatch.setitem(crud.TABLE_CONFIG, LOOKS, shipped.tables()[LOOKS])
     bind = db_session.get_bind()
-    models.DYNAMIC_TABLES[TABLE].__table__.create(bind=bind)
+    line_tables.build(bind, TABLE)                         # t with won_by and its line table
     model = models.DYNAMIC_TABLES[TABLE]
     ids = sorted(str(uuid6.uuid7()) for _ in ROWS)
     db_session.add_all([model(row_id=rid, lot=lot, itemid=item, value=0.1 * (n + 1), note="n%d" % n,
@@ -50,8 +51,8 @@ def grid(db_session, client, monkeypatch):
         db_session.rollback()
         looks = models.DYNAMIC_TABLES[LOOKS]
         db_session.query(looks).filter(looks.look_table == TABLE).delete()
-        db_session.query(models.CellSource).filter(models.CellSource.table_name == TABLE).delete()
         db_session.commit()
+        line_tables.drop(bind, TABLE)
         models.DYNAMIC_TABLES[TABLE].__table__.drop(bind=bind)
         retire_dynamic_model(TABLE)
 
@@ -63,9 +64,17 @@ def _look(client, axis, key, **cells):
 
 
 def _layers(db_session, row_id, column, *names):
-    db_session.add_all([models.CellSource(table_name=TABLE, row_id=row_id, column_name=column, source_name=name,
-                                          value="x", ingested_at=T0 + timedelta(minutes=n)) for n, name in enumerate(names)])
-    db_session.commit()
+    """A line of `column` from each source in `names`, the LAST the one the write ranked first: t.won_by names it."""
+    from sqlalchemy import MetaData, Table
+
+    bind, bits = db_session.get_bind(), line_tables.bits_of(TABLE)
+    with bind.begin() as conn:
+        ids = [line_tables.line(conn, TABLE, bits, row_id, source=name, at=T0 + timedelta(minutes=n),
+                                values={column: 1.5 if column == "value" else "x"}) for n, name in enumerate(names)]
+        t = Table(TABLE, MetaData(), autoload_with=conn)
+        won = dict(conn.execute(t.select().where(t.c.row_id == row_id)).one().won_by or {})
+        won[column] = ids[-1]
+        conn.execute(t.update().where(t.c.row_id == row_id).values(won_by=won))
 
 
 def _read(client, **params):

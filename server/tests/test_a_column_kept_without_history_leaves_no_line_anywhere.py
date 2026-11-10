@@ -1,10 +1,9 @@
 """A column its table keeps no history for (`no_history_columns`, owner 11-09 ㄴ) leaves no history line, whoever
-writes it (lead 11-09 ㅁ''') - not stored, not in the recent changes' cache (`GET /audit_logs/recent`), not in the lines
-the write hands back. The two seats ask one judgement, `crud.keeps_history`: `create_audit_log` (a cell's line) and
+writes it (lead 11-09 ㅁ''') - not stored, not in the lines the write hands back. The two seats ask one judgement, `crud.keeps_history`: `create_audit_log` (a cell's line) and
 `crud.row_update_line` (the columns a row's line names). A plain column beside it is the control: every writer leaves
 its line there.
 
-    writer × column        stored · cached · handed back
+    writer × column        stored · handed back
     a machine's write      state: none         plain: the row's line naming it alone
     a person's write       state: none         plain: the cell's line
     a priority pin         state: none         plain: the cell's line
@@ -16,7 +15,6 @@ import uuid
 
 import pytest
 
-from admin.audit_cache import audit_cache
 from database import crud, models, schemas
 from database.database import Base
 
@@ -33,7 +31,6 @@ def db(db_session, monkeypatch):
     Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES[TABLE].__table__])
     _write(db_session, {"gauge_id": "G1", "note": "a", "reading": "1"}, "a.csv")
     _write(db_session, {"gauge_id": "G1", "note": "b", "reading": "2"}, "b.csv")
-    monkeypatch.setattr(audit_cache, "is_loaded", True)
     return db_session
 
 
@@ -89,38 +86,33 @@ WRITERS = {"a machine's write": machine, "a person's write": person, "a priority
 
 
 def _lines(db, writer, column, monkeypatch):
-    """(stored, cached, handed back) - the lines the writer left, each as (column, new value)."""
+    """(stored, handed back) - the lines the writer left, each as (column, new value)."""
     table = MERGED if writer is merge else TABLE
     if writer is merge and column == "reading":                           # the merge writes `bn`: kept or not
         monkeypatch.setitem(crud.TABLE_CONFIG[MERGED], "no_history_columns", ["bn"])
     before = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
-    given = []                                     # every line handed to the cache - a group shows its newest alone
-    many, one = audit_cache.add_logs_batch, audit_cache.add_log
-    monkeypatch.setattr(audit_cache, "add_logs_batch", lambda logs, *a, **k: (given.extend(logs), many(logs, *a, **k)))
-    monkeypatch.setattr(audit_cache, "add_log", lambda log: (given.append(log), one(log)))
     handed = writer(db, column)
     db.expire_all()
     stored = [(line.column_name, line.new_value) for line in db.query(models.AuditLog).filter(
         models.AuditLog.table_name == table, models.AuditLog.id > before).order_by(models.AuditLog.id)]
-    cached = [(line["column_name"], line["new_value"]) for line in given]
     handed = [(line["column_name"], line["new_value"]) for line in handed]
     if writer is merge:                                                  # the edit's own `cx` line is a plain one
-        return tuple([line for line in lines if line[0] == "bn"] for lines in (stored, cached, handed))
-    return stored, cached, handed
+        return tuple([line for line in lines if line[0] == "bn"] for lines in (stored, handed))
+    return stored, handed
 
 
 @pytest.mark.parametrize("name", WRITERS)
 def test_a_column_kept_without_history_leaves_no_line_whoever_writes_it(db, name, monkeypatch):
     shown = _row(db).reading
-    assert _lines(db, WRITERS[name], "reading", monkeypatch) == ([], [], [])
+    assert _lines(db, WRITERS[name], "reading", monkeypatch) == ([], [])
     if WRITERS[name] is not merge:
         assert _row(db).reading != shown, "CANARY: the writer moved the cell"
 
 
 @pytest.mark.parametrize("name", WRITERS)
 def test_a_plain_column_keeps_its_line_whoever_writes_it(db, name, monkeypatch):
-    stored, cached, handed = _lines(db, WRITERS[name], "note", monkeypatch)
-    assert stored and cached and handed, (name, stored, cached, handed)
-    named = {column for column, _value in stored + cached + handed}
+    stored, handed = _lines(db, WRITERS[name], "note", monkeypatch)
+    assert stored and handed, (name, stored, handed)
+    named = {column for column, _value in stored + handed}
     assert named <= {"note", "bn", "ROW_UPDATE"}, named
-    assert not [value for _c, value in stored + cached + handed if "reading" in str(value)]
+    assert not [value for _c, value in stored + handed if "reading" in str(value)]

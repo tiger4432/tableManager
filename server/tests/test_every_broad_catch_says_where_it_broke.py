@@ -25,7 +25,6 @@ KEPT = {
     "server/scripts/ledger_deploy_preflight.py": 1,
 }
 QUIET_KEPT = {
-    "server/admin/audit_cache.py": {"hot": 1},
     "server/admin/auth.py": {"probe": 3},
     "server/admin/dev_bench.py": {"cleanup": 1, "import": 2, "parse": 1},
     "server/admin/retroactive.py": {"cleanup": 2, "parse": 1, "probe": 1},

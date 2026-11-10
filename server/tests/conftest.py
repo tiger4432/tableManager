@@ -749,6 +749,9 @@ def pg_engine():
                 conn.execute(text(
                     f'CREATE UNIQUE INDEX "{index_name}" ON '
                     f'"{PG_TEST_SCHEMA}"."{table_name}" (business_key_val)'))
+        # each declared table that keeps lines gets its empty line table - after the key index it asks for (C 11-11)
+        from database import lines
+        lines.ensure_declared(engine)
 
         try:
             yield engine

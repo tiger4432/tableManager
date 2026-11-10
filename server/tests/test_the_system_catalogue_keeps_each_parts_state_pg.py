@@ -106,17 +106,6 @@ def _state_history(world):
                                                % PG_TEST_SCHEMA)).fetchall())
 
 
-def _cache_lines(monkeypatch):
-    """Every line handed to the recent changes' cache from here on."""
-    from admin.audit_cache import audit_cache
-
-    given = []
-    many, one = audit_cache.add_logs_batch, audit_cache.add_log
-    monkeypatch.setattr(audit_cache, "add_logs_batch", lambda logs, *a, **k: (given.extend(logs), many(logs, *a, **k)))
-    monkeypatch.setattr(audit_cache, "add_log", lambda log: (given.append(log), one(log)))
-    return given
-
-
 def _seed(world):
     db = world["db"]
     for _ in range(2):
@@ -143,10 +132,9 @@ def _seed(world):
 
 
 def test_each_parts_state_is_written_once_and_keeps_no_history(world, monkeypatch):
-    cached = _cache_lines(monkeypatch)
+    # the recent changes' cache leg retired (D 11-11): the cache holds write batches (audit_batches), never a cell's
+    # line, so «no state cell in the cache» has nothing to ask
     _seed(world)
-    seeded = len(cached)
-    assert cached, "CANARY: the seed's own lines reached the cache"
     system_catalog.sync(world["db"])
     world["db"].commit()
     rule = _row(world, "sys_chain_rules", rule_name="grade_from_lot")
@@ -171,8 +159,6 @@ def test_each_parts_state_is_written_once_and_keeps_no_history(world, monkeypatc
     wafers = _row(world, "sys_tables", table_name="wafers")
     assert (wafers.events_waiting, wafers.oldest_waiting_at) == (0, None), "CANARY: the drained queue blanked a cell"
     assert _state_history(world) == []                     # its layer withdrawn, no line (lead 11-09 ㅁ)
-    in_cache = [(line["table_name"], line["column_name"], line["new_value"]) for line in cached[seeded:]]
-    assert _naming_state(in_cache) == [], "nothing in the recent changes' cache either"
     _drained(world)
     again = system_catalog.tick(world["db"])
     assert all(not any(counts.values()) for counts in again.values()), again

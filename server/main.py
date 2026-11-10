@@ -1500,127 +1500,17 @@ def list_tables(request: Request = None):
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
-    # Try querying the business_key column directly from any AuditLog entry for this row
-    log = db.query(models.AuditLog.business_key).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id,
-        models.AuditLog.business_key.isnot(None)
-    ).order_by(models.AuditLog.timestamp.desc()).first()
-    if log and log[0]:
-        return str(log[0])
-
-    # Fallback: Query the AuditLog to find the value from past cell-level edits on key_col
-    config = crud.TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    if key_col:
-        fallback_log = db.query(models.AuditLog.new_value).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id == row_id,
-            models.AuditLog.column_name == key_col
-        ).order_by(models.AuditLog.timestamp.desc()).first()
-        if fallback_log and fallback_log[0]:
-            return str(fallback_log[0])
-    return None
+    """A row's business key from its lines - the newest that names one (`get_deleted_rows_business_keys_bulk`)."""
+    return get_deleted_rows_business_keys_bulk(db, table_name, [row_id]).get(row_id)
 
 def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: list) -> dict:
-    """[C-1 Fix] batch_delete용 business_key 일괄 유도 — 행별 N+1 쿼리를 청크당 IN 쿼리 2회로 대체.
+    """{row_id: business_key} of rows by their lines (cell-source overhaul): every line carries the row's key as it was
+    written, so the newest line that names one answers - one IN statement a 1,000 rows."""
+    return audit_history.line_keys(db, table_name, row_ids)
 
-    get_deleted_row_business_key와 동일 의미론(최신 business_key 우선, 없으면 key_col 셀 편집
-    로그의 new_value fallback)을 유지하되 1000행 청킹으로 대량 삭제에서도 안전하다.
-    반환: {row_id: business_key(str)}
-    """
-    result = {}
-    if not row_ids:
-        return result
-    config = crud.TABLE_CONFIG.get(table_name, {})
-    key_col = config.get("business_key")
-    CHUNK = 1000
-    for i in range(0, len(row_ids), CHUNK):
-        chunk = row_ids[i:i + CHUNK]
-        # 1차: AuditLog.business_key를 직접 보유한 로그 (timestamp 오름차순 순회 → 최신값이 최종 반영)
-        rows = db.query(models.AuditLog.row_id, models.AuditLog.business_key).filter(
-            models.AuditLog.table_name == table_name,
-            models.AuditLog.row_id.in_(chunk),
-            models.AuditLog.business_key.isnot(None)
-        ).order_by(models.AuditLog.timestamp.asc()).all()
-        for r_id, bk in rows:
-            if bk:
-                result[r_id] = str(bk)
-        # 2차 fallback: business_key 미보유 행은 key_col 셀 편집 로그의 new_value에서 유도
-        if key_col:
-            missing = [r for r in chunk if r not in result]
-            if missing:
-                fb_rows = db.query(models.AuditLog.row_id, models.AuditLog.new_value).filter(
-                    models.AuditLog.table_name == table_name,
-                    models.AuditLog.row_id.in_(missing),
-                    models.AuditLog.column_name == key_col
-                ).order_by(models.AuditLog.timestamp.asc()).all()
-                for r_id, nv in fb_rows:
-                    if nv:
-                        result[r_id] = str(nv)
-    return result
-
-def resolve_missing_business_keys(db: Session, log_models: list) -> None:
-    """`business_key`가 빈 삭제 행 로그들을 **한 번에** 채운다. (in-place)
-
-    행별 `get_deleted_row_business_key`와 의미론이 같고 - 그 함수의 벌크 쌍둥이인
-    `get_deleted_rows_business_keys_bulk`를 테이블별로 부르는 것이 전부다 - 다른
-    것은 쿼리 수뿐이다. 로그마다 2문장이던 것이 **테이블당** 2문장이 된다.
-
-    이 함수가 있는 이유: `/audit_logs/transaction/{tx}`의 기본 `limit`이 20,000이라
-    로그별 호출은 클릭 한 번에 최대 40,000 왕복이었다. 한 트랜잭션의 로그는 여러
-    테이블에 걸칠 수 있으므로(체인 인제션) 테이블별로 묶어서 부른다.
-    """
-    if not log_models:
-        return
-    from collections import defaultdict
-    by_table = defaultdict(list)
-    for lm in log_models:
-        if lm.table_name and lm.row_id and lm.row_id != "_BATCH_":
-            by_table[lm.table_name].append(lm.row_id)
-    resolved = {}
-    for t_name, r_ids in by_table.items():
-        # dict.fromkeys: 같은 행을 두 번 싣지 않는다(IN 목록만 부풀린다).
-        resolved[t_name] = get_deleted_rows_business_keys_bulk(
-            db, t_name, list(dict.fromkeys(r_ids)))
-    for lm in log_models:
-        bk = resolved.get(lm.table_name, {}).get(lm.row_id)
-        if bk:
-            lm.business_key = bk
-
-
-from ledger.runtime_v2 import RECEIPT_COLUMN  # noqa: E402
-
-
-def _names_a_row(log) -> bool:
-    """Whether an audit line names a row of its relation — the one question the three audit
-    lists ask before 「was this row deleted」. A batch line does not, and neither does the
-    ledger's batch receipt: its `row_id` is the BATCH's id (총괄 218f907f5)."""
-    return log.row_id != "_BATCH_" and log.column_name != RECEIPT_COLUMN
-
-
-def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[str, str]]:
-    from collections import defaultdict
-    by_table = defaultdict(list)
-    for t_name, r_id in row_keys:
-        if t_name and r_id and r_id != "_BATCH_":
-            by_table[t_name].append(r_id)
-            
-    existing_keys = set()
-    if not by_table:
-        return existing_keys
-    # 🔴 A VIEW HAS NO `row_id` TO LOOK UP (총괄 377231278). Its lines are the ledger's batch
-    #   receipts, and asking its model for `row_id` was the history panel's 500. The seat
-    #   answers; a relation it refuses goes the way a relation without a model goes.
-    for t_name, r_ids in by_table.items():
-        table_model = models.DYNAMIC_TABLES.get(t_name)
-        if table_model and r_ids and has_row_id(t_name):
-            found = db.query(table_model.row_id).filter(table_model.row_id.in_(r_ids)).all()
-            for (f_id,) in found:
-                existing_keys.add((t_name, f_id))
-    return existing_keys
-
-from admin.audit_cache import audit_cache, in_group, representative
+from admin.audit_cache import audit_cache, in_group
+from database.lines import index_name as lines_index_name  # noqa: E402 - the person index the figures read
+from database.lines import value_types as lines_value_types  # noqa: E402 - a line value's type: its table's physical
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
@@ -1692,38 +1582,21 @@ def get_recent_audit_logs(response: Response, request: Request, limit_groups: in
 
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                          limit_groups: int, user=None):
-    """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope.
-
-    🔴 [판정 473] ONE AUTHOR FOR THE SHAPE, because there are now TWO pages. This
-    loop was inline in the route and reached into `audit_cache.groups` directly;
-    a cursor page would have had to copy it, and a copied loop is how the two
-    pages of one list start describing rows differently (the deleted-row flag and
-    the business-key backfill are exactly the kind of thing that gets copied once
-    and then fixed once).
-    """
+    """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope - one author for both pages (판정 473).
+    A group's `changed` is its tables the reader may read, the newest first (owner 11-10 «트랜잭션, 테이블별, 누가,
+    바뀐 행수, 작업 타입»); a group with none of them is not shown."""
     groups = []
-    shown = [(g, representative(g)) for g in cache_groups]
-    shown = [(g, log) for g, log in shown if log is not None and access.may(user, log.table_name, access.READ)]
-    existing_keys = check_rows_exist(db, [(log.table_name, log.row_id) for _g, log in shown if _names_a_row(log)])
-
-    for g, repr_log in shown:
-        repr_log = repr_log.model_copy()
-        is_deleted = _names_a_row(repr_log) and (repr_log.table_name, repr_log.row_id) not in existing_keys
-        repr_log.is_row_deleted = is_deleted
-        
-        if is_deleted and not repr_log.business_key:
-            repr_log.business_key = get_deleted_row_business_key(db, repr_log.table_name, repr_log.row_id)
-                
-        # the receipts behind the one representative, per world, in the order written (3e8b6171f ②),
-        # and how many of them say the translation failed - a failed world is not one that wrote
-        summary = g["summary"]
+    for g in cache_groups:
+        tables = sorted(((name, one) for name, one in g["tables"].items() if access.may(user, name, access.READ)),
+                        key=lambda kv: kv[1]["id"], reverse=True)
+        if not tables:
+            continue
         groups.append({
-            "transaction_id": g.get("transaction_id"),
-            "total_count": g.get("total_count", 1),
-            "summary_columns": sorted(summary["columns"]),
-            "logs": [repr_log], # 대표 로그 1건만 포함
-            "receipt_worlds": [{"world": world, "receipts": receipts, "failed": failed}
-                               for world, (receipts, failed) in summary["worlds"].items()],
+            "transaction_id": g["transaction_id"],
+            "total_count": sum(one["records"] for _name, one in tables),
+            "logs": [],
+            "changed": [{"table_name": name, "changed_rows": g["changed"].get(name), "kinds": one["kinds"],
+                         "written_by": one["written_by"], "at": one["at"]} for name, one in tables],
         })
     return {
         "groups": groups,
@@ -1734,51 +1607,33 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     }
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
-def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000):
-    """특정 트랜잭션의 상세 로그를 반환합니다 - DB 에서 최대 limit 건. 목록 캐시는 묶음 요약만 든다(소유자 10-29 «경량화»)."""
-    # a group, so a replay's pages too
-    in_tx = in_group(models.AuditLog.transaction_id, tx_id)
-    total_count = db.query(models.AuditLog).filter(in_tx).count()
-    if total_count == 0:
+def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000,
+                         table: str = None):
+    """The rows a transaction changed (owner 11-10 «바뀐 행 네비») - one entry a row, in each table its audit batches
+    name that keeps lines, the first written first (`audit_history.group_rows`). `table` narrows it to one table:
+    `?table=<t>&limit=1` is the row a panel line jumps to. A transaction with no batch is a 404."""
+    from database import lines
+
+    person = access.person(request)
+    named = db.query(lines.AuditBatch.table_name).filter(in_group(lines.AuditBatch.transaction_id, tx_id))
+    if table is not None:
+        named = named.filter(lines.AuditBatch.table_name == table)
+    named = sorted({name for (name,) in named.distinct()})
+    if not named:
         raise HTTPException(status_code=404, detail="Transaction not found")
-        
-    db_logs = db.query(models.AuditLog)\
-                .filter(in_tx)\
-                .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc())\
-                .limit(limit)\
-                .all()
-                
-    # Check existences
-    db_logs = [log for log in db_logs if access.may(access.person(request), log.table_name, access.READ)]
-    keys_to_check = []
-    for log_obj in db_logs:
-        if _names_a_row(log_obj):
-            keys_to_check.append((log_obj.table_name, log_obj.row_id))
-    existing_keys = check_rows_exist(db, keys_to_check)
-    
+    lined = [name for name in named if access.may(person, name, access.READ) and lines.has_lines(db, name)]
     logs = []
-    cols = []
-    # 키가 필요한 로그를 모아 두었다가 루프 밖에서 한 번에 채운다. 이 루프의 상한은
-    # `limit`(기본 20,000)이라 로그별 호출은 클릭 한 번에 최대 40,000 왕복이었다.
-    needs_bk = []
-    for log_obj in db_logs:
-        log_dict = log_obj.__dict__.copy()
-        log_model = schemas.AuditLogResponse.model_validate(log_dict)
-        is_deleted = _names_a_row(log_model) and (log_model.table_name, log_model.row_id) not in existing_keys
-        log_model.is_row_deleted = is_deleted
-        if is_deleted and not log_model.business_key:
-            needs_bk.append(log_model)
-        logs.append(log_model)
-        c = log_model.column_name
-        if c and c not in cols: cols.append(c)
-
-    resolve_missing_business_keys(db, needs_bk)
-
+    for name in lined:
+        if len(logs) >= limit:
+            break
+        rows = audit_history.group_rows(db, name, tx_id, limit - len(logs))
+        gone = crud.deleted_rows(db, name, [entry["row_id"] for entry in rows])
+        logs += [schemas.AuditLogResponse.model_validate(dict(entry, is_row_deleted=entry["row_id"] in gone))
+                 for entry in rows]
     return {
         "transaction_id": tx_id,
-        "total_count": total_count,
-        "summary_columns": cols,
-        "logs": logs
+        "total_count": sum(audit_history.changed_rows(db, name, tx_id) for name in lined),
+        "logs": logs,
     }
 
 
@@ -1798,7 +1653,7 @@ def _hold(cache, value, at):
     """Keep `value` as the figure computed at `at`. -> value"""
     cache["value"], cache["at"] = value, at
     return value
-# 2차 방어선: 인덱스(idx_audit_user_recorrection)가 아직 없는 운영 DB에서도 대시보드가
+# 2차 방어선: 인덱스(사람 줄 인덱스, lines.index_name(t, "p"))가 아직 없는 운영 DB에서도 대시보드가
 # 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
 # (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
 RECORRECTION_TIMEOUT_MS = 1500
@@ -1831,7 +1686,7 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
         lowered = detail.lower()
         if "timeout" in lowered or "canceling statement" in lowered:
             reason = (f"집계 시간 초과 ({RECORRECTION_TIMEOUT_MS}ms) — "
-                      f"idx_audit_user_recorrection 인덱스 확인. "
+                      f"{lines_index_name('<table>', 'p')} 인덱스 확인. "
                       f"[{type(e).__name__}] {detail}")
         else:
             reason = f"집계 실패 — [{type(e).__name__}] {detail or '상세 없음'}"
@@ -3498,7 +3353,7 @@ def get_row_data(table_name: str, row_id: str, world: str = None, db: Session = 
     }
 
 
-def _history_page(db: Session, table_name: str, row_id: str, base_query,
+def _history_page(db: Session, table_name: str, row_id: str, column,
                   limit, cursor, disclose_row_total: bool = False) -> schemas.AuditHistoryPage:
     """One keyset page of audit history + the row-level enrichment both tabs need.
 
@@ -3519,8 +3374,9 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
     settings = audit_history.resolve_settings(audit_history.load_config())
     page_size = audit_history.resolve_limit(limit, settings)
     try:
-        logs, truncated, next_cursor = audit_history.fetch_page(
-            base_query, models.AuditLog, page_size, cursor)
+        # the row's lines (cell-source overhaul «읽기 — D 분야»): a page counts lines, each said as its columns
+        lines_read, bits, truncated, next_cursor = audit_history.line_page(
+            db, table_name, row_id, page_size, cursor, column)
     except audit_history.CursorError as e:
         # 400, never a silent restart from page 1 - see CursorError.
         raise HTTPException(status_code=400, detail=f"Invalid history cursor: {e}")
@@ -3533,19 +3389,13 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
     row_exists = row_obj is not None
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
 
-    result = []
-    for log in logs:
-        log_res = schemas.AuditLogResponse.model_validate(log)
-        log_res.is_row_deleted = not row_exists
-        log_res.business_key = log.business_key or bk_val
-        result.append(log_res)
+    types = lines_value_types(db, table_name) if lines_read else {}
+    result = [schemas.AuditLogResponse.model_validate(entry) for line in lines_read
+              for entry in audit_history.line_entries(table_name, line, bits, types, column, bk_val, not row_exists)]
 
     row_total, row_total_capped = None, False
     if disclose_row_total:
-        row_total, row_total_capped = audit_history.count_row_history(
-            db.query(models.AuditLog).filter(
-                models.AuditLog.table_name == table_name,
-                models.AuditLog.row_id == row_id))
+        row_total, row_total_capped = audit_history.count_row_lines(db, table_name, row_id)
 
     return schemas.AuditHistoryPage(
         logs=result, truncated=truncated, next_cursor=next_cursor,
@@ -3564,11 +3414,7 @@ def get_row_history(table_name: str, row_id: str,
     입니다. 잘린 목록이 완전한 목록과 똑같이 생기면 그건 느린 응답이 아니라 **틀린
     응답**이므로, 절단은 언제나 응답 자신이 말합니다.
     """
-    q = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id
-    )
-    return _history_page(db, table_name, row_id, q, limit, cursor)
+    return _history_page(db, table_name, row_id, None, limit, cursor)
 
 @app.get("/tables/{table_name}/rows/{row_id}/cells/{col_name}/history", response_model=schemas.AuditHistoryPage)
 def get_cell_history(table_name: str, row_id: str, col_name: str,
@@ -3592,13 +3438,7 @@ def get_cell_history(table_name: str, row_id: str, col_name: str,
        ...}`를 ", "로 자르면 `"grid_rows"`라는 없는 컬럼이 생깁니다. 표현을 데이터로
        되돌리면 **자신 있게 틀린 이력**이 나옵니다. 고칠 곳은 쓰기 경로입니다.
     """
-    q = db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table_name,
-        models.AuditLog.row_id == row_id,
-        models.AuditLog.column_name == col_name
-    )
-    return _history_page(db, table_name, row_id, q, limit, cursor,
-                         disclose_row_total=True)
+    return _history_page(db, table_name, row_id, col_name, limit, cursor, disclose_row_total=True)
 
 @app.post("/tables/{table_name}/rows")
 async def create_row(table_name: str, request: Request, count: int = 1, user_name: str = "system",
@@ -4455,7 +4295,7 @@ def query_cells_sources(
     cells = [(item.get("row_id"), item.get("column_name")) for item in req.updates
              if item.get("row_id") and item.get("column_name")]
     found = cell_layers(db, table_name, row_map, [(r, c) for r, c in cells if r in row_map and hasattr(table_model, c)])
-    none = {"sources": {}, "manual_priority_source": None, "priority_source": None, "value": None}
+    none = {"sources": {}, "manual_priority_source": None, "priority_source": None, "won": None, "value": None}
     return [{"row_id": r, "column_name": c, **found.get((r, c), none)} for r, c in cells]
 
 @app.post("/admin/outbox/retry-failed", dependencies=[Depends(require_admin_token)])
@@ -7845,7 +7685,8 @@ async def internal_event_batch_refresh(
     table_name: str = Body(..., embed=True),
     change_count: int = Body(..., embed=True),
     created_logs: list = Body(None, embed=True),
-    total_log_count: int = Body(None, embed=True)
+    total_log_count: int = Body(None, embed=True),
+    changed: list = Body(None, embed=True)
 ):
     """Ingestion Worker가 파일 적재 완료 시 웹 서버에 갱신 및 캐시 무효화를 알리는 내부 이벤트 엔드포인트입니다."""
     import json
@@ -7864,16 +7705,8 @@ async def internal_event_batch_refresh(
     msg = event_constants.batch_refresh_message(
         table_name, change_count, created_logs=created_logs,
         total_log_count=(total_log_count if total_log_count is not None
-                         else (len(created_logs) if created_logs is not None else None)))
-    if created_logs:
-        sliced_logs = msg["created_logs"]
-        actual_count = msg["total_log_count"]
-        # Update the web server's in-memory audit cache
-        # [C-1] pydantic 검증(add_logs_batch)은 CPU 바운드 — threadpool로 이관(루프 비블로킹, 내부 Lock으로 안전)
-        try:
-            await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
-        except Exception as e:
-            print(f"[Main Server] Failed to update audit_cache from batch-refresh: {told(e)}")
+                         else (len(created_logs) if created_logs is not None else None)), changed=changed)
+    audit_cache.add_changed(changed)
     text_msg = await run_in_threadpool(json.dumps, msg)
     await manager.broadcast(text_msg)
     return {"status": "ok"}
@@ -7912,10 +7745,10 @@ async def internal_event_broadcast(payload: dict = Body(...)):
             actual_count = total_log_count if total_log_count is not None else len(created_logs)
             sliced_logs = created_logs[:MAX_NOTIFY_CREATED_LOGS] if len(created_logs) > MAX_NOTIFY_CREATED_LOGS else created_logs
             payload["created_logs"] = sliced_logs
-            # [C-1] pydantic 검증(add_logs_batch)·대형 json.dumps는 CPU 바운드 — threadpool로 이관
-            await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
         except Exception as e:
-            print(f"[Main Server] Failed to update audit_cache from broadcast: {told(e)}")
+            print(f"[Main Server] Failed to cut created_logs of a broadcast: {told(e)}")
+    # the recent history's list at once (cell-source overhaul: the write statements' `changed` items)
+    audit_cache.add_changed(payload.get("changed"))
 
     text_msg = await run_in_threadpool(json.dumps, payload)
     await manager.broadcast(text_msg)
