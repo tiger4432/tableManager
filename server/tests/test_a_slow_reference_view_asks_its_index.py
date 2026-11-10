@@ -74,7 +74,7 @@ def test_a_view_s_plan_is_queued_once_a_process_and_never_off_postgresql(monkeyp
     from types import SimpleNamespace
 
     read = []
-    monkeypatch.setattr(index_wants, "_ASKED", set())
+    monkeypatch.setattr(index_wants, "_ASKED", {})
     monkeypatch.setattr(index_wants, "_plan_wants", lambda *a: read.append(a[:2]))
     pg, lite = (SimpleNamespace(dialect=SimpleNamespace(name=name)) for name in ("postgresql", "sqlite"))
     for statement in ("SELECT 1", "SELECT 1", "SELECT 2"):              # another wrap of the same view: still once
@@ -247,15 +247,15 @@ def test_a_candidate_probe_s_lateral_read_asks_for_its_key_column(table, monkeyp
 @pytest.mark.pg
 def test_a_short_pattern_and_an_undeclared_table_are_said_not_asked(table, monkeypatch, caplog):
     where = "s ILIKE '%' || :key || '%'"
-    monkeypatch.setattr(index_wants, "_ASKED", {("plan", where)})
+    monkeypatch.setattr(index_wants, "_ASKED", {("plan", where): 0.0})
     asked = _read_plan(table, monkeypatch, where, {"key": "ab"}, caplog)
     assert asked == [] and _waiting(table) == []
     assert any("auto_search_probe (s) not asked for a slow search: the pattern '%ab%' has under 3 characters" in m
                for m in caplog.messages), caplog.messages
     assert ("plan", where) not in index_wants._ASKED, "judged nothing - the next slow read looks again"
-    index_wants._ASKED.add(("plan", where))
+    index_wants._ASKED[("plan", where)] = 0.0
     assert _read_plan(table, monkeypatch, where, {"key": "abc"}, caplog) == [(TABLE, ["s"], "slow search", True)]
-    assert ("plan", where) in index_wants._ASKED, "judged - the view's once is used"
+    assert index_wants._ASKED[("plan", where)] is None, "judged - the view's once is used"
     monkeypatch.delitem(crud.TABLE_CONFIG, TABLE)
     caplog.clear()
     assert _read_plan(table, monkeypatch, "n = :n", {"n": 7}, caplog) == []

@@ -122,7 +122,7 @@ def test_a_want_is_queued_once_a_process(monkeypatch):
     from runtime import index_wants
 
     asked = []
-    monkeypatch.setattr(index_wants, "_ASKED", set())
+    monkeypatch.setattr(index_wants, "_ASKED", {})
     monkeypatch.setattr(index_wants, "ask", lambda *a: asked.append(a[:3]))
     for _ in range(3):
         index_wants.want(TABLE, ["s"], models.AUTO_SLOW_SORT, 2.0, None)
@@ -132,6 +132,127 @@ def test_a_want_is_queued_once_a_process(monkeypatch):
         import time
         time.sleep(0.02)
     assert asked == [(TABLE, ["s"], models.AUTO_SLOW_SORT)]
+
+
+def _scan(node_type, relation="t", **keys):
+    return dict({"Node Type": node_type, "Relation Name": relation, "Alias": relation}, **keys)
+
+
+@pytest.mark.parametrize("plan, read", [
+    # the order's index walked, the filter checked row by row - the owner's page (lead 11-10)
+    ({"Node Type": "Limit", "Plans": [_scan("Index Scan", **{"Index Name": "t_n", "Filter": "(s = 'S3'::text)"})]},
+     (["s"], ["s"], False)),
+    # the filter's index read, the order sorted after it
+    ({"Node Type": "Limit", "Plans": [{"Node Type": "Sort", "Plans": [
+        _scan("Bitmap Heap Scan", **{"Recheck Cond": "(s = 'S3'::text)"})]}]}, (["s"], [], True)),
+    # the filter's index read in the order - nothing left
+    ({"Node Type": "Limit", "Plans": [_scan("Index Scan", **{"Index Cond": "(s = 'S3'::text)"})]}, (["s"], [], False)),
+    # a range and a value list compare no column to one value; another relation's filter is not this table's
+    ({"Node Type": "Limit", "Plans": [{"Node Type": "Sort", "Plans": [
+        _scan("Seq Scan", Filter="((n > 5) AND (k = ANY ('{a,b}'::text[])))"),
+        _scan("Seq Scan", relation="other", Filter="(s = 'x'::text)")]}]}, ([], [], True)),
+])
+def test_a_page_plan_says_its_equal_columns_those_checked_by_row_and_a_sort_left(plan, read):
+    from runtime import index_wants
+
+    assert index_wants.page_plan([{"Plan": plan}], "t") == read
+
+
+def test_a_refused_ask_is_asked_again_after_its_wait_and_a_written_one_never(monkeypatch):
+    from runtime import index_wants
+
+    now = [1000.0]
+    monkeypatch.setattr(index_wants, "_ASKED", {})
+    monkeypatch.setattr(index_wants.time, "monotonic", lambda: now[0])
+    assert index_wants._first("refused") and index_wants._first("written")
+    index_wants._written("refused", False)
+    index_wants._written("written", True)
+    now[0] += index_wants.ASK_AGAIN_SECONDS - 1
+    assert not index_wants._first("refused") and not index_wants._first("written")
+    now[0] += 2
+    assert index_wants._first("refused"), "refused - asked again by a slow read past the wait"
+    assert not index_wants._first("written"), "written - its outbox row is its memory"
+    assert not index_wants._first("refused"), "and its wait starts again"
+
+
+@pytest.mark.pg
+def test_a_filter_page_read_along_its_sort_asks_the_index_over_both(table, monkeypatch):
+    """lead 11-10 (owner «인덱스 표시 있는데»): the filter column's index is there and a page past an OFFSET walks its
+    sort's index, checking the filter row by row - the (filter, sort, row_id) index is asked; the filter's own is not.
+    Built, the page reads by it and asks nothing more."""
+    import time
+
+    import event_constants
+    import main
+    from conftest import PG_TEST_SCHEMA
+    from parsers import directory_watcher
+    from runtime import index_wants
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    where = '"%s"."%s"' % (PG_TEST_SCHEMA, TABLE)
+    with table.begin() as conn:
+        conn.execute(text("INSERT INTO %s (row_id, business_key_val, k, s, n) SELECT 'r' || g, 'K' || g, 'K' || g, "
+                          "'S' || (g %% 7), g FROM generate_series(501, 20000) g" % where))
+        conn.execute(text('CREATE INDEX probe_s ON %s (s)' % where))
+        conn.execute(text('CREATE INDEX probe_n ON %s (n, row_id)' % where))
+        conn.execute(text("ANALYZE %s" % where))
+
+    def waiting():
+        with table.connect() as conn:
+            return [(p["columns"], p["why"]) for p in (json.loads(r) for (r,) in conn.execute(text(
+                "SELECT payload FROM database_outbox WHERE event_type = :t AND table_name = :table ORDER BY id"),
+                {"t": event_constants.EVENT_INDEX_WANTED, "table": TABLE}))]
+
+    model = models.DYNAMIC_TABLES[TABLE]
+    seen, real = [], index_wants.page_plan
+    monkeypatch.setattr(index_wants, "page_plan", lambda plan, t: seen.append(real(plan, t)) or seen[-1])
+    monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)
+    filters = json.dumps({"s": {"filterType": "text", "type": "equals", "filter": "S3"}})
+
+    def slow_page():
+        monkeypatch.setattr(index_wants, "_ASKED", {})
+        db = Session(bind=table)
+        try:
+            order = [model.n.asc(), model.row_id.asc()]
+            with index_wants.reading() as kept:
+                index_wants.read_keys(db.query(model).filter(model.s == "S3").with_entities(model.row_id)
+                                      .order_by(*order).offset(1000).limit(50), order)
+            main.ask_read_indexes({"table_name": TABLE, "db": db, "filters": filters, "order_by": "n"}, 2.0, kept)
+            for _ in range(250):
+                if len(seen) == count + 1:
+                    break
+                time.sleep(0.02)
+        finally:
+            db.close()
+
+    try:
+        count = 0
+        slow_page()
+        assert seen == [(["s"], ["s"], False)], "the fixture's plan: the sort's index walked, the filter by row"
+        for _ in range(250):
+            if waiting():
+                break
+            time.sleep(0.02)
+        time.sleep(0.2)
+        assert waiting() == [(["s", "n"], "slow sort")], "the filter's own (s) and the sort's (n) are served"
+        said = main.filter_index_states(table, TABLE, ["s"])["s"]
+        assert said.startswith("built (the last ask: asked for an automatic index on %s (s, n) - slow sort" % TABLE), said
+
+        models.ensure_auto_indexes(table, [(TABLE, ["s", "n"], models.AUTO_SLOW_SORT)], say=lambda line: None)
+        with table.begin() as conn:
+            conn.execute(text("DELETE FROM database_outbox WHERE event_type = :t"),
+                         {"t": event_constants.EVENT_INDEX_WANTED})
+            conn.execute(text("ANALYZE %s" % where))
+        count = 1
+        slow_page()
+        assert seen[1] == (["s"], [], False), "built - the page reads by it, nothing left"
+        time.sleep(0.2)
+        assert waiting() == []
+    finally:
+        with table.begin() as conn:
+            conn.execute(text("DELETE FROM database_outbox WHERE event_type = :t"),
+                         {"t": event_constants.EVENT_INDEX_WANTED})
 
 
 def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeypatch):
@@ -160,6 +281,9 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
     wanted = []
     monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)
     monkeypatch.setattr(index_wants, "want", lambda table, columns, why, seconds, bind: wanted.append((table, columns, why)))
+    planned = []
+    monkeypatch.setattr(index_wants, "want_page_plan", lambda table, kept, filtered, seconds, bind: planned.append(
+        (table, [str(clause) for clause in kept["order"]], filtered)))
     # two columns the table has - a filter on one it lacks is refused (S-71, 총괄 10-23), it once read the whole table
     filters = json.dumps({"part_no": {"filterType": "text", "type": "equals", "filter": "X"},
                           "category": {"filterType": "text", "type": "contains", "filter": "Y"}})
@@ -167,6 +291,8 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
     client.get("/tables/inventory_master/data", params={"order_by": "updated_at"})
     assert wanted == [("inventory_master", ["part_no"], "slow sort"), ("inventory_master", ["part_no"], "slow filter"),
                       ("inventory_master", ["category"], models.AUTO_SLOW_SEARCH)], wanted
+    assert planned == [("inventory_master", ["inventory_master.part_no ASC", "inventory_master.row_id ASC"], ["part_no"]),
+                       ("inventory_master", ["inventory_master.updated_at ASC", "inventory_master.row_id ASC"], [])],         "each page hands its keys statement and order to the plan"
 
 
 def test_a_read_cancelled_at_its_limit_asks_too(monkeypatch):

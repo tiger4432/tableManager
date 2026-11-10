@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **느린 필터 쪽이 «필터 칸 + 정렬 칸» 자동 인덱스를 묻는다 · 거절된 물음은 10 분 뒤 다시** — git pull · API 재기동
+>
+> ```
+> 무엇     느린 그리드 쪽(grid_auto_index_after_seconds 넘음)의 keys 문장 계획을 읽음(EXPLAIN, 실행 안 함, 요청 밖 스레드)
+>          계획이 정렬 쪽 인덱스를 따라 훑으며 필터 칸을 행마다 보거나 정렬이 남으면
+>          (필터 칸, 정렬 칸, row_id) 자동 인덱스를 원함 — 스케줄러가 ix_auto_… 로 지음
+>          거절된 물음(이미 섬김 · 표 상한 · 같은 물음 대기)은 느린 읽기가 10 분 뒤 다시 오면 다시 물음(전: 재기동까지 안 물음)
+>          쪽 답에 filter_index {칸: built / not built (the last ask: …)}
+> 볼 줄    server.log [Indexes] asked for an automatic index on <표> (<필터 칸>, <정렬 칸>) - slow sort, the read took N s
+>          [Indexes] a <표> page took N s - its plan reads <칸> by its index and leaves no sort  → 필터 인덱스가 이미 탐
+>          [Indexes] <표> took N s - its order is not a column of it  → 들어온 순서(entered) 정렬: 인덱스로 못 섬김
+>          그 뒤 스케줄러 줄에 ix_auto_<표>_<필터 칸>_<정렬 칸> 지음
+> 답의 뜻  같은 쪽을 다시 열어 keys 초가 줄면 끝. 안 줄면 그 줄의 사유가 답(위 둘째 · 셋째 줄)
+>          filter_index 의 last ask 는 «이 그리드 프로세스»의 것 — 다른 그리드 프로세스가 물었으면 비어 있을 수 있음
+>          계획을 읽는 것은 OFFSET 쪽의 keys 문장뿐 — 열쇠로 넘기는 쪽(after/before) · 피벗 쪽 · 세기는 안 읽음
+> 끄기     grid_auto_index_after_seconds 를 0 (느린 읽기의 자동 인덱스 물음 전부 꺼짐 — 이 착지 전과 같은 스위치)
+> ```
+>
+> ---
+>
 > ## [11-10] **걷기는 엔진을 안 적으면 가상(virtual) — 멈춘 세계에서도 AI · 보고서 · 걷기 화면이 표에서 바로 답** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

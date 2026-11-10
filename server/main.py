@@ -9,6 +9,7 @@ from outbox_listener import OutboxListener
 from database import models, schemas, crud
 from runtime import system_reload
 from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
+from runtime import index_wants  # a slow grid read's automatic index (총괄 ff7890892)
 from runtime.offloop_json import OffLoopJSONRoute
 from listing_absence import absent_listing
 from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
@@ -2353,28 +2354,28 @@ def grid_read(route):
                    or asked.get("part") == grid_look.WRITERS else None)
         started = time.time()
         try:
-            with read_limit(seconds):
+            with read_limit(seconds), index_wants.reading() as kept:
                 answer = route(*args, **kwargs)
         except OperationalError as exc:
             if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
                 raise
-            ask_read_indexes(asked, time.time() - started)
+            ask_read_indexes(asked, time.time() - started, kept)
             db = asked.get("db")
             raise HTTPException(status_code=503, detail=grid_read_stopped(
                 asked.get("table_name"), q, asked.get("cols"), seconds, filters,
                 db.get_bind() if db is not None else None)) from None
-        ask_read_indexes(asked, time.time() - started)
+        ask_read_indexes(asked, time.time() - started, kept)
         return answer
     return read
 
 
-def ask_read_indexes(asked, took):
+def ask_read_indexes(asked, took, kept=None):
     """A grid read that took longer than `grid_auto_index_after_seconds` - finished or cancelled at its limit (소유자
     10-15: a 10 s read was cancelled before it could ask) - asks for an automatic index (총괄 ff7890892) of its sort, its
     equal/range filter columns and its text-pattern filter columns (a search index). Only queued here
-    (`runtime.index_wants`); a world's read asks nothing."""
+    (`runtime.index_wants`); a world's read asks nothing. A page whose keys statement was `kept` is judged by its plan
+    too (`index_wants.want_page_plan`): its filter column checked row by row along its order -> the index over both."""
     from parsers.directory_watcher import grid_auto_index_after
-    from runtime import index_wants
 
     table_name, db, filters = asked.get("table_name"), asked.get("db"), asked.get("filters")
     slow = None if asked.get("world") or db is None or not isinstance(table_name, str) else grid_auto_index_after()
@@ -2389,6 +2390,20 @@ def ask_read_indexes(asked, took):
         index_wants.want(table_name, [column], models.AUTO_SLOW_FILTER, took, bind)
     for column in pattern_filtered_columns(filters):
         index_wants.want(table_name, [column], models.AUTO_SLOW_SEARCH, took, bind)
+    index_wants.want_page_plan(table_name, kept or {}, ordered_filtered_columns(filters), took, bind)
+
+
+def filter_index_states(bind, table_name, columns):
+    """Each equal or range filter column of a page -> «built» when a valid index leads with it, whoever built it
+    (`models.column_index_kinds`), else «not built» - with what the last ask on it came to in this process
+    (`index_wants.last_word`; another grid process may have asked it)."""
+    kinds = models.column_index_kinds(bind, table_name)
+    states = {}
+    for column in columns:
+        state = "built" if models.INDEX_SERVES_EQUAL in kinds.get(column, ()) else "not built"
+        word = index_wants.last_word(table_name, column)
+        states[column] = state if word is None else "%s (the last ask: %s)" % (state, word)
+    return states
 
 
 def text_looked_columns(searched, filters):
@@ -2662,7 +2677,9 @@ def grid_page(
     id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
     if id_results is None:
         with request_timing.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
-            id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
+            keys_query = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit)
+            index_wants.read_keys(keys_query, final_sort)                 # a slow page's plan is read from it
+            id_results = keys_query.all()
     id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
     
@@ -2767,6 +2784,9 @@ def grid_page(
         **({"sort_index": models.sort_column_states(db.get_bind(), table_name, [order_by],
                                                      [key.name for key in page_keys])}
            if _named_sort(table_model, table_name, order_by, order_desc) is None else {}),
+        # an equal or range filter: whether an index leads with its column, and what the last ask on it came to
+        **({"filter_index": filter_index_states(db.get_bind(), table_name, ordered_filtered_columns(filters))}
+           if ordered_filtered_columns(filters) and db.get_bind().dialect.name == "postgresql" else {}),
     }, table_name)
 
 
