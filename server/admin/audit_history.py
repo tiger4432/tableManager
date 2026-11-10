@@ -319,7 +319,13 @@ def bit_said(row, bit, kind="written"):
 
 def line_page(db, table_name, row_id, limit, cursor=None, column=None):
     """One page of `row_id`'s lines, newest first by (at, line_id) - the (row_id, at) index - with `column`, the lines
-    that said it and the row's deletion. -> (rows, bits, truncated, next_cursor); a page counts lines, not entries."""
+    that said it and the row's deletion. -> (rows, bits, truncated, next_cursor); a page counts lines, not entries.
+    A table whose lines are not built (`lines.has_lines`) has none; a bad cursor is refused first, whatever the table."""
+    from database import lines
+
+    after = decode_cursor(cursor) if cursor else None
+    if not lines.has_lines(db, table_name):
+        return [], {}, False, None
     bits = line_bits(db, table_name)
     t = line_table(table_name, bits)
     query = sa.select(t).where(t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS))
@@ -330,9 +336,8 @@ def line_page(db, table_name, row_id, limit, cursor=None, column=None):
         mask = 1 << place
         mask = mask - (1 << LINE_BITS) if mask >= 1 << (LINE_BITS - 1) else mask      # a signed bigint
         query = query.where(sa.or_(t.c["written_%d" % chunk].op("&")(mask) != 0, t.c.line_kind == "deleted"))
-    if cursor:
-        at, line_id = decode_cursor(cursor)
-        query = query.where(sa.tuple_(t.c.at, t.c.line_id) < sa.tuple_(at, line_id))
+    if after:
+        query = query.where(sa.tuple_(t.c.at, t.c.line_id) < sa.tuple_(*after))
     rows = db.execute(query.order_by(t.c.at.desc(), t.c.line_id.desc()).limit(limit + 1)).fetchall()
     truncated = len(rows) > limit
     rows = rows[:limit]
@@ -358,6 +363,10 @@ def line_entries(table_name, row, bits, types, column=None, business_key=None, r
 def count_row_lines(db, table_name, row_id, cap: int = None):
     """How many history lines a row has, as `(count, is_floor)` - `count_row_history`'s bound, over the lines."""
     cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return 0, False
     t = line_table(table_name, {})
     n = len(db.execute(sa.select(sa.literal(1)).select_from(t).where(
         t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS)).limit(cap + 1)).fetchall())
@@ -366,6 +375,10 @@ def count_row_lines(db, table_name, row_id, cap: int = None):
 
 def line_keys(db, table_name, row_ids) -> dict:
     """{row_id: its business key} - the newest line of each row that names one: a deleted row's key, its history's."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return {}
     t = line_table(table_name, {})
     ids, out = list(dict.fromkeys(str(r) for r in row_ids or () if r)), {}
     for i in range(0, len(ids), 1000):
@@ -378,6 +391,10 @@ def line_keys(db, table_name, row_ids) -> dict:
 
 def deleted_line_rows(db, table_name, row_ids) -> set:
     """The rows among `row_ids` with a «deleted» line - gone, not unreadable."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return set()
     t = line_table(table_name, {})
     ids, found = list(dict.fromkeys(str(r) for r in row_ids or () if r)), set()
     for i in range(0, len(ids), 1000):
