@@ -8,13 +8,11 @@ import threading
 import time
 
 import pytest
-from types import SimpleNamespace
-
 import expression
 from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
-from database import crud, lines, models
+from database import crud, lines
 from database.write_lines import write_lines
 from test_write_lines_writes_a_line_a_change_and_its_current_line import stand_in_winners
 
@@ -131,11 +129,9 @@ def test_two_writers_of_one_new_key_end_on_one_row(sessions):
     assert list(answer["changed"]) == list(alive)
 
 
-def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_session_says(sessions, monkeypatch):
-    # the product's live model knows every declared table (models.init_dynamic_models); the cast reads it to decide
-    # whether the column is a time column - with no model it says «text» and the session's zone wins (measured 11-10)
-    monkeypatch.setitem(models.DYNAMIC_TABLES, TABLE,
-                        SimpleNamespace(d=SimpleNamespace(type=models.sql_type_of("datetime"))))
+def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_session_says(sessions):
+    # no live model for the table: crud.cast_value_by_type then passes the zoneless text on, and the line text
+    # (crud.line_text, on value_key) reads it in the declared zone - before line text the session's zone won (11-10)
     make = sessions
     s = make()
     said = []
@@ -145,8 +141,10 @@ def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_sessio
                           kind="funnel", transaction_id="tx-z")
         s.commit()
         said.append((out["lines"], out["left_out"]))
-    ln = lines.shape(s, TABLE, CFG)["lines"]
-    stored = s.execute(select(ln.c.d).where(ln.c.business_key_val == "K4")).scalars().all()
+    shape = lines.shape(s, TABLE, CFG)
+    stored = s.execute(select(shape["lines"].c.d).where(shape["lines"].c.business_key_val == "K4")).scalars().all()
+    now = s.execute(select(shape["now"].c.d).where(shape["now"].c.business_key_val == "K4")).scalar()
     s.close()
+    instant = expression._wall("2026-03-05 09:00:00", expression.time_zone())
     assert said == [(1, 0), (0, 1), (0, 1)], said
-    assert stored == [expression._wall("2026-03-05 09:00:00", expression.time_zone())], stored
+    assert stored == [instant.isoformat()] and now == instant, (stored, now)

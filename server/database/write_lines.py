@@ -177,8 +177,9 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets):
     head withdrawn by NULL = NULL would speak on). Deletes and marks are kept. Returns (kept indexes, how many left)."""
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
-    for i in writes:
-        items[i]["values"] = {c: crud.cast_value_by_type(v, types.get(c, "string"), c, table)
+    for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
+        items[i]["values"] = {c: crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
+                                                types.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     same = set()
     columns = sorted({c for i in writes for c in items[i]["values"]})
@@ -285,6 +286,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at):
     `lines.winners_sql` (the one query `lines.merge` reads too), and written with won_by. Returns {row_id: {column:
     value}} as written."""
     now, data = shape["now"], _data(shape["bits"])
+    types = cfg.get("column_types") or {}
     if not row_ids:
         return {}
     merged = {row_id: {c: None for c in data} for row_id in row_ids}
@@ -293,7 +295,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at):
         query = lines.winners_sql(table, cfg, c, "row_ids")
         for page in _pages(row_ids, 1):
             for row_id, value, line_id in db.execute(query, {"row_ids": page}):
-                merged[row_id][c], won_by[row_id][c] = value, line_id
+                merged[row_id][c], won_by[row_id][c] = crud.line_value(value, types.get(c, "string")), line_id
     db.execute(update(now).where(now.c.row_id == bindparam("r")).values(
         {**{c: bindparam("v_" + c) for c in data}, "won_by": bindparam("won"), "updated_at": at}),
         [{"r": row_id, "won": won_by[row_id], **{"v_" + c: merged[row_id][c] for c in data}} for row_id in row_ids])

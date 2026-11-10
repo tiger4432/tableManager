@@ -66,9 +66,10 @@ def test_a_write_is_one_line_its_current_line_and_one_audit_row(db):
     [line] = _lines(db)
     [(row_id, change)] = out["changed"].items()
     assert (line["line_kind"], line["row_id"], line["business_key_val"], line["a"], line["n"]) == (
-        "write", row_id, "K1", "x", 2.0), line
+        "write", row_id, "K1", "x", "2.0"), line
+    assert _now(db)[row_id]["n"] == 2.0, "a line keeps text; the current line has the column's type (crud.line_value)"
     assert line["written_0"] == line["head_0"] != 0 and line["withdrawn_0"] == 0
-    assert change["work"] == "new" and change["old"] is None and change["new"]["a"] == "x"
+    assert change["work"] == "new" and change["old"] is None and change["new"]["a"] == "x" and change["new"]["n"] == 2.0
     assert _now(db)[row_id]["a"] == "x" and _now(db)[row_id]["won_by"]["a"] == line["line_id"]
     audit = db.execute(select(lines.AuditBatch.__table__)).mappings().all()
     assert [(a["transaction_id"], a["table_name"], a["written_by"], a["work_kind"]) for a in audit] == [
