@@ -13,6 +13,10 @@ moved is an EDIT event like any write (lead 11-11 ㄱ).
     pin                            -                     merged: the holder is the row answered, the shell gone
     merge_into_key_holders         -                     merged, one «merge» audit row
     a table without lines          re-keyed in place     merged, the shell's value on t
+    one batch                      a swap, a key passed along: moved, nothing merged (QA 11-11)
+    a declared key column          it shows the key - the next write does not take it back (QA 11-11)
+    one key merged twice           two layers, one head line each (the tag names the whole merged row)
+    this write's person cell       -                     the holder's cell marked a person's (the old pending mark)
 """
 import json
 
@@ -88,7 +92,7 @@ def test_a_key_part_edited_onto_a_held_key_merges_the_row_into_the_holder(db):
     _events(db)
     results, _cells, _logs, deleted = _write(db, "f3.csv", {"k": "K1"}, row_id=shell)
     assert (_rows(db), deleted, [row.row_id for row, _new in results]) == ({"K1": (holder, "two")}, [shell], [holder])
-    tag = "K2_%s" % shell[:6]
+    tag = "K2_%s" % shell
     assert _sources(db, holder) == {"f1.csv": "one", "f2.csv (%s)" % tag: "two", crud.COLLISION_SOURCE: "two"}
     events = _events(db)
     edits = [e for e in events if e[0] == "EDIT" and holder in e[1] and '"a"' in e[1]]
@@ -119,7 +123,7 @@ def test_a_person_on_both_rows_shows_the_shells_and_keeps_the_holders(db):
     assert _rows(db) == {"K1": (holder, "yours")}
     said = _sources(db, holder)
     assert (said[crud.USER_SOURCE], said["user (old_exist_%s)" % holder[:6]]) == ("yours", "mine"), said
-    assert "user (K2_%s)" % shell[:6] not in said, "the shell's person value is «user» there, not its moved copy"
+    assert "user (K2_%s)" % shell not in said, "the shell's person value is «user» there, not its moved copy"
 
 
 def test_the_shells_value_wins_though_the_holders_line_is_newer(db):
@@ -143,7 +147,7 @@ def test_a_shell_value_no_line_said_is_kept_as_the_writers_line(db):
                                 transaction_id="tx-bare")
     db.commit()
     assert _rows(db) == {"K1": (holder, "bare")}
-    assert _sources(db, holder)["notation (K2_%s)" % shell[:6]] == "bare"
+    assert _sources(db, holder)["notation (K2_%s)" % shell] == "bare"
 
 
 def test_a_pin_onto_a_held_key_merges_its_row_into_the_holder(db):
@@ -176,3 +180,83 @@ def test_a_table_without_lines_re_keys_and_merges_on_t(db_session, monkeypatch):
     assert _rows(db) == {"K1": (holder, "one"), "K9": (shell, "two")}
     _results, _cells, _logs, deleted = _write(db, "f3.csv", {"k": "K1"}, row_id=shell)
     assert (_rows(db), deleted) == ({"K1": (holder, "two")}, [shell])
+
+
+def _batch(db, moves, by="loader"):
+    out = crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row_id, updates={"k": key}, source_name="f9.csv", updated_by=by) for row_id, key in moves]))
+    db.commit()
+    return out
+
+
+@pytest.mark.parametrize("order", [1, -1])
+def test_two_rows_swapping_keys_in_one_batch_move(db, order):
+    one, two = _two(db)
+    _results, _cells, _logs, deleted = _batch(db, [(one, "K2"), (two, "K1")][::order])
+    assert (_rows(db), deleted) == ({"K2": (one, "one"), "K1": (two, "two")}, [])
+
+
+def test_keys_passed_along_in_one_batch_move(db):
+    one, two = _two(db)
+    _batch(db, [(one, "K2"), (two, "K3")])
+    assert _rows(db) == {"K2": (one, "one"), "K3": (two, "two")}
+
+
+def test_a_declared_key_column_shows_the_key_after_the_next_write(db_session, monkeypatch):
+    table, cfg = "rk_bk", {"business_key": "bk", "composite_key_source": ["k"],
+                           "column_types": {"bk": "string", "k": "string", "a": "string"}}
+    models.init_dynamic_models({table: cfg})
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
+    Base.metadata.create_all(bind=db_session.get_bind())
+    lines.ensure_line_table(db_session, table, cfg)
+    db_session.commit()
+    ticking_clock(monkeypatch)
+
+    def write(values, row_id=None):
+        crud.apply_batch_updates(db_session, table, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            row_id=row_id, business_key_val=None if row_id else values["k"], updates=values, source_name="f.csv",
+            updated_by="loader")]))
+        db_session.commit()
+
+    model = models.DYNAMIC_TABLES[table]
+    write({"bk": "K1", "k": "K1", "a": "one"})
+    row = db_session.query(model).one().row_id
+    write({"k": "K9"}, row_id=row)
+    write({"a": "two"}, row_id=row)
+    db_session.expire_all()
+    got = db_session.query(model).filter_by(row_id=row).one()
+    assert (got.business_key_val, got.bk, got.a) == ("K9", "K9", "two")
+
+
+def test_one_key_merged_twice_into_a_holder_leaves_one_head_line_a_layer(db):
+    holder, shell = _two(db)
+    _write(db, "f3.csv", {"k": "K1"}, row_id=shell)
+    _write(db, "f2.csv", {"k": "K2", "a": "again"})
+    again = _rows(db)["K2"][0]
+    _write(db, "f3.csv", {"k": "K1"}, row_id=again)
+    said = _sources(db, holder)
+    assert (said["f2.csv (K2_%s)" % shell], said["f2.csv (K2_%s)" % again]) == ("two", "again"), said
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    names = db.execute(select(ln.c.source_name).where(ln.c.row_id == holder, ln.c.head_0 != 0)).scalars().all()
+    assert len(names) == len(set(names)), names
+
+
+def test_this_writes_person_cell_is_the_holders_person_cell(db):
+    holder, shell = _two(db)
+    _write(db, crud.USER_SOURCE, {"k": "K1"}, row_id=shell, by="kim")
+    mark = db.query(models.CellOverwrite).filter_by(table_name=TABLE, row_id=holder, column_name="k").one()
+    assert (_rows(db), mark.is_overwrite, mark.manual_priority_source) == ({"K1": (holder, "two")}, True, None)
+
+
+def test_a_moved_withdraw_line_does_not_empty_the_holders_cell(db):
+    _write(db, "f1.csv", {"k": "K1"})
+    _write(db, "f2.csv", {"k": "K2", "a": "two"})
+    rows = _rows(db)
+    holder, shell = rows["K1"][0], rows["K2"][0]
+    model = models.DYNAMIC_TABLES[TABLE]
+    db.query(model).filter_by(row_id=holder).update({"a": "kept"})      # a value no line said
+    db.commit()
+    crud.delete_cell_source_batch(db, TABLE, [{"row_id": shell, "column_name": "a"}], "f2.csv")
+    assert _rows(db)["K2"] == (shell, None), "canary: the shell's a withdrawn"
+    _write(db, "f3.csv", {"k": "K1"}, row_id=shell)
+    assert _rows(db) == {"K1": (holder, "kept")}

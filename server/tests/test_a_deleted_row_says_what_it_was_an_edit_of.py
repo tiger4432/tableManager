@@ -3,7 +3,8 @@
 of an edit_by table carries `edits_of` - the rows' own tables, read before they went - and none of a table without one.
 
   senders  PUT data/updates (a shell merged by key) · PUT <row>/<col>/priority · PUT cells/priority/batch (a pin that
-           moves a key part merges its row away) · the chain worker's group (a shell merged by key) · PUT data/updates
+           moves a key part merges its row away) · DELETE <row>/<col>/sources/<source> · POST cells/sources/delete/
+           batch (a source taken off that moves a key part) · the chain worker's group (a shell merged by key) · PUT data/updates
            replace_map (a row its scope no longer claims - purge_map_rows - and a row it adopts from outside)
   tables   edit_probe (access edit_by target) -> edits_of the deleted rows' own targets · plain_probe -> no edits_of
   rows     A (M1|a, T1) · B (M1|b, T2) · C (M2|c, T3): a shell is A merged into B - its target T1, not B's T2
@@ -25,7 +26,8 @@ ENTRY = {"business_key": "bk", "composite_key_source": ["m", "k"], "map_key_colu
 ENTRIES = {EDIT: {**ENTRY, "access": {"edit_by": "target"}}, PLAIN: ENTRY}
 ROWS = {"A": ("M1", "a", "T1"), "B": ("M1", "b", "T2"), "C": ("M2", "c", "T3")}
 #: sender -> the deleted rows' targets the message names
-SENDERS = {"updates": ["T1"], "pin": ["T1"], "pin_batch": ["T1"], "chain": ["T1"], "replace_map": ["T2", "T3"]}
+SENDERS = {"updates": ["T1"], "pin": ["T1"], "pin_batch": ["T1"], "source_off": ["T1"], "source_off_batch": ["T1"],
+           "chain": ["T1"], "replace_map": ["T2", "T3"]}
 
 
 @pytest.fixture(name="board")
@@ -95,6 +97,11 @@ async def _deletes(sender, table, client, db_session, ids, sent):
     elif sender == "pin_batch":
         answer = client.put("/tables/%s/cells/priority/batch" % table, json={
             "updates": [{"row_id": ids["A"], "column_name": "k"}], "source_name": "lots.csv", "updated_by": "kim"})
+    elif sender == "source_off":                                        # seed.csv off: lots.csv's «b» shows
+        answer = client.delete("/tables/%s/%s/k/sources/seed.csv" % (table, ids["A"]))
+    elif sender == "source_off_batch":
+        answer = client.post("/tables/%s/cells/sources/delete/batch" % table, json={
+            "cells": [{"row_id": ids["A"], "column_name": "k"}], "source_name": "seed.csv"})
     elif sender == "replace_map":
         answer = client.put("/tables/%s/data/updates" % table, json={"replace_map": True, "updates": [
             {"updates": {"m": "M1", "k": "a", "target": "T1"}, "source_name": "user", "updated_by": "kim"},

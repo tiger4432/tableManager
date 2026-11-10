@@ -532,6 +532,13 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
     for row_id, values in plain.items():
         if row_id in merged:
             merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
+    key_column = cfg.get("business_key") if cfg.get("composite_key_source") else None
+    if key_column in data:                         # its key column shows its key (`crud.put_business_key`), never a line
+        for row_id in row_ids:
+            key = (old.get(row_id) or {}).get("business_key_val")
+            if key is not None:
+                merged[row_id][key_column] = key
+                won_by[row_id].pop(key_column, None)
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
         {**{c: bindparam("__%d" % n) for n, c in enumerate(data)}, **({"won_by": bindparam("__won")} if keeps else {}),
@@ -539,36 +546,50 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
         [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)}}
          for row_id in row_ids])
     return merged
+
+
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
     """Step 5½ - a row that was there before whose key part's value step 5 moved gets its key rebuilt
     (`crud.rebuilt_business_key` on the merged values, `crud.put_business_key`'s two columns - design «업무 키가 바뀔
-    때»): another row holding that key takes this one in (`_merge_into`), with what this write named as its explicit
-    values and, from a person, its person's cells - the old write seat's rule (`crud.writes_as_person`); a pin's
-    cells are both. -> {merged row_id: (holder, holder's line before, after, who)}; `new` and `keys` follow."""
+    때»). Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
+    the batch that took it before (row_id order) - so rows swapping or passing keys along in one batch move, not
+    merge. The keys are written first (`_put_keys`); then a held key takes the row in (`_merge_into`), with what this
+    write named as its explicit values and, from a person, its person's cells - the old write seat's rule
+    (`crud.writes_as_person`); a pin's cells are both. -> {merged row_id: (holder, holder's line before, after,
+    who)}; `new` and `keys` follow."""
+    from types import SimpleNamespace
+
     parts = cfg.get("composite_key_source") or []
     if not parts:
         return {}
     now, types, key_column = shape["table"], cfg.get("column_types") or {}, cfg.get("business_key")
-    merged = {}
+    moving = {}
     for row_id in sorted(new):
         was = old.get(row_id)
         if was is None or not any(crud.values_differ(was.get(p), new[row_id].get(p), types.get(p, "string"))
                                   for p in parts):
             continue
-        from types import SimpleNamespace
-
         key = crud.rebuilt_business_key(table, SimpleNamespace(**new[row_id]))
-        if key == keys.get(row_id, was.get("business_key_val")):
-            continue
-        holder = None if key is None else db.execute(
-            select(now.c.row_id).where(now.c.business_key_val == key, now.c.row_id != row_id)
-            .with_for_update()).scalar()
+        if key != keys.get(row_id, was.get("business_key_val")):
+            moving[row_id] = key
+    held = {}                                      # key -> the row outside the moves that holds it
+    for page in _pages(sorted({k for k in moving.values() if k is not None}), 1):
+        for row_id, key in db.execute(select(now.c.row_id, now.c.business_key_val)
+                                      .where(now.c.business_key_val.in_(page)).with_for_update()):
+            if row_id not in moving:
+                held[key] = row_id
+    taken, moves, into = {}, {}, {}
+    for row_id, key in sorted(moving.items()):
+        holder = None if key is None else taken.get(key) or held.get(key)
         if holder is None:
-            put = {"business_key_val": key, **({key_column: key} if key_column and key_column in now.c else {})}
-            db.execute(update(now).where(now.c.row_id == row_id).values(put))
-            new[row_id].update({c: v for c, v in put.items() if c in new[row_id]})
-            keys[row_id] = key
-            continue
+            moves[row_id] = key
+            if key is not None:
+                taken[key] = row_id
+        else:
+            into[row_id] = holder
+    _put_keys(db, now, key_column, moving, moves, new, keys)
+    merged = {}
+    for row_id, holder in sorted(into.items()):
         explicit, human, who = {}, set(), None
         for i in sorted(targets):
             it = items[i]
@@ -583,24 +604,46 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
                 explicit.update({c: new[row_id].get(c) for c in it.get("columns") or ()})
                 human.update(it.get("columns") or ())
         source = next((items[i].get("source_name") for i in sorted(targets) if targets[i] == row_id), None)
-        _shell, holder_old, holder_new = _merge_into(db, table, cfg, shape, keeps, row_id, holder, explicit=explicit,
-                                                     human=human, source_name=source, written_by=who, at=at,
-                                                     transaction_id=transaction_id)
+        _shell, holder_old, holder_new = _merge_into(
+            db, table, cfg, shape, keeps, row_id, holder, explicit=explicit, human=human, source_name=source,
+            written_by=who, at=at, transaction_id=transaction_id,
+            shell_key=keys.get(row_id, (old.get(row_id) or {}).get("business_key_val")))
         merged[row_id] = (holder, holder_old, holder_new, who)
         if holder in new:
             new[holder] = holder_new
     return merged
 
 
+def _put_keys(db, now, key_column, moving, moves, new, keys) -> None:
+    """Every row whose key moves - free or merged away - cleared first, then each free move's new key taken: two
+    statements, a swap or a key passed along meets no unique key. On business_key_val and the declared key column
+    where t has it (`crud.put_business_key`'s two)."""
+    if not moving:
+        return
+    column = key_column if key_column and key_column in now.c else None
+    db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(business_key_val=None),
+               [{"__row": row_id} for row_id in sorted(moving)])
+    if not moves:
+        return
+    db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
+        {"business_key_val": bindparam("__key"), **({column: bindparam("__key")} if column else {})}),
+        [{"__row": row_id, "__key": key} for row_id, key in sorted(moves.items())])
+    for row_id, key in moves.items():
+        keys[row_id] = key
+        if column and row_id in new:
+            new[row_id][column] = key
+
+
 def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human, source_name, written_by, at,
-                transaction_id):
+                transaction_id, shell_key=None):
     """`shell` merged into `holder`, the row holding its key (design «업무 키가 바뀔 때»; the old
     `crud._merge_into_key_holder`, cell for cell). Which value wins is today's: the shell's - `explicit`'s where this
     write named it - unless the holder's cell is a person's or pinned and neither this write's nor the shell's is; a
     blank never wins. The layers left are today's, as head lines: the shell's lines move to the holder under
-    `merged_layer_name(source, key_rowid6)`; where both rows' cells are a person's the holder's «user» value stays as
+    `merged_layer_name(source, key_rowid)`; where both rows' cells are a person's the holder's «user» value stays as
     «user (old_exist_…)» and the shell's is «user»; a shell value no line said is a line of the writer's; a value
-    that wins is a «collision_merge» line its pin shows. The shell's current line and marks go; the holder is merged
+    that wins is a «collision_merge» line its pin shows; a cell this write made a person's that the holder has no
+    mark on is marked a person's there. The shell's current line and marks go; the holder is merged
     again - a moved line may show at once (lead 11-11 ㄱ). -> (shell's line, holder's before, holder's after)."""
     from datetime import datetime
 
@@ -643,7 +686,8 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
     if keeps:
         ln, chunks = shape["lines"], shape["chunks"]
         held = lines.value_types(db, table)
-        tag = "%s_%s" % (s_now["business_key_val"], shell[:6]) if s_now.get("business_key_val") else shell[:6]
+        shell_key = shell_key if shell_key is not None else s_now.get("business_key_val")
+        tag = "%s_%s" % (shell_key, shell) if shell_key else shell
         user_cols = sorted(c for c in both if c in bits)
         heads = lines.layers(db, table, [shell, holder], user_cols) if user_cols else {}
         spoke = lines.spoken(db, table, [shell]).get(shell, set())
@@ -655,6 +699,9 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
             db.execute(update(ln).where(ln.c.row_id == shell, ln.c.source_name == src, ln.c.line_kind.in_(talking))
                        .values(row_id=holder, source_name=name))
         db.execute(update(ln).where(ln.c.row_id == shell).values(row_id=holder))
+        if renamed:                                # a moved withdraw line is history - it does not make a cell spoken
+            db.execute(update(ln).where(ln.c.row_id == holder, ln.c.source_name.in_(sorted(renamed.values())),
+                                        ln.c.line_kind == WITHDRAW).values({"head_%d" % k: 0 for k in range(chunks)}))
 
         def text(values):
             return {c: crud.line_text(v, held.get(c, "string")) for c, v in values.items()}
@@ -692,12 +739,17 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
             written, _ids = _lines(db, ln, bits, chunks, said, every, {i: holder for i in every},
                                    {holder: h_now.get("business_key_val")}, at, transaction_id)
             _heads(db, ln, chunks, written)
-    if chosen:
+    person = sorted(c for c in human if c not in chosen and (holder, c) not in marks)
+    if chosen or person:
         crud.bulk_upsert_cell_overwrites(db, [{"table_name": table, "row_id": holder, "column_name": c,
                                                "is_overwrite": True, "updated_by": crud.COLLISION_SOURCE,
                                                "updated_at": datetime.now(),
                                                "manual_priority_source": crud.COLLISION_SOURCE}
-                                              for c in sorted(chosen)])
+                                              for c in sorted(chosen)]
+                                         + [{"table_name": table, "row_id": holder, "column_name": c,
+                                             "is_overwrite": True, "updated_by": written_by or "system",
+                                             "updated_at": datetime.now(), "manual_priority_source": None}
+                                            for c in person])
     db.execute(delete(now).where(now.c.row_id == shell))
     crud.delete_row_layers(db, table, [shell])
     merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps)

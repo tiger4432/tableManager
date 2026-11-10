@@ -4536,7 +4536,7 @@ def merge_into_key_holders(db: Session, table_name: str, pairs, *, source_name: 
 
     if not pairs:
         return []
-    db.flush()                                     # a caller's ORM edits of these rows go before the merge reads them
+    db.flush()      # a caller's ORM edits go before the merge reads t - a column lines decide is merged from them
     answer = merge_rows(db, table_name, list(pairs), source_name=source_name, written_by=updated_by,
                         transaction_id=transaction_id)
     model = models.DYNAMIC_TABLES.get(table_name)
@@ -6264,7 +6264,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # [scope diff] What disappeared: the scope MINUS what this write claimed - every row an item resolved to,
         # the unchanged ones included (an unchanged re-push claims its rows; reading «changed» here would purge them).
         if batch.replace_map and use_diff:
-            removed_row_ids = [r for r in replace_scope_row_ids if r not in unique_results]
+            removed_row_ids = [r for r in replace_scope_row_ids
+                               if r not in unique_results and r not in answer["merged"]]   # a merged row is said
             removed_keys = []
             if removed_row_ids:
                 _write_deleted_edits(db, table_name, removed_row_ids, deleted_edits)     # before they go
@@ -6509,11 +6510,14 @@ def get_row_cell(db: Session, table_name: str, row_id: str):
     return db.query(table_model).filter(table_model.row_id == row_id).first()
 
 
-def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str):
+def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], source_name: str,
+                             merged: Optional[list] = None, deleted_edits: Optional[dict] = None):
     """A source taken off cells by a person - a withdraw line a row naming its cells (`write_lines`), which shows what
     the other lines say there - and commit. A pin on that source comes off with it, and a person's own value taken off
-    takes its overwrite mark (`is_overwrite`) too; a mark left saying nothing goes. -> (the rows named, as ORM rows;
-    one history entry a cell whose shown value moved - no before value)."""
+    takes its overwrite mark (`is_overwrite`) too; a mark left saying nothing goes. A row whose key part the
+    withdrawal moves onto a key another row holds is merged into it (write_lines' step 5½): `merged` (a list) takes
+    it, `deleted_edits` what it was an edit of - for the caller's row-delete message. -> (the rows named - a merged
+    row's holder in its place -, as ORM rows; one history entry a cell whose shown value moved - no before value)."""
     # ⛔ A VIEW FIRST. `delete_cell_source` delegates here, so the single-cell control is
     # gated by this one line too (S-224).
     refuse_write_to_view(table_name)
@@ -6546,23 +6550,31 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                                            "source_name": source_name, "written_by": "system"}
                                           for r, cols in by_row.items()], kind="withdraw", transaction_id=tx_id)
     at = (answer.get("at") or datetime.now(timezone.utc)).isoformat()
+    gone = merged_away(table_name, answer, deleted_edits)
+    if merged is not None:
+        merged.extend(gone)
+    on = {}                                        # the row a cell is on now -> its cells (a merged row's: its holder)
+    for row_id, cols in by_row.items():
+        on.setdefault(answer["merged"].get(row_id, row_id), []).extend(cols)
     logs = []
     for row_id, change in answer["changed"].items():
         was, now = change["old"] or {}, change["new"] or {}
-        for col in by_row.get(row_id, ()):
+        for col in dict.fromkeys(on.get(row_id, ())):
             if was.get(col) != now.get(col) and keeps_history(table_name, col):
                 logs.append({"id": 0, "table_name": table_name, "row_id": row_id, "column_name": col,
                              "old_value": None, "new_value": event_constants.truncate_audit_value(now.get(col))[0],
                              "source_name": "delete_source:%s" % source_name, "updated_by": "system",
                              "transaction_id": tx_id, "timestamp": at, "business_key": was.get("business_key_val")})
     db.commit()
-    order = {row_id: n for n, row_id in enumerate(by_row)}
-    rows = db.query(table_model).filter(table_model.row_id.in_(list(by_row))).all()
+    order = {row_id: n for n, row_id in enumerate(on)}
+    rows = db.query(table_model).filter(table_model.row_id.in_(list(on))).all()
     return sorted(rows, key=lambda r: order[r.row_id]), logs
 
-def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str):
+def delete_cell_source(db: Session, table_name: str, row_id: str, col_name: str, source_name: str,
+                       merged: Optional[list] = None, deleted_edits: Optional[dict] = None):
     """특정 소스의 데이터를 삭제하고 값을 재계산합니다."""
-    changed_rows, logs = delete_cell_source_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name)
+    changed_rows, logs = delete_cell_source_batch(db, table_name, [{"row_id": row_id, "column_name": col_name}], source_name,
+                                                  merged=merged, deleted_edits=deleted_edits)
     return changed_rows[0] if changed_rows else None, [col_name] if logs else []
 
 def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[dict], source_name: Optional[str], updated_by: str = "user",
