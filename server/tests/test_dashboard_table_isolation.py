@@ -19,6 +19,9 @@ import os
 import sys
 
 import pytest
+from types import SimpleNamespace
+
+from sqlalchemy import text
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -27,24 +30,34 @@ from database import crud, models                                # noqa: E402
 
 
 class _BrokenModel:
-    """A declared table whose physical column the database does not have."""
+    """A declared table whose physical table the database holds without the three columns the summary asks of the
+    catalog (row_id · updated_at · created_at) - the drift the summary names (lead 11-10: asked of the catalog now)."""
 
-    class _Missing:
-        def __getattr__(self, item):
-            raise RuntimeError('column "row_id" does not exist')
+    def __init__(self, name):
+        self.__table__ = SimpleNamespace(name=name)
 
-    row_id = property(lambda self: (_ for _ in ()).throw(
-        RuntimeError('column "row_id" does not exist')))
+
+def _drifted(db_session, name):
+    db_session.execute(text('CREATE TABLE "%s" (x TEXT)' % name))
+    db_session.commit()
+
+
+def _gone(db_session, name):
+    db_session.rollback()
+    db_session.execute(text('DROP TABLE IF EXISTS "%s"' % name))
+    db_session.commit()
 
 
 @pytest.fixture
 def one_broken_table(monkeypatch, db_session):
     """Put a table into the declaration whose count will raise, alongside the real ones."""
     broken = "probe_broken_table"
+    _drifted(db_session, broken)
     monkeypatch.setitem(crud.TABLE_CONFIG, broken, {"columns": {}})
-    monkeypatch.setitem(models.DYNAMIC_TABLES, broken, _BrokenModel())
+    monkeypatch.setitem(models.DYNAMIC_TABLES, broken, _BrokenModel(broken))
     main.RECORRECTION_CACHE["value"] = None
-    return broken
+    yield broken
+    _gone(db_session, broken)
 
 
 @pytest.fixture
@@ -56,10 +69,13 @@ def two_broken_tables(monkeypatch, db_session):
     """
     names = ["probe_broken_first", "probe_broken_second"]
     for name in names:
+        _drifted(db_session, name)
         monkeypatch.setitem(crud.TABLE_CONFIG, name, {"columns": {}})
-        monkeypatch.setitem(models.DYNAMIC_TABLES, name, _BrokenModel())
+        monkeypatch.setitem(models.DYNAMIC_TABLES, name, _BrokenModel(name))
     main.RECORRECTION_CACHE["value"] = None
-    return names
+    yield names
+    for name in names:
+        _gone(db_session, name)
 
 
 def test_the_route_answers_200_and_names_the_table_it_could_not_count(
@@ -110,10 +126,8 @@ def test_a_failure_does_not_end_the_walk_so_a_LATER_table_is_still_examined(
     can only appear if the first failure did not end the walk. A `try` around the whole loop
     — which is what this guards against — names one and loses the rest silently.
 
-    ⚠️ WHAT THIS DOES NOT MEASURE, STATED: the per-table `db.rollback()`. These probes raise
-    in Python before any statement reaches the database, and sqlite does not abort a
-    transaction on a failed statement the way PostgreSQL does. The rollback's necessity is
-    recorded at its seat in `main.py`; it is not something this file can score.
+    The shape is asked of the catalog in one read now (lead 11-10), so no statement per table can fail and abort
+    the transaction; what this guards is that every drifted table is named, not only the first.
     """
     body = client.get("/dashboard/summary").json()
 
@@ -138,3 +152,35 @@ def test_the_core_value_meters_survive_a_broken_table(client, one_broken_table):
     instruments, and they were absent for every request the bad table poisoned."""
     body = client.get("/dashboard/summary").json()
     assert "recorrection" in body and "effort" in body
+
+def test_the_summary_does_not_go_to_the_database_once_per_table(client, db_session, monkeypatch):
+    """Lead 11-10 (ops: one summary 97 s in the database over 73 statements, a probe per declared table): the shape
+    is one catalog read - the summary's statements do not grow with the tables declared."""
+    from sqlalchemy import event
+
+    def statements(extra):
+        names = ["probe_many_%d" % i for i in range(extra)]
+        for name in names:
+            _drifted(db_session, name)
+            monkeypatch.setitem(crud.TABLE_CONFIG, name, {"columns": {}})
+            monkeypatch.setitem(models.DYNAMIC_TABLES, name, _BrokenModel(name))
+        seen = []
+        # sqlite reflects a table's columns with a PRAGMA per table (PostgreSQL: one catalog query) - what is counted
+        # is every other statement, the probe a table at a time among them
+        listen = lambda conn, cursor, statement, *a: None if statement.lstrip().upper().startswith("PRAGMA")             else seen.append(statement)                                # noqa: E731
+        event.listen(db_session.get_bind(), "before_cursor_execute", listen)
+        try:
+            main.RECORRECTION_CACHE["value"] = None
+            body = client.get("/dashboard/summary").json()
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", listen)
+            for name in names:
+                monkeypatch.delitem(crud.TABLE_CONFIG, name)
+                monkeypatch.delitem(models.DYNAMIC_TABLES, name)
+                _gone(db_session, name)
+        assert {u["table_name"] for u in body["uncounted_tables"]} >= set(names), "canary: the tables were looked at"
+        return len(seen)
+
+    one, three = statements(1), statements(3)
+    assert one > 0, "canary: the listener saw the summary's statements"
+    assert three == one, ("a statement per declared table", one, three)

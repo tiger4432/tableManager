@@ -1934,52 +1934,39 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     table_names = list(crud.TABLE_CONFIG.keys())
     uncounted = []
     
+    from admin import schema_drift
     from ledger.setup_bundle import catalog_kind
 
+    # 🔴 ONE CATALOG READ FOR EVERY TABLE, NOT A PROBE PER TABLE (lead 11-10: an ops summary spent 97 s in the database
+    #    over 73 statements - a LIMIT 0 SELECT per declared table, each taking its table's lock and waiting behind
+    #    whatever held it, while the admin overview asked again every 30 s). The catalog answers «does the table hold
+    #    the three columns» without touching the tables; `schema_drift._actual` is the one reader of it.
+    probed = {}
     for name in table_names:
         table_model = models.DYNAMIC_TABLES.get(name)
-        if not table_model:
-            continue
         # ⚠️ A VIEW HAS NONE OF THE THREE COLUMNS THE PROBE ASKS FOR, by declaration - it
         #   is not a drifted table, and reporting it as one was a false line per view
         #   (총괄 01cad807c).
-        if catalog_kind(crud.TABLE_CONFIG.get(name)) == "view":
-            continue
-        # 🔴 EACH TABLE BUYS ITS OWN FAILURE. One declared table whose physical shape has
-        # drifted (measured 2026-09-04: a table declared with `row_id` that the database
-        # does not have that column for) made this whole route answer 500, so twenty-odd
-        # tables' figures disappeared because of one. Same ruling as this morning's
-        # per-unit isolation, and the same shape: it is a BOUNDARY problem, not an
-        # ordering one.
-        #
-        # 🔴 AND THE ROLLBACK IS NOT OPTIONAL. PostgreSQL aborts the whole transaction on
-        # a failed statement, so without it every table AFTER the bad one would fail too -
-        # the isolation would be a comment rather than a behaviour, and the response would
-        # name one table while quietly losing the rest.
-        #
-        # ⛔ NOT counted as zero, and not dropped either: an uncounted table is a third
-        # state, and it is reported by name below.
-        try:
-            # 🔴 A SHAPE PROBE, NOT A COUNT. The counts and max() calls that used to be
-            # here were 67% of this route and filled fields nothing read (see the note at
-            # the top). But `uncounted_tables` was a BY-PRODUCT of them: a declared table
-            # whose physical shape has drifted was discovered by the count failing.
-            # Deleting the queries outright would have emptied that list silently - nine
-            # tables today - and "no table is broken" is not the same fact as "I did not
-            # look". So the same columns are still resolved, with LIMIT 0 so the database
-            # plans the statement and returns nothing: the UndefinedColumn is raised
-            # exactly as before, at a fraction of the cost of scanning the table.
-            db.query(table_model.row_id, table_model.updated_at,
-                     table_model.created_at).limit(0).all()
-        except Exception as e:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            logger.warning("[Dashboard] '%s' could not be counted: %s", name, told(e))
-            uncounted.append(schemas.UncountedTable(
-                table_name=name, reason=f"{type(e).__name__}: {told(e)}"))
-            continue
+        if table_model and catalog_kind(crud.TABLE_CONFIG.get(name)) != "view":
+            probed[name] = table_model.__table__.name
+    try:
+        held, unread = schema_drift._actual(db.get_bind(), sorted(set(probed.values()))), None
+    except Exception as e:
+        held, unread = {}, "the catalog could not be read: %s" % told(e)
+        logger.warning("[Dashboard] %s", unread)
+    for name, relation in probed.items():
+        # 🔴 A SHAPE CHECK, NOT A COUNT. `uncounted_tables` was a by-product of the counts once (see the note at the
+        # top): a declared table whose physical shape has drifted. "no table is broken" is not the same fact as "I
+        # did not look", so the same three columns are still asked - of the catalog now. ⛔ NOT counted as zero,
+        # and not dropped either: an uncounted table is a third state, reported by name.
+        columns = held.get(relation)
+        missing = (["row_id", "updated_at", "created_at"] if columns is None else
+                   [c for c in ("row_id", "updated_at", "created_at") if c not in columns])
+        if unread or missing:
+            reason = unread or ("the database holds no table %s" % relation if columns is None else
+                                "the database's %s has no column %s" % (relation, ", ".join(missing)))
+            logger.warning("[Dashboard] '%s' could not be counted: %s", name, reason)
+            uncounted.append(schemas.UncountedTable(table_name=name, reason=reason))
 
 
     # ⚰️ `today_updates` (audit rows since local midnight) retired 10-29 (owner «ㄱ»): no screen read it, and C's F4

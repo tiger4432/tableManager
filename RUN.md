@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **어드민 개요 요약(/dashboard/summary)이 표마다 DB 에 가지 않는다 — 카탈로그 한 번** — git pull · API 재기동
+>
+> ```
+> 무엇     «표 모양이 선언과 어긋났나»(uncounted_tables)를 표마다 SELECT … LIMIT 0 대신 카탈로그 한 번으로 물음
+>          표를 건드리지 않아 그 표의 잠금 · 적재 · 청소를 기다리지 않음. 박스: 문장 76 -> 3
+> 볼 줄    server.log [Slow] GET /dashboard/summary … 의 db 초 · 질의 수가 표 수와 무관하게 작음
+>          어긋난 표: [Dashboard] '<표>' could not be counted: the database's <표> has no column row_id, …
+>                    또는 … the database holds no table <표>
+>          카탈로그를 못 읽으면: [Dashboard] the catalog could not be read: … (그때 모든 표를 «못 셈»으로 냄)
+> 답의 뜻  요약이 여전히 수십 초 = 재교정 · 노력 셈(audit_logs) 쪽 — 그 둘은 이 착지와 무관(제 시간 제한 있음)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
 > ## [11-10] **그리드 배너 «Fold notation»: 고른 행만 노테이션 소급** — 브라우저 새로 고침(클라). 서버는 A 18c6996a9 와 같은 묶음
 >
 > ```

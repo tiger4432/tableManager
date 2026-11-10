@@ -366,8 +366,9 @@ def _sync_repairs(table, column_name, actual_columns, dynamic_names):
     return column_name.lower() not in {c.lower() for c in actual_columns}
 
 
-def _actual(engine):
-    """Catalog state as ``{table: {column name: reflected type}}``.
+def _actual(engine, names=None):
+    """Catalog state as ``{table: {column name: reflected type}}`` - of every table, or of `names` only (a table of
+    `names` the database does not hold is absent from the answer).
 
     `inspect` reads information_schema on PostgreSQL and the equivalent pragma on
     SQLite, so one code path covers production and a simulated database built for
@@ -389,11 +390,12 @@ def _actual(engine):
         try:
             # Keys are (schema, table); the default schema is the only one mapped.
             return {key[1]: {c["name"]: c.get("type") for c in cols}
-                    for key, cols in insp.get_multi_columns().items()}
+                    for key, cols in insp.get_multi_columns(filter_names=names).items()}
         except Exception:
             pass
+    held = set(insp.get_table_names())
     return {t: {c["name"]: c.get("type") for c in insp.get_columns(t)}
-            for t in insp.get_table_names()}
+            for t in (held if names is None else [n for n in names if n in held])}
 
 
 def _type_family(t):
