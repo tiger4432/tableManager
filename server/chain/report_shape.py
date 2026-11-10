@@ -19,10 +19,14 @@ logger = logging.getLogger("Chain")
 REPORT_MAPPER = "declared:report"
 #: The roles that name a table and its columns, and the cells of each that name a column (`WAFER_CELL`: a list).
 WAFER_CELL = "wafer"
+#: `images.first_layer`: the image table's column naming the layer a chip's defect was found on (owner 11-10 «디폴트를
+#: 해당 층으로 고정») - the chip's layers open there: first in the file's strip and marked, where the wheel starts.
+#: «1,2» names its first; blank, or no picture of that layer, the first layer as before.
+FIRST_LAYER = "first_layer"
 ROLE_COLUMNS = {
     "wafer": ("key", "time", "lot", "evaluation", "conditions"),
     "summary": (WAFER_CELL, "item", "fail", "total", "rate"),
-    "images": (WAFER_CELL, "item", "image"),
+    "images": (WAFER_CELL, "item", "image", FIRST_LAYER),
     "sets": ("name", "member", "kind"),
     # a long table of a wafer's conditions, a row a condition - mostly written only when it is out of the ordinary
     # (owner 10-23): a wafer without rows is at the default conditions. Read as the wafer's {name: value}, its time

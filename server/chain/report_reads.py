@@ -842,17 +842,20 @@ class Report:
         fold = [beyond.index(c) for c in self.key_words if c in beyond
                 and report_shape.KEY_FOLD in self.key_words[c]]
         chip = [at for at, c in enumerate(beyond) if at not in fold]
-        rows = self._matched(role, [role["item"], role["image"]], picked, capped=True)   # capped, not refused
+        first = role.get(report_shape.FIRST_LAYER)
+        rows = self._matched(role, [role["item"], role["image"]] + ([first] if first else []), picked,
+                             capped=True)                                       # capped, not refused
+        lead = 3 if first else 2
         # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
-        rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
+        rows.sort(key=lambda pair: [_ordinal(pair[1][lead + at]) for at in fold])
         # images.match: an image kind is its summary item's picture; with match declared, a kind it pairs with nothing
         # and no summary item is named shows under itself, after a line naming it (lead 10-24: no silent drop)
         match, items = report_shape.image_match(self.spec), {report_shape.name(item) for _w, item in found}
         unpaired = {}
-        chosen, counts, stacks = {}, {}, {}
+        chosen, counts, stacks, opens, named = {}, {}, {}, {}, {}
         for wafer, row in rows:
             ref = _ref(source, row[1])
-            whose = (wafer, tuple(row[2 + at] for at in chip))
+            whose = (wafer, tuple(row[lead + at] for at in chip))
             for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [report_shape.name(row[0])]):
                 item = match.get(kind, kind)
                 alone = bool(match) and kind not in match and kind not in items and kind != "None"
@@ -860,13 +863,16 @@ class Report:
                     continue
                 if alone:
                     unpaired.setdefault(kind, [])
-                layer = "/".join(str(row[2 + at]) for at in fold) if fold else None
+                layer = "/".join(str(row[lead + at]) for at in fold) if fold else None
+                if first and fold and _part(row[2]) is not None:
+                    opens.setdefault((item, whose), row[2])
                 if fold and (item, whose) in stacks:
                     # every layer of a chip and defect, one stack the wheel turns (owner 10-24 «디펙별 이미지 모든 레이어
                     # · 마우스 휠로 레이어 바꿔 볼 수 있게»)
                     picture = _picture(ref, px)
                     if "src" in picture:
                         stacks[(item, whose)]["layers"].append(dict(picture, layer=layer))
+                        named[(item, whose)].append(tuple(_part(row[lead + at]) for at in fold))
                     continue
                 # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
                 if counts.get((item, wafer), 0) >= per_item:
@@ -875,10 +881,19 @@ class Report:
                 entry = dict(picture, wafer=self.said(wafer))
                 if fold:
                     entry["layers"] = [dict(picture, layer=layer)] if "src" in picture else []
+                    named[(item, whose)] = [tuple(_part(row[lead + at]) for at in fold)] if "src" in picture else []
                     stacks[(item, whose)] = entry
                 (unpaired[kind] if alone else chosen.setdefault(item, [])).append(entry)
                 if "src" in picture:
                     counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
+        for at, said in opens.items():
+            # images.first_layer: the chip's layers turned to open on it, the wheel's order kept - «1,2» its first
+            said = said.split(",")[0] if isinstance(said, str) else said
+            want = tuple(_part(part) for part in str(said).split("/")) if len(fold) > 1 else (_part(said),)
+            if at in stacks and want in named[at]:
+                k = named[at].index(want)
+                stacks[at]["layers"] = stacks[at]["layers"][k:] + stacks[at]["layers"][:k]
+                stacks[at]["layers"][0]["first"] = True
         if unpaired:
             # the line, then each unpaired kind under itself - after the paired items
             chosen[report_shape.word(self.spec, "unpaired") % ", ".join(sorted(unpaired))] = []

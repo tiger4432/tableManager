@@ -1610,6 +1610,18 @@
                         }
                       },
                       {
+                        "key": "first_layer",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.images.table"
+                          ]
+                        }
+                      },
+                      {
                         "key": "per_item",
                         "required": false,
                         "node": {
