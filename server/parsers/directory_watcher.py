@@ -479,6 +479,10 @@ CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
 #: A grid read's statement limit (총괄 d16033b63) - null or 0: none. The default is measured on the 4,000,000-row board.
 GRID_READ_TIMEOUT_SETTING = "grid_read_timeout_seconds"
 GRID_READ_TIMEOUT_DEFAULT = 10.0
+#: How long the column picker's exact counts of a table may run behind its answer, all of them together (lead 11-10 ㅈ ·
+#: ㅌ) - past it they are cut and not counted again until a person asks. null or 0: no limit.
+COLUMN_COUNT_SETTING = "column_count_seconds"
+COLUMN_COUNT_DEFAULT = 120.0
 #: How many item columns a pivot read spreads at the most - past it the first ones and «N more» (소유자 10-22).
 PIVOT_MAX_COLUMNS_SETTING = "pivot_max_columns"
 PIVOT_MAX_COLUMNS_DEFAULT = 200
@@ -638,6 +642,12 @@ def _whole_number(settings, cell, absent, least):
     value = settings.get(cell, absent)
     good = isinstance(value, int) and not isinstance(value, bool) and value >= least
     return value if good else absent
+
+
+def column_count_timeout(settings=None):
+    """Seconds the column picker's exact counts of one table may run together, None = no limit (`ledger.column_stats`)."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, COLUMN_COUNT_SETTING, COLUMN_COUNT_DEFAULT)
 
 
 def grid_read_timeout(settings=None):

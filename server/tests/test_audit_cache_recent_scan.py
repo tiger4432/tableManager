@@ -8,6 +8,7 @@ is the alarm for is named in its docstring.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import time
 
 import pytest
 import sqlalchemy as sa
@@ -46,9 +47,9 @@ def _recent(client, url):
     if "cursor=" in url:
         return client.get(url)
     client.get(url)
-    behind = audit_cache.audit_cache._behind
-    if behind is not None:
-        behind.join(30)
+    deadline = time.monotonic() + 30
+    while audit_cache.audit_cache._behind.busy(audit_cache.RECENT) and time.monotonic() < deadline:
+        time.sleep(0.02)
     return client.get(url)
 
 

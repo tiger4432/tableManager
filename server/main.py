@@ -10,6 +10,7 @@ from database import models, schemas, crud
 from runtime import system_reload
 from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
 from runtime import index_wants  # a slow grid read's automatic index (총괄 ff7890892)
+from runtime import behind  # the work behind the reads - the grid's whole counts here
 from runtime import stages  # a named stage on every line open around it - the slow-request line here
 from runtime.offloop_json import OffLoopJSONRoute
 from listing_absence import absent_listing
@@ -1208,94 +1209,54 @@ COUNT_CAP = 10_000
 #: How long a request waits for a count due now (never counted, or changed and past its pacing) - a small table's then
 #: comes back counted; a large one's is said `counting`, or its last count with its time.
 COUNT_WAIT_SECONDS = 0.5
-_WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked", "failed"}
-_DUE = {}                       # whole key -> (count(db), bind) to count (again) - on the request's database
-_COUNT_COND = threading.Condition()
-_COUNTER = [None]
-_NOW = [None]                   # (whole key, asked) the worker is counting - a first count is not in _WHOLE yet
+
+
+def _whole_pacing():
+    from parsers import directory_watcher
+
+    return directory_watcher.count_recount_seconds()
+
+
+#: The one worker that counts them (`runtime.behind`) - a key's count kept as {"total", "capped", "at", "seconds", "failed"}.
+WHOLE_COUNTS = behind.Behind("whole-counter", _whole_pacing, "[Count] the whole count of %s was not counted")
+#: The auto-confirm rules' queue counts (`missing_counts`) - the same keys and pacing on a worker of their own: a long
+#: count of a derived table never holds a grid's whole count (lead 11-10).
+QUEUE_COUNTS = behind.Behind("queue-counter", _whole_pacing, "[Count] the queue count of %s was not counted")
 
 
 def _count_again(table_name):
     """Every whole count of `table_name` is due again (its pacing still holds) - the one being counted too: its
     snapshot may be from before the change."""
-    with _COUNT_COND:
-        for key, asked in [(key, held["asked"]) for key, held in _WHOLE.items()] + ([_NOW[0]] if _NOW[0] else []):
-            if count_cache_table_of(key) == table_name:
-                _DUE[key] = asked
-        _COUNT_COND.notify_all()
+    for counts in (WHOLE_COUNTS, QUEUE_COUNTS):
+        counts.again(lambda key: count_cache_table_of(key) == table_name)
 
 
-def _due_now(key, pacing, now):
-    held = _WHOLE.get(key)
-    return held is None or now - held["began"] >= pacing
-
-
-def _whole_counter():
-    """The one worker: the due count whose pacing allows, counted on its own session, then the next."""
-    from parsers import directory_watcher
-
-    while True:
-        with _COUNT_COND:
-            while True:
-                pacing, now = directory_watcher.count_recount_seconds(), time.monotonic()
-                ready = [key for key in _DUE if _due_now(key, pacing, now)]
-                if ready:
-                    key = ready[0]
-                    asked = _DUE.pop(key)
-                    _NOW[0] = (key, asked)
-                    break
-                waits = [pacing - (now - _WHOLE[key]["began"]) for key in _DUE if key in _WHOLE]
-                _COUNT_COND.wait(max(min(waits), 0.05) if waits else None)
-        began, counted, failed = time.monotonic(), None, None
-        count, bind = asked
-        db = Session(bind=bind)
-        try:
-            counted = count(db)
-        except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
-            logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, told(exc))
-            failed = {"reason": ("%s: %s" % (type(exc).__name__, told(exc).strip().split("\n")[0]))[:200],
-                      "at": datetime.now(timezone.utc).isoformat()}
-        finally:
-            db.close()
-        with _COUNT_COND:
-            # a failed count keeps the last one and is paced as a count (총괄 0fd18ae19 2) - asked again, it is due again
-            kept = _WHOLE.get(key) or {"total": None, "capped": False, "counted_at": None, "count_seconds": None}
-            if failed is None:
-                kept = dict(counted, count_seconds=round(time.monotonic() - began, 3),
-                            counted_at=datetime.now(timezone.utc).isoformat())
-            _WHOLE[key] = dict(kept, began=began, asked=asked, failed=failed)
-            _NOW[0] = None
-            _COUNT_COND.notify_all()
-
-
-def _table_rows(table_name, world, db):
-    """A table's whole count - what the whole counter counts for a table's key."""
+def _table_rows(table_name, world, db, **narrowing):
+    """A table's whole count, or its `narrowing`'s - what the whole counter counts for a key."""
     model = grid_model(table_name, world)
     # 🔴 STOPS PAST COUNT_CAP TOO (owner 10-16): a whole count of a bloated table held a connection for its whole read;
     #    the grid says «10,000+» past it, as it does a narrowed count
-    total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
+    total = (narrowed_table_query(db, table_name, model, **narrowing)[0].order_by(None).limit(COUNT_CAP + 1).count()
              if model is not None else 0)
     return {"total": min(total, COUNT_CAP), "capped": total > COUNT_CAP}
 
 
-def _kept_count(db, key, count, oldest):
-    """What the whole counter last counted for `key` - asked of it again when never counted, failed, or older than
-    `oldest` seconds; a request waits COUNT_WAIT_SECONDS for one due now. -> the kept entry, or None (counting)."""
-    from parsers import directory_watcher
+def _kept_count(db, key, count, oldest, wait=None, counts=WHOLE_COUNTS):
+    """What `counts` last counted for `key` - asked of it again when never counted, failed, or older than
+    `oldest` seconds; a request waits `wait` (COUNT_WAIT_SECONDS) seconds for one due now.
+    -> the kept count, or None (counting)."""
+    bind = db.get_bind()
 
-    now = time.monotonic()
-    with _COUNT_COND:
-        held = _WHOLE.get(key)
-        if held is None or held["failed"] or (oldest is not None and now - held["began"] >= oldest):
-            _DUE.setdefault(key, (count, db.get_bind()))
-        if _COUNTER[0] is None:
-            _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
-            _COUNTER[0].start()
-        _COUNT_COND.notify_all()
-        if key in _DUE and _due_now(key, directory_watcher.count_recount_seconds(), time.monotonic()):
-            began = (_WHOLE.get(key) or {}).get("began")
-            _COUNT_COND.wait_for(lambda: (_WHOLE.get(key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
-        return _WHOLE.get(key)
+    def counted():
+        own = Session(bind=bind)
+        try:
+            return count(own)
+        finally:
+            own.close()
+
+    return counts.ask(key, counted, again=lambda kept: bool(kept["failed"]) or (
+        oldest is not None and time.monotonic() - kept["began"] >= oldest),
+        wait=COUNT_WAIT_SECONDS if wait is None else wait)
 
 
 def table_total(db, table_name, world, model, query, cache_key, cap=None, here=False):
@@ -1327,7 +1288,7 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
                     total, seconds, at = cached_table_count(capped_query.with_session(own),
                                                             build_count_cache_key(cache_key, "cap:%d" % cap))
             except OperationalError as exc:
-                if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+                if not db_waits.cancelled(exc):
                     raise
                 return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": False,
                         "failed": {"reason": "count stopped after %g s" % limit if limit else
@@ -1343,8 +1304,8 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
     if held is None:
         return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
                 "failed": None}
-    return {"total": held["total"], "capped": held["capped"], "counted_at": held["counted_at"],
-            "count_seconds": held["count_seconds"], "counting": False, "failed": held["failed"]}
+    return {"total": held.get("total"), "capped": held.get("capped", False), "counted_at": held.get("at"),
+            "count_seconds": held.get("seconds"), "counting": False, "failed": held["failed"]}
 
 
 def invalidate_table_cache(table_name: str):
@@ -2325,7 +2286,7 @@ from grid_read import (  # noqa: E402 - the grid read path, importable without m
     search_scope_columns, total_order_keys, transaction_rows)
 
 
-from db_waits import QUERY_CANCELED  # noqa: E402 - the one spelling (audit_cache reads it too)
+import db_waits  # noqa: E402 - «was it cancelled» - the one judgement (audit_cache, column_stats read it too)
 
 
 def grid_read(route):
@@ -2358,7 +2319,7 @@ def grid_read(route):
             with read_limit(seconds), index_wants.reading() as kept:
                 answer = route(*args, **kwargs)
         except OperationalError as exc:
-            if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
+            if not db_waits.cancelled(exc):
                 raise
             ask_read_indexes(asked, time.time() - started, kept)
             db = asked.get("db")
@@ -5663,8 +5624,8 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     seen = {entry["table_name"] for entry in data}
     data += [{"table_name": table, "total": 0, "by_status": {}, "last_at": None, "sources": entries}
              for table, entries in sorted(sources.items(), key=lambda item: str(item[0])) if table not in seen]
-    progress = {"counting": held is None, "counted_at": (held or {}).get("counted_at"),
-                "count_seconds": (held or {}).get("count_seconds"), "failed": (held or {}).get("failed")}
+    progress = {"counting": held is None, "counted_at": (held or {}).get("at"),
+                "count_seconds": (held or {}).get("seconds"), "failed": (held or {}).get("failed")}
     return {"status": "success", "data": data, "progress": progress}
 
 
@@ -6761,8 +6722,38 @@ def get_mappers():
 # -----------------------------------------------------------------------------
 from chain import enrichment
 
+def missing_counts(db, rules):
+    """🔴 THE QUEUE COUNTS ARE HELD, NOT COUNTED PER READ (owner 11-10 «1 ㄱ»: every admin tab asked every rule's queue
+    count every 30 s): each rule's queue on its derived table is a key of QUEUE_COUNTS - counted behind, again
+    when that table changes (`invalidate_table_cache`) at most once per count_recount_seconds, to COUNT_CAP.
+    -> ({rule name: {"count", "capped", "counted_at", "failed"}}, the sum's {"total", "capped", "counted_at",
+    "updating", "unknown": [rule names not counted or failed]})"""
+    from parsers import directory_watcher
+
+    each, keys = {}, []
+    for rule in rules:
+        name, table = rule["name"], rule["derived_table"]
+        model = grid_model(table, None)
+        if model is None:
+            each[name] = {"count": None, "capped": False, "counted_at": None,
+                          "failed": {"reason": "table %s is not declared" % table, "at": None}}
+            continue
+        key = narrowed_table_query(db, table, model, enrichment_queue=name)[1]
+        keys.append(key)
+        held = _kept_count(db, key, functools.partial(_table_rows, table, None, enrichment_queue=name),
+                           directory_watcher.count_max_age_seconds(), wait=0, counts=QUEUE_COUNTS) or {}
+        each[name] = {"count": held.get("total"), "capped": held.get("capped", False),
+                      "counted_at": held.get("at"), "failed": held.get("failed")}
+    unknown = [name for name, one in each.items() if one["count"] is None or one["failed"]]
+    counted = [one for one in each.values() if one["count"] is not None]
+    return each, {"total": sum(one["count"] for one in counted) if counted else None,
+                  "capped": any(one["capped"] for one in counted),
+                  "counted_at": min((one["counted_at"] for one in counted), default=None),
+                  "updating": any(QUEUE_COUNTS.busy(key) for key in keys), "unknown": unknown}
+
+
 @app.get("/enrichment/rules")
-def get_enrichment_rules():
+def get_enrichment_rules(db: Session = Depends(get_db)):
     """활성 enrichment 규칙 메타를 반환합니다.
 
     응답 계약: {"rules": [{name, source_table, derived_table, decision_key[],
@@ -6780,8 +6771,10 @@ def get_enrichment_rules():
     #   route below walks the SAME list - the index in `/references/{index}` points into it.
     from chain import enrich_declarations
 
-    rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
-    return {"rules": [enrichment.config.to_public_rule(r) for r in rules]}
+    rules = [enrichment.config.to_public_rule(r)
+             for r in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)]
+    each, missing = missing_counts(db, rules)
+    return {"rules": [dict(rule, missing=each[rule["name"]]) for rule in rules], "missing": missing}
 
 @app.get("/enrichment/rules/{rule_name}/references/{index}")
 def get_enrichment_reference(rule_name: str, index: int, params: str = None, db: Session = Depends(get_db)):

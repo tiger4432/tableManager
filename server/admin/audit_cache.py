@@ -91,9 +91,11 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
+import db_waits
 import error_said
 import event_constants
 from admin import audit_history
+from runtime import behind
 from database import models
 from database import schemas
 
@@ -134,6 +136,8 @@ RECENT_DEFAULTS = {
 #: 2 s): at 2 s here every read-again started the next catch-up and the panel said «Updating» for ever (Chrome look
 #: 11-09). What another process wrote reaches the list by its notification at once; this merge is the reconciliation.
 CATCH_UP_GAP_SECONDS = 10
+#: The one key of the recent history's work behind the reads (`runtime.behind`).
+RECENT = "recent"
 
 
 # Sort placeholder for a null `timestamp`. Never compared against a real value -
@@ -183,8 +187,11 @@ class AuditLogCache:
         self.truncated = False
         self.next_cursor: Optional[str] = None
         self.scanned_rows = 0
-        self._behind: Optional[threading.Thread] = None     # the walk or the merge running behind the reads
-        self._behind_ended = float("-inf")
+        # the walk or the merge behind the reads (`runtime.behind`) - a restart's leaves nothing due
+        if getattr(self, "_behind", None) is not None:
+            self._behind.forget()
+        self._behind = behind.Behind("audit-recent", lambda: CATCH_UP_GAP_SECONDS,
+                                     "[Audit] the %s history was not caught up")
 
     # ------------------------------------------------------------------
     # The scan
@@ -358,7 +365,7 @@ class AuditLogCache:
                 else:
                     already = ()
             except OperationalError as exc:
-                if not _cut(exc):
+                if not db_waits.cancelled(exc):
                     raise
                 db.rollback()
                 cut = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
@@ -518,7 +525,7 @@ class AuditLogCache:
                         self._discover_groups(db, limit_groups, settings)
                     groups = self._hydrate(db, order, counts, summaries)
                 except OperationalError as exc:
-                    if not _cut(exc):
+                    if not db_waits.cancelled(exc):
                         raise
                     logger.warning("[Audit] recent walk cut - the newest id or the groups' representatives past "
                                    "recent_statement_seconds %d; not loaded, the next read walks again",
@@ -544,19 +551,15 @@ class AuditLogCache:
 
     def behind(self, bind, limit_groups: int = 100) -> bool:
         """The walk and the merge behind the read (owner 11-09 «읽기는 쓰기에 영향 안 받음»): the route answers the
-        projection it holds, and one thread at a time builds it (`load_initial`) or merges what other processes wrote
-        (`refresh_if_stale`) on a session of its own on `bind` - started when none runs and the last ended
-        `CATCH_UP_GAP_SECONDS` ago or more. -> whether one runs now, or none has built the projection yet (a walk
-        cut before naming a group) - the answer's `updating`: never «no history» for «not read yet»."""
+        projection it holds, and its worker (`runtime.behind`) builds it (`load_initial`) or merges what other processes
+        wrote (`refresh_if_stale`) on a session of its own on `bind` - a read asks for one, run once the last ended
+        `CATCH_UP_GAP_SECONDS` ago or more. -> whether one runs now or goes next, or none has built the projection yet
+        (a walk cut before naming a group) - the answer's `updating`: never «no history» for «not read yet»."""
         from sqlalchemy.orm import sessionmaker
 
-        with self._lock:
-            if (self._behind is None or not self._behind.is_alive()) and (
-                    time.monotonic() - self._behind_ended >= CATCH_UP_GAP_SECONDS):
-                self._behind = threading.Thread(target=self._catch_up, args=(sessionmaker(bind=bind), limit_groups),
-                                                name="audit-recent", daemon=True)
-                self._behind.start()
-            return not self.is_loaded or (self._behind is not None and self._behind.is_alive())
+        factory = sessionmaker(bind=bind)
+        self._behind.ask(RECENT, lambda: self._catch_up(factory, limit_groups), again=lambda kept: True)
+        return not self.is_loaded or self._behind.busy(RECENT)
 
     def _catch_up(self, session_factory, limit_groups: int):
         """The walk, then the merge, on a session of its own; over the slow-request budget it says where its time went
@@ -578,8 +581,6 @@ class AuditLogCache:
                            error_said.told(exc))
         finally:
             db.close()
-            with self._lock:
-                self._behind_ended = time.monotonic()
 
     def refresh_if_stale(self, db: Session, limit_groups: int = 100) -> bool:
         """Merge audit rows committed by a separate process.
@@ -618,7 +619,7 @@ class AuditLogCache:
                         return merged
                     merged = merged or one
             except OperationalError as exc:
-                if not _cut(exc):
+                if not db_waits.cancelled(exc):
                     raise
                 step = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
         with self._lock:
@@ -788,12 +789,6 @@ class AuditLogCache:
     def remove_deleted_rows(self, row_ids: List[str]):
         """삭제된 행의 과거 로그를 캐시에서 제거하지 않고 보존합니다."""
         pass
-
-
-def _cut(exc) -> bool:
-    """Whether `exc` is PostgreSQL cancelling a statement past its `statement_timeout`."""
-    import db_waits
-    return getattr(getattr(exc, "orig", None), "pgcode", None) == db_waits.QUERY_CANCELED
 
 
 @contextmanager

@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **읽기 뒤에서 세는 일이 한 기제 — 컬럼 고르기는 바로 답하고, 어드민 결손 수는 서버가 쥔 수** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     그리드 전체 행 수 · 최근 이력 따라잡기 · 컬럼 고르기의 정확한 셈 · 자동 확정 결손 수가 한 기제(runtime.behind)
+>          일꾼은 넷 따로: whole-counter · queue-counter · audit-recent · column-counts — 하나가 길어도 다른 것을 안 묶음
+> 새로 보임 컬럼 고르기(/columns): 바로 추정치(exact false, updating true) → 셈이 끝나면 exact true · counted_at
+>          GET /enrichment/rules: 규칙마다 missing{count, capped, counted_at, failed} · 최상위 missing{total, capped, counted_at, updating, unknown}
+>          Running(지금 도는 일)에 «column-counts · <표>» · «queue-counter · <표…>» — where api
+> 볼 줄    [Columns] the exact counts of <표> were not counted: … · [Count] the queue count of … was not counted: …
+>          — 셈 실패. 지난 수는 남고 답에 failed
+> 답의 뜻  컬럼 고르기가 계속 추정치 + count_cut → 그 표 셈이 column_count_seconds(기본 120)를 넘어 끊김.
+>            적재가 끝난 뒤 recount=true 로 다시, 또는 설정을 올림. 끊긴 셈은 «스스로» 다시 세지 않음
+>          결손 수 updating 이 안 끝남 → Running 의 queue-counter 줄 초. 그리드 개수는 그동안도 움직여야 정상
+>          그리드 개수가 오래 counting → Running 의 whole-counter 줄(결손 셈과 무관 — 일꾼이 다름)
+> 바뀐 것  다시 세기 쉼(count_recount_seconds · 이력 CATCH_UP_GAP_SECONDS)은 지난 셈이 «끝난» 때부터 셈(전엔 시작부터)
+> 설정     ingestion_settings.json  column_count_seconds(기본 120) · count_recount_seconds(결손 수도 이 간격)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
 > ## [11-10] **구간 기록이 한 함수 — 소급 비트 · 느린 요청 줄에 구간이 더 보인다** — git pull · 런처 재기동(전부)
 >
 > ```
