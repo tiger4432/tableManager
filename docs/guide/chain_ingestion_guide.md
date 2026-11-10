@@ -131,13 +131,14 @@ config load and **names every cycle it finds** (`_validate_chain_cascade_graph` 
 INFO line per trail per process, and the trails come back as a value the admin graph
 draws). ⚰️ **It used to REFUSE the load (판정 402, 2026-09-15 `2504fbde`).** A loop such
 as `dt_log → dt_inventory` by mapper and back by join is an intended shape; what keeps it
-finite is `max_chain_depth`, and nothing refuses a cycle at load, at save
-(`save_chain_rule_raw`) or at replay. Three field names decide what that graph sees, and
+finite is `max_chain_depth`; a loop across tables is named, not refused. 🆕 A loop inside ONE
+table between rules woken by named columns (`wake_columns`) IS refused by the loader and the save door
+(`ingestion_worker.column_loops`, owner 10-28). Three field names decide what that graph sees, and
 two of them are easy to confuse:
 
 | 필드 | 그래프에서 하는 일 |
 |---|---|
-| `enabled` | 켜는 키. `false` 인 규칙은 그래프에 **안 들어간다**(생략하면 켜짐). 실행 순서 유도(`chain/rule_order`)도 같은 답이다 — 꺼진 규칙과 `follow_up` 규칙은 «돌 수 없는 엣지»라 이웃을 정렬하지 않는다(2026-09-15 `ea8f91d2`, 운영이 만난 가짜 고리). 통합 선언(`derive`)에서는 로더가 «규칙 자체를 안 세운다»(판정 399) |
+| `enabled` | 켜는 키. `false` 인 규칙은 그래프에 **안 들어간다**(생략하면 켜짐). 실행 순서 유도(`chain/rule_order`)도 같은 답이다 — 꺼진 규칙은 «돌 수 없는 엣지»라(`follow_up` 칸은 은퇴) 이웃을 정렬하지 않는다(2026-09-15 `ea8f91d2`, 운영이 만난 가짜 고리). 통합 선언(`derive`)에서는 로더가 «규칙 자체를 안 세운다»(판정 399) |
 | `trigger_table` | **엣지의 출발점.** 이 표에 커밋이 나면 이 규칙이 깨어난다 |
 | `source_table` | 🔴 **엣지가 아니다** — 맵퍼가 데이터를 «읽는» 곳이다. 그래프와 무관하다 |
 
@@ -175,11 +176,8 @@ contract"), and a column name still comes from the declaration, never from a
 literal (§"Column names: read them, never spell them"). A query that spells its
 own column names is the same defect as a mapper that does.
 
-**A DataFrame is not a return value.** The worker's test is
-`if target_payload and isinstance(target_payload, dict) and target_payload.get("updates")`
-(`chain/ingestion_worker.py`, the `execute_custom_mapper` call sites). Returning a
-frame raises `ValueError: The truth value of a DataFrame is ambiguous` on the first
-clause — loudly, which is the good case. Convert with the one that ships:
+**A DataFrame is not a return value.** The seat that runs a mapper (`chain.rule_run.run_rule`)
+reads a dict with `updates`. Convert with the one that ships:
 
 ```python
 from mapper_sdk import mapper, sql
@@ -207,7 +205,7 @@ runs inside the worker's transaction; a helper that opened its own would read th
 as it was *before* this batch — silently, and only under concurrency.
 
 **One thing each box does once.** `BaseMapper` now lives in `server/mapper_sdk.py` so its
-implementation ships; `server/mappers/` is gitignored, so the copy of `base.py` on a
+implementation ships; `server/mappers/` is gitignored (only the product's own mappers are tracked by name), so the copy of `base.py` on a
 running machine still holds the old class. Replace that file's body with
 `from mapper_sdk import BaseMapper` (or point the mappers at `from mapper_sdk import
 BaseMapper` directly). Either way it is one edit, and after it the implementation travels
@@ -248,9 +246,9 @@ mapper's keys drift, and nothing errors. The canonical return example above show
 `business_key_val` because it was written for a target of the fourth kind; on a
 composite target, leave that field out. Which kind a target is:
 `crud.TABLE_CONFIG[target]["composite_key_source"]` — `None` means the fourth.
-Measured 2026-09-02: of 44 declared tables, 29 declare a composite source.
+Measured 2026-09-02: of 44 declared tables, 29 declare a composite source (11-11, the sample: 62 tables, 40).
 
-🔴 **And the other fifteen tables want the opposite, which is why this is worth
+🔴 **And the tables without one want the opposite, which is why this is worth
 spelling out.** On a target that declares `business_key` but no
 `composite_key_source`, the framework takes nothing from `updates`:
 `assemble_composite_business_key` returns at once when there is no composite
@@ -274,8 +272,8 @@ it: rows accumulate, no error is ever reported, and the duplicates are found muc
 later by someone counting.
 
 
-This opt-in is keyed on ONE thing: the outbox payload's `source_name` being
-`chain_ingestion` (`_rule_accepts_event`). Any automated pass that writes rows
+This opt-in is keyed on the event's channel (`event_constants.channel_of`); only an event with no
+channel falls back to its `source_name` ranking as `chain_ingestion` (`_rule_accepts_event`). Any automated pass that writes rows
 without going through the chain worker must therefore label its writes, or its
 events are read as a human edit and wake every rule a human wakes — that is the
 defect `ffb23d6` fixed in R3 and `53f9187` in R2 (§5.6). 🔴 **The label is a CHANNEL, not
@@ -294,7 +292,7 @@ silently replace a user value.
 | Path                             | Can do                                                                                                                                                                          | Cannot do                                                                                                        | Notes                                                                                                                                              |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Custom chain mapper              | Upsert returned updates; read declared/current DB state through `db`; intentionally return no updates | Commit directly; write raw target rows outside the worker batch; request an unapproved purge; **emit a row whose key columns are not filled** (see below) | Normal returns are upserts. Scoped replacement requires the batch envelope and `allow_replace_map: true`. A rule may explicitly authorize metadata for its own target map with `allow_map_metadata_upsert: true`. |
-| Enrichment dedup                 | Upsert**one derived decision row per declared `decision_key`**                                                                                                          | Fill a `target_fields` column except by an aggregation of the same name; arbitrarily update source rows; delete a decision row                              | `enrichment_mapper` projects the identity/list fields and its aggregations. A blank aggregate is not written - after the write the worker takes back the layer its rule wrote. It does not assert a candidate result.                                  |
+| Enrichment dedup                 | Upsert**one derived decision row per declared `decide.key`**                                                                                                          | Fill a `decide.fields` column except by an aggregation of the same name; arbitrarily update source rows; delete a decision row                              | `enrichment_mapper` projects the identity/list fields and its aggregations. A blank aggregate is not written - after the write the worker takes back the layer its rule wrote. It does not assert a candidate result.                                  |
 | Enrichment auto-confirm          | Fill a declared, currently unresolved`target_field` when the configured reference views yield exactly one candidate and both global and per-rule `auto_confirm` are enabled | Overwrite any cell that already has provenance; choose among multiple/no candidates; retract a past auto-confirm | Writes with source`enrichment_auto_confirm`; ambiguity and refusal stay visible in the queue/logs.                                               |
 | Chain replay R1                  | Re-run a chosen enabled rule over current trigger-table rows, dry-run by default IN THE CLI (`--apply` writes); the admin operation `chain_replay` ALWAYS applies - it calls `replay_rule(apply=True)` and its usage line ends in a required `--apply`. Only the counter runs with `apply=False`                                                           | Reconstruct deleted trigger rows; cause a live cascade; treat mapper absence as a blank write                    | Replay sends the same canonical payload shape. Its`chain_ingestion` writes are not recursively consumed by the live worker.                      |
 | Source withdrawal R2             | Dry-run or remove one named non-user source claim from selected cells, then reveal the next source and audit the change                                                         | Delete a whole row/map; withdraw source`user`; override a `manual_priority_source` pin                       | Use this when a prior derived assertion must be retracted. It is layer-level retraction, not a new mapper result. Outbox events labelled `chain_ingestion` since `53f9187` — the deletion predicate is built from the source_name PARAMETER and is untouched by the label (§5.6.2). |
@@ -319,10 +317,9 @@ row was enough.
 
 **You do not have to write this guard.** It is enforced centrally in
 [`server/chain/key_gate.py`](file:///c:/Users/kk980/Developments/assyManager/server/chain/key_gate.py),
-on the two funnels every chain-emitted row already passes through — the
-`write_batches` loop in `chain_ingestion_worker` and `chain_replay._apply_replay_batch`.
-A guard written inside a mapper would not deploy at all, because `server/mappers/*.py`
-is gitignored and only `*.py.sample` ships.
+on the one funnel every chain-emitted row passes through — the `write_batches` loop in
+`chain_ingestion_worker` (a replay stages events and that loop drains them). A guard written
+inside an operator's mapper would not deploy, because `server/mappers/*.py` is gitignored.
 
 - **Which columns count as the key** is read from the declaration, never spelled: a
   table's `composite_key_source` when it has one, otherwise its `business_key`. Same
@@ -342,8 +339,8 @@ is gitignored and only `*.py.sample` ships.
 - **Refusals are countable and attributable**: `(table, column)` counters for the life
   of the process, published through the chain worker's heartbeat note (the channel
   `/health` already reads for `crud.undeclared_column_drops()`), plus a log line naming
-  the rule, the table, the columns and the count. `chain_replay` additionally reports
-  `unkeyed_rows_refused` / `unkeyed_key_columns` in its run stats.
+  the rule, the table, the columns and the count. A replay runs no rule itself (it stages
+  events), so the refusal is said where the worker writes.
 - **This is not a policy for ingestion or the grid.** Those may still produce a
   keyless row, and NULL remains its accepted shape (`818c9c0`, `data_model` §3.1-bis).
 
@@ -366,7 +363,7 @@ table - the rule's own **trigger** table - as a write-back of the rows it read:
 plain updates only, no permission cell, no `replace_map` or `retract` there
 (09-30 `247c0aba6`; a saved contrast marks its own run row that way). Any other table
 is refused by name: `rule '<name>' cannot redirect a scoped batch to '<table>' -
-a rule writes its target, and besides it only the rule's trigger table`. The
+a rule writes its target and the tables its writes cell names, and besides them only the rule's trigger table`. The
 reader for every batch envelope is `dt_map_derivation.normalize_scoped_batch`, and it is also
 the one that asks the permission of a batch that is not a write-back (10-01 `4c02fafe4` - the worker
 no longer asks a second time). A batch that is both unpermitted and malformed is refused for the
@@ -436,7 +433,7 @@ map key, so a miss empties the filter set and refuses)"*. Half of that is now
 false: `4d5198c` moved `dt_map` to `(dt_lot, dt_slot)`, so **`dt_map` is now
 exposed** and `core_usage_map` (still one key: `core_wafer`) is not. Measured on
 `.sample`, the tables declaring two or more `map_key_columns` are `dt_map`,
-`bonding_log`, `map_split_registry` and `valid_die_ref`. 🔴 **[2026-08-13 recount ·
+`bonding_log`, `core_wafer_map`, `map_split_registry` and `valid_die_ref` (11-11). 🔴 **[2026-08-13 recount ·
 `c0fb735`] `map_doe` and `map_doe_source` have left this list — the declarations
 themselves were retired**, which is this paragraph's own rule applied a second
 time in two days: the list is recounted whenever a declaration moves, not when a
@@ -508,11 +505,11 @@ bounds the loop at run time.
 
 ### `calculate_shortage.py` (예제 — 저장소에 없는 파일입니다)
 
-> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 `*.sample` 일곱뿐(`dt_map_mapper.py.sample` · `cross_table_lookup_mapper.py.sample` 등 — 시험이 «바이트 동일»로 읽는 라이브 맵퍼의 추적 사본입니다. `production_mapper.py.sample` 은 2026-09-13 에 `authoring/examples/` 로 옮겨졌습니다)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
+> ⚠️ 아래는 **직접 만들어 보는 템플릿**이지 저장소에 있는 파일이 아닙니다. `server/mappers/*`는 gitignored(사용자 커스텀 영역)이고 트래킹되는 것은 제품 맵퍼 `.py` 일곱(`.gitignore` 의 `!` 줄)과 `*.sample` 일곱뿐(`dt_map_mapper.py.sample` · `cross_table_lookup_mapper.py.sample` 등 — 시험이 «바이트 동일»로 읽는 라이브 맵퍼의 추적 사본입니다. `production_mapper.py.sample` 은 2026-09-13 에 `authoring/examples/` 로 옮겨졌습니다)이므로, 각 환경의 실제 맵퍼 구성은 **디렉터리를 직접 확인**해야 합니다. 이 파일명을 그대로 Read하려 하지 마십시오.
 >
 > 📎 **트리거 테이블이 아닌 다른 테이블을 읽어야 한다면** [`cross_table_lookup_mapper.py.sample`](file:///c:/Users/kk980/Developments/assyManager/server/mappers/cross_table_lookup_mapper.py.sample)가 정본 참조 구현입니다. 맨 앞에 **"이 도구가 틀린 경우"** 절이 있습니다 — 다른 테이블의 컬럼을 **그대로 보여 주기만** 하면 되는 경우는 virtual join(선언)이 정답이고 맵퍼 조회는 그것의 열등한 두 번째 철자입니다. 맵퍼가 정당해지는 조건은 값이 **계산**돼야 하거나 파생 시점에 **동결**돼야 할 때입니다(그 밖에 오른쪽이 조인 키로 유일할 수 없거나, 아직 존재하지 않는 행을 만들어야 할 때). 세션·트랜잭션 소유권, SAVEPOINT 격리(실패한 문장이 트랜잭션을 오염시킨다), N+1 회피, 부재 어휘(`not_declared`/`mapping_unavailable`)가 그 파일에 근거와 함께 들어 있고, `server/tests/test_mapper_sample_cross_table_lookup.py`가 그 `.sample`을 실제 워커 진입점(`execute_custom_mapper`)으로 실행해 못박습니다.
 >
-> 🔴 **`.sample`은 씨앗이지 거울이 아니다 — 그리고 룰이 가리키는 모듈이 없어도 아무도 말해 주지 않는다.** `chain_rules.json`의 `mapper_module`은 **로드 시점에 검증되지 않는다**. 유일하게 import를 시도하는 곳은 워커 웜업(`chain/ingestion_worker.py:630-639`)인데 ⓐ `enabled:false` 룰은 **건너뛰고** ⓑ 실패해도 `[Warmup] Mapper pre-import failed` **경고 한 줄 뒤 계속 기동**한다. 그래서 룰이 존재하지 않는 모듈을 가리켜도 활성화 전까지는 완전히 조용하고, 활성화하면 그때부터 해당 트랜잭션 그룹이 통째로 실패한다. 2026-08-02에 `mappers.dt_map_mapper`가 실제로 그 상태였다(`.sample`만 있고 `.py`가 없었다). 그리고 라이브와 `.sample`을 동기화하는 장치는 **없다** — `production_mapper.py`와 그 `.sample`은 이미 서로 다른 파일이다(함수 구성도 다름). 라이브를 고칠 때 샘플을 따라 고칠지는 **사람이 결정**해야 합니다.
+> 🔴 **`.sample`은 씨앗이지 거울이 아니다.** 룰이 가리키는 맵퍼를 이 프로세스가 못 실으면 로더와 저장 문이 `unresolvable_mapper` 로 이름 대어 거절한다(10-28, `chain_bindings`). 라이브와 `.sample`을 동기화하는 장치는 **없다** — 라이브를 고칠 때 샘플을 따라 고칠지는 **사람이 결정**해야 합니다.
 
 ```python
 import logging
@@ -661,7 +658,7 @@ DB 요구     열리지 않으면 `db` 로 `None` 을 넘기고 그대로 돕니
 
 ```
 server/notebooks/mapper_workbench.ipynb   (셀 13)
-server/notebooks/parser_workbench.ipynb   (셀 15)
+server/notebooks/parser_workbench.ipynb   (셀 21)
 ```
 위 §1-bis 의 `dev_bench` «그대로» 씁니다 — 노트북은 «부품을 새로 만들지 않습니다».
 `server/tests/test_the_workbench_notebooks_call_production.py` 가 그것을 채점합니다(셀이 컴파일되나 ·
@@ -671,7 +668,7 @@ server/notebooks/parser_workbench.ipynb   (셀 15)
 ```
 맵퍼   0 부트스트랩 → 1 «내가 고를 것» → 2 입력 → 3 만들기(자유폼) → 4 발행 → 5 시험으로 남기기(선택)
 파서   0 부트스트랩 → 1 «내가 고를 것» → 2 파일에 무엇이 있나 → 3 읽기(자유폼) → 4 가공(자유폼)
-      → 5 «누가» 집나 → 6 발행
+      → 5 «누가» 집나 → 5-bis 여러 파일에 → 6 발행 → 7 대상 표에 대 보기
 ```
 🔵 **입력은 «운영이 넘기는 모양 그대로»입니다** — `dev_bench.input_for_mapper(SOURCE, rows=ROWS)`.
 표 이름이든 샘플 파일이든 같은 함수이고, 그래서 노트북에서 본 프레임과 워커가 주는 프레임이
@@ -722,8 +719,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 `enabled` 다(§1의 표). 이 예시를 따라 쓴 규칙은 **트리거가 안 잡히고 그래프에도 안 올라간다.**
 
 정본 모양은 아래이고, 전수 예시는 [`docs/guide/config_reference/chain_rules.json`](./config_reference/chain_rules.json)
-이다(⚠️ **그 파일은 오늘 로더가 «거절»한다** — 파일 안 `__comment_refused_as_shipped` 참조.
-그대로 복사하지 말 것).
+이다(⚠️ 그대로 복사하지 말 것 — 파일 안 `__comment_refused_as_shipped` 는 고리를 거절하던 판정 402 «전»의 기록이다).
 
 ```json
 {
@@ -743,7 +739,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 ⚠️ **위는 참조 파일에서 «그대로» 옮긴 실재 규칙이다** — 이 절 앞의 부족수량 예시를 붙이려면
 `mapper_module`/`mapper_function` 두 칸만 그 함수로 바꾼다. **없는 모듈 이름을 예시에 적지 않는다**:
-`untrusted`/`unknown` 오류는 로드가 아니라 **첫 이벤트에서** 나므로 조용한 시간이 길다.
+이 프로세스가 못 싣는 모듈은 로드 · 저장 때 `unresolvable_mapper` 로 이름 대어 거절된다(10-28).
 
 ---
 
@@ -802,7 +798,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 ### 4.2 필수 전제·제약 (위반 시 규칙이 로그와 함께 **스킵**됨)
 
-1. **파생 테이블 등록**: `derived_table`은 `table_config.json`의 보통 테이블이어야 합니다(레이어링·AuditLog·WS·그리드 편집이 공짜로 적용되는 이유). `decision_key`·`target_fields`·`list_columns`는 파생 테이블 컬럼이어야 하고, `decision_key`는 원본 테이블 컬럼이기도 해야 합니다.
+1. **파생 테이블 등록**: `into.table`(파생 표)은 `table_config.json`의 보통 테이블이어야 합니다(레이어링·AuditLog·WS·그리드 편집이 공짜로 적용되는 이유). `decide.key`·`decide.fields`·`list_columns`는 파생 테이블 컬럼이어야 하고, `decide.key`는 원본 테이블 컬럼이기도 해야 합니다.
    🆕 10-27 key · list_columns 의 항목을 짝 `{"<파생 칸>": "<원본 칸>"}` 으로 적으면 왼쪽은 파생 표의 칸, 오른쪽은 원본 표의 칸입니다(aggregations 와 같은 방향). 오른쪽이 원본 표에 없으면 key · list 둘 다 저장 · 로드에서 이름 대어 거절 — 「decision_key column(s) missing in source table: [...]」 · 「list_columns pair(s) read column(s) missing in source table '<표>': ['<파생> <- <원본>']」. 왼쪽이 파생 표에 없으면 전과 같습니다(key 는 거절, list 는 빼고 알림). 이름 하나는 전과 같습니다 — list 의 이름 하나가 원본에 없으면 옮기지 않고 파생 칸을 보여 주기만 합니다. 원본을 읽는 자리(체인 · 소급 · 큐 분석 · 정렬 화면 · 판단키 색인 · retype)는 `chain_bindings.key_source` · `list_source` 를 지납니다.
    🆕 10-27 `expand: {"column": "<파생 칸>", "values": [...]}` 는 키 하나를 «키 + 그 칸 = 값» 행으로 값마다 펼칩니다. 그 칸은 원본에 없고 판단키도 아닙니다 — 키의 «목록에서 오는 부분»이고(`chain_bindings.key_parts` 의 `listed`), 원본을 읽는 자리는 그 칸을 모릅니다. 파생 표의 `composite_key_source` 에 그 칸이 있어야 합니다(없으면 키의 행이 하나로 합쳐지므로 거절). 집계 · list 값은 한 키의 행들이 같은 값을 받습니다. 그 키가 다시 돌 때(원본 변경 · chain_replay) 목록 밖 값의 행(빼낸 값, expand 전에 만든 행)은 거둬지고 더한 값의 행이 섭니다 — 다른 저자(사람이 채운 칸)가 있는 행은 남습니다. enrichment_backfill 은 새 행만 짓고 있던 행은 안 건드립니다. 정렬 규칙(`alignment: true`)에는 못 씁니다 — 「expand on an alignment rule is not supported - its unit would become key × values」.
 2. **파생 테이블 키 계약**: 파생 테이블 config는 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 합니다(맵퍼가 판단키로 business_key_val을 결정론적으로 조립 — 키당 1행 upsert의 근거).
@@ -825,7 +821,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 ### 4.4 후보가 1개면 자동 확정 (① `candidate_for` + `auto_confirm`, 2026-07-30)
 
-참조뷰에 `candidate_for: {target_field: 뷰_결과_컬럼}`을 선언하면, 그 뷰가 판단키에 대해 **유일한 값 하나**를 낼 때 체인 워커가 그 값을 **부재 시에만** 채웁니다(규칙별 `auto_confirm`, 기본 OFF). 소스명은 `enrichment_auto_confirm` = `SOURCE_PRIORITY` 미등재 = **최하위(99)** 이므로 사람 편집이 항상 이깁니다. **맵퍼 코드는 바꿀 것이 없습니다** — 훅은 M3 맵 메타 훅 바로 뒤, 체인 쓰기 이후에 붙고 실패해도 체인 적재는 정상 완료됩니다. 선언·거절 사유·측정 절차의 정본은 [config/enrichment_rules §7](./config/enrichment_rules.md)입니다.
+참조뷰에 `candidate_for: {target_field: 뷰_결과_컬럼}`을 선언하면, 그 뷰가 판단키에 대해 **유일한 값 하나**를 낼 때 체인 워커가 그 값을 **부재 시에만** 채웁니다(규칙별 `auto_confirm`, 기본 OFF). 소스명은 `enrichment_auto_confirm` = `SOURCE_PRIORITY` 미등재 = **최하위(99)** 이므로 사람 편집이 항상 이깁니다. **맵퍼 코드는 바꿀 것이 없습니다** — 자동 확정은 훅이 아니라 선언에서 세워지는 «자기 규칙»이고, 파생 표 쓰기가 깨웁니다(`chain/enrichment/config.py`). 선언·거절 사유·측정 절차의 정본은 [config/enrichment_rules §7](./config/enrichment_rules.md)입니다.
 
 ⚠️ **컬럼명으로 유추하지 않습니다.** 같은 규칙의 두 뷰가 모두 `wafer_id` 컬럼을 가질 수 있고(하나는 판단키 전체로, 하나는 일부로 조회), 후자는 후보가 N개입니다. 선언한 뷰만 후보 원천입니다.
 
@@ -837,8 +833,8 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 
 체인 인제션은 **증분(outbox) 구동**입니다. 룰을 바꿔도 과거 데이터는 옛 룰이 남긴 상태 그대로입니다. R1은 트리거 테이블의 **현재 내용**을 키셋 페이지로 훑어 **실제 맵퍼·실제 쓰기 경로**로 다시 흘려보냅니다. `backfill_enrichment.py`(규칙 1개 전용)를 **모든 체인 룰로 일반화**한 것이고, 기본값도 같습니다 — `--apply` 없이는 아무것도 쓰지 않습니다.
 
-🆕 **[2026-09-15 S-242 `bd0a3db7`, 판정 403] `builtin:` 규칙(선언된 join `derive: {kind: join}`)도 R1 이 돌립니다.** 종전엔 `mapper_module` 이 비어 `import_module(None)` 로 죽었고 — 이행한 조인에 «소급이 없었습니다». 이제 워커와 같은 `rule_run.run_rule` 을 «페이지마다» 돌립니다(라이브와 소급이 «같은 함수»). ⚰️ **[2026-09-22] 이 줄은 `builtins.run_builtin` 이라 적혀 있었다** — 판정 562·563·580 으로 `builtin:` 종류 표가 은퇴하면서 그 함수도 «사라졌습니다»(`git grep "def run_builtin"` → 0건). 오늘 `builtin:` 이름은 선언에서 만들어지는 등록 맵퍼(`chain/dynamic_mappers.py`)이고 «운영자 맵퍼와 같은 문»(`rule_run.resolve`)을 지납니다. 옛 이름으로 grep 하면 아무것도 안 나오므로, 이 줄이 가리키는 자리는 `rule_run.run_rule` 입니다 — 워커(`chain/ingestion_worker.py`)와 소급(`chain/replay.py`)이 «둘 다» 이 함수를 부릅니다.
-- 보고는 **`rows_written`** — 자기가 쓰는 종류는 셀을 «제안하지 않으므로» `cells_proposed` «옆»에 따로 섭니다. 어드민 사전 계수도 그 종류에는 「다시 계산할 행」으로 «행»을 말합니다(종전엔 「0 셀」). 드라이런은 «넘겨받을 행 수»를 말합니다.
+🆕 **[2026-09-15 S-242 `bd0a3db7`, 판정 403] `builtin:` 규칙(선언된 join `derive: {kind: join}`)도 R1 이 돌립니다.** 종전엔 `mapper_module` 이 비어 `import_module(None)` 로 죽었고 — 이행한 조인에 «소급이 없었습니다». 🆕 지금 R1 은 규칙을 직접 돌리지 않고 «사건을 쌓고», 워커가 `rule_run.run_rule` 로 돌립니다(라이브와 소급이 «같은 함수»). ⚰️ **[2026-09-22] 이 줄은 `builtins.run_builtin` 이라 적혀 있었다** — 판정 562·563·580 으로 `builtin:` 종류 표가 은퇴하면서 그 함수도 «사라졌습니다»(`git grep "def run_builtin"` → 0건). 오늘 `builtin:` 이름은 선언에서 만들어지는 등록 맵퍼(`chain/dynamic_mappers.py`)이고 «운영자 맵퍼와 같은 문»(`rule_run.resolve`)을 지납니다. 옛 이름으로 grep 하면 아무것도 안 나오므로, 이 줄이 가리키는 자리는 `rule_run.run_rule` 입니다 — 소급(`chain/replay.py`)은 사건만 쌓고 워커(`chain/ingestion_worker.py`)가 이 함수를 부릅니다.
+- 보고는 `rows_scanned` · `rows_staged` · `events_staged` · `pages_failed` 입니다 — 쓴 수는 워커가 쓰는 자리에서 말합니다(⚰️ `rows_written` · `cells_proposed` 등 열넷은 은퇴, `chain/replay.py`). 어드민 사전 계수도 그 종류에는 「다시 계산할 행」으로 «행»을 말합니다(종전엔 「0 셀」). 드라이런은 «넘겨받을 행 수»를 말합니다.
 - **던진 페이지는 그 페이지만** 잃습니다 — `pages_failed`·`page_failures`(처음 10 개), 세션 롤백 뒤 계속. ⚠️ 이 격리는 «이 가지만»이고 파일 맵퍼 호출은 그대로입니다(S-242-b).
 - 🔴 **짝 규칙(`<선언>:target`)을 «통째로» 돌리면 거절됩니다** — 「chain rule '<짝>' is the second half of declaration '<선언>'; … Replay that one instead, or pick the rows to replay this one for.」 짝인지는 로더가 찍는 «칸»(`COMPANION_CELL`)으로 묻습니다(`replay.is_companion` — S-270 이 모양 추측을 걷어냈다). 행을 골랐으면 짝도 돕니다. 선언 이름을 돌리면 원천 행이 전부 다시 계산되고, 그것이 모든 대상 행을 덮습니다. ⚰️ 09-25 `244d825dc` 전에는 짝이 원천 쪽(`:reference`)에 서서 「오른쪽(참조 쪽) 이름은 거절, 왼쪽을 돌려라」였습니다 — 오늘은 선언 이름이 원천 쪽입니다. 운영자 결정표는 [BACKFILL_GUIDE §0](./BACKFILL_GUIDE.md).
 
@@ -878,7 +874,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>
 
 ### 5.2 세 겹의 루프 가드 (자기 트리거 룰이 있으므로 필수)
 
-현 `chain_rules.json`은 `production_plan → inventory_master`와 **`inventory_master → inventory_master`(트리거 = 타깃)** 를 갖습니다. 자기 트리거가 실재하므로 가드는 선택이 아닙니다.
+샘플(`chain_rules.json.sample`)에는 `production_plan → inventory_master` 하나뿐입니다. 트리거 = 타깃인 규칙을 두면 가드는 선택이 아닙니다.
 
 | 겹 | 무엇                                                                                                                                                                     | 어디                                                                       |
 | -- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
@@ -890,8 +886,8 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <룰>
 
 ### 5.3 R1이 절대 하지 않는 두 가지
 
-- **사람 값을 덮지 않습니다.** 쓰기 소스는 라이브 워커와 같은 `chain_ingestion`(우선순위 4)이고 사람은 `user`(0)입니다 — 레이어링이 이미 처리하므로 R1에 특례 코드가 없습니다. dry-run 보고에 **`cells a human protects`** 수치가 함께 나옵니다(안전성을 말이 아니라 수로 제시).
-- **빈 값을 쓰지 않습니다.** "이 셀에 룰이 더는 값을 만들지 않는다"는 **빈 값과 다른 진술**이고, 그 진술을 할 수 있는 것은 R2뿐입니다. R1은 그런 셀을 **철회 후보**로 보고만 하고 넘어갑니다.
+- **사람 값을 덮지 않습니다.** 쓰기 소스는 라이브 워커와 같은 `chain_ingestion`(우선순위 4)이고 사람은 `user`(0)입니다 — 레이어링이 이미 처리하므로 R1에 특례 코드가 없습니다.
+- **빈 값을 쓰지 않습니다.** "이 셀에 룰이 더는 값을 만들지 않는다"는 **빈 값과 다른 진술**이고, 그 진술을 할 수 있는 것은 R2뿐입니다. R1은 그런 셀을 비우지 않습니다(⚰️ «철회 후보» 보고는 리플레이 통계와 함께 은퇴).
 
 ### 5.4 R2 — 낡은 소스 철회 (레이어 단위, 행 단위 아님)
 
@@ -944,11 +940,11 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 | | 라벨 | transaction id | 상태 |
 |---|---|---|---|
-| **R1** 재적용 | ✅ **구성상 옳다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사한다 | ✅ **실행당 하나**(`replay_<run>` — d62f40730, 09-23) | **라벨도 그룹핑도 닫혔다** |
+| **R1** 재적용 | ✅ **구성상 옳다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사한다 | ✅ **쪽마다 한 그룹**(`chain_replay_<run>·<event>` — 10-21; 이력은 실행당 한 줄로 접음) | **라벨도 그룹핑도 닫혔다** |
 | **R2** 철회 | ✅ `53f9187` — `chain_ingestion` / `chain_replay_withdraw` | ✅ 실행당 하나 | 닫힘 |
 | **R3** 재계산 | ✅ `ffb23d6` — `chain_ingestion` / `resolution_recompute` | ✅ 실행당 하나 | 닫힘 |
 
-- ✅ **R1의 tx id 는 실행당 하나입니다**(d62f40730, 09-23 — 페이지당 하나이던 결함은 닫혔습니다). 다만 tx 는 «한 번의 쓰기»의 신원이라 한 잡이 연산 · 워커 쓰기마다 다른 tx 로 나갑니다 — **잡의 신원은 `run_id`** 이고, 소급 잡이 낸 이벤트와 그것이 깨운 워커 쓰기가 모두 payload 에 싣습니다. 체인 대기열(`/admin/chain/queue`)은 그것으로 한 줄로 접습니다(총괄 b3a4334db).
+- ✅ **R1 의 쪽은 10-21 부터 각자 한 그룹입니다**(라벨 `chain_replay_<run>·<event>`; 이력은 실행당 한 줄로 접습니다 — `audit_cache.group_of`). 다만 tx 는 «한 번의 쓰기»의 신원이라 한 잡이 연산 · 워커 쓰기마다 다른 tx 로 나갑니다 — **잡의 신원은 `run_id`** 이고, 소급 잡이 낸 이벤트와 그것이 깨운 워커 쓰기가 모두 payload 에 싣습니다. 체인 대기열(`/admin/chain/queue`)은 그것으로 한 줄로 접습니다(총괄 b3a4334db).
 
 #### 5.6.1 R3에서 측정된 것 (`ffb23d6`)
 
@@ -964,7 +960,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
   | 파생 쓰기가 닿은 테이블 | 4 | **0** |
 
   수리 한 번이 인리치먼트 매퍼 둘을 돌리고 두 테이블에 체인 배치를 쓰고 자동 확정 패스까지 돌았습니다(438 ms · 422 ms 2회 측정).
-- 🔴 **이것은 억제가 아니라 옵트인입니다.** `chain_ingestion` 라벨은 R1이 이미 지나는 **룰별 옵트인**(`_rule_accepts_event`, `chain/ingestion_worker.py:328`)에 R3를 함께 세웁니다 — `allow_chain_trigger: true`를 선언한 룰은 **여전히 이 이벤트를 받습니다.** 「이벤트를 안 내보낸다」로 고쳤다면 그 선언이 조용히 무의미해졌을 것이고, **침묵과 동의는 다른 물건**입니다(뮤테이션 채점에서 억제형 「수리」가 첫 가드를 통과하고 둘째에서 죽습니다 — 가드가 둘인 이유가 그것입니다).
+- 🔴 **이것은 억제가 아니라 옵트인입니다.** `chain_ingestion` 라벨은 R1이 이미 지나는 **룰별 옵트인**(`_rule_accepts_event`, `chain/ingestion_worker.py`)에 R3를 함께 세웁니다 — `allow_chain_trigger: true`를 선언한 룰은 **여전히 이 이벤트를 받습니다.** 「이벤트를 안 내보낸다」로 고쳤다면 그 선언이 조용히 무의미해졌을 것이고, **침묵과 동의는 다른 물건**입니다(뮤테이션 채점에서 억제형 「수리」가 첫 가드를 통과하고 둘째에서 죽습니다 — 가드가 둘인 이유가 그것입니다).
   - 🔴 **[소유자 2026-09-26 「그냥 뭐든 큰 소급으로 한 거 체인 연쇄 안 되게 하는 거 해」] 소급 실행 «안에서»는 이 문장이 뒤집혔습니다.** 소급 실행(등록부의 모든 연산)의 쓰기는 봉투의 **경로(`channel`) = `retroactive`** 로 나가고, `_rule_accepts_event` 는 그 쓰기에 **옵트인이어도 어느 규칙도** 안 깨웁니다 — 하류는 하류를 따로 소급합니다. 예외 하나: 그리드의 클릭 리플레이는 `cascade` 를 실어 보내고, 그 쓰기는 체인처럼 **옵트인 규칙만** 깨웁니다(소유자 「클릭 리플레이는 연쇄 도는 거 맞지?」). 🆕 예외 둘째(소유자 11-10 «소급 ㄱ»): 소급 탭의 거두기(`withdraw`)도 `cascade` 를 실어, 거둔 값이 먹였던 것을 다음 체인이 살아 있는 체인처럼 거둡니다(`retroactive._run_withdraw`). 치워 둔 사건 다시 돌리기(`rerun_set_aside` — 소급 탭 · `outbox_triage.py`)는 예외가 아닙니다 — 규칙마다 한 번, 연쇄 없음(소유자 09-27 「큰 소급 치워둔거니 한번만」). 리플레이가 넣는 트리거 사건은 경로 없이 나가 제 규칙을 깨웁니다. 이제 판정이 읽는 것은 `source_name`(층)이 아니라 경로 칸입니다 — 자동 확정 쓰기가 층 이름 때문에 옵트인을 건너뛰던 것이 그 이유입니다(총괄 5676b8bc6 · c2995cdd8 · 146b208cb).
 - 🔴 **transaction id 붕괴가 비싼 절반입니다.** 체인 워커는 **transaction id로 묶어** 처리하므로, 이벤트마다 id가 다르면 N개 수리 행이 **N개의 직렬 그룹**이 됩니다 — 그룹당 ~430 ms면 10,000행이 약 72분이고 그동안 라이브 인제션이 뒤에 줄을 섭니다.
 - 🔴 **라벨과 층은 다른 필드이고 섞이지 않습니다.** **층**을 만드는 것은 `update_item.source_name`(항목별 pydantic 필드)이고, **라벨**은 `request_source`(컨텍스트 변수 — 서버 트리 전체에서 읽는 곳은 `database._outbox_envelope` 하나)입니다. 둘이 만나는 곳은 배치 경로가 배치의 소스명을 컨텍스트로 복사하는 **정확히 한 줄**이고 **R3는 그 줄을 지나지 않습니다.** 그래서 라벨을 바꿔도 수리된 셀에 `chain_ingestion` 층이 생기지 않으며, 이것은 논증이 아니라 실측입니다(대상 행 `cell_sources` 스냅샷의 sha256이 전후 동일 · `test_recompute_creates_no_cell_sources_layer`가 고정). **이 구분이 무너지면 지금 고친 결함보다 나쁜 결함이 되고, 초록 테스트에서는 안 보입니다.**
@@ -1006,7 +1002,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 ### 6.1 트리거가 왜 셋인가 — 룰 하나에 `trigger_table`은 하나뿐이다
 
-`chain_ingestion_worker`는 `r["trigger_table"] == table_name`으로 룰을 고릅니다(`:394`). **목록을 받지 않습니다.** 대신 **같은 `mapper_module`·`mapper_function`·`target_table`을 가리키는 룰 여러 개**는 문제없이 공존하고, 워커가 매칭된 룰을 맵퍼에 넘겨주므로(`execute_custom_mapper(..., rule=rule)` — 맵퍼가 `rule` 인자를 선언한 경우) 맵퍼가 셋을 구분합니다.
+`chain_ingestion_worker`는 `r["trigger_table"] == table_name`으로 룰을 고릅니다(`watches_table`). **목록을 받지 않습니다.** 대신 **같은 `mapper_module`·`mapper_function`·`target_table`을 가리키는 룰 여러 개**는 문제없이 공존하고, 워커가 매칭된 룰을 맵퍼에 넘겨주므로(`rule_run.run_rule` 이 `rule=rule` 로 — 맵퍼가 `rule` 인자를 선언한 경우) 맵퍼가 셋을 구분합니다.
 
 | 룰                                  | `trigger_table`         | 다시 파생하는 대상                 |
 | ----------------------------------- | ------------------------- | ---------------------------------- |
@@ -1016,7 +1012,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 2·3번은 편의 기능이 아닙니다. 귀속과 프레임 귀속은 **자기 일정으로 도착**하므로, 그것에 게이트된 행은 `dt_log` 시점에 보류되고 **다시 들여다보는 장치가 없으면 영원히 안 봅니다** — 결번 40%가 일시적 손실이 아니라 영구 손실이 되는 경로가 이것입니다.
 
-트리거 테이블이 소스 테이블이 아니므로(페이로드가 귀속 행입니다) 룰이 `derivation_source_table`·`derivation_source_column`·`derivation_value_columns`·`derivation_origin_columns`를 **선언**합니다. 워커는 모르는 룰 필드를 그대로 통과시킵니다(`load_chain_rules`가 `data["rules"]`를 그대로 반환).
+트리거 테이블이 소스 테이블이 아니므로(페이로드가 귀속 행입니다) 룰이 `derivation_source_table`·`derivation_source_column`·`derivation_value_columns`·`derivation_origin_columns`를 **선언**합니다. 로더(`load_chain_rules`)는 문법을 보고 `rule_shape` 로 번역합니다 — 모르는 칸은 로그에 이름이 찍힙니다.
 
 ⚠️ **스케줄러나 스윕을 만들지 않은 이유**: "언제 도는가"가 "언젠가"가 되기 때문입니다. 트리거를 요구한 목적이 바로 그것이었습니다.
 
@@ -1040,7 +1036,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 컬럼 이름은 **어디에도 하드코딩하지 않습니다** — 정체성은 타깃의 `map_key_columns`, 좌표는 `composite_key_source`에서 정체성을 뺀 나머지, 확정 컬럼과 프레임은 가상 조인 규칙의 `expose`, 조인 키는 그 규칙의 `join_key`에서 **호출 시점에** 읽습니다. 맵 정체성 문자열은 `map_meta_registrar.compose_map_id`가 만듭니다(등록과 조회가 같은 정체성을 만들어야 하므로 두 번 구현하지 않습니다).
 
-🔴 **가상 조인은 `load_verified_rules`로만 읽습니다.** `load_virtual_join_rules`는 선언의 *모양*만 봅니다. 유일 인덱스가 검증되지 않은 규칙은 팬아웃할 수 있고, 여기서의 팬아웃은 느린 질의가 아니라 **임의의 lot 하나가 정체성을 차지하는 것**입니다.
+🔴 **조인은 `join_rule(db, name)` 과 `join_key_index.unique_index_covering` 으로 읽습니다**(⚰️ `load_verified_rules` · `load_virtual_join_rules` 는 가상 조인과 함께 은퇴). 유일 인덱스가 검증되지 않은 규칙은 팬아웃할 수 있고, 여기서의 팬아웃은 느린 질의가 아니라 **임의의 lot 하나가 정체성을 차지하는 것**입니다.
 
 ### 6.4 좌표 — 변환은 하나뿐
 
@@ -1050,7 +1046,7 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 ### 6.5 철회 — 체인이 못 하는 일(퍼지)의 답
 
-체인은 **옵트인(`allow_replace_map: true`)을 선언한 룰에 한해** `replace_map` 을 실을 수 있습니다(§1) — 워커가 `write_batches` 에서 그것을 풀어 배치에 넘깁니다(`chain/ingestion_worker.py:1626`·`:1631`).
+체인은 **옵트인(`allow_replace_map: true`)을 선언한 룰에 한해** `replace_map` 을 실을 수 있습니다(§1) — 워커가 `write_batches` 에서 그것을 풀어 배치에 넘깁니다(`chain/ingestion_worker.py` 의 `write_batches`).
 > 🔴 **[2026-09-17 정정] 이 자리는 「`chain_ingestion_worker` 가 `replace_map` 을 «절대 설정하지 않는다»(`:437-441`)」라고 적고 있었고 «둘 다» 거짓이었습니다** — 워커는 설정하고(위 두 앵커), `:437-441` 은 오늘 `NO_GROUP_MERGE` 상수 블록이라 배치와 무관합니다. 아래 문단의 결론(**「`replace_map` 은 답이 아니다」**)은 그대로 유효하고, 그 근거는 「워커가 못 싣는다」가 **아니라** 「맵 키 계약이 퍼지를 맵 전체 단위로만 잡는다」입니다.
 
 🔴 **`replace_map`은 답이 아닙니다.** `crud.derive_replace_map_scope`는 모든 스코프 키가 **맵 키 계약 안**일 것을 강제하므로 퍼지는 **맵 전체 단위로만** 잡힙니다. 확정된 정체성에서는 **한 lot/slot 맵을 여러 `dt_job`이 먹일 수 있으므로**, 맵 단위 퍼지는 첫 잡을 고치려다 둘째 잡의 셀을 지웁니다.
