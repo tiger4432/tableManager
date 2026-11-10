@@ -178,3 +178,11 @@ def test_a_number_line_value_round_trips_and_whole_numbers_read_as_int(value):
     assert crud.line_text(back, "number") == text_once
     if text_once in ("2.0", "0.0"):
         assert type(back) is int
+
+
+def test_value_types_follow_the_physical_column(db):
+    lines.ensure_line_table(db, "t", CFG)
+    assert lines.value_types(db, "t") == {"lot": "string", "qty": "number", "seen": "datetime"}
+    db.execute(text("CREATE TABLE u__now (row_id VARCHAR PRIMARY KEY, business_key_val VARCHAR, "
+                    "created_at TIMESTAMP, updated_at TIMESTAMP, event_time VARCHAR, won_by JSON)"))
+    assert lines.value_types(db, "u") == {"event_time": "string"}     # declared datetime, stored as text
