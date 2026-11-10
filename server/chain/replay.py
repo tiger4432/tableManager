@@ -1714,26 +1714,21 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
     """The shells already on `table_name` (총괄 5eee501eb, 소유자 10-09 「공식표에 껍데기 행 잔뜩 쌓여 있음」):
     the rows `cell_layer.shells` judges - the judgement the chain's write seat asks - deleted through the
     grid's door, `crud.delete_rows_batch`, a page at a time. A page is the table's next rows by row_id
-    (`keyset_scan.iter_pages`), and «shows nothing outside its keys» is judged on those rows - in the WHERE it
-    read on to the next match, the table whole at 1M (총괄 5ad030347); `rows_read` counts the rows that do. A stop
-    lands between pages and a re-run finds only what is left."""
-    from sqlalchemy import and_, true
-
+    (`keyset_scan.iter_pages`), every row of it judged: a row a chain only attached a value to shows that value, so
+    «shows nothing outside its keys» in SQL never handed it over (lead 11-10, the owner's master); `rows_read`
+    counts the rows judged. A stop lands between pages and a re-run finds only what is left."""
     from chain import cell_layer
-    from database import crud
 
-    model, col_types = cell_layer.resolve_target(table_name)
+    model, _col_types = cell_layer.resolve_target(table_name)
     keys = cell_layer.key_columns(table_name)
-    shown_blank = and_(true(), *[crud.blank_sql_condition(crud.column_text_sql(getattr(model, column)))
-                                 for column in col_types if column not in keys])
 
     def judged(read):
-        page = [row_id for row_id, blank in read if blank]
+        page = [row[0] for row in read]
         return page, (cell_layer.shells(db, table_name, page) if page else [])
-    stats = _delete_by_pages(db, table_name, model, keys, [shown_blank.label("shown_blank")], judged,
+    stats = _delete_by_pages(db, table_name, model, keys, [], judged,
                              cell_layer.SHELL_DELETER, "remove-shells", apply, pace, log, checkpoint)
-    log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
-        f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
+    log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) judged, "
+        f"{stats['rows_to_delete']} of them nothing keeps, {stats['rows_deleted']} deleted")
     return stats
 
 

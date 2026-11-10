@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [11-10] **집계 수식도 «=» 로 시작해도 된다 — 조인 take · 칸 수식 · decide/derive 집계가 같은 답** — git pull · 재기동 API · 체인 워커
+>
+> ```
+> 무엇     aggregations 에 "stack_height": "=UniqueCount([stack_height])" 처럼 적으면 받는다(전: 거절). = 없는 옛 글과 "count" 도 그대로
+>          {"expression": "…"} 꼴은 여전히 거절 — 거절 문장이 «or a formula as text, e.g. "stack_height": "=UniqueCount([col])"» 를 말한다
+>          체인 폼의 집계 수식 칸도 take 수식 칸처럼 «=» 를 받는다(미리보기 포함)
+> 볼 것    Declarations 의 그 규칙 거절 줄이 사라짐 · 파생 표에 그 칸 값
+> 끄기     없음
+> ```
+>
+> ---
+>
+> ## [11-10] **소급 «Remove rows with no source left» 가 «키 + 다른 체인이 붙인 값» 행도 지운다 — master 정리** — git pull · 재기동 API · 스케줄러
+>
+> ```
+> 무엇     그 연산이 표의 행을 «전부» 읽고, 체인이 쓰는 것과 같은 판단(person_rows)으로 «붙드는 것이 없는» 행을 지운다
+>          전: 키 밖이 다 빈 행만 읽어서, 거둔 뒤 다른 체인 값(bval)만 남은 master 행(«K1, 값 없음, b1»)을 못 봤다
+>          붙드는 것: 사람 층 · 핀 · 파일 같은 체인 아닌 작성자 · 그 행을 만들고 값이 있는 체인. 이것들이 있는 행은 안 지운다
+> 하는 법   소급 탭 → Remove rows with no source left → 표 master → 먼저 미리보기(Count)
+>          python server/scripts/chain_replay_cli.py remove-shells <표>            (미리보기 · 쓰지 않음)
+>          python server/scripts/chain_replay_cli.py remove-shells <표> --apply    (지움)
+> 미리보기 «N row(s) of '<표>' read; M of them have nothing left that keeps them … For example k=K1»
+> 답의 뜻  N = 표의 행 수(이제 전부 읽는다), M = 지울 행. 예시 키가 지울 행이다 — 지우기 전에 그 키를 그리드에서 확인
+>          M 이 기대보다 크다 → 예시 행의 칸 이력에 사람 · 파일 층이 없는지 본다(있으면 안 지워졌어야 함 — 보고)
+>          M 이 0 인데 남은 행이 보인다 → 그 행을 붙드는 층이 있다(칸 이력)
+> 되돌리기  불가 — 지운 행은 그리드 지움과 같다(행마다 이력 한 줄). 지운 행이 먹인 것은 거둬지지만, 그 지움이 다른 규칙을 깨우지는 않는다(소급 채널)
+> 속도     표 전부를 쪽(2만 행)마다 읽고 판단한다 — 운영 크기에서 안 쟀다. 큰 표는 --pace slow · 소급 탭의 ×로 멈춤(쪽 사이)
+> ```
+>
+> ---
+>
 > ## [11-10] **«들어온 순서» 표에 끌어 놓은 행이 없으면 row_id 순으로 읽는다(같은 답)** — git pull · API 재기동
 >
 > ```
@@ -93,7 +124,7 @@
 > 답의 뜻  거둔 뒤에도 master 행이 남음 → 그 행 칸의 이력(층): user · 파일 이름 · 그 행을 만든 규칙의 층 중 하나가 붙든다
 >          Withdraw 뒤 다음 표 값이 그대로 → 다음 규칙이 allow_chain_trigger 를 안 적음(대기열 사유가 allow_chain_trigger 문장)
 > 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
-> 안 하는 것 이미 남아 있는 «키 + 붙인 값» 행은 소급 Remove rows with no source left 가 안 지운다(그 연산은 키 밖이 다 빈 행만 읽음)
+> 남은 행     이미 남아 있는 «키 + 붙인 값» 행은 소급 Remove rows with no source left 로 지운다(맨 위 [11-10] 항목)
 > ```
 >
 > ---
@@ -8280,7 +8311,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ⑥' 보류 다시 세기         python scripts/chain_replay_cli.py replay «다시 세기 규칙»       -> --apply          2.3 · 3.1 초
 >    답      source rows scanned : 205 (공식 표 전부) — 보류 agreed 201 -> 200 · 껍데기 행 5 -> 4
 > ⑦ 남은 껍데기 쓸기           python scripts/chain_replay_cli.py remove-shells «공식 표»      -> --apply          1.8 · 2.4 초
->    답      «N row(s) of '«공식 표»' show nothing outside their keys; M of them have only the chain's key layers left» — M 이 지울 수
+>    답      «N row(s) of '«공식 표»' read; M of them have nothing left that keeps them» — M 이 지울 수
 >    뜻      리허설: ① 직후 미리보기 M 82 · ⑥' 뒤 M 4 · 실행 «4 of 4 row(s) deleted»
 >            ⑥ 앞에서 쓸면 지운 행을 ⑥ 이 다시 만든다(앞 판 355ba2092 에서 잼: 82 행 · 공식 표 123 -> 205) — 그래서 ⑥ 뒤
 >            그 뒤로는 체인이 지운다 — 그리드에서 원천 행을 지우면 그 공식 행이 «[ChainShell] table=official_dt rows_deleted=1 - nothing but the chain's keys and values another chain attached was left» 와 함께 사라지고
@@ -9292,7 +9323,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >               미리보기  python server/scripts/chain_replay_cli.py remove-shells <공식 표>
 >               실행      같은 명령 + --apply   (소급 탭 «Remove rows with no source left» 와 같은 일)
 >               또는 공식 표를 비우고 다시 채우기(일요일 순서) — 그러면 쓸기가 필요 없다
-> 미리보기 뜻   N row(s) of '<표>' show nothing outside their keys; M of them have only the chain's key layers left
+> 미리보기 뜻   N row(s) of '<표>' read; M of them have nothing left that keeps them
 >              M 이 지울 수. N - M 은 사람 · 파일이 키를 썼거나 사람 층(빈 값 포함)이 있어 남는다
 > 껍데기란      키 칸 밖에 값 있는 층 0(체인이 쓴 빈 칸은 없는 것으로) · 키 칸 층은 체인 것뿐 · 사람 층 0(빈 값이어도)
 >              그리고 화면에 키 밖 값이 없음

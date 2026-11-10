@@ -683,7 +683,9 @@ DECIDE_CELL_SHAPES = {
     "fields": _listed("field", _value()),
     "list_columns": _listed("column", _NAME_OR_PAIR),
     "aggregations": _named("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
-        "expression": {**_value("formula"), "table_from": list(chain_bindings.SOURCE_TABLE_AT)},
+        # the take's mark (join_into.FORMULA_MARK): the form reads «=…» here as it does in a take (lead 11-10)
+        "expression": {**_value("formula"), "mark": join_into.FORMULA_MARK,
+                       "table_from": list(chain_bindings.SOURCE_TABLE_AT)},
         "record": {"kind": "record", "fields": [
             {"key": key, "required": False, "node": _value()} for key in ("fn", "column", "separator")]}},
         "empty": {"expression": ""}}),
