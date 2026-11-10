@@ -53,6 +53,7 @@ thead th:first-child { position: sticky; left: 0; z-index: 2; }
 .gallery figure.stack.folded { grid-column: auto; }
 .stack .strip { display: flex; flex-wrap: wrap; gap: 12px; }
 .stack.folded .strip figcaption { display: none; }
+.stack .strip figure.first img { outline: 2px solid var(--ink); outline-offset: -2px; }
 a.rpt-original { display: contents; }
 figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -364,7 +365,8 @@ def _stack(item, picture):
     """A chip's layers, every one drawn with its layer as caption, one strip across the gallery row - true with no
     script. STACK_SCRIPT folds it where it runs; nothing in the file is hidden."""
     layers = picture["layers"]
-    shots = "".join('<figure>%s<figcaption>%s</figcaption></figure>' % (
+    shots = "".join('<figure%s>%s<figcaption>%s</figcaption></figure>' % (
+        ' class="first"' if p.get("first") else "",
         _img(p, "%s on %s" % (_e(item), _e(picture["wafer"])), ' data-layer="%s"' % _e(p.get("layer"))),
         _e(p.get("layer"))) for p in layers)
     return ('<figure class="stack" title="wheel: layers"><div class="strip">%s</div><figcaption>%s &middot; '

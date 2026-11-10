@@ -1055,6 +1055,7 @@
                         "expression": {
                           "kind": "leaf",
                           "hint": "formula",
+                          "mark": "=",
                           "table_from": [
                             "on.table"
                           ]
@@ -1598,6 +1599,18 @@
                       },
                       {
                         "key": "image",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.images.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "first_layer",
                         "required": false,
                         "node": {
                           "kind": "leaf",
