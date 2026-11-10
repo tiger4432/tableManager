@@ -2178,6 +2178,52 @@ def formula_written(table_name: str, column: str, source_name) -> Optional[str]:
     return _formulas().RULE_NAME % (table_name, column)
 
 
+_TERMS_MEMO = ("rank_terms",)
+
+
+def rank_terms(table_name: str = None):
+    """THE layer order, as one list of terms - each (python(line, unowned), sql(cols, unowned)) - that
+    `compute_priority_value` (python) and `lines.winners_sql` (SQL) both walk, so the two cannot drift (C 11-11).
+    A line is {"ranks_as", "owner_rule", "at" (POSIX seconds or None), "source_name"}; `cols` carries the same names
+    as SQL expressions. `unowned`: a chain layer no rule owns sits on the cell (python bool / SQL condition).
+    Smaller sorts first; the pin is not a term (it wins before the order is asked)."""
+    from sqlalchemy import and_, case, literal, not_
+
+    priority_map = resolve_priority_map(table_name)
+    said = _rule_priorities()
+    order = _rule_order()
+
+    def _case(column, mapping, default):
+        if not mapping:
+            return literal(default)
+        return case(*[(column == k, literal(v)) for k, v in mapping.items()], else_=literal(default))
+
+    return [
+        # 1. declared ranking
+        (lambda ln, u: priority_map.get(ln["ranks_as"], 99),
+         lambda c, u: _case(c.ranks_as, priority_map, 99)),
+        # 1b. a rule that says its priority before one that does not
+        (lambda ln, u: 0 if ln["owner_rule"] in said else 1,
+         lambda c, u: case((c.owner_rule.in_(list(said)), literal(0)), else_=literal(1)) if said else literal(1)),
+        # 1c. the smaller priority
+        (lambda ln, u: said.get(ln["owner_rule"], 0),
+         lambda c, u: _case(c.owner_rule, said, 0)),
+        # 1d. the rule declared later - unless an unowned chain layer sits on the cell
+        (lambda ln, u: -order.get(ln["owner_rule"], -1) if ln["owner_rule"] and not u else 0,
+         lambda c, u: case((and_(c.owner_rule.isnot(None), not_(u)),
+                            -_case(c.owner_rule, order, -1)), else_=literal(0))),
+        # 2a. a dated layer beats an undated one
+        (lambda ln, u: 0 if ln["at"] is not None else 1,
+         lambda c, u: case((c.at.is_(None), literal(1)), else_=literal(0))),
+        # 2b. newest first
+        (lambda ln, u: -ln["at"] if ln["at"] is not None else 0.0,
+         lambda c, u: c.at.desc()),
+        # 3. total order, always decides
+        (lambda ln, u: ln["source_name"],
+         lambda c, u: c.source_name.asc()),
+    ]
+
+
 def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None,
                            ingested_at_by_source: dict = None, ranks: dict = None, cell: tuple = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
@@ -2234,31 +2280,23 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     else:
         formula = None
 
-    # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
+    # `ranks` - a batch's memo over its rows, one table (here: the term list, built once); alone, this call's own
     ranks = {} if ranks is None else ranks
 
     # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
     # one sits on the cell, the chain's layers there order by time as before
     unowned = any(layer_ranks_as(name) == CHAIN_SOURCE and not layer_owner(name) for name in sources)
-    order = _rule_order() if any(layer_owner(name) for name in sources) else {}
+    terms = ranks.get(_TERMS_MEMO)
+    if terms is None:
+        terms = ranks[_TERMS_MEMO] = rank_terms(table_name)
 
     def _rank(name):
-        ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
-        if name not in ranks:
-            ranks[name] = get_source_priority(name, table_name)
+        # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
+        # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
         owner = layer_owner(name)
-        said = _rule_priorities().get(owner[0]) if owner else None
-        return (
-            ranks[name],                             # 1. declared ranking
-            # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
-            # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
-            0 if said is not None else 1,      # 1b. a rule that says its priority before one that does not
-            said if said is not None else 0,   # 1c. the smaller priority
-            -order.get(owner[0], -1) if owner and not unowned else 0,   # 1d. the rule declared later
-            0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
-            -ts if ts is not None else 0.0,    # 2b. newest first
-            name,                              # 3. total order, always decides
-        )
+        line = {"ranks_as": layer_ranks_as(name), "owner_rule": owner[0] if owner else None,
+                "at": resolution_ingested_at(sources[name], name, ingested_at_by_source), "source_name": name}
+        return tuple(py(line, unowned) for py, _ in terms)
 
     # `min` rather than `sorted`: the same first element, without materialising and
     # sorting the whole list on a per-cell hot path.
