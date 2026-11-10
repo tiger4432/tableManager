@@ -2279,6 +2279,82 @@ console.log('\n[16] a folded line marks its formulas');
   failed += scored.wrong;
 }
 
+// [17] lead 11-11 (owner «선언 폼에도 기본값이 보이게»): a leaf's `default` (what an empty cell becomes, B 4608139fc) is
+//      what its empty box shows - a text, number or formula box as its placeholder, a list's blank line as «Default: X» -
+//      whichever path draws the leaf (the skeleton's own box, or a plan row). A leaf that says none shows nothing new.
+console.log('\n[17] an empty box shows its leaf\'s default');
+{
+  const SHAPE = { kind: 'record', fields: [
+    { key: 'table', node: { kind: 'leaf', hint: 'free', default: 'sys_ai_memory' } },
+    { key: 'limit', node: { kind: 'leaf', hint: 'number', default: 5 } },
+    { key: 'fn', node: { kind: 'leaf', hint: 'formula', default: 'Count()' } },
+    { key: 'side', node: { kind: 'leaf', hint: 'choice', list: 'sides', default: 'right' } },
+    { key: 'note', node: { kind: 'leaf', hint: 'free' } },
+    { key: 'pick', node: { kind: 'leaf', hint: 'choice', list: 'sides' } },
+  ] };
+  const at = (tree, path) => walkAll(tree).find((n) => n.dataset && n.dataset.value === path
+    && ['INPUT', 'TEXTAREA', 'SELECT'].includes(String(n.tagName).toUpperCase()));
+  const blankLine = (sel) => (sel ? walkAll(sel).find((n) => String(n.tagName).toUpperCase() === 'OPTION' && n.value === '') : null);
+  const suite17 = (M) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    const context = { ...M.readContext({ sides: ['left', 'right'] }, {}), readOnly: false };
+    const tree = M.renderSkeletonForm(context, SHAPE, '', {});
+    const table = at(tree, 'table'), limit = at(tree, 'limit'), fn = at(tree, 'fn');
+    say('D1 an empty text box shows its default, and holds nothing', table && table.placeholder === 'sys_ai_memory' && table.value === '',
+      table && `${table.placeholder}|${table.value}`);
+    say('D2 a number box too', limit && limit.type === 'number' && limit.placeholder === '5' && limit.value === '',
+      limit && `${limit.type}|${limit.placeholder}`);
+    say('D3 a formula box too', fn && String(fn.tagName).toUpperCase() === 'TEXTAREA' && fn.placeholder === 'Count()' && fn.value === '',
+      fn && `${fn.tagName}|${fn.placeholder}`);
+    const side = blankLine(at(tree, 'side'));
+    say('D4 a list\'s blank line says «Default: right», and is still the blank value', side && side.textContent === 'Default: right'
+      && side.selected === true, side && side.textContent);
+    const note = at(tree, 'note'), pick = blankLine(at(tree, 'pick'));
+    say('D5 a leaf that says no default: no placeholder, the blank line as before', note && note.placeholder === ''
+      && pick && pick.textContent === '', `${note && note.placeholder}|${pick && pick.textContent}`);
+    const held = M.renderSkeletonForm(context, SHAPE, '', { side: 'left' });
+    say('D6 a list holding a value draws no blank line', !blankLine(at(held, 'side')));
+    // a plan row: the same default rides in beside the row
+    const row = { path: 'bundle.x', label: 'x', state: 'answered', value: '', tier: 'free_input', candidates: [], refusals: [] };
+    const typed = M.renderAuthoringRow(row, { [row.path]: true }, { kind: 'text', value: '' }, true, null, undefined, 'sys_ai_memory');
+    const box = walkAll(typed).find((n) => String(n.tagName).toUpperCase() === 'INPUT' && n.dataset && n.dataset.action === 'edit-field');
+    say('D7 a plan row\'s box shows the default too', box && box.placeholder === 'sys_ai_memory', box && box.placeholder);
+    const closed = M.renderAuthoringRow(row, { [row.path]: true }, { kind: 'closed', options: ['left', 'right'], value: '' }, true, null,
+      undefined, 'right');
+    const line = blankLine(walkAll(closed).find((n) => String(n.tagName).toUpperCase() === 'SELECT'));
+    say('D8 ...and a plan row\'s list its blank line', line && line.textContent === 'Default: right', line && line.textContent);
+    return { ran: names.length, names, failures };
+  };
+  const base17 = suite17(await import('../src/ontology_explorer_view.js'));
+  ran += base17.ran;
+  failed += base17.failures.length;
+  const MUTANTS = [
+    { id: 'D-M1', what: 'a text box shows no default', catches: 'D1',
+      mutate: (text) => swap(text, '  input.placeholder = defaultText(node);\n', '') },
+    { id: 'D-M2', what: 'a formula box shows no default', catches: 'D3',
+      mutate: (text) => swap(text, '  field.input.placeholder = defaultText(node);\n', '') },
+    { id: 'D-M3', what: 'a list is not told its default', catches: 'D4',
+      mutate: (text) => swap(text, '{ loaded, name: node.list, fallback: defaultText(node) }', '{ loaded, name: node.list }') },
+    { id: 'D-M4', what: 'a plan row\'s box shows no default', catches: 'D7',
+      mutate: (text) => swap(text, '        one.placeholder = fallback;\n', '') },
+    { id: 'D-M5', what: 'a plan row\'s list is not told its default', catches: 'D8',
+      mutate: (text) => swap(text, '{ name: row.label, fallback }', '{ name: row.label }') },
+    { id: 'D-M6', what: 'a default read off another cell than the leaf\'s own', catches: 'D1',
+      mutate: (text) => swap(text, '  const said = node && node.default;\n', '  const said = node && node.hint;\n') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => suite17((await loadWithProbe(VIEW, { mutate: m.mutate })).module),
+    { baselineRan: base17.ran, baselineNames: base17.names, title: '\n  [17] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

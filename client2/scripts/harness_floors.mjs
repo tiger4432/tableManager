@@ -886,7 +886,7 @@ export const FLOORS = new Map([
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
   // 147 -> 155 ([8b] W1-W2 and six mutants, lead 10-27: the worlds' overlaps and notices as meta lines).
   // 155 -> 173 ([13] I1-I4 and five mutants: an imported entity type is edited in its world; [14] E1-E4 and five: a key from sections[key_section], a ref from the world its key names - lead 10-27).
-  ['explorer_open_path_harness.mjs', 208],
+  ['explorer_open_path_harness.mjs', 222],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.

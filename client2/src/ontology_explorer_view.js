@@ -1571,7 +1571,7 @@ function renderUniqueness(row, stats) {
 }
 
 export function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
-                            stats = null, formula = notFormula) {
+                            stats = null, formula = notFormula, fallback = '') {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
                         + (bare ? ' is-bare' : ''));
@@ -1722,7 +1722,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         // rewrite the operator's file by being rendered. That rule still holds -- it now
         // lives in the part, which is also how it survives the value-vs-picker split.
         box.append(renderClosedList(
-          closedListChoice(editable.options, editable.value, { name: row.label }),
+          closedListChoice(editable.options, editable.value, { name: row.label, fallback }),
           h, { action: 'edit-field', path: row.path, label: row.label }));
       } else if (editable.kind === 'list' && !editable.records) {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
@@ -1748,7 +1748,9 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         add.dataset.list = shown;
         box.append(add);
       } else if (editable.kind !== 'object' && !editable.records) {
-        box.append(nameInput(editable.value, 'edit-field'));
+        const one = nameInput(editable.value, 'edit-field');
+        one.placeholder = fallback;
+        box.append(one);
       }
       box.append(list);
       // 🔴 THE CHIPS WRITE. Every candidate is a button carrying the WHOLE value that lands
@@ -2625,6 +2627,13 @@ function demandWord(demand, required, value) {
   return h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text);
 }
 
+/** What an empty cell becomes (a skeleton leaf's `default`, B 4608139fc) as the text its empty box shows - '' when the
+ *  leaf says none. Every leaf box asks this, whichever path draws it (lead 11-11). */
+function defaultText(node) {
+  const said = node && node.default;
+  return said === undefined || said === null ? '' : spelledValue(said);
+}
+
 /** A held value as text: a string as itself, anything else as the JSON the file holds.
  *  `String()` spelled a list `a,b` and a record `[object Object]`. */
 function spelledValue(value) {
@@ -2695,7 +2704,7 @@ function renderSkeletonLeaf(context, node, path, value) {
       ? (String(context.heldChoice(node.list, path) || '') || text)
       : text;
     return renderClosedList(
-      closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list }),
+      closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list, fallback: defaultText(node) }),
       h, { action: 'edit-shape', path, cls: 'oe-box' });
   }
   if (node.hint === 'formula') return renderFormulaLeaf(context, node, path, text);
@@ -2711,6 +2720,7 @@ function renderSkeletonLeaf(context, node, path, value) {
   // type a field this screen has never heard of.
   input.type = node.hint === 'number' ? 'number' : 'text';
   input.value = text;
+  input.placeholder = defaultText(node);
   input.dataset.action = 'edit-shape';
   input.dataset.value = path;
   input.setAttribute('aria-label', path);
@@ -2742,6 +2752,7 @@ function renderFormulaLeaf(context, node, path, text) {
   };
   const columns = () => context.refOf(node, path).names;
   const field = new FormulaInput(host, { doc: document, cls: 'oe-field-input oe-box', label: path, value: text, columns, words, refusal });
+  field.input.placeholder = defaultText(node);
   field.input.dataset.action = 'edit-shape';
   field.input.dataset.value = path;
   return host;
@@ -3102,7 +3113,8 @@ function renderAuthoring(state) {
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
     renderRow: (row, node, bare = false) => renderAuthoringRow(
-      row, state.expandedFields, editableFor(row, node), bare, columnStats, formulaUnder(node, context.deref)),
+      row, state.expandedFields, editableFor(row, node), bare, columnStats, formulaUnder(node, context.deref),
+      defaultText(context.deref(node))),
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
     // 🔴 「계획이 «아직 안 옴»」 and 「계획이 «비었음»」 are different answers and the
