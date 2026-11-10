@@ -174,16 +174,15 @@ class TestReadOnly:
 
 
 class TestLineRelationsAreNotResidue:
-    """After the cell-source overhaul a declared t is a view over t__now; t__now / t__lines hold its data and must
-    never be listed with a DROP TABLE (lead 11-11)."""
+    """After the cell-source overhaul a declared t keeps its history in t__lines; it must never be listed with a
+    DROP TABLE (lead 11-11)."""
 
     def test_a_declared_tables_line_relations_are_owned(self, script):
         owned = script.line_relations({"lt": {"column_types": {"a": "string"}},
                                        "lv": {"kind": "view", "column_types": {}}})
-        assert owned == {"lt__now", "lt__lines", "lt__old"}
+        assert owned == {"lt__lines"}
 
     def test_owned_relations_are_not_residue(self, script):
         owned = script.line_relations({"lt": {"column_types": {"a": "string"}}})
-        assert not script.is_residue("lt__now", {"lt"}, set(), owned)
         assert not script.is_residue("lt__lines", {"lt"}, set(), owned)
         assert script.is_residue("stray", {"lt"}, set(), owned)

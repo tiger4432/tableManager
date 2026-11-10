@@ -81,14 +81,14 @@ def declared_config(config_path):
 
 
 def line_relations(cfg):
-    """The relations a declared table owns once it keeps lines (`t__now`, `t__lines`, a migration's `t__old`) -
+    """The line table a declared table owns once it keeps lines (`t__lines`) -
     declared, not residue: listing them would print a DROP for a table's whole data."""
     from database import lines
 
     owned = set()
     for name, entry in cfg.items():
         if isinstance(entry, dict) and lines.keeps_lines(name, entry):
-            owned |= {lines.now_relation(name), lines.lines_relation(name), name + "__old"}
+            owned.add(lines.lines_relation(name))
     return owned
 
 
@@ -221,7 +221,7 @@ def run(db_url=None, schema="public", out=None):
         lines.append(f"  database : {conn.execute(_text()).scalar()}  schema={schema}")
         lines.append("")
         present = physical_tables(conn, schema)
-        present_set = set(physical_tables(conn, schema, ("BASE TABLE", "VIEW")))   # a declared t is a view of t__now
+        present_set = set(physical_tables(conn, schema, ("BASE TABLE", "VIEW")))   # a declared operator view (kind view) is present too
         owned = line_relations(declared_config(config_path) or {})
 
         for t in present:
