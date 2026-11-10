@@ -364,6 +364,23 @@ def drop_every_line_table(engine) -> list:
     return names
 
 
+def key_index_standing(conn, table_name: str) -> bool:
+    """Does a VALID unique index on exactly (business_key_val) stand on t - what INSERT ... ON CONFLICT
+    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat: ensure,
+    key_index_missing and write_lines' claim ask this."""
+    if conn.dialect.name == "postgresql":
+        import migrations.add_business_key_unique_index as bk
+
+        found = bk.existing_unique_index(conn, table_name)
+        return bool(found and found[1])
+    for _seq, name, unique, _origin, partial in conn.exec_driver_sql(
+            f'PRAGMA index_list("{_checked(table_name)}")').all():
+        if unique and not partial and [c[2] for c in conn.exec_driver_sql(
+                f'PRAGMA index_info("{_checked(name)}")').all()] == ["business_key_val"]:
+            return True
+    return False
+
+
 def key_index_missing(conn, table_name: str):
     """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
     (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
@@ -371,6 +388,8 @@ def key_index_missing(conn, table_name: str):
     CONCURRENTLY, never inside this transaction)."""
     import migrations.add_business_key_unique_index as bk
 
+    if key_index_standing(conn, table_name):    # the catalogue only - the census below reads the whole table
+        return None
     verdict = bk.plan_table(conn, table_name)
     if verdict.get("verdict") == bk.OK_ALREADY:
         return None

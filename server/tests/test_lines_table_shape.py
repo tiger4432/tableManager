@@ -90,7 +90,11 @@ def test_current_table_of_a_table_without_lines_has_no_won_by_and_takes_no_slots
 
 
 def test_on_sqlite_ensure_gives_t_the_unique_key_the_claim_needs(db):
+    make_table(db, "t", CFG)
+    db.execute(text('CREATE UNIQUE INDEX "uq_pair" ON "t" (business_key_val, row_id)'))     # not the guard
+    assert not lines.key_index_standing(db.connection(), "t")
     ensure(db, "t", CFG)
+    assert lines.key_index_standing(db.connection(), "t")
     db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('a', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
     db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('b', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
     assert db.execute(text("SELECT row_id FROM t")).scalars().all() == ["a"]
