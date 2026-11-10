@@ -1510,6 +1510,7 @@ def get_deleted_rows_business_keys_bulk(db: Session, table_name: str, row_ids: l
 
 from admin.audit_cache import audit_cache, in_group
 from database.lines import index_name as lines_index_name  # noqa: E402 - the person index the figures read
+from database.lines import value_types as lines_value_types  # noqa: E402 - a line value's type: t__now's physical
 from database.lines import stored_relation as lines_stored_relation  # noqa: E402 - t__now: where its indexes live
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
@@ -3390,8 +3391,9 @@ def _history_page(db: Session, table_name: str, row_id: str, column,
     row_exists = row_obj is not None
     bk_val = row_obj.business_key_val if row_exists else get_deleted_row_business_key(db, table_name, row_id)
 
+    types = lines_value_types(db, table_name) if lines_read else {}
     result = [schemas.AuditLogResponse.model_validate(entry) for line in lines_read
-              for entry in audit_history.line_entries(table_name, line, bits, column, bk_val, not row_exists)]
+              for entry in audit_history.line_entries(table_name, line, bits, types, column, bk_val, not row_exists)]
 
     row_total, row_total_capped = None, False
     if disclose_row_total:

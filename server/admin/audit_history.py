@@ -304,11 +304,11 @@ def line_table(table_name, bits):
                     *[sa.Column(name, sa.Text) for name in bits])
 
 
-def line_cell(table_name, row, name):
-    """A line's value of `name` as the column's declared type - through `crud.line_value`, the one read-side cast."""
+def line_cell(types, row, name):
+    """A line's value of `name` as its table holds it - `types` is `lines.value_types` (t__now's physical types, the
+    write's own, C 1986aa74b), read once a request - through `crud.line_value`, the one read-side cast."""
     from database import crud
 
-    types = (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     return crud.line_value(getattr(row, name), types.get(name, "string"))
 
 
@@ -339,7 +339,7 @@ def line_page(db, table_name, row_id, limit, cursor=None, column=None):
     return rows, bits, truncated, (encode_cursor(rows[-1].at, rows[-1].line_id) if truncated and rows else None)
 
 
-def line_entries(table_name, row, bits, column=None, business_key=None, row_deleted=False):
+def line_entries(table_name, row, bits, types, column=None, business_key=None, row_deleted=False):
     """A line as today's history entries (schemas.AuditLogResponse fields): one per column it said - withdrawn: no
     value -, or the row-deletion entry (crud.ROW_DELETION_COLUMN, «row deleted», system)."""
     from database import crud
@@ -351,7 +351,7 @@ def line_entries(table_name, row, bits, column=None, business_key=None, row_dele
         return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
                      new_value="row deleted", source_name="system")]
     return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
-                 new_value=None if bit_said(row, bit, "withdrawn") else line_cell(table_name, row, name))
+                 new_value=None if bit_said(row, bit, "withdrawn") else line_cell(types, row, name))
             for name, bit in bits.items() if (column is None or name == column) and bit_said(row, bit)]
 
 
@@ -453,10 +453,13 @@ def head_lines(db, table_name, row_ids, columns=None) -> dict:
     """{(row_id, column): {source: {"value", "at", "written_by"}}} - each source's newest line of the cell (its head
     bit), a withdrawn one left out (the source says nothing): the layers a Sources window shows. The head index -
     (row_id, source_name) WHERE a head bit is set."""
+    from database import lines
+
     bits = line_bits(db, table_name)
     if columns is not None:
         bits = {name: bit for name, bit in bits.items() if name in set(columns)}
     t = line_table(table_name, bits)
+    types = lines.value_types(db, table_name)
     heads = [t.c[name] != 0 for name in t.c.keys() if name.startswith("head_")]
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
     out = {}
@@ -465,6 +468,6 @@ def head_lines(db, table_name, row_ids, columns=None) -> dict:
             for name, bit in bits.items():
                 if bit_said(row, bit, "head") and not bit_said(row, bit, "withdrawn"):
                     out.setdefault((row.row_id, name), {})[row.source_name] = {
-                        "value": line_cell(table_name, row, name), "at": row.at, "written_by": row.written_by}
+                        "value": line_cell(types, row, name), "at": row.at, "written_by": row.written_by}
     return out
 
