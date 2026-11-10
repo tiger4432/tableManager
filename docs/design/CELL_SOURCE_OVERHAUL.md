@@ -34,6 +34,7 @@
   - 비트: «write» 는 말한 칸을 written_bits 에 적고 head_bits 도 그것으로 시작한다. «withdraw» 는 거둔 칸을 written_bits 와 withdrawn_bits 에 같이 적고 head_bits 도 그것으로 시작한다(그 원천의 그 칸 머리가 «말 없음» 줄이 된다 — 앞선 머리는 «쓰기» 4 가 내린다). «mark» · «deleted» 는 세 비트가 모두 0 이고 «쓰기» 4 를 건너뛴다 — 고정을 거는 mark 줄이 사람의 머리 비트를 내리지 않는다.
   - 쓰기 하나 = 줄 하나. 칸마다가 아니라 «행 × 쓰기»마다 한 줄이고, written_bits 가 어느 칸을 말했는지 적는다.
   - 층은 줄 그 자체다. 그 칸의 head_bits 가 선 줄 = 오늘의 cell_sources 한 칸 층.
+- 물리 이름 고정 (C 11-10 — D 가 lines.py 전에 가짜 데이터로 읽기를 시작할 수 있게): `t__lines` = line_id · line_kind · source_name · at · written_by · batch · input_row · owner_rule · owner_key · confirmed · written_N · head_N · withdrawn_N + t 의 칸(row_id · business_key_val · created_at · updated_at · 선언 칸). 인덱스 (row_id, at) · (batch) · 머리 줄 (row_id, source_name) WHERE head ≠ 0. `t__now` = t 의 칸 + won_by(JSON 칸 → line_id), row_id PK · business_key_val UNIQUE. 함수: `now_relation(t)` · `lines_relation(t)` · `shape(db, t, table_cfg)` · `ensure_line_table` · `drop_line_table` · `alter_columns(db, t, table_cfg, add, drop, retype)`. 파이썬 합치기 함수의 시그니처는 정렬 키 생성기와 같이 11-11 에 고정한다(아직 아님).
 - `t__now`: t 의 칸 + won_by(jsonb 한 칸: 칸 → 이긴 line_id). 개체마다 한 줄.
 - 이름 t = `t__now` 의 칸을 읽는 보기 — 오늘 t 의 칸 전부(row_id · business_key_val · updated_at 같은 시스템 칸 포함)이고 won_by 만 뺀다. 쓰기는 거절한다(«보기» 절).
 - 오늘 t 의 인덱스는 `t__now` 에 그대로 짓는다. 그리드 정렬 · 필터 · 개수 · 쪽 넘김이 오늘 인덱스 모양을 그대로 탄다.
@@ -47,7 +48,7 @@
 
 - head_bits (A 안 3): 그 원천의 그 칸에서 아직 최신인 칸들. 새 줄은 written_bits 로 시작하고, 같은 (개체, 원천)의 앞선 줄들은 «쓰기» 4 단계(따로 한 문장)에서 그 비트를 내린다. 줄의 값 · 시각 · 출처는 안 바뀌고 이 칸만 바뀐다.
 - withdrawn_bits: 그 원천이 그 칸에서 «말 없음». 사람이 비운 칸(값 NULL)과 구별한다.
-- 비트 칸의 표현은 표 크기와 무관하게 하나다: bigint 묶음 — 칸 64 개마다 bigint 하나(`bits_0`, `bits_1` …). 두 방언 모두 & | ~ 가 된다. 64 칸 넘는 표가 몇인지는 짓는 날 선언(table_config)에서 카나리아와 같이 센다.
+- 비트 칸의 표현은 표 크기와 무관하게 하나다: bigint 묶음 — 비트 칸 셋마다 칸 64 개에 bigint 하나(`written_0` · `head_0` · `withdrawn_0`, 64 칸을 넘으면 `_1` …). 두 방언 모두 & | ~ 가 된다. 64 칸 넘는 표가 몇인지는 짓는 날 선언(table_config)에서 카나리아와 같이 센다.
 - 칸 → 비트 자리는 `line_columns`(표 · 칸 · 비트) 카탈로그 표에 붙이기만 한다. 저자는 `lines.shape` 하나다. 칸이 지워져도 그 비트 자리는 다시 쓰지 않는다 — 옛 줄의 비트가 다른 칸을 가리키게 되므로. 시험이 이것을 단언한다(칸 지움 → 새 칸 → 새 비트).
 - `line_columns` 를 새로 짓는 까닭 (총괄 조건 «칸마다 오래 사는 기록이 이미 있나»): 찾은 자리 — origin/main 1bbddc5e5 models.py 의 `__tablename__` 18 개 중 칸마다 한 행을 쥔 표는 없다(audit_logs · cell_sources · cell_overwrites 는 칸 이름을 «값»으로 들 뿐 칸의 수명을 쥐지 않는다). 칸 선언은 table_config(운영자가 적는 선언)에 있는데, 기계가 정하는 비트 자리를 운영자 선언에 쓰지 않는다. 칸 이름 바꾸기 이력을 쥔 자리도 없다(이름 바꾸기 = 지움 + 새 칸). 그래서 새 표.
 - 표기 소급(fold_written_notation): 새 줄을 쓰되 «언제»는 고친 줄의 것을 그대로 둔다. 머리는 옮고, 순위는 안 바뀌고, 옛 줄도 남는다. 고친 때는 묶음이 가진다.
@@ -216,6 +217,11 @@ origin/main 93bb81aa7 의 server/ 에서 시험 밖 함수를 AST 로 셌다. �
 - `t__old` 와 cell_sources 를 지우지 않고 남긴다.
 - 되돌리기 = `line_migration.write_back(db, table)` 뒤 보기 t 지우기 + `t__old` 를 t 로 이름 되돌리기.
 - write_back: swap 이 기록한 «이주 마지막 line_id» 보다 큰 line_id 의 줄을 가진 row_id 들(표기 소급처럼 «언제»를 옛것으로 둔 줄도 line_id 는 새것이라 빠지지 않는다)의 `t__now` 값으로 옛 t 행을 다시 쓰고, 그 머리 줄로 cell_sources 층을 다시 쓴다. 그리고 옛 t 에 있고 `t__now` 에 없는 row_id 를 전부 옛 t 에서 지운다(지움 · 키 병합의 껍데기 둘 다 — 껍데기는 «deleted» 줄 없이 지금 줄만 지워지므로 «deleted» 줄로는 못 찾는다). 리허설에서 시간을 잰다.
+
+## 안 — 컨펌 전 (외부 검토, 총괄 11-10)
+
+- 안 1 안전망: «줄로 다시 합친 지금 값 = t__now» 점검을 페이싱된 별도 일로(스케줄러 · 진행 표시 · 표마다 쪽 단위). 합치기는 이주 5 단계 게이트와 같은 함수를 부른다 — 새 합치기를 짓지 않는다. 어긋나면 행 · 칸 · 줄 값 · 지금 값을 말한다. C 의 추천은 «말만» + 운영자가 누르는 «줄로 고침»: 자동으로 고치면 쓰기 경로의 결함이 조용히 덮인다. 범위: 11-14 착지 밖(합치기 함수가 선 뒤 일 하나). 크기는 안 쟀다.
+- 안 2 사람 값의 신선도 «Below changed since edit»: 사람 머리 줄 시각 < 그 칸 아래층(적재 · 체인) 최신 머리 줄 시각. C 의 추천은 «쓰기 5 단계가 won_by 옆에 적음»: 그 단계가 어차피 그 행의 머리 줄을 다 보고 다시 합치므로 쓰기 쪽 더하는 일은 견주기 하나이고, 그리드 읽기는 줄 표를 안 읽는다. 읽을 때 세면 저장은 없지만 그리드 쪽마다 `t__lines` 를 읽는다(D 판정 «그리드 읽기 영향 0»에 걸림). 범위: 11-14 착지 밖. 크기는 안 쟀다.
 
 ## 시간표
 

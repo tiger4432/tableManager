@@ -990,7 +990,10 @@ FUNCTIONS = {
     "ACos": _num1(lambda x: None if abs(x) > 1 else math.acos(x)),
     "ATan": _num1(math.atan),
     "ATan2": _num2(math.atan2, ["y", "x"]),
-    "If": {"kind": "if", "args": ["condition", "then", "else"]},
+    # no else is empty, as a Case with no else (owner 11-10 ㄱ)
+    "If": {"kind": "if", "args": ["condition", "then", "else"], "arity": 3, "least": 2},
+    # Spotfire's SN: the value, or `instead` when it is empty (owner 11-10 «SN 도 있지?»)
+    "SN": _row(2, lambda value, instead: instead if is_blank(value) else value, ["value", "instead"]),
     # dates (lead fe2ba4b1f) - on the zone's wall clock
     "Date": {**_dated(lambda t: _time_text(t.replace(hour=0, minute=0, second=0, microsecond=0))), "gives": "time"},
     "DateTime": {**_dated(_time_text), "gives": "time"},
@@ -1293,9 +1296,7 @@ def _parse(text):
 def _arity(node):
     fn, n, name = node["fn"], len(node["args"]), node["name"]
     kind = fn["kind"]
-    if kind == "if":
-        fits, want = n == 3, "3"
-    elif kind == "row":
+    if kind in ("if", "row"):
         least = fn.get("least", fn["arity"])
         fits, want = least <= n <= fn["arity"], " or ".join(str(k) for k in range(least, fn["arity"] + 1))
     elif fn.get("pair"):
@@ -1558,15 +1559,17 @@ def _fold_value(node, ctx):
 
 def _if_value(node, ctx):
     """An If's branches fold only the rows their condition sends them (Logic «More about using if»)."""
-    c, a, b = node["args"]
+    c, a, b = (node["args"] + [None])[:3]                   # no else: empty (owner 11-10 ㄱ)
     if ctx.row is None:
         cv = _bool(_value(c, ctx))
-        return _value(a, ctx) if cv is True else _value(b, ctx) if cv is False else None
+        branch = a if cv is True else b if cv is False else None
+        return None if branch is None else _value(branch, ctx)
     conds = _column_of(c, ctx, lambda one: _bool(_value(c, one)))
     cv = conds[_index_of_row(ctx)]
-    if cv is None:
+    branch = None if cv is None else a if cv else b
+    if branch is None:
         return None
-    return _value(a if cv else b, ctx.at(row=ctx.row, rows=[r for r, k in zip(ctx.rows, conds) if k == cv]))
+    return _value(branch, ctx.at(row=ctx.row, rows=[r for r, k in zip(ctx.rows, conds) if k == cv]))
 
 
 def _case_value(node, ctx):
