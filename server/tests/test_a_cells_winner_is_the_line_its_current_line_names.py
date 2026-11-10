@@ -4,10 +4,11 @@
 again on a read); its sources are each source's head line, a withdrawn one left out.
 
     page read     priority_source from won_by with or without the sources; sources = the head lines' values;
-                  a cell no line won names none
-    sources panel cell_layers: the same heads with time and writer, the same winner
+                  updated_by = that line's writer, never the pin's setter (cell_overwrites.updated_by, C ㄱ 11-10);
+                  a cell no line won names none, written by «system»
+    sources panel cell_layers: the same heads with time and writer, the same winner, its writer and time in "won"
 """
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.orm import Session
@@ -32,10 +33,15 @@ def cells(dialect_client, monkeypatch):
                          at=T0 + timedelta(minutes=2), withdrawn=("b",), business_key="K1")
         line_tables.now(conn, TABLE, "r1", "K1", {"k": "K1", "a": "A2", "b": 1.5},
                         {"k": file, "a": hand, "b": file})
+        conn.execute(models.CellOverwrite.__table__.insert().values(
+            table_name=TABLE, row_id="r1", column_name="b", is_overwrite=False, updated_by="pinner",
+            manual_priority_source="f.csv"))
     try:
         with Session(bind=engine) as session:
             yield session
     finally:
+        with engine.begin() as conn:
+            conn.execute(models.CellOverwrite.__table__.delete().where(models.CellOverwrite.table_name == TABLE))
         line_tables.drop(engine, TABLE)
         retire_dynamic_model(TABLE)
 
@@ -44,15 +50,17 @@ def _page(session, include_sources):
     rows = session.query(models.DYNAMIC_TABLES[TABLE]).all()
     data = grid_read.fetch_and_merge_metadata(session, TABLE, rows, ["k", "a", "b", "c"],
                                               include_sources=include_sources)[0]["data"]
-    return {column: (cell["priority_source"], cell["sources"]) for column, cell in data.items() if column in "kabc"}
+    return {column: (cell["priority_source"], cell["sources"], cell["updated_by"])
+            for column, cell in data.items() if column in "kabc"}
 
 
 def test_a_cells_winner_is_the_source_of_the_line_won_by_names(cells):
-    assert _page(cells, True) == {"k": ("f.csv", {"f.csv": "K1"}),
-                                  "a": ("user", {"f.csv": "A1", "user": "A2"}),
-                                  "b": ("f.csv", {"f.csv": 1.5}),
-                                  "c": (None, {})}
-    assert _page(cells, False) == {"k": ("f.csv", {}), "a": ("user", {}), "b": ("f.csv", {}), "c": (None, {})}
+    assert _page(cells, True) == {"k": ("f.csv", {"f.csv": "K1"}, "probe"),
+                                  "a": ("user", {"f.csv": "A1", "user": "A2"}, "person"),
+                                  "b": ("f.csv", {"f.csv": 1.5}, "probe"),
+                                  "c": (None, {}, "system")}
+    assert _page(cells, False) == {"k": ("f.csv", {}, "probe"), "a": ("user", {}, "person"),
+                                   "b": ("f.csv", {}, "probe"), "c": (None, {}, "system")}
 
 
 def test_the_sources_panel_reads_the_same_heads_and_winner(cells):
@@ -62,3 +70,6 @@ def test_the_sources_panel_reads_the_same_heads_and_winner(cells):
     assert (a["priority_source"], sorted(a["sources"]), a["sources"]["user"]["updated_by"], a["value"]) == (
         "user", ["f.csv", "user"], "person", "A2")
     assert (b["priority_source"], list(b["sources"])) == ("f.csv", ["f.csv"]), "the chain's withdrawal says nothing"
+    at = datetime.fromisoformat(a["won"]["at"])         # sqlite gives it back naive (UTC), PG in the session's zone
+    assert a["won"]["written_by"] == "person" and (at if at.tzinfo else at.replace(tzinfo=timezone.utc)) ==         T0 + timedelta(minutes=1)
+    assert b["won"]["written_by"] == "probe", "the line's writer, not the pin's setter"

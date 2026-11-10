@@ -489,7 +489,8 @@ from utils.wire_format import wire_text  # noqa: E402
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
     """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
-    priority_source}` a cell: the winner from t__now.won_by (`audit_history.winners`), the pins from cell_overwrites,
+    priority_source}` a cell: the line t__now.won_by names (`audit_history.winners`) - its source the winner, its
+    writer `updated_by` («system» when no line won it) -, the pins from cell_overwrites,
     and with `include_sources` each source's head line (`audit_history.head_lines`)."""
     if not rows:
         return []
@@ -551,7 +552,6 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         models.CellOverwrite.row_id,
         models.CellOverwrite.column_name,
         models.CellOverwrite.is_overwrite,
-        models.CellOverwrite.updated_by,
         models.CellOverwrite.manual_priority_source
     ).filter(
         models.CellOverwrite.table_name == table_name,
@@ -559,8 +559,8 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     ).all()
     
     overwrites_map = {}
-    for row_id, column_name, is_ow, updated_by, manual_priority_source in overwrites:
-        overwrites_map[(row_id, column_name)] = (is_ow, updated_by, manual_priority_source)
+    for row_id, column_name, is_ow, manual_priority_source in overwrites:
+        overwrites_map[(row_id, column_name)] = (is_ow, manual_priority_source)
         
     # 2. the winners (t__now.won_by) and, for the sources, each source's head line (cell-source overhaul)
     from admin import audit_history
@@ -584,9 +584,10 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             col_srcs = {name: wire_text(one["value"]) for name, one in heads.get(key, {}).items()}
 
             is_ow = ow_info[0] if ow_info else False
-            updated_by = ow_info[1] if ow_info else "system"
-            manual_pin = ow_info[2] if ow_info else None
-            priority_source = won.get(key)
+            manual_pin = ow_info[1] if ow_info else None
+            line = won.get(key) or {}
+            priority_source = line.get("source")
+            updated_by = line.get("written_by") or "system"
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
@@ -637,9 +638,10 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     return data_list
 
 def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
-    """{(row_id, column): {"sources", "manual_priority_source", "priority_source", "value"}} - each of `cells` (of
-    `rows`, {row_id: row}) as the sources panel reads it: each source's head line with its time and writer, the pin,
-    and the winner its current line names (`audit_history.winners`)."""
+    """{(row_id, column): {"sources", "manual_priority_source", "priority_source", "won", "value"}} - each of `cells`
+    (of `rows`, {row_id: row}) as the sources panel reads it: each source's head line with its time and writer, the
+    pin, and the line its current line names (`audit_history.winners`) - its source, and in "won" its writer and time
+    ({"written_by", "at"}, None when no line won it)."""
     from admin import audit_history
 
     if not cells:
@@ -656,8 +658,12 @@ def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
         sources = {name: {"value": wire_text(one["value"]), "updated_by": one["written_by"],
                           "timestamp": one["at"].isoformat() if one["at"] else None}
                    for name, one in heads.get((row_id, column), {}).items()}
+        line = won.get((row_id, column))
         out[(row_id, column)] = {"sources": sources, "manual_priority_source": pins.get((row_id, column)),
-                                 "priority_source": won.get((row_id, column)), "value": getattr(rows[row_id], column)}
+                                 "priority_source": line["source"] if line else None,
+                                 "won": {"written_by": line["written_by"],
+                                         "at": line["at"].isoformat() if line["at"] else None} if line else None,
+                                 "value": getattr(rows[row_id], column)}
     return out
 
 

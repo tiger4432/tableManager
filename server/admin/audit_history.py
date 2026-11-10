@@ -426,8 +426,9 @@ def group_rows(db, table_name, group, limit) -> list:
 
 
 def winners(db, table_name, row_ids) -> dict:
-    """{(row_id, column): the source of the line its current line names} - `won_by` of `t__now` (the merge at write
-    time, pins included), each line by its id: what a grid cell's colour asks, no ranking read again."""
+    """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of `t__now`
+    (the merge at write time, pins included), each line by its id: what a grid cell's colour and writer ask, no
+    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10)."""
     from database import lines
 
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
@@ -440,11 +441,12 @@ def winners(db, table_name, row_ids) -> dict:
                 won[(row_id, column)] = int(line_id)
     t = line_table(table_name, {})
     named = sorted(set(won.values()))
-    source = {}
+    line = {}
     for i in range(0, len(named), 1000):
-        source.update(db.execute(sa.select(t.c.line_id, t.c.source_name).where(
-            t.c.line_id.in_(named[i:i + 1000]))).fetchall())
-    return {cell: source.get(line_id) for cell, line_id in won.items()}
+        for line_id, source, written_by, at in db.execute(sa.select(
+                t.c.line_id, t.c.source_name, t.c.written_by, t.c.at).where(t.c.line_id.in_(named[i:i + 1000]))):
+            line[line_id] = {"source": source, "written_by": written_by, "at": at}
+    return {cell: line[line_id] for cell, line_id in won.items() if line_id in line}
 
 
 def head_lines(db, table_name, row_ids, columns=None) -> dict:

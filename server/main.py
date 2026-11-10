@@ -4298,7 +4298,7 @@ def query_cells_sources(
     cells = [(item.get("row_id"), item.get("column_name")) for item in req.updates
              if item.get("row_id") and item.get("column_name")]
     found = cell_layers(db, table_name, row_map, [(r, c) for r, c in cells if r in row_map and hasattr(table_model, c)])
-    none = {"sources": {}, "manual_priority_source": None, "priority_source": None, "value": None}
+    none = {"sources": {}, "manual_priority_source": None, "priority_source": None, "won": None, "value": None}
     return [{"row_id": r, "column_name": c, **found.get((r, c), none)} for r, c in cells]
 
 @app.post("/admin/outbox/retry-failed", dependencies=[Depends(require_admin_token)])
