@@ -1,0 +1,1 @@
+var e=`Loading…`,t=`Walking…`,n=`Server refused`,r=`Waiting`,i=`Failed`,a=`Refused`,o=`None`,s=`No value`,c=`— choose —`,l=`Updating`;function u(e){return`≈ ${e==null||e===``?`?`:e}`}function d(e,t,n=`${t}s`){return`${e} ${Number(e)===1?t:n}`}export{s as a,l as c,u as d,d as f,o as i,r as l,i as n,a as o,e as r,n as s,c as t,t as u};
