@@ -151,14 +151,12 @@ def test_chained_ingestion(client, db_session, monkeypatch, tmp_path):
     assert target_row is not None
     assert target_row.stock_qty == 100
     
-    src = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == "inventory_master",
-        models.CellSource.row_id == target_row.row_id,
-        models.CellSource.column_name == "stock_qty"
-    ).first()
-    assert src is not None
+    from database import lines
+    said = lines.layers(db_session, "inventory_master", [target_row.row_id], ["stock_qty"])
+    heads = said.get((target_row.row_id, "stock_qty"), {})
+    assert heads, "the chained write left a layer on the cell (the table's lines)"
     # the layer is signed by the rule that wrote it (총괄 bc9710454 가-1 ㄱ, `rule_run.signed`)
-    assert src.updated_by == "production_to_inventory_reservation_batch"
+    assert {head["updated_by"] for head in heads.values()} == {"production_to_inventory_reservation_batch"}
     
 
 def test_cell_sources_api(client):

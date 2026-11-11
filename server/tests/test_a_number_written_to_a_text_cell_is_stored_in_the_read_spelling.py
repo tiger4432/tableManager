@@ -23,8 +23,9 @@ if SERVER_DIR not in sys.path:
 
 from chain import cell_layer                                       # noqa: E402
 from conftest import retire_dynamic_model                          # noqa: E402
-from database import crud, models, schemas                         # noqa: E402
+from database import crud, lines, models, schemas                  # noqa: E402
 from database.database import Base                                 # noqa: E402
+from tests.support import line_tables                              # noqa: E402
 
 T = "numtext_probe"
 TABLE = {"business_key": "k",
@@ -76,10 +77,13 @@ def fixture_table(db_session):
     models.init_dynamic_models({T: TABLE})
     crud.TABLE_CONFIG[T] = TABLE
     Base.metadata.create_all(bind=db_session.get_bind())
+    line_tables.drop(db_session.get_bind(), T)
+    line_tables.build(db_session.get_bind(), T)      # the table keeps its lines - a layer is a line there
     db_session.query(models.DYNAMIC_TABLES[T]).delete()
-    db_session.query(models.CellSource).filter(models.CellSource.table_name == T).delete()
     db_session.commit()
     yield db_session
+    db_session.rollback()
+    line_tables.drop(db_session.get_bind(), T)
     crud.TABLE_CONFIG.pop(T, None)
     retire_dynamic_model(T)
 
@@ -87,13 +91,11 @@ def fixture_table(db_session):
 def test_the_funnel_stores_the_folded_text_in_the_cell_and_in_its_layer(table):
     _write(table, ROWS)
     rows = {r.k: r for r in table.query(models.DYNAMIC_TABLES[T]).all()}
-    layers = {(row_id, column): value for row_id, column, value in table.query(
-        models.CellSource.row_id, models.CellSource.column_name, models.CellSource.value)
-        .filter(models.CellSource.table_name == T)}
+    layers = lines.layers(table, T, [row.row_id for row in rows.values()], ["v"])
     for i, (_, stored) in enumerate(FOLDS):
         row = rows[f"r{i}"]
         assert (row.v, row.w) == (stored, stored)
-        assert layers[(row.row_id, "v")] == stored, "the layer holds the same text"
+        assert layers[(row.row_id, "v")]["f01.csv"]["value"] == stored, "the layer holds the same text"
         assert row.n == 1.0 and isinstance(row.n, float), "a number column is untouched"
 
 
@@ -104,10 +106,11 @@ def fixture_pg_table(pg_engine):
     models.init_dynamic_models({T: TABLE})
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
-        conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
         conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
+    line_tables.drop(pg_engine, T)
     Base.metadata.create_all(bind=pg_engine, tables=[models.DYNAMIC_TABLES[T].__table__])
     crud.TABLE_CONFIG[T] = TABLE
+    line_tables.build(pg_engine, T)
     db = sessionmaker(bind=pg_engine, autoflush=False)()
     try:
         yield db, pg_engine
@@ -116,9 +119,9 @@ def fixture_pg_table(pg_engine):
         crud.TABLE_CONFIG.clear()
         crud.TABLE_CONFIG.update(saved)
         retire_dynamic_model(T)
+        line_tables.drop(pg_engine, T)
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
-            conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
             conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
 
 
@@ -127,10 +130,10 @@ def test_python_and_postgres_read_one_answer_from_the_cell_and_its_layer(pg_tabl
     db, engine = pg_table
     _write(db, ROWS)
     with engine.connect() as conn:
-        cells = dict(conn.execute(text('SELECT k, v FROM "%s"' % T)).all())
-        layers = dict(conn.execute(text(
-            'SELECT t.k, s.value #>> \'{}\' FROM cell_sources s JOIN "%s" t ON t.row_id = s.row_id '
-            "WHERE s.table_name = :t AND s.column_name = 'v'" % T), {"t": T}).all())
+        rows = conn.execute(text('SELECT k, v, row_id FROM "%s"' % T)).all()
+    cells = {k: v for k, v, _row_id in rows}
+    said = lines.layers(db, T, [row_id for _k, _v, row_id in rows], ["v"])
+    layers = {k: said[(row_id, "v")]["f01.csv"]["value"] for k, _v, row_id in rows}
     for i, (_, stored) in enumerate(FOLDS):
         key = f"r{i}"
         assert cells[key] == layers[key] == stored
