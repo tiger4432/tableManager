@@ -86,6 +86,7 @@ export function tableSteps({ back, forward, open, win = window }) {
   let at = (win.history.state && win.history.state.tableStep) || 0;
   let top = at;
   let walking = false;
+  let restoring = false;
   const paint = () => {
     if (back) back.disabled = at <= 0;
     if (forward) forward.disabled = at >= top;
@@ -93,9 +94,14 @@ export function tableSteps({ back, forward, open, win = window }) {
   win.addEventListener('popstate', (e) => {
     const step = e.state;
     if (!step || !step.table) return;
+    const from = at;
     at = step.tableStep || 0;
+    if (restoring) { restoring = false; paint(); return; }
     walking = true;
-    Promise.resolve(open(step.table)).finally(() => { walking = false; paint(); });
+    // refused (edits staged): the table on screen did not move, so the address goes back to it
+    Promise.resolve(open(step.table)).then((opened) => {
+      if (opened === false && at !== from) { restoring = true; win.history.go(from - at); }
+    }).finally(() => { walking = false; paint(); });
   });
   if (back) back.addEventListener('click', () => win.history.back());
   if (forward) forward.addEventListener('click', () => win.history.forward());

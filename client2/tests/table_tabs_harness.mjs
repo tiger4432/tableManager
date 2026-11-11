@@ -71,7 +71,8 @@ console.log('[H] back and forward');
   const win = { history, location: { href: 'http://box/?table=old&tx=T1' }, addEventListener: (t, fn) => (listeners[t] ||= []).push(fn) };
   const back = new El('button'), forward = new El('button');
   const opened = [];
-  const steps = tableSteps({ back, forward, win, open: (t) => { opened.push(t); steps.went(t); return Promise.resolve(true); } });
+  let refuse = false;
+  const steps = tableSteps({ back, forward, win, open: (t) => { opened.push(t); if (refuse) return Promise.resolve(false); steps.went(t); return Promise.resolve(true); } });
   steps.went('a'); steps.went('b'); steps.went('c');
   eq('H1 each table opened is a step; the address says the table and drops tx', [history.stack.map((x) => x.s.table), history.stack[2].url, back.disabled, forward.disabled],
     [['a', 'b', 'c'], 'http://box/?table=c', false, true]);
@@ -83,6 +84,11 @@ console.log('[H] back and forward');
   eq('H3 Forward opens the table after; nothing ahead again', [opened, forward.disabled], [['b', 'c'], true]);
   steps.went('c');
   eq('H4 the same table again adds no step', history.stack.length, 3);
+  refuse = true;
+  back.click();
+  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  eq('H5 Back refused (edits staged): the address goes back to the table on screen, opened once, Back still on',
+    [history.state.table, history.at, opened.length, back.disabled, forward.disabled], ['c', 2, 3, false, true]);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
