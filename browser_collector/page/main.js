@@ -31,7 +31,7 @@ function pageFor(t, runId = null) {
 }
 const existingFor = (t) => (cellsList) => ask({ type: 'keys.existing', t, cellsList }).then((a) => {
   if (a.error) throw new Error(a.error);
-  return new Set(a.keys);
+  return { have: new Set(a.keys), tooLong: new Set(a.tooLong) };
 });
 
 // ── picking ──────────────────────────────────────────────────────────────────────────────

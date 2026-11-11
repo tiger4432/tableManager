@@ -5,6 +5,10 @@
 export const flat = (row) => ({ row_id: row && row.row_id, ...Object.fromEntries(Object.entries((row && row.data) || {}).map(([c, cell]) =>
   [c, cell && typeof cell === 'object' && 'value' in cell ? cell.value : cell])) });
 
+/** The longest read address in bytes (encoded): 8 KB is the common request-line cap (nginx's default
+ *  large_client_header_buffers), the rest is room for the host and the headers. */
+export const URL_BUDGET = 6000;
+
 const said = (body) => (body && body.detail !== undefined ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : null);
 
 export class Product {
@@ -31,23 +35,42 @@ export class Product {
     return { ok: res.ok, status: res.status, body: parsed, detail: res.ok ? null : (said(parsed) || `${res.status} ${res.statusText}`) };
   }
 
-  /** Rows of `table` whose columns are in `filters` ({column: [values]}) -> {ok, rows, detail}. */
-  async rows(table, filters = {}, { limit = 1000, cols = null, orderBy = null } = {}) {
+  /** The address `rows` reads - its filters ride in it, encoded. */
+  rowsPath(table, filters = {}, { limit = 1000, cols = null, orderBy = null } = {}) {
     const f = Object.fromEntries(Object.entries(filters).map(([c, values]) => [c, { filterType: 'set', values }]));
     const q = new URLSearchParams({ limit: String(limit), defer_total: 'true', ...(Object.keys(f).length ? { filters: JSON.stringify(f) } : {}),
       ...(cols ? { cols: cols.join(',') } : {}), ...(orderBy ? { order_by: orderBy, order_desc: 'true' } : {}) });
-    const r = await this.call('GET', `/tables/${encodeURIComponent(table)}/data?${q}`);
+    return `/tables/${encodeURIComponent(table)}/data?${q}`;
+  }
+
+  /** Rows of `table` whose columns are in `filters` ({column: [values]}) -> {ok, rows, detail}. */
+  async rows(table, filters = {}, opts = {}) {
+    const r = await this.call('GET', this.rowsPath(table, filters, opts));
     return { ok: r.ok, rows: r.ok ? ((r.body && r.body.data) || []).map(flat) : [], detail: r.detail, status: r.status };
   }
 
-  /** Of the rows `cellsList`, the keys (`keys` columns joined by «|») `table` already has -> Set (a refused read throws its sentence). */
+  /** Of the rows `cellsList`, the keys (`keys` columns joined by «|») `table` already has -> {have: Set of keys, tooLong: Set of
+   *  first-key values whose read the server refused as too long}. The values go in reads of at most URL_BUDGET each (owner
+   *  11-11 «uri too large»); one value past it is asked alone. Any other refused read throws its sentence. */
   async existing(table, keys, cellsList) {
-    if (!cellsList.length) return new Set();
+    const have = new Set();
+    const tooLong = new Set();
     const firsts = [...new Set(cellsList.map((c) => c[keys[0]]))];
-    const r = await this.rows(table, { [keys[0]]: firsts }, { limit: Math.max(firsts.length * 50, 1000), cols: keys });
-    if (!r.ok) throw Object.assign(new Error(r.detail), { status: r.status });
+    const opts = (values) => ({ limit: Math.max(values.length * 50, 1000), cols: keys });
+    const fits = (values) => (this.server + this.rowsPath(table, { [keys[0]]: values }, opts(values))).length <= URL_BUDGET;
+    const parts = [];
+    for (const v of firsts) {
+      const last = parts[parts.length - 1];
+      if (last && fits([...last, v])) last.push(v); else parts.push([v]);
+    }
     const joined = (row) => keys.map((k) => (row[k] === null || row[k] === undefined ? '' : String(row[k]))).join('|');
-    return new Set(r.rows.map(joined));
+    for (const values of parts) {
+      const r = await this.rows(table, { [keys[0]]: values }, opts(values));
+      if (r.status === 414 && values.length === 1) { tooLong.add(values[0]); continue; }
+      if (!r.ok) throw Object.assign(new Error(r.detail), { status: r.status });
+      for (const row of r.rows) have.add(joined(row));
+    }
+    return { have, tooLong };
   }
 
   /** Rows of `table` by their row ids, removed -> {ok} | {ok: false, status, detail}. */

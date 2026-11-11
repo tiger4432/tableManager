@@ -33,6 +33,7 @@ const load = async (dir) => ({
   extract: await import(pathToFileURL(path.join(dir, 'extract.js'))),
   batch: await import(pathToFileURL(path.join(dir, 'batch.js'))),
   run: await import(pathToFileURL(path.join(dir, 'run.js'))),
+  product: await import(pathToFileURL(path.join(dir, 'product.js'))),
 });
 
 // ── fakes ────────────────────────────────────────────────────────────────────────────────
@@ -70,11 +71,12 @@ function fakeMail(lib, items) {
   return page;
 }
 
-const existingOf = (have, t) => async (cellsList) => new Set(cellsList.map((c) => t.keys.map((k) => c[k]).join('|')).filter((k) => have.includes(k)));
+const existingOf = (have, t, tooLong = []) => async (cellsList) => ({
+  have: new Set(cellsList.map((c) => t.keys.map((k) => c[k]).join('|')).filter((k) => have.includes(k))), tooLong: new Set(tooLong) });
 
-async function batchCase(lib, items, have = [], t = T) {
+async function batchCase(lib, items, have = [], t = T, tooLong = []) {
   const page = fakeMail(lib, items);
-  const b = await lib.batch.readBatch(t, page, { room: Infinity, existing: existingOf(have, t) });
+  const b = await lib.batch.readBatch(t, page, { room: Infinity, existing: existingOf(have, t, tooLong) });
   return { b, opened: page.opened };
 }
 
@@ -132,6 +134,31 @@ async function cases(lib) {
   const after = { ...T, keys: ['subject'] };
   const late = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], ['Two'], after);
   out.Bafter = { rows: late.b.rows.map((r) => r.key), skipped: late.b.skipped, opened: late.opened };
+
+  // a key the server would not be asked about (its read address too long), read before and after opening
+  const long = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], [], T, ['m2']);
+  const longAfter = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], [], after, ['Two']);
+  out.Blong = [long, longAfter].map((c) => ({ rows: c.b.rows.map((r) => r.key), misses: c.b.misses.map((m) => [m.reason, m.detail, m.cells.id]), opened: c.opened }));
+
+  // the product's read of the keys: 200 Korean titles (9 bytes a letter in the address) and one of 3,000 letters, a server
+  // that answers 414 past 8,000 bytes
+  const titles = Array.from({ length: 200 }, (_, i) => `메일 제목 ${i}`);
+  const huge = '긴'.repeat(3000);
+  const table = [...titles.filter((_, i) => i % 3 === 0), huge];
+  const urls = [];
+  const fetchFn = async (url) => {
+    urls.push(url);
+    if (url.length > 8000) return { ok: false, status: 414, statusText: 'URI Too Long', json: async () => null };
+    const values = JSON.parse(new URL(url).searchParams.get('filters')).title.values;
+    const data = table.filter((x) => values.includes(x)).map((x) => ({ row_id: x, data: { title: { value: x }, n: { value: '1' } } }));
+    return { ok: true, status: 200, json: async () => ({ data }) };
+  };
+  const product = new lib.product.Product({ server: 'http://box:8085', key: 'k' }, fetchFn);
+  const e = await product.existing('mail', ['title', 'n'], [...titles, huge].map((title) => ({ title, n: '1' })))
+    .catch((err) => ({ have: new Set(), tooLong: new Set([err.message]) }));       // a refused read: its sentence is the answer
+  const once = table.filter((x) => x !== huge).map((x) => `${x}|1`).sort();
+  out.Pbudget = { reads: urls.length > 2, over: urls.filter((u) => u.length > lib.product.URL_BUDGET).map((u) => JSON.parse(new URL(u).searchParams.get('filters')).title.values.length),
+    same: JSON.stringify([...e.have].sort()) === JSON.stringify(once), tooLong: [...e.tooLong].map((v) => v.length) };
 
   const plain = fakeRun([got(['a', 'b']), got(['b', 'c'])]);
   const t1 = await lib.run.runTemplate({ ...T }, plain.tab, plain.product);
@@ -192,6 +219,11 @@ eq('B no key is kept «no_key» with where it was and its cells', real.Bnokey, {
 eq('B no existing - the table not asked, every item read and opened, said unchecked (asked: not)', real.Bunasked,
   { rows: ['m1', 'm2'], skipped: 0, unchecked: [true, false], opened: ['One', 'Two'] });
 eq('B a key read after opening: every item opened, the one the table has skipped after', real.Bafter, { rows: ['One'], skipped: 1, opened: ['One', 'Two'] });
+eq('B a key too long to ask about is kept «refused», never written - unopened when read before opening', real.Blong, [
+  { rows: ['m1'], misses: [['refused', 'key too long to check', 'm2']], opened: ['One'] },
+  { rows: ['One'], misses: [['refused', 'key too long to check', 'm2']], opened: ['One', 'Two'] }]);
+eq('P 200 Korean titles: reads under the budget, only the 3,000-letter one past it and alone; together the one read\'s answer, the long one said too long',
+  real.Pbudget, { reads: true, over: [1], same: true, tooLong: [3000] });
 eq('R written, a key seen twice skipped, one write per batch, ended at the last page', real.Rplain,
   { written: 3, skipped: 1, pages: 2, ended: 'last page', writes: [['a', 'b'], ['c']] });
 eq('R the limit - 5 of max 5, ended «limit»', real.Rlimit, { read: 5, written: 5, ended: 'limit' });
@@ -208,13 +240,15 @@ eq('R not allowed - the run ends «refused» with the sentence, nothing written,
 const MUTANTS = [
   ['M1 the before/after comparison off - the item that did not open is read from the previous item', 'Bstale', 'open_check.js',
     "if (after === before) return 'content did not change';", ''],
-  ['M2 the table\'s keys not asked before opening', 'Bknown', 'batch.js', 'if (keyBefore && known.has(keyOf(t, x.cells))) { out.skipped += 1; continue; }', ''],
+  ['M2 the table\'s keys not asked before opening', 'Bknown', 'batch.js', 'if (keyBefore && known.have.has(keyOf(t, x.cells))) { out.skipped += 1; continue; }', ''],
   ['M3 the limit off', 'Rlimit', 'run.js', 'Math.min(t.max ? t.max - tally.read : Infinity, BATCH_MOST)', 'BATCH_MOST'],
   ['M4 a refused write not tried row by row', 'Rrefused', 'run.js', 'const one = rows.length === 1 ? all : await product.write([r]);', 'const one = all;'],
   ['M6 the next page asked while the page still has items', 'Rpaged', 'run.js', 'if ((b.seen ?? b.read) === room) continue;', ''],
   ['M7 the pause not held', 'Rpause', 'run.js', 'if (paused() && !stopped()) {', 'if (false) {'],
   ['M8 a retry reading every item', 'Bonly', 'batch.js', 'const listed = t.only ? taken.filter((x) => t.only.some((c) => same(c, x.cells))) : taken;', 'const listed = taken;'],
   ['M9 a preview that did not ask the table said checked', 'Bunasked', 'batch.js', 'unchecked: !existing', 'unchecked: false'],
+  ['M10 the keys asked in one read whatever its length', 'Pbudget', 'product.js', 'if (last && fits([...last, v])) last.push(v);', 'if (last) last.push(v);'],
+  ['M11 a key too long to ask about written as a new row', 'Blong', 'batch.js', 'if (keyBefore && unasked(known, x.cells)) { keepUnasked(x); continue; }', ''],
   ['M5 no key written as a row', 'Bnokey', 'batch.js', "if (key === null) { out.misses.push({ reason: MISS.NO_KEY, detail: `${t.keys.join(', ')} has no value`, at, index: x.index, cells }); continue; }", ''],
 ];
 for (const [name, which, file, from, to] of MUTANTS) {
