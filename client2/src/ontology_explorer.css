@@ -312,7 +312,7 @@
 #ontology-explorer-root .oe-tree-item {
   width: 100%; display: flex; align-items: center; border: 0;
   background: transparent; color: var(--oe-text); padding: 6.8px 6.8px 6.8px 20.4px;
-  text-align: left; overflow-wrap: anywhere; cursor: pointer;
+  text-align: left; overflow-wrap: anywhere; white-space: normal; cursor: pointer;
   font-family: var(--oe-font-mono); font-size: var(--fs-h6);
 }
 #ontology-explorer-root .oe-change-label {
