@@ -9,6 +9,9 @@ import { floatingText } from '../value_filter.js';
 import { countNumberText, countOf } from '../match_count.js';
 import { refusalText } from '../refusal.js';
 import { crossIcon } from '../cross_icon.js';
+import { SIGN } from '../rnd_board/marking_store.js';
+import { markingIntent } from '../rnd_board/panel.js';
+import { rowNodeId } from './chain.js';
 
 export const PAGE_ROWS = 500;
 /** The next page is read when fewer lines than this are left below the view. */
@@ -59,9 +62,11 @@ export function chipsOf(text) {
   return chips;
 }
 
-/** A page's query: the narrowing, the page, the order (none: entered order, row_id), the world; the count comes apart. */
-export function pageQuery(text, { skip = 0, limit = PAGE_ROWS, order = null, world = null } = {}) {
+/** A page's query: the narrowing, the page, the order (none: entered order, row_id), the world, the server marking it
+ *  is opened by; the count comes apart. */
+export function pageQuery(text, { skip = 0, limit = PAGE_ROWS, order = null, world = null, marking = null } = {}) {
   const p = new URLSearchParams(text || '');
+  if (marking) p.set('marking', marking);
   p.set('skip', String(skip));
   p.set('limit', String(limit));
   p.set('order_by', order ? order.column : 'row_id');
@@ -71,9 +76,10 @@ export function pageQuery(text, { skip = 0, limit = PAGE_ROWS, order = null, wor
   return p.toString();
 }
 
-/** The count's query: the narrowing and the world only. */
-export function countQuery(text, world = null) {
+/** The count's query: the narrowing, the world and the server marking only. */
+export function countQuery(text, world = null, marking = null) {
   const p = new URLSearchParams(text || '');
+  if (marking) p.set('marking', marking);
   if (world) p.set('world', world);
   return p.toString();
 }
@@ -113,7 +119,9 @@ export class TableBox {
   /**
    * @param {HTMLElement} mount
    * @param {{doc: Document, fetch: Function, apiBase: string, table: string, narrowing?: string, world?: string|null,
-   *          frame?: (fn) => void}} deps
+   *          frame?: (fn) => void, markings?: MarkingStore, writes?: string, marking?: string, title?: string}} deps
+   *   writes  the marking name a press marks rows under (+, Shift −; the store's toggle, as the walk's table); none: no
+   *           press marks   marking  the server marking the box opens by - its rows only, no search needed
    */
   constructor(mount, deps) {
     this.mount = mount;
@@ -129,6 +137,32 @@ export class TableBox {
     this.reading = 0;
     this.busy = false;
     this.total = null;
+    this.markings = deps.markings || null;
+    this.writes = deps.writes || null;
+    this.marking = deps.marking || null;
+  }
+
+  /** The row ids marked with `sign` under the box's name. */
+  marked(sign) {
+    if (!this.markings || !this.writes) return [];
+    return this.markings.entries(this.writes).filter(([, s]) => s === sign).map(([id]) => id);
+  }
+
+  /** A press on lines toggles each under the sign Shift says; a drag marks them all with it. */
+  mark(ids, event, drag = false) {
+    if (!this.markings || !this.writes) return;
+    const { sign } = markingIntent(event);
+    for (const id of ids) {
+      const node = rowNodeId(this.table, id);
+      if (drag) this.markings.set(this.writes, node, sign); else this.markings.toggle(this.writes, node, sign);
+    }
+  }
+
+  drawMarks() {
+    if (!this.marksEl) return;
+    const plus = this.marked(SIGN.CASE).length;
+    const minus = this.marked(SIGN.CONTROL).length;
+    this.marksEl.textContent = plus || minus ? `+ ${plus.toLocaleString('en-US')} · − ${minus.toLocaleString('en-US')} marked` : '';
   }
 
   _el(tag, cls, text) {
@@ -146,9 +180,15 @@ export class TableBox {
   async open() {
     const box = this._el('section', 'tables-box');
     const head = this._el('header', 'tables-box__head');
+    if (this.deps.title) head.append(this._el('span', 'tables-box__title', this.deps.title));
     head.append(this._el('span', 'tables-box__name', this.table));
     this.countEl = this._el('span', 'tables-box__count', '');
-    head.append(this.countEl);
+    this.marksEl = this._el('span', 'tables-box__marks', '');
+    head.append(this.countEl, this.marksEl);
+    if (this.markings && this.writes) {
+      this.unsubscribe = this.markings.subscribe(this.writes, () => { this.drawMarks(); if (this.rows.length) this.draw(); });
+    }
+    this.drawMarks();
     const bar = this._el('div', 'tables-box__bar');
     const label = this._el('label', 'tables-box__label', 'Search');
     this.search = this._el('input', 'ctl-small tables-box__search');
@@ -202,9 +242,9 @@ export class TableBox {
     this.rows = [];
     this.more = false;
     this.busy = false;
-    const opened = narrows(this.narrowing);
+    const opened = narrows(this.narrowing) || Boolean(this.marking);
     const counts = Promise.all([
-      opened ? this._get(`/data/count?${countQuery(this.narrowing, this.world)}`) : null,
+      opened ? this._get(`/data/count?${countQuery(this.narrowing, this.world, this.marking)}`) : null,
       this._get(`/data/count?${countQuery('', this.world)}`),
     ].map(async (asked) => { const res = await asked; return res && res.ok ? res.json() : null; }));
     if (!opened) {
@@ -227,7 +267,7 @@ export class TableBox {
   async page(ticket = this.reading) {
     if (this.busy || !this.more) return;
     this.busy = true;
-    const res = await this._get(`/data?${pageQuery(this.narrowing, { skip: this.rows.length, order: this.order, world: this.world })}`);
+    const res = await this._get(`/data?${pageQuery(this.narrowing, { skip: this.rows.length, order: this.order, world: this.world, marking: this.marking })}`);
     if (ticket !== this.reading) return;
     this.busy = false;
     if (!res.ok) { this.more = false; this.say(await refusalText(res, 'Rows read failed')); return; }
@@ -247,7 +287,10 @@ export class TableBox {
 
   draw() {
     const encode = Object.fromEntries(this.columns.map((column, k) => [COLUMN(k), { column }]));
-    const model = tableModel(linesOf(this.rows, this.columns), { paint: () => ({ marked: false, color: null }), colored: false, declaration: { encode } });
+    // a marked row: + as the table marks, − with the control colour beside (tables.css)
+    const signOf = (id) => (this.markings && this.writes ? this.markings.signOf(this.writes, rowNodeId(this.table, id)) : SIGN.ABSENT);
+    const paint = ([id]) => { const s = signOf(id); return { marked: s !== SIGN.ABSENT, color: s === SIGN.CONTROL ? 'var(--danger)' : null }; };
+    const model = tableModel(linesOf(this.rows, this.columns), { paint, colored: true, declaration: { encode } });
     // the order is the server's - the heads say it, the lines stand as read
     model.sort = this.order ? { key: COLUMN(this.columns.indexOf(this.order.column)), desc: this.order.desc } : null;
     const before = this.area.querySelector('.tb-table__wrap');
@@ -256,7 +299,9 @@ export class TableBox {
       doc: this.doc,
       words: (key) => this.columns[Number(key.slice(3)) - 1],
       declare: ({ sort }) => this.orderBy(this.columns[Number(sort.key.slice(3)) - 1], sort.desc),
-      mark: () => {}, clear: () => {}, hover: () => {},
+      mark: (ids, event, drag) => this.mark(ids, event, drag),
+      clear: () => { if (this.markings && this.writes) this.markings.clear(this.writes); },
+      hover: () => {},
     });
     const wrap = this.area.querySelector('.tb-table__wrap');
     if (!wrap) return;
