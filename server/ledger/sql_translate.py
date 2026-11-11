@@ -205,6 +205,9 @@ class NotCompiled(Exception):
 
 _TEXT, _FLOAT, _INTEGER, _TIME = "text", "float", "integer", "time"
 _NUMBERS = (_FLOAT, _INTEGER, "numeric")
+#: the type a column key is compared in when read as its column holds it (`Leg.compared`)
+_HELD_AS = {_FLOAT: "float8", _INTEGER: "bigint", "numeric": "numeric", _TIME: "timestamptz",
+            "timestamp without time zone": "timestamp"}
 
 
 #: The object end of a sentence with no object (a registration): no type, no key - no node names it, and its atom's
@@ -237,6 +240,19 @@ class Leg:
         return notation_norm.key_expression_text(
             f"w.{_quoted(column)}", rules=notation_norm.rules_for_column(self.relation, column),
             text_column=spec["kind"] == _TEXT, zone=spec.get("zone"), number_column=spec["kind"] in _NUMBERS)
+
+    def compared(self, spec) -> tuple:
+        """(SQL, type) a read compares a column key by (owner 11-07 «함수를 씌워서 인덱스를 못 탄다면 안 씌우면 안
+        됨?»): the column as it holds the value, so its index serves the compare - unless notation rules or a time key
+        held as text spell it (`key`, its expression index), compared as text. THE ONE answer to «what is a key
+        compared by» - a frontier's (`VirtualEvidenceLookup._in`) and a `one` predicate's current fact's (lead 11-11)."""
+        import notation_norm
+
+        spelled = notation_norm.rules_for_column(self.relation, spec["column"]) or (
+            spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone"))
+        if spelled:
+            return self.key(spec), "text"
+        return f"w.{_quoted(spec['column'])}", "text" if spec["kind"] == _TEXT else _HELD_AS[spec["kind"]]
 
     def columns_of(self, arm) -> list:
         """[(key, spec)] of an end's column keys, in key order - the order a read selects and compares them in."""
