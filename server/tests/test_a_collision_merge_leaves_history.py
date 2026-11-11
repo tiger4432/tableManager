@@ -93,12 +93,14 @@ def test_no_audit_call_anywhere_in_crud_drops_its_return():
 def test_the_only_live_caller_always_supplies_the_list():
     """🔴 THIS IS WHY THE WORD IS "ALWAYS". If some caller passed `None`, `add_to_cache`
     would be True there and the row would persist itself - the loss would be partial. It is
-    not: one caller, one list, every time."""
-    body = inspect.getsource(crud)
-    calls = [line for line in body.splitlines()
+    not: one caller, one list, every time. The batch funnel writes lines now (write_lines); the one caller left is
+    the unit fold's re-mark (chain.replay - to write_lines in the 11-13 bundle, this test with it)."""
+    from chain import replay
+
+    calls = [(module.__name__, line) for module in (crud, replay) for line in inspect.getsource(module).splitlines()
              if "apply_row_update_internal(" in line and "def " not in line]
-    assert len(calls) == 1, "the caller count changed: %s" % calls
-    assert "logs_to_cache=logs_to_cache," in body
+    assert [module for module, _line in calls] == ["chain.replay"], "the caller count changed: %s" % calls
+    assert "logs_to_cache=history," in inspect.getsource(replay)
 
 
 def test_the_contract_that_makes_the_dropped_return_fatal_is_still_stated():

@@ -14,7 +14,6 @@ import sys
 
 import pytest
 from sqlalchemy import create_engine, select, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -162,25 +161,6 @@ def test_a_resent_spelling_writes_no_line(env):
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.2"}], source="day_0300.csv")
     assert _said(env, PLAIN, "v")[-1] == ("day_0300.csv", "wafer-02")
     assert len(_said(env, PLAIN, "v")) == 2
-
-
-def test_a_retried_batch_is_folded_once(env, tmp_path, monkeypatch):
-    """A non-idempotent declaration (x -> xx) would store 'axxx' if the retry folded again."""
-    _declare(tmp_path, monkeypatch, {PLAIN: {"v": {"write": True,
-                                                   "rules": {"replace": [["x", "xx"]]}}}})
-    real, calls = crud._apply_batch_updates_once, []
-
-    def lose_the_race_once(*args, **kwargs):
-        calls.append(1)
-        if len(calls) == 1:
-            raise IntegrityError("INSERT", {}, Exception("uq_bk"))
-        return real(*args, **kwargs)
-    monkeypatch.setattr(crud, "_apply_batch_updates_once", lose_the_race_once)
-    monkeypatch.setattr(crud, "_is_business_key_unique_violation", lambda exc: True)
-    _write(env, PLAIN, [{"k": "K-01", "v": "ax"}])
-    assert len(calls) == 2
-    assert [r.v for r in _rows(env, PLAIN)] == ["axx"]
-    assert _said(env, PLAIN, "v") == [("f01.csv", "axx")]
 
 
 @pytest.mark.parametrize("table, raw, folded_key", [

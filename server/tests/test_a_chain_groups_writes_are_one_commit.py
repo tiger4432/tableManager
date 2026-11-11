@@ -132,9 +132,13 @@ def _dst(db):
 
 
 def _layers(db, table=DST):
-    S = models.CellSource
-    return sorted((r, c, s, o) for r, c, s, o in db.query(S.row_id, S.column_name, S.source_name, S.origin_row_id)
-                  .filter(S.table_name == table, S.column_name != "k"))
+    """(row_id, column, source, origin row) of each standing layer - its head line (`lines.layers`, lead 11-11)."""
+    from database import lines
+
+    columns = [c for c in TABLES[table]["column_types"] if c != "k"]
+    row_ids = [r for (r,) in db.query(models.DYNAMIC_TABLES[table].row_id)]
+    return sorted((r, c, s, said["origin_row_id"]) for (r, c), layer in lines.layers(db, table, row_ids, columns).items()
+                  for s, said in layer.items())
 
 
 # ------------------------------------------------------------------------------ the seat
