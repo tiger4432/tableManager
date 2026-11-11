@@ -1,0 +1,502 @@
+{
+ "about": "DRAFT (D, lead 11-12, owner «온톨로지로 맵핑 · 같은 원자를 내면 표를 하나처럼 잇기»): a table column's ONTOLOGY WORD - the place it fills, read off GET /api/ledger/declaration sources[].columns (contracts/declaration_columns, `setup.bound_columns`). The molecule walk heads its stacked table by these words: two tables' columns with the same word are ONE column; the column's own name rides beside it. A word is {kind, of, name}: kind entity (a key or an attribute of `of`), predicate (a qualifier - a value object's value is the qualifier `value` - or the sentence's time `occurred_at`), or table (`of` the table, `name` the column: a column that binds nothing, the entity-type column, and a key whose entity's type is read from a column - no one type to name). Bare names (no @version). A column bound more than once has one word per distinct place, in the order: entity words, then predicate words, each by (of, name). The same word from two sentences is one. Two columns of one table with the same word (a lineage's child and parent lot) are that word's column together - its `from` lists both, in the table's column order; the fold (AxisCompare) shows both values, the columns' own names beside it. A column with two words is in both words' columns.",
+ "cases": [
+  {
+   "name": "keys of two entities, a composite key, the time, a column bound to nothing",
+   "table": "lot_slot_wafer",
+   "table_columns": [
+    "lot",
+    "slot",
+    "wafer",
+    "event_type",
+    "event_time",
+    "lot_slot_wafer_key"
+   ],
+   "rows": [
+    {
+     "column": "event_time",
+     "predicate": "has_wafer@1",
+     "role": "time",
+     "name": "occurred_at",
+     "sentence": "seat-holds-wafer",
+     "as": "occurred_at"
+    },
+    {
+     "column": "lot",
+     "entity": "lot_slot@1",
+     "role": "key",
+     "name": "lot",
+     "sentence": "seat-holds-wafer",
+     "as": "subject"
+    },
+    {
+     "column": "slot",
+     "entity": "lot_slot@1",
+     "role": "key",
+     "name": "slot",
+     "sentence": "seat-holds-wafer",
+     "as": "subject"
+    },
+    {
+     "column": "wafer",
+     "entity": "wafer@1",
+     "role": "key",
+     "name": "wafer",
+     "sentence": "seat-holds-wafer",
+     "as": "target"
+    }
+   ],
+   "words": {
+    "lot": [
+     {
+      "kind": "entity",
+      "of": "lot_slot",
+      "name": "lot"
+     }
+    ],
+    "slot": [
+     {
+      "kind": "entity",
+      "of": "lot_slot",
+      "name": "slot"
+     }
+    ],
+    "wafer": [
+     {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "wafer"
+     }
+    ],
+    "event_type": [
+     {
+      "kind": "table",
+      "of": "lot_slot_wafer",
+      "name": "event_type"
+     }
+    ],
+    "event_time": [
+     {
+      "kind": "predicate",
+      "of": "has_wafer",
+      "name": "occurred_at"
+     }
+    ],
+    "lot_slot_wafer_key": [
+     {
+      "kind": "table",
+      "of": "lot_slot_wafer",
+      "name": "lot_slot_wafer_key"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an attribute, and a qualifier on a column that is also a key - two words, the entity's first",
+   "table": "lot_slot_wafer",
+   "table_columns": [
+    "wafer",
+    "event_type"
+   ],
+   "rows": [
+    {
+     "column": "wafer",
+     "predicate": "has_wafer@1",
+     "role": "qualifier",
+     "name": "shot",
+     "sentence": "seat-holds-wafer",
+     "as": "shot"
+    },
+    {
+     "column": "wafer",
+     "entity": "wafer@1",
+     "role": "key",
+     "name": "wafer",
+     "sentence": "seat-holds-wafer",
+     "as": "target"
+    },
+    {
+     "column": "event_type",
+     "entity": "wafer@1",
+     "role": "attribute",
+     "name": "event_type",
+     "sentence": "seat-holds-wafer",
+     "as": "target"
+    }
+   ],
+   "words": {
+    "wafer": [
+     {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "wafer"
+     },
+     {
+      "kind": "predicate",
+      "of": "has_wafer",
+      "name": "shot"
+     }
+    ],
+    "event_type": [
+     {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "event_type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key column the subject of two sentences - one word",
+   "table": "wafer_process",
+   "table_columns": [
+    "wafer_id"
+   ],
+   "rows": [
+    {
+     "column": "wafer_id",
+     "entity": "wafer@1",
+     "role": "key",
+     "name": "wafer",
+     "sentence": "processed",
+     "as": "subject"
+    },
+    {
+     "column": "wafer_id",
+     "entity": "wafer@1",
+     "role": "key",
+     "name": "wafer",
+     "sentence": "measured",
+     "as": "subject"
+    }
+   ],
+   "words": {
+    "wafer_id": [
+     {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "wafer"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an entity whose type is read from a column - the type column and its key are the table's own",
+   "table": "lot_slot_wafer",
+   "table_columns": [
+    "event_type",
+    "wafer"
+   ],
+   "rows": [
+    {
+     "column": "event_type",
+     "role": "entity_type",
+     "sentence": "seat-holds-wafer",
+     "as": "target"
+    },
+    {
+     "column": "wafer",
+     "entity_from": "event_type",
+     "role": "key",
+     "name": "wafer",
+     "sentence": "seat-holds-wafer",
+     "as": "target"
+    }
+   ],
+   "words": {
+    "event_type": [
+     {
+      "kind": "table",
+      "of": "lot_slot_wafer",
+      "name": "event_type"
+     }
+    ],
+    "wafer": [
+     {
+      "kind": "table",
+      "of": "lot_slot_wafer",
+      "name": "wafer"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a value object's column - the qualifier «value» of its predicate (owner 11-11: a value is an edge attribute)",
+   "table": "thickness",
+   "table_columns": [
+    "thk"
+   ],
+   "rows": [
+    {
+     "column": "thk",
+     "predicate": "measured_thk@1",
+     "role": "qualifier",
+     "name": "value",
+     "sentence": "thk",
+     "as": "value"
+    }
+   ],
+   "words": {
+    "thk": [
+     {
+      "kind": "predicate",
+      "of": "measured_thk",
+      "name": "value"
+     }
+    ]
+   }
+  },
+  {
+   "name": "one table, two columns with the same word (subject and target of one sentence) - one word each, the same word",
+   "table": "lot_lineage",
+   "table_columns": [
+    "child_lot",
+    "parent_lot"
+   ],
+   "rows": [
+    {
+     "column": "child_lot",
+     "entity": "lot@1",
+     "role": "key",
+     "name": "lot",
+     "sentence": "derived",
+     "as": "subject"
+    },
+    {
+     "column": "parent_lot",
+     "entity": "lot@1",
+     "role": "key",
+     "name": "lot",
+     "sentence": "derived",
+     "as": "target"
+    }
+   ],
+   "words": {
+    "child_lot": [
+     {
+      "kind": "entity",
+      "of": "lot",
+      "name": "lot"
+     }
+    ],
+    "parent_lot": [
+     {
+      "kind": "entity",
+      "of": "lot",
+      "name": "lot"
+     }
+    ]
+   }
+  }
+ ],
+ "stacks": [
+  {
+   "name": "two tables, the same word - one column; each keeps its own column name beside it",
+   "tables": {
+    "wafer_process": {
+     "wafer_id": [
+      {
+       "kind": "entity",
+       "of": "wafer",
+       "name": "wafer"
+      }
+     ],
+     "step": [
+      {
+       "kind": "predicate",
+       "of": "processed_with",
+       "name": "step"
+      }
+     ]
+    },
+    "lot_slot_wafer": {
+     "wafer": [
+      {
+       "kind": "entity",
+       "of": "wafer",
+       "name": "wafer"
+      }
+     ],
+     "event_type": [
+      {
+       "kind": "table",
+       "of": "lot_slot_wafer",
+       "name": "event_type"
+      }
+     ]
+    }
+   },
+   "table_columns": {
+    "lot_slot_wafer": [
+     "wafer",
+     "event_type"
+    ],
+    "wafer_process": [
+     "wafer_id",
+     "step"
+    ]
+   },
+   "columns": [
+    {
+     "word": {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "wafer"
+     },
+     "from": {
+      "lot_slot_wafer": [
+       "wafer"
+      ],
+      "wafer_process": [
+       "wafer_id"
+      ]
+     }
+    },
+    {
+     "word": {
+      "kind": "predicate",
+      "of": "processed_with",
+      "name": "step"
+     },
+     "from": {
+      "wafer_process": [
+       "step"
+      ]
+     }
+    },
+    {
+     "word": {
+      "kind": "table",
+      "of": "lot_slot_wafer",
+      "name": "event_type"
+     },
+     "from": {
+      "lot_slot_wafer": [
+       "event_type"
+      ]
+     }
+    }
+   ],
+   "order": "entity words, then predicate words, then table words - each by (of, name); a word's from by table name, each list in the table's column order"
+  },
+  {
+   "name": "a table with two columns of one word, a column with two words, and a column named «lot» of another entity (lot_slot) - every column in each of its words' columns, the same name of two entities apart",
+   "tables": {
+    "lot_lineage": {
+     "child_lot": [
+      {
+       "kind": "entity",
+       "of": "lot",
+       "name": "lot"
+      }
+     ],
+     "parent_lot": [
+      {
+       "kind": "entity",
+       "of": "lot",
+       "name": "lot"
+      }
+     ]
+    },
+    "lot_slot_wafer": {
+     "lot": [
+      {
+       "kind": "entity",
+       "of": "lot_slot",
+       "name": "lot"
+      }
+     ],
+     "wafer": [
+      {
+       "kind": "entity",
+       "of": "wafer",
+       "name": "wafer"
+      },
+      {
+       "kind": "predicate",
+       "of": "has_wafer",
+       "name": "shot"
+      }
+     ]
+    },
+    "wafer_process": {
+     "wafer_id": [
+      {
+       "kind": "entity",
+       "of": "wafer",
+       "name": "wafer"
+      }
+     ]
+    }
+   },
+   "table_columns": {
+    "lot_lineage": [
+     "child_lot",
+     "parent_lot"
+    ],
+    "lot_slot_wafer": [
+     "lot",
+     "wafer"
+    ],
+    "wafer_process": [
+     "wafer_id"
+    ]
+   },
+   "columns": [
+    {
+     "word": {
+      "kind": "entity",
+      "of": "lot",
+      "name": "lot"
+     },
+     "from": {
+      "lot_lineage": [
+       "child_lot",
+       "parent_lot"
+      ]
+     }
+    },
+    {
+     "word": {
+      "kind": "entity",
+      "of": "lot_slot",
+      "name": "lot"
+     },
+     "from": {
+      "lot_slot_wafer": [
+       "lot"
+      ]
+     }
+    },
+    {
+     "word": {
+      "kind": "entity",
+      "of": "wafer",
+      "name": "wafer"
+     },
+     "from": {
+      "lot_slot_wafer": [
+       "wafer"
+      ],
+      "wafer_process": [
+       "wafer_id"
+      ]
+     }
+    },
+    {
+     "word": {
+      "kind": "predicate",
+      "of": "has_wafer",
+      "name": "shot"
+     },
+     "from": {
+      "lot_slot_wafer": [
+       "wafer"
+      ]
+     }
+    }
+   ],
+   "order": "entity words, then predicate words, then table words - each by (of, name); a word's from by table name, each list in the table's column order"
+  }
+ ]
+}
