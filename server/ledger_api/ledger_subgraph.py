@@ -1657,6 +1657,17 @@ class VirtualEvidenceLookup:
         the stored read gives a registration's atom."""
         return ("entity_ref", {"type": object_type, "keys": object_keys}) if object_type is not None else (None, {})
 
+    @staticmethod
+    def _cell(value):
+        """A read cell as a virtual atom holds it - `roleframe._plain`, and a Decimal (a numeric column) as the number
+        JSON reads back, the shape every stored atom value comes back from jsonb in (7 · 1.25)."""
+        from decimal import Decimal
+
+        from ledger import roleframe
+
+        value = roleframe._plain(value)
+        return json.loads(str(value)) if isinstance(value, Decimal) else value
+
     def _atom(self, leg, row, moment):
         """A `_timed` row as an atom."""
         from ledger import roleframe
@@ -1665,14 +1676,14 @@ class VirtualEvidenceLookup:
         values = iter(row[1 + sum(len(leg.columns_of(arm)) for arm in ("outgoing", "incoming")):])
         qualifiers = {}
         for name, spec in sorted(leg.qualifiers.items()):
-            value = spec["constant"] if "constant" in spec else roleframe._plain(next(values))
+            value = spec["constant"] if "constant" in spec else self._cell(next(values))
             # a blank cell says nothing, as the translator leaves an optional qualifier out (`roleframe._attribute_value`)
             if not roleframe._is_missing(value):
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
         object_kind, payload = self._object(object_type, object_keys)
         if leg.value is not None:               # a value object: the value is the object (`roleframe`)
-            said = leg.value["constant"] if "constant" in leg.value else roleframe._plain(next(values))
+            said = leg.value["constant"] if "constant" in leg.value else self._cell(next(values))
             object_kind, payload = "value", {"value": said}
         if qualifiers:
             payload = dict(payload, qualifiers=qualifiers)
