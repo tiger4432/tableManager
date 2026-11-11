@@ -55,9 +55,3 @@ python -m pytest server/tests -v
 |---|---|
 | `README.md` | 이 문서 |
 
-## 안전장치
-
-- **멱등성**: 이미 정규화된 테이블은 자동 스킵합니다.
-- **중단 복구**: 마이그레이션 도중 실패 시 백업 테이블(`_migration_backup`)을 감지하여 자동으로 재개합니다.
-- **인덱스 충돌 방지**: PostgreSQL `pg_indexes` 카탈로그를 조회하여 고아 인덱스를 선제적으로 제거합니다.
-- **Static 테이블 분리**: `Base.metadata.create_all`에서 dynamic table을 제외하여 DDL 충돌을 차단합니다.
