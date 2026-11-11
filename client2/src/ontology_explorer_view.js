@@ -829,7 +829,7 @@ function renderRaw(state) {
     const bar = barDeclaration(state);
     // Form D (lead f3639d4a2): the text on the left, the form on the right; a text that does not read turns Save off.
     const split = bar ? null : new DeclarationSplit(document, textarea);
-    if (state.dirty) controls.append(h('span', 'oe-editor-unsaved', 'Unsaved'));
+    if (state.dirty && state.editorText !== state.openedText) controls.append(h('span', 'oe-editor-unsaved', 'Unsaved'));
     if (!bar) {
       const save = button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary');
       const fault = split && split.fault;
@@ -1951,6 +1951,16 @@ export function nodeTrail(el, head = []) {
   ];
 }
 
+// A form node's box. `data-path` is the map's jump target; `data-key` is the same path for `dom_patch`, so the box is
+// kept whatever class the controller sets on it after a draw (`is-editing-parent`) - keyed by its class, the parent of
+// the field being typed in was rebuilt on the `change` a press elsewhere in it fires, and that press was lost (11-11).
+function formNodeBox(path) {
+  const box = h('div', 'oe-node');
+  box.dataset.path = path;
+  box.dataset.key = `node:${path}`;
+  return box;
+}
+
 const isFormNode = (node) => node.nodeType === 1 && ` ${node.className || ''} `.includes(' oe-node ')
   && node.dataset && node.dataset.path !== undefined;
 
@@ -1961,10 +1971,10 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls, lead = null) {
   row.dataset.depth = String(depth);
   row.dataset.tone = toneOf(depth);
   const name = h('div', 'oe-node-label');
-  // A name may break only right after an '_' (lead 10-21): each segment is its own span, a <wbr> after its '_'.
-  // It wraps only where the rows stack (CSS); the one grid keeps it on one line everywhere else.
+  // A name breaks at a space, or right after an '_' or a '.' (lead 10-21, 11-11): each segment its own span, a <wbr>
+  // after it - never between two letters.
   const nameText = h('span', 'oe-node-name');
-  for (const part of String(label ?? '').split(/(?<=_)/)) nameText.append(h('span', '', part), h('wbr'));
+  for (const part of String(label ?? '').split(/(?<=[_.])/)) nameText.append(h('span', '', part), h('wbr'));
   nameText.setAttribute('data-wrap-ok', '');
   nameText.title = String(label);
   // The head is one button, its caret and its name (lead 10-21).
@@ -2051,12 +2061,8 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   // map as open in the same action that adds the member, so the row the person just created
   // is the row they are looking at. In READING there is no door -- an empty map there really
   // is nothing -- so the outline stays folded and says how much.
-  const box = h('div', 'oe-node');
-  // The address the right-hand map jumps to. It is the node's own path and nothing else --
-  // the map is drawn from the same paths, so there is no second naming scheme to keep in
-  // step. (Not `data-key`: that is `dom_patch`'s reconciliation signature and these boxes
-  // are already reconciled positionally among their siblings.)
-  box.dataset.path = path;
+  // The address the right-hand map jumps to is the node's own path - the map is drawn from the same paths.
+  const box = formNodeBox(path);
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth, covers);
@@ -2197,8 +2203,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   const stated = typeof held.kind === 'string' && branches[held.kind] ? held.kind : '';
   const chosen = shaped ? shapeBranch(node, value, context.deref)
     : stated || names.find((name) => held[name] !== undefined) || '';
-  const box = h('div', 'oe-node');
-  box.dataset.path = path;
+  const box = formNodeBox(path);
   // Form D: the head is a tree row like every other - its name, the picker in the value column, its demand beside
   // it (the leaves' own seat, `demandWord`) - so its words stand on the rows' lines.
   const name = label === null ? path : label;
@@ -2601,8 +2606,7 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
     hasShape: Boolean(node), required,
   });
   const control = demand.source === 'broken' ? null : leafControl(context, node, path, value, planned);
-  const box = h('div', 'oe-node');
-  box.dataset.path = path;             // the map's jump target; see `renderSkeletonForm`
+  const box = formNodeBox(path);
   let state = null;
   let cls = '';
   if (planned) {

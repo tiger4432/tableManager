@@ -20,6 +20,7 @@ import { makeDoc, walk } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { declarationShape } from '../src/ontology_skeleton.js';
+import { commitTree } from '../src/dom_patch.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VIEW = path.join(HERE, '..', 'src', 'ontology_explorer_view.js');
@@ -149,6 +150,22 @@ function suite(view, css, skel) {
     .map((n) => n.textContent).filter(Boolean);
   ok('W2 no tier word beside any box', states.length > 5 && !states.some((s) => TIERS.has(s)),
     `${states.length} states, tiers seen: ${states.filter((s) => TIERS.has(s)).join(',')}`);
+  // D1 (lead 11-11): the controller marks the parent of the field being edited (`is-editing-parent`) after each draw.
+  // The next draw - the `change` a press inside that parent fires when the box loses focus - must keep its nodes: rebuilt,
+  // the pressed button left the page between mousedown and click and the press was lost (2 of 2 on 11-11e).
+  const OPEN_LEAF = new Proxy({}, { get: (_t, k) => (k === LEAF.path ? true : ALL_OPEN_BRANCHES[k]) });
+  const host = globalThis.document.createElement('div');
+  commitTree(host, form(OPEN_LEAF), null);
+  // A field below the top block: the form's root is the one node commitTree keeps whatever it is.
+  const leafNode = walk(host).find((n) => cls(n, 'oe-node') && n.dataset.path === 'read.unit');
+  const parent = leafNode && walk(host).find((n) => cls(n, 'oe-node') && n !== leafNode && walk(n).includes(leafNode)
+    && !walk(n).some((m) => m !== n && m !== leafNode && cls(m, 'oe-node') && walk(m).includes(leafNode)));
+  const pressed = parent && walk(parent).find((n) => n.dataset && n.dataset.action);
+  if (parent) parent.classList.add('is-editing-parent');
+  commitTree(host, form(OPEN_LEAF), null);
+  ok('D1 a draw keeps the edited field\'s parent and the button pressed in it (the press is not lost)',
+    Boolean(pressed) && parent.dataset.path === 'read' && walk(host).includes(parent) && walk(host).includes(pressed),
+    `parent ${parent ? parent.dataset.path : 'none'}, button ${pressed ? pressed.dataset.action : 'none'}`);
   eq('W3 no row is named «This slot»', walk(opened).filter((n) => cls(n, 'oe-node-name') && n.textContent === 'This slot').length, 0);
   const paths = walk(open).filter((n) => cls(n, 'oe-ground-from')).map((n) => n._text);
   ok('W4 a ground names where it comes from in the declaration\'s words, not the bundle path',
@@ -253,6 +270,8 @@ const loadFrom = async (file, mutate, expose) => {
 const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap', 'renderNewDeclaration']);
 
 const MUTANTS = [
+  { name: 'a-form-node-keyed-by-its-class-again', catches: ['D1'], file: VIEW,
+    from: '  box.dataset.key = `node:${path}`;\n', to: '\n' },
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
     from: '.oe-field.is-bare.is-folded { display: contents; }', to: '.oe-field.is-bare.is-folded { display: flex; flex-direction: column; }' },
   { name: 'the-global-button-rule-wins', catches: ['L2'], file: CSS,

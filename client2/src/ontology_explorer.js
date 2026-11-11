@@ -222,10 +222,14 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   //    no request). While a box is typed into, this is true and nothing is drawn; leaving the box
   //    (`change`, below) draws once.
   let typing = false;
+  // True while a save re-reads and re-opens its declaration: the screen keeps the declaration being saved and draws
+  // once at the end. The re-read asks for no selection (an unread declaration's key is refused, 400 unknown_selection),
+  // so the server picks one - drawn, that was another declaration on screen for seconds (lead 11-11).
+  let held = false;
   const dispatch = (action) => {
     state = reduceExplorerState(state, action);
     if (typing) return state;
-    render();
+    if (!held) render();
     // 🔴 ONE HOOK, NOT ONE PER WRITER. Every row, list and text edit ends in
     //    `EDITOR_CHANGED` (there are five writers), so the derivation hangs here —
     //    adding it at each writer is how the fifth one gets forgotten.
@@ -728,6 +732,7 @@ No effect`;
       dispatch({
         type: 'EDITOR_CHANGED',
         text: JSON.stringify(item.raw ?? {}, null, 2),
+        opened: true,
       });
       // No re-read: opening a draft writes nothing, and a mirror read here would answer
       // with the draft's own empty `raw` and wipe the text just seeded from the file.
@@ -778,6 +783,21 @@ No effect`;
     );
   });
 
+  // Bring `el` into view by scrolling the explorer's own scrollers only - `scrollIntoView` also scrolls the tab around
+  // the explorer, and a map row pressed slid the explorer's top bar off screen (72 px measured, lead 11-11).
+  // `block`: 'center' sets the row in the box's middle; 'nearest' moves a box only when the row is outside it.
+  const scrollInside = (el, block) => {
+    for (let box = el.parentElement; box && box !== root; box = box.parentElement) {
+      const flow = getComputedStyle(box).overflowY;
+      if ((flow !== 'auto' && flow !== 'scroll') || box.scrollHeight <= box.clientHeight) continue;
+      const b = box.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      if (block === 'center') box.scrollTop += (r.top + r.height / 2) - (b.top + box.clientHeight / 2);
+      else if (r.top < b.top) box.scrollTop += r.top - b.top;
+      else if (r.bottom > b.top + box.clientHeight) box.scrollTop += r.bottom - (b.top + box.clientHeight);
+    }
+  };
+
   // 🔴 「나는 지금 어디에 있나」 IS MOVED WITHOUT A RE-RENDER. The map is one class on one
   // row; re-rendering the whole panel to move a marker would rebuild the form under the
   // hand that is filling it -- and this fires on every focus change, including a Tab
@@ -791,9 +811,8 @@ No effect`;
       else row.removeAttribute('aria-current');
       if (on) here = row;
     }
-    // `nearest`: a marker already on screen does not move the panel, and the map's own
-    // column is the only scroller between here and a fixed-height body.
-    if (here) here.scrollIntoView({ block: 'nearest' });
+    // `nearest`: a marker already on screen does not move the panel.
+    if (here) scrollInside(here, 'nearest');
   };
 
   // The map follows the hand. Focus, not click, so tabbing through the form moves it too.
@@ -1374,13 +1393,14 @@ No effect`;
       });
       render();
       // 🔴 NOW, NOT IN A `requestAnimationFrame`. The render is synchronous, so the row is
-      // already in the document, and `scrollIntoView` forces the layout it needs by itself.
+      // already in the document, and reading its box forces the layout it needs by itself.
       // Deferring it to a frame made the jump depend on frames being SERVED -- measured on a
       // hidden pane: the marker moved, the middle tree never scrolled, and the door was a
       // door that did nothing. Same trap as `built-is-not-loaded`, one layer down.
       for (const node of root.querySelectorAll('.oe-workspace .oe-node[data-path]')) {
         if (node.dataset.path !== path) continue;
-        node.querySelector('.oe-node-row')?.scrollIntoView({ block: 'center' });
+        const row = node.querySelector('.oe-node-row');
+        if (row) scrollInside(row, 'center');
         break;
       }
     }
@@ -1526,27 +1546,33 @@ No effect`;
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ expected_revision: record.revision }),
         });
-        dispatch({ type: 'DRAFT_CLOSED' });
-        dispatch({ type: 'AUTHORING_INVALIDATED' });
-        // The file is written either way; whether the product LOADS it is the save's answer.
-        const unapplied = Array.isArray(record.validation_errors) ? record.validation_errors : [];
-        dispatch({ type: 'SAVE_NOT_APPLIED', key: targetKey, errors: unapplied });
-        dispatch({ type: 'FIELDS_DROPPED', key: targetKey, fields: record.dropped_fields, saved: true });
-        if (!unapplied.length) showToast('Saved', 'success');
-        await readMirror({ draft: null, selection: null, viewMode: 'active' });
-        // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --
-        // building a setup up is MANY saves, and losing your place at each one makes that
-        // way of working impossible.
-        //
-        // 🔴 IT IS A NEW DRAFT, NOT THE OLD ONE KEPT OPEN. Saving consumes the record: it
-        // is activated, its revision is spent. Holding it would make the SECOND save fail
-        // on a stale revision -- and today's failures were all at the second and third
-        // action, never the first.
-        //
-        // The re-read above happens FIRST so the new draft is based on the snapshot hash
-        // the write just produced. A draft opened on the pre-write hash is refused by the
-        // compare-and-swap, which is exactly this morning's 409.
-        await reopenForEditing(targetKey, targetKind, targetId, record.raw);
+        held = true;
+        try {
+          dispatch({ type: 'DRAFT_CLOSED' });
+          dispatch({ type: 'AUTHORING_INVALIDATED' });
+          // The file is written either way; whether the product LOADS it is the save's answer.
+          const unapplied = Array.isArray(record.validation_errors) ? record.validation_errors : [];
+          dispatch({ type: 'SAVE_NOT_APPLIED', key: targetKey, errors: unapplied });
+          dispatch({ type: 'FIELDS_DROPPED', key: targetKey, fields: record.dropped_fields, saved: true });
+          if (!unapplied.length) showToast('Saved', 'success');
+          await readMirror({ draft: null, selection: null, viewMode: 'active' });
+          // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --
+          // building a setup up is MANY saves, and losing your place at each one makes that
+          // way of working impossible.
+          //
+          // 🔴 IT IS A NEW DRAFT, NOT THE OLD ONE KEPT OPEN. Saving consumes the record: it
+          // is activated, its revision is spent. Holding it would make the SECOND save fail
+          // on a stale revision -- and today's failures were all at the second and third
+          // action, never the first.
+          //
+          // The re-read above happens FIRST so the new draft is based on the snapshot hash
+          // the write just produced. A draft opened on the pre-write hash is refused by the
+          // compare-and-swap, which is exactly this morning's 409.
+          await reopenForEditing(targetKey, targetKind, targetId, record.raw);
+        } finally {
+          held = false;
+          render();
+        }
         // 🔴 WAIT FOR THE ROWS, THEN PUT THEM BACK WHERE THEY WERE. `load` fires the
         // authoring plan and does not wait for it (`void loadAuthoring`), so at the moment
         // the reopen returns the panel is still the short one -- restoring there would be

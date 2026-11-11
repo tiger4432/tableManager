@@ -1858,6 +1858,61 @@ const withView = async (mutate) => {
     Object.fromEntries(VIEW_NAMES.map((n) => [n, view[n]])) } })).module.createOntologyExplorerController;
 };
 const withController = async (mutate) => (await loadWithProbe(CONTROLLER, { mutate })).module.createOntologyExplorerController;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [4c] lead 11-11 - a save the load leaves out (a refused source) keeps its declaration on screen while it is read
+//      again and opened again, and opened on its own text it does not say «Unsaved». Before: the re-read asks for no
+//      selection (the refused key is a 400), its answer was drawn - another declaration for seconds on 11-11e - and the
+//      text seeded from the file was «Unsaved» with nothing typed.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[4c] saved and left out: the screen stays on it, and opened on its own text it is not «Unsaved»');
+{
+  const realView = await import('../src/ontology_explorer_view.js');
+  const heldWalk = async (mutate) => {
+    const shown = [];
+    let unsaved = 0;
+    const view = Object.fromEntries(VIEW_NAMES.map((n) => [n, realView[n]]));
+    view.renderOntologyExplorer = (host, st) => {
+      shown.push(st.draft?.target_key || st.selection?.key || null);
+      const out = realView.renderOntologyExplorer(host, st);
+      unsaved += walkAll(host).filter((n) => n._classes?.includes('oe-editor-unsaved')).length;
+      return out;
+    };
+    const create = (await loadWithProbe(CONTROLLER, { ...(mutate ? { mutate } : {}),
+      stubs: { './ontology_explorer_view.js': view } })).module.createOntologyExplorerController;
+    const seen4 = await saveWalk(create, { dropped: true });
+    const from = shown.indexOf(KEY);
+    return { seen4, shown: from < 0 ? shown : shown.slice(from), unsaved };
+  };
+  const heldSuite = (got) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(detail ? `${name} — ${detail}` : name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    say('C1 from the first draw of the declaration on, every draw is that declaration - none of the re-read between',
+      got.shown.length > 2 && got.shown.every((k) => k === KEY), got.shown.join(' · '));
+    say('B1 opened again on the text just saved, no draw says «Unsaved» - nothing is typed in this walk',
+      got.seen4.bad.opened.length === 1 && got.unsaved === 0, `${got.seen4.bad.opened.length} opened, ${got.unsaved} «Unsaved» drawn`);
+    return { ran: names.length, names, failures };
+  };
+  const heldBase = heldSuite(await heldWalk());
+  ran += heldBase.ran;
+  failed += heldBase.failures.length;
+  const MUTANTS = [
+    { id: 'H-M1', what: 'the save draws its re-read', catches: 'C1',
+      mutate: (text) => swap(text, '    if (!held) render();\n', '    render();\n') },
+    { id: 'H-M2', what: 'the seeded text is not what the draft opened on', catches: 'B1',
+      mutate: (text) => swap(text, '        opened: true,\n', '') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => heldSuite(await heldWalk(m.mutate)),
+    { baselineRan: heldBase.ran, baselineNames: heldBase.names, title: '\n  [4c] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
 {
   const importedBase = importedSuite(await importedWalk(createOntologyExplorerController),
     await importedWalk(createOntologyExplorerController, { imported: null }));
