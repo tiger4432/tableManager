@@ -72,7 +72,6 @@ QUIET_KEPT = {
     "server/scripts/measure_ledger_followup_lag.py": {"probe": 1},
     "server/scripts/migrate_decide_aggregations.py": {"stream": 1},
     "server/scripts/preview_unified_declarations.py": {"stream": 1},
-    "server/scripts/probe_ingestion_stages.py": {"probe": 1},
     "server/scripts/seed_syn_valid_die_floors.py": {"import": 1, "parse": 1},
     "server/scripts/support/finding_kinds.py": {"import": 1},
     "server/transfer_plan.py": {"parse": 4},
