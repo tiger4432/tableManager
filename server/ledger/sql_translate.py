@@ -420,19 +420,6 @@ def _naive(plan, kinds) -> bool:
     raise NotCompiled(f"read.occurred_at: a time read from a {kind} column")
 
 
-def _qualifier(kinds, binding, why) -> dict:
-    """An optional qualifier's spec - the cell as it came (`roleframe._attribute_value`) or a constant; None leaves it
-    out."""
-    if binding.get("kind") == "constant":
-        return {"constant": roleframe._plain(binding.get("value"))}
-    if binding.get("kind") != "column" or binding.get("timezone") or binding.get("format"):
-        raise NotCompiled(f"{why}: a qualifier bound by {binding.get('kind')!r} or read as a time")
-    _cell, kind = _column(kinds, binding.get("column"), why)
-    if kind not in (_TEXT, _INTEGER):
-        raise NotCompiled(f"{why}: a qualifier read from a {kind} column")
-    return {"column": binding["column"], "kind": kind}
-
-
 def _missing(spec) -> str:
     """SQL: the cell of a value `spec` is missing - NULL, an empty text, a float NaN (`roleframe._is_missing`, spaces
     present)."""
@@ -442,8 +429,8 @@ def _missing(spec) -> str:
 
 
 def _value(kinds, binding, why) -> dict:
-    """A value object's value spec - a constant, or a text or number column read as it holds it (the stored compiler
-    keeps the cell as it came, `roleframe._plain`)."""
+    """A value object's value or a qualifier's spec - a constant, or a text or number column read as it holds it (the
+    stored compiler keeps the cell as it came, `roleframe._plain`; a qualifier's `roleframe._attribute_value`)."""
     if binding.get("kind") == "constant":
         return {"constant": roleframe._plain(binding.get("value"))}
     if binding.get("kind") != "column" or binding.get("timezone") or binding.get("format"):
@@ -457,8 +444,8 @@ def _value(kinds, binding, why) -> dict:
 def compile_source(snapshot, plan, kinds, world) -> tuple:
     """(`plan`'s legs - a sentence each, each entity reference its entities carry, each registration its roles'
     attributes make - , what it does not read: «attributes of <type> not read», «<sentence>: a value object not read»,
-    each an engine.left_out line, its source still read) or `NotCompiled`. Attributes as the
-    stored translator writes them (`roleframe`): a subject's attribute named as a qualifier of its sentence is that
+    «<sentence>: qualifier <name> not read», each an engine.left_out line, its source still read) or `NotCompiled`.
+    Attributes as the stored translator writes them (`roleframe`): a subject's attribute named as a qualifier of its sentence is that
     qualifier; a role the source registers (`registered_roles`) says «register» of its node with its attributes."""
     from collections.abc import Mapping
 
@@ -502,7 +489,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                  if not ((objectless or valued) and role == "object")}
         ends = {role: _entity(plan.relation, kinds, binding, f"{sentence}.{role}") for role, binding in named.items()}
         ends.setdefault("object", NO_OBJECT)
-        qualifiers, from_attributes, needed = {}, set(), []
+        qualifiers, from_attributes, needed, unsaid = {}, set(), [], None
         subject_attributes = named["subject"].get("attributes") or {}
         for name, reference in emission.qualifiers.items():
             binding = mapping.bindings.get(reference.role_id)
@@ -512,18 +499,23 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                 continue
             role = emission_plan.claim.roles.get(reference.role_id)
             if role is None or (role.required and attribute):
-                raise NotCompiled(f"{sentence}: a required qualifier {name!r}")
+                unsaid = f"{sentence}: qualifier {name} not read"           # the sentence alone, not its source
+                break
             try:
-                qualifiers[name] = _qualifier(kinds, binding, f"{sentence}.{name}")
+                qualifiers[name] = _value(kinds, binding, f"{sentence}.{name}")
             except NotCompiled:
                 if not attribute:
-                    raise
+                    unsaid = f"{sentence}: qualifier {name} not read"
+                    break
                 unread.add(f"attributes of {ends['subject'][0]} not read")    # its value out, not the source
                 continue
             if attribute:
                 from_attributes.add(name)
             if role.required and "column" in qualifiers[name]:     # blank, it unsays this sentence alone
                 needed.append(f"NOT {_missing(qualifiers[name])}")
+        if unsaid:
+            unread.add(unsaid)
+            continue
         event = any(is_event_time_role(role) for role in mapping.bindings)
         basis = driver.occurred_at.basis if event else NOT_AN_EVENT_BASIS
         first = {"object": [], **{role: _text_columns(binding.get("keys") or {}, kinds) for role, binding in named.items()}}
@@ -540,7 +532,7 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
             binding = mapping.bindings[role_id]
             end = _entity(plan.relation, kinds, binding, f"{sentence}.{role_id}")
             try:
-                specs = {name: _qualifier(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
+                specs = {name: _value(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
                          for name, child in sorted((binding.get("attributes") or {}).items())}
             except NotCompiled:
                 unread.add(f"attributes of {end[0]} not read")
@@ -583,12 +575,10 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
 
 def _one_present(specs) -> str:
     """SQL: one of the attribute `specs` has a value - the translator registers a node only then (`_attribute_values`:
-    a blank cell says nothing; `roleframe._is_missing`, spaces present)."""
+    a blank cell says nothing; `_missing`)."""
     said = ["true" if roleframe._is_missing(spec["constant"]) is False else "false" for spec in specs.values()
             if "constant" in spec]
-    said += [f"(w.{_quoted(spec['column'])} IS NOT NULL" + (f" AND w.{_quoted(spec['column'])} <> '')"
-                                                          if spec["kind"] == _TEXT else ")")
-             for spec in specs.values() if "column" in spec]
+    said += [f"NOT {_missing(spec)}" for spec in specs.values() if "column" in spec]
     return "(" + " OR ".join(said or ["false"]) + ")"
 
 

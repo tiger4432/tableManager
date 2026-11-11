@@ -1656,8 +1656,8 @@ class VirtualEvidenceLookup:
         qualifiers = {}
         for name, spec in sorted(leg.qualifiers.items()):
             value = spec["constant"] if "constant" in spec else roleframe._plain(next(values))
-            # an attribute's blank cell says nothing, as the translator leaves it out (`roleframe._attribute_value`)
-            if value is not None and not (name in leg.attributes and roleframe._is_missing(value)):
+            # a blank cell says nothing, as the translator leaves an optional qualifier out (`roleframe._attribute_value`)
+            if not roleframe._is_missing(value):
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
         object_kind, payload = self._object(object_type, object_keys)

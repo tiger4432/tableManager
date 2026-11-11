@@ -67,7 +67,7 @@ def fixture_registering(world):
     return _board(world, document)
 
 
-def _board(world, document):
+def _board(world, document, rows=ROWS):
     import notation_norm
 
     with world["engine"].begin() as conn:
@@ -75,7 +75,7 @@ def _board(world, document):
     with open(os.path.join(paths.config_path("ontology"), "ledger_config.json"), "w", encoding="utf-8") as fh:
         json.dump(document, fh)
     trace_router._COMPILED.clear()
-    _write(world, "wafer_process", ROWS)
+    _write(world, "wafer_process", rows)
     _write(world, "lot_slot_wafer", SEATS)
     for source in (CHANGED, KEPT):
         backfill.run(world["engine"], source=source)
@@ -249,6 +249,51 @@ def test_a_blank_required_qualifier_unsays_its_sentence_alone(world):
     stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
     assert _drawn(virtual) == _drawn(stored)
     assert len(stored["edges"]) >= 3, "P4's edges stay - its blank step unsays only the qualified sentence"
+
+
+@pytest.fixture(name="thick")
+def fixture_thick(config, monkeypatch):
+    """wafer_process holds a float `thick` (table_config «number») - asked before `world`, which builds the table."""
+    import test_ledger_worlds_are_independent_and_meet_in_a_walk as worlds
+
+    catalogue = json.loads((config / "table_config.json").read_text(encoding="utf-8"))
+    catalogue["wafer_process"]["column_types"]["thick"] = "number"
+    (config / "table_config.json").write_text(json.dumps(catalogue), encoding="utf-8")
+    sample = worlds._sample
+
+    def floated(name):
+        document = sample(name)
+        if name.startswith("table_config"):
+            document["wafer_process"]["column_types"]["thick"] = "number"
+        return document
+    monkeypatch.setattr(worlds, "_sample", floated)
+
+
+def test_a_float_qualifier_is_read_as_the_ledger_holds_it(thick, world):
+    """Owner on ops 11-11 («qualifier float»): a qualifier read from a float column - 9.0, 0.1 and two blank cells -
+    compiles (nothing left out) and each atom the virtual read makes is the stored one; the walk draws what the stored
+    walk draws, a blank saying no qualifier on both. (A NaN cell: the stored page refuses its row - `roleframe.
+    _row_sort_token` - while the virtual read draws the row without the qualifier; not ruled here.)"""
+    document = _only(CHANGED, KEPT, one=True)
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-processed-with-recipe"]["bind"]["step"] = {
+        "kind": "column", "column": "thick"}
+    rows = [dict(row, thick=value) for row, value in zip(ROWS, (9.0, 0.1, None, None))]
+    board = _board(world, document, rows=rows)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [floated] = [leg for leg in legs if leg.sentence == "wafer-processed-with-recipe"]
+    assert floated.qualifiers == {"step": {"column": "thick", "kind": "float"}}
+    _shadow_finds_no_difference(board, follow=[floated.predicate])
+    stored, virtual = _walk(board, "stored", include_superseded=True), _walk(board, "virtual", include_superseded=True)
+    assert _drawn(virtual) == _drawn(stored), [(sorted(set(v) - set(s)), sorted(set(s) - set(v)))
+                                               for v, s in zip(_drawn(virtual)[:2], _drawn(stored)[:2])]
+    said = sorted(str((e.get("qualifiers") or {}).get("step")) for e in stored["edges"] if e["predicate"] == floated.predicate)
+    assert set(said) == {"0.1", "9.0", "None"}, "canary: 9.0 and 0.1 said, a blank not - %s" % said
 
 
 def _shadow_finds_no_difference(board, follow=None):
