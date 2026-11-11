@@ -709,6 +709,17 @@ async function pivotEditApplied(c, mode, at) {
 }
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
+  { entry: 'admin.html', after: 'Ontology Explorer, a map row pressed', rule: 'a map jump keeps the tab still', at: 'oe-topbar', expr: `(() => {
+  const p = window.__mapPress;
+  if (!p) return 'no map row was pressed';
+  const w = document.getElementById('ontology-tab-wrapper'), bar = document.querySelector('#ontology-explorer-root .oe-topbar');
+  const ws = document.querySelector('#ontology-explorer-root .oe-workspace');
+  if (!(w.scrollHeight > w.clientHeight)) return 'the tab does not scroll here (else this proves nothing)';
+  if (!(ws && ws.scrollTop > 0)) return 'the workspace did not scroll to the node (of ' + p.rows + ' map rows, the last pressed)';
+  const moved = bar.getBoundingClientRect().top - p.bar;
+  if (w.scrollTop !== p.wrap || Math.abs(moved) > 0.5) return 'the tab scrolled ' + (w.scrollTop - p.wrap) + ' px, the top bar moved ' + moved.toFixed(1) + ' px';
+  return null;
+})()` },
   // The declaration form is one grid (lead 10-21, form D): on the sample page a 40-letter name three levels down is
   // whole in its cell, and every row's value stands at one x. At the stacked width the rows have no columns.
   { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'names whole, columns in line',
@@ -720,6 +731,35 @@ const CELLS = [
   const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains('oe-node-value'))).filter(Boolean)
     .map((c) => Math.round(c.getBoundingClientRect().left)));
   if (xs.size !== 1) return 'oe-node-value at ' + [...xs].join(' · ') + ' px';
+  return null;
+})()` },
+  // A name six levels deep, past half the form (lead 11-11 ㄱ): the name column stays within half the form and wraps the
+  // name - at its '_', never inside a segment - and every value box keeps its width (the box token or the half left).
+  // On 11-11e one deep name took 398 of a 506 px form and left the boxes 22 px.
+  { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'deep names wrap, boxes keep their width',
+    at: 'sample-decl-form', expr: `(() => {
+  const top = document.querySelector('#sample-decl-form .oe-skeleton-form > .oe-node');
+  if (!top) return 'no form drawn';
+  const R = (e) => e.getBoundingClientRect(), fw = R(top).width, gs = getComputedStyle(top);
+  const nameW = parseFloat(gs.gridTemplateColumns), gap = parseFloat(gs.columnGap) || 0;
+  if (nameW > fw / 2 + 0.5) return 'the name column ' + nameW.toFixed(1) + ' px of ' + fw.toFixed(1) + ', over half';
+  const probe = document.createElement('div');
+  probe.style.width = 'var(--oe-box-w)';
+  document.querySelector('#sample-decl-form .oe-skeleton-form').append(probe);
+  const boxW = R(probe).width;
+  probe.remove();
+  const want = Math.min(boxW, fw / 2 - gap);
+  for (const cell of document.querySelectorAll('#sample-decl-form .oe-node-row > .oe-node-value')) {
+    const b = cell.firstElementChild;
+    if (b && b.classList.contains('oe-box') && b.getClientRects().length && R(b).width < want - 0.5)
+      return 'a value box ' + R(b).width.toFixed(1) + ' px wide, under ' + want.toFixed(1);
+  }
+  const names = [...document.querySelectorAll('#sample-decl-form .oe-node-name')].filter((n) => n.getClientRects().length);
+  const segs = (n) => [...n.children].filter((s) => s.tagName === 'SPAN');
+  const wrapped = names.filter((n) => new Set(segs(n).map((s) => Math.round(R(s).top))).size > 1);
+  const split = names.flatMap(segs).find((s) => !/\s/.test(s.textContent) && s.getClientRects().length > 1);
+  if (split) return '«' + split.textContent + '» broken inside';
+  if (!wrapped.length) return 'no name wrapped (else this proves nothing)';
   return null;
 })()` },
   // The form's rows (lead 10-21, skill §0-bis): every row a whole number of row steps (a box and a step) high and the
@@ -739,7 +779,7 @@ const CELLS = [
   probe.remove();
   if (!(boxW > 0)) return 'the box width token reads ' + boxW;
   const textOf = (e) => { const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) if (t.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(t); return g.getBoundingClientRect(); } return null; };
-  const seen = { chips: 0, folded: 0, deep: 0, word: 0, table: 0 }, lefts = new Set(), texts = new Set();
+  const seen = { chips: 0, folded: 0, deep: 0, word: 0, table: 0, wraps: 0 }, lefts = new Set(), texts = new Set();
   const tables = [...document.querySelectorAll('#sample-decl-form .oe-node-table')].filter((t) => t.getClientRects().length);
   for (const t of tables) {
     const n = Math.round(R(t).height / unit);
@@ -751,7 +791,13 @@ const CELLS = [
   let prev = null;
   for (const r of rows) {
     const rb = R(r), k = Math.round(rb.height / unit);
-    if (k < 1 || Math.abs(rb.height - k * unit) > 0.5) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
+    // A name past half the form wraps and its row is its lines high (lead 11-11 ㄱ) - at least one step, not a whole number.
+    const named = r.querySelector(':scope > .oe-node-label .oe-node-name');
+    const wraps = Boolean(named) && new Set([...named.children].filter((s) => s.tagName === 'SPAN' && s.getClientRects().length)
+      .map((s) => Math.round(R(s).top))).size > 1;
+    seen.wraps += wraps ? 1 : 0;
+    if (wraps && rb.height < unit - 0.5) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, under one step of ' + unit.toFixed(1);
+    if (!wraps && (k < 1 || Math.abs(rb.height - k * unit) > 0.5)) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
     const under = prev && tables.find((t) => Math.abs(R(t).top - R(prev).bottom) <= 0.5 && Math.abs(R(t).bottom - rb.top) <= 0.5);
     seen.table += under ? 1 : 0;
     if (prev && !under && Math.abs(rb.top - R(prev).bottom - divider(r)) > 0.5) return 'row ' + say(r) + ' ' + (rb.top - R(prev).bottom).toFixed(1) + ' px below the row above';
@@ -759,7 +805,7 @@ const CELLS = [
     const cell = r.querySelector(':scope > .oe-node-value'), b = cell && cell.firstElementChild;
     const chips = b && b.classList.contains('oe-chips') ? b : null;
     const lines = chips ? new Set([...chips.children].map((c) => Math.round(R(c).top))).size : 1;
-    if (k !== lines) return 'row ' + say(r) + ' ' + k + ' steps high for ' + lines + ' line(s)';
+    if (!wraps && k !== lines) return 'row ' + say(r) + ' ' + k + ' steps high for ' + lines + ' line(s)';
     seen.chips += chips && lines > 1 ? 1 : 0; seen.folded += r.classList.contains('is-folded') ? 1 : 0; seen.deep += Number(r.dataset.depth) >= 3 ? 1 : 0;
     if (!b) continue;
     const first = chips ? chips.firstElementChild : b, fb = R(first), fs = getComputedStyle(first);
@@ -782,7 +828,7 @@ const CELLS = [
   }
   if (lefts.size !== 1) return 'boxes start at ' + [...lefts].join(' · ') + ' px';
   if (texts.size !== 1) return 'box text starts at ' + [...texts].join(' · ') + ' px';
-  if (!seen.chips || !seen.folded || !seen.deep || !seen.word || !seen.table) return 'the sample form lacks ' + Object.keys(seen).filter((n) => !seen[n]).join(', ') + ' (else this proves nothing)';
+  if (!seen.chips || !seen.folded || !seen.deep || !seen.word || !seen.table || !seen.wraps) return 'the sample form lacks ' + Object.keys(seen).filter((n) => !seen[n]).join(', ') + ' (else this proves nothing)';
   return null;
 })()` },
   // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
@@ -4220,6 +4266,14 @@ const DRIVE = {
       btn.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
       return true; })()`).then(() => sleep(800))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
+    // The map's last row pressed (lead 11-11): the explorer's own boxes bring its node in; on 11-11e the jump scrolled the
+    // tab around the explorer too, and the explorer's top bar slid 72 px off the screen.
+    ['Ontology Explorer, a map row pressed', (c) => evaluate(c, `(() => { const w = document.getElementById('ontology-tab-wrapper');
+      const bar = document.querySelector('#ontology-explorer-root .oe-topbar');
+      const rows = [...document.querySelectorAll('#ontology-explorer-root .oe-map-row[data-action="map-goto"]')];
+      if (!w || !bar || rows.length < 3) return false;
+      window.__mapPress = { wrap: w.scrollTop, bar: bar.getBoundingClientRect().top, rows: rows.length };
+      rows[rows.length - 1].click(); return true; })()`).then(() => sleep(600))],
     // The tab scrolled to the explorer's foot (lead 10-27): the explorer keeps to its box and the section under it is not
     // drawn over (at 1280x720 the window's minimum height ran 97 px over Ledger sources).
     ['Ontology Explorer, tab scrolled', (c) => evaluate(c, `(() => { const w = document.getElementById('ontology-tab-wrapper');
@@ -4627,9 +4681,18 @@ const MUTANTS = [
   { name: 'a padding-top on the base button, its words off its middle', entry: 'sample.html', rule: 'centre', at: 'sample-actions',
     file: 'src/base.css', edits: [['  height: var(--control-h);\n  padding: 0 var(--space-3);\n  font-family: var(--font-head);',
       '  height: var(--control-h);\n  padding: 6px var(--space-3) 0;\n  font-family: var(--font-head);']] },
-  { name: 'the name column back at its base width, a long name cut', entry: 'sample.html', rule: 'names whole, columns in line',
-    at: 'sample-decl-form', says: /a_forty_letter_name_of_a_declared_column/, file: 'src/ontology_explorer.css',
-    edits: [['  grid-template-columns: max-content minmax(0, 1fr);', '  grid-template-columns: calc(var(--space-6) * 5) minmax(0, 1fr);']] },
+  // Re-aimed 11-11: a name no longer cut by a narrow column - it wraps (lead ㄱ); what cuts it is the one-line rule back.
+  { name: 'a name kept on one line again, cut at the half', entry: 'sample.html', rule: 'names whole, columns in line',
+    at: 'sample-decl-form', says: /a_seventy_letter_name/, file: 'src/ontology_explorer.css',
+    edits: [['  white-space: normal; overflow-wrap: normal;\n  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);\n}',
+      '  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\n  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);\n}\n'
+      + ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: none; }']] },
+  { name: 'the name column uncapped again, the boxes squeezed', entry: 'sample.html', rule: 'deep names wrap, boxes keep their width',
+    at: 'sample-decl-form', says: /over half|under/, file: 'src/ontology_explorer.css',
+    edits: [['  grid-template-columns: fit-content(50%) minmax(0, 1fr);', '  grid-template-columns: max-content minmax(0, 1fr);']] },
+  { name: 'a map jump scrolls the tab around the explorer again', entry: 'admin.html', rule: 'a map jump keeps the tab still',
+    at: 'oe-topbar', file: 'src/ontology_explorer.js',
+    edits: [["        if (row) scrollInside(row, 'center');", "        if (row) row.scrollIntoView({ block: 'center' });"]] },
   { name: 'a row padded again, its height off the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
     at: 'sample-decl-form', says: /not a whole number/, file: 'src/ontology_explorer.css',
     edits: [['  margin: 0; padding: 0;\n', '  margin: 0; padding: 3px 0;\n']] },

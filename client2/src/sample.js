@@ -8,7 +8,8 @@ import './spotfire.css';
 import './ledger_declaration_bar.css';
 import { renderDeclarationBar } from './ledger_declaration_bar.js';
 import { SAMPLE_RAW, SAMPLE_VIEW } from './ledger_declaration_sample.js';
-// The declaration form's tree (form D), read-only: names three levels deep, the longest 40 letters.
+// The declaration form's tree (form D), read-only: names three levels deep, the longest 40 letters - and a 70-letter one
+// six levels deep, past half the form (lead 11-11: it wraps at its '_', the boxes keep their width).
 import './ontology_explorer.css';
 import { readContext, renderSkeletonForm } from './ontology_explorer_view.js';
 // The option list under a box (option_list.js): a formula's names as typed.
@@ -39,16 +40,21 @@ if (formMount) {
       { key: 'columns', required: false, node: { kind: 'map', keyed_by: 'index', member: 'column', of: leaf } },
       { key: 'time', required: false, node: { kind: 'record', fields: [
         { key: 'column', required: true, node: leaf },
-        { key: 'a_forty_letter_name_of_a_declared_column', required: false, node: leaf }] } }] } },
+        { key: 'a_forty_letter_name_of_a_declared_column', required: false, node: leaf }] } },
+      { key: 'zone', required: false, node: { kind: 'record', fields: [{ key: 'rule', required: false, node: { kind: 'record', fields: [
+        { key: 'at', required: false, node: { kind: 'record', fields: [{ key: 'step', required: false, node: { kind: 'record', fields: [
+          { key: 'a_seventy_letter_name_of_a_declared_column_six_levels_deep_in_the_form', required: false, node: leaf }] } }] } }] } }] } }] } },
     { key: 'limits', required: false, node: { kind: 'record', fields: [
       { key: 'group_by', required: false, node: leaf }, { key: 'unit', required: false, node: leaf }] } }] };
   // A list of words long enough to wrap (a chip row two lines high), a required cell left empty (its word beside its
   // box), a list of records (its table), and a block left folded (its summary).
   const columns = ['lot_id', 'wafer_id', 'slot', 'die_x', 'die_y', 'bin', 'soft_bin', 'test_program', 'tester', 'probe_card',
     'operator', 'started_at', 'ended_at', 'site', 'temperature', 'retest', 'yield', 'remark'];
-  const value = { name: 'lot_master', read: { table: 'lot_master', keys: [{ column: 'lot_id', role: 'id' }, { column: 'site', role: 'scope' }], columns, time: { column: 'observed_at', a_forty_letter_name_of_a_declared_column: 'Asia/Seoul' } },
+  const value = { name: 'lot_master', read: { table: 'lot_master', keys: [{ column: 'lot_id', role: 'id' }, { column: 'site', role: 'scope' }], columns, time: { column: 'observed_at', a_forty_letter_name_of_a_declared_column: 'Asia/Seoul' },
+      zone: { rule: { at: { step: { a_seventy_letter_name_of_a_declared_column_six_levels_deep_in_the_form: 'Asia/Seoul' } } } } },
     limits: { group_by: 'lot_id', unit: 'lot' } };
-  const tree = renderSkeletonForm(readContext({}, { read: true, 'read.time': true, limits: false }), skeleton, '', value, 0, 'lot_master');
+  const tree = renderSkeletonForm(readContext({}, { read: true, 'read.time': true, 'read.zone': true, 'read.zone.rule': true,
+    'read.zone.rule.at': true, 'read.zone.rule.at.step': true, limits: false }), skeleton, '', value, 0, 'lot_master');
   formMount.replaceChildren(Object.assign(document.createElement('div'), { className: 'oe-skeleton-form' }));
   formMount.firstChild.append(tree);
 }

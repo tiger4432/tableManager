@@ -886,7 +886,7 @@ export const FLOORS = new Map([
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
   // 147 -> 155 ([8b] W1-W2 and six mutants, lead 10-27: the worlds' overlaps and notices as meta lines).
   // 155 -> 173 ([13] I1-I4 and five mutants: an imported entity type is edited in its world; [14] E1-E4 and five: a key from sections[key_section], a ref from the world its key names - lead 10-27).
-  ['explorer_open_path_harness.mjs', 222],
+  ['explorer_open_path_harness.mjs', 226],   // 222 -> 226: [4c] C1 · B1 and their two mutants (lead 11-11)
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -903,7 +903,7 @@ export const FLOORS = new Map([
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
   // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
   // 21 -> 27 (N0-N3 K6 K7, lead 10-11 small two: a folded row and a shut branch say the plan's note once; the stale refusal's retry).
-  ['explorer_form_grammar_harness.mjs', 33],
+  ['explorer_form_grammar_harness.mjs', 34],   // 33 -> 34: D1, a press kept through the change's draw (lead 11-11)
   // New with lead a5720d9d8: the screen's one blank rule (absent.js isBlank) - the contract's scalar
   // rows, the rule beyond scalars, and the seats that fold into it asking the same function.
   ['blank_rule_harness.mjs', 4],
