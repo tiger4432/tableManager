@@ -55,6 +55,16 @@ def cell_line_to_audit(call) -> bool:
     return word not in EVENT_COLUMNS
 
 
+#: a str method compares or cuts a name - a table name passed to one is not asking the table
+STR_METHODS = {"startswith", "endswith", "split", "rsplit", "replace", "find", "rfind", "index", "count", "strip",
+               "lstrip", "rstrip", "join", "format", "partition", "rpartition", "removeprefix", "removesuffix"}
+
+
+def _callee(call):
+    f = call.func
+    return f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
+
+
 def _dotted(node):
     """`a.b.c` of an expression made of names and attributes, else None."""
     if isinstance(node, ast.Name):
@@ -73,7 +83,7 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
     are not. Docstrings are words, not questions. `files`: [(relative path, source)] - server/ without its tests when
     None. `via`: filled with {caller: a callee it was counted through}. `asks_call(call)`: a call that asks too
     (`cell_line_to_audit`). THE census the questions ask."""
-    sql = re.compile(r"(?i)\b(from|into|update|join|table|on)\s+[\"`]?" + re.escape(table) + r"\b")
+    sql = re.compile(r"(?i)\b(from|into|update|join|table|on|analyze|vacuum|truncate)\s+[\"`]?" + re.escape(table) + r"\b")
     seats, calls, defs = {}, {}, {}                            # seat -> asks? · seat -> {(module, name)}
     for rel, source in (files if files is not None else _server_files()):
         tree = ast.parse(source)
@@ -106,8 +116,16 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
                     if ((isinstance(sub, ast.Name) and sub.id in names)
                             or (isinstance(sub, ast.Attribute) and sub.attr in names)
                             or (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
-                                and (sub.value.strip() == table or sql.search(sub.value)))):
+                                and sql.search(sub.value))):
                         asks = True
+                    # the bare name where a table name is held: an argument (not of a str method) or an item of a
+                    # tuple · list · set · dict - a name list a DDL loop walks is asking too
+                    held = ([*sub.elts] if isinstance(sub, (ast.Tuple, ast.List, ast.Set)) else
+                            [*sub.keys, *sub.values] if isinstance(sub, ast.Dict) else
+                            [*sub.args, *(k.value for k in sub.keywords)]
+                            if isinstance(sub, ast.Call) and _callee(sub) not in STR_METHODS else [])
+                    asks = asks or any(isinstance(a, ast.Constant) and isinstance(a.value, str)
+                                       and a.value.strip() == table for a in held)
                     if not isinstance(sub, ast.Call):
                         continue
                     asks = asks or bool(asks_call and asks_call(sub))
@@ -127,7 +145,8 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
                 seats[seat], calls[seat] = read([node], nested)
                 defs.setdefault((own, node.name), set()).add(seat)
         seat = f"{rel}:<module>"
-        seats[seat], calls[seat] = read([s for s in tree.body if not isinstance(s, (ast.ClassDef, *DEFS))])
+        bodies = {id(x) for node in ast.walk(tree) if isinstance(node, (ast.ClassDef, *DEFS)) for x in ast.walk(node)}
+        seats[seat], calls[seat] = read(tree.body, bodies)            # a def under a top-level if/try is its own
     found = {s for s, asks in seats.items() if asks}
     while True:
         reach = {s for s in found if s not in allowed and "*:" + s.split(":", 1)[1] not in allowed}
@@ -164,6 +183,14 @@ def test_the_census_counts_sql_and_callers_not_words():
             ("c/two.py", "from ..b import util\ndef h():\n    return util.f()\n"),
             ("b/three.py", "from .util import f\ndef k():\n    return f()\n")]
     assert askers({"CellSource"}, "cell_sources", same) == {"a/util.py:f", "c/one.py:g"}
+    # the bare name counts where a table name is taken (an argument), not where a str method compares it; a def
+    # under a top-level if is its own seat, not the module's
+    named = [("s.py", 'def static(n):\n    return n.startswith("cell_sources")\n'
+                      'def probe():\n    return insp.has_table("cell_sources")\n'
+                      'if X:\n    def inner():\n        return db.query(CellSource)\n'),
+             ("t.py", 'TABLES = ("cell_sources", "cell_overwrites")\ndef tune():\n    run("ANALYZE cell_sources")\n')]
+    assert askers({"CellSource"}, "cell_sources", named) == {"s.py:probe", "s.py:inner", "t.py:<module>",
+                                                             "t.py:tune"}
 
 
 def test_cell_sources_is_asked_only_by_the_copy_and_the_rollback():
