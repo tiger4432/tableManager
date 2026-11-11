@@ -18,6 +18,7 @@ import pytest                                                         # noqa: E4
 
 from chain import enrichment                                          # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
+from tests.support import line_tables  # noqa: E402
 from tests.support.enrich_decl import enrich_chain_rules, write_rules  # noqa: E402
 
 SRC, INV, BARE = "agt_log", "agt_inv", "agt_bare"
@@ -53,6 +54,8 @@ def fixture_db(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    for table in TABLES:
+        line_tables.build(db_session.get_bind(), table)   # a cell's layers are its lines' (A 11-11)
     write_rules(tmp_path, monkeypatch, RULE)
     return db_session
 
@@ -101,10 +104,12 @@ def _label(name):
 
 
 def _layers(db, job, column, by=False):
-    row = _row(db, job)
-    return {_label(layer.source_name): (layer.value, layer.updated_by) if by else layer.value
-            for layer in db.query(models.CellSource).filter_by(
-                table_name=INV, row_id=str(row.row_id), column_name=column)}
+    from database import lines
+
+    row_id = str(_row(db, job).row_id)
+    named = lines.layers(db, INV, [row_id], columns=[column]).get((row_id, column), {})
+    return {_label(name): (layer["value"], layer["updated_by"]) if by else layer["value"]
+            for name, layer in named.items()}
 
 
 def _source_row(db, log_id):
