@@ -443,6 +443,8 @@ def build_refusal(conn, table_name: str):
     if said:
         return said
     insp = inspect(conn)
+    if table_name in insp.get_view_names():
+        return "it is a view - declare it kind: view"
     if insp.has_table(table_name) and insp.has_table(lines_relation(table_name)) and \
             WON_BY not in {c["name"] for c in insp.get_columns(table_name)}:
         return ORPHAN_REFUSAL % {"t": table_name, "lines": lines_relation(table_name)}
@@ -766,6 +768,8 @@ def ensure_declared(engine, tables=None) -> dict:
             continue
 
         def work(conn, name=name, cfg=cfg, built=built, missing=missing):
+            for model in (LineColumn, AuditBatch, LineSource):    # the launcher builds before any create_all made them
+                model.__table__.create(bind=conn, checkfirst=True)
             db = Session(bind=conn)
             if built:
                 alter_columns(db, name, cfg, add=missing)
@@ -774,24 +778,29 @@ def ensure_declared(engine, tables=None) -> dict:
             db.flush()
 
         try:
-            if built and not missing:
-                if sum(1 for c in have if c.startswith("head_")) > 1 and engine.dialect.name == "postgresql":
-                    head_index(engine, name, cfg, say=log.info)
-                continue
-            db_safety.short_ddl(engine, name, work, "lines")
-            if built and engine.dialect.name == "postgresql":
-                with Session(engine) as db:
-                    wide = chunk_count(db, name) > 1
-                if wide:
-                    head_index(engine, name, cfg, say=log.info)
+            if not built or missing:
+                db_safety.short_ddl(engine, name, work, "lines")
         except ValueError as err:
             refused[name] = str(err)
             log.error("[Lines] %s: %s", name, err)
+            continue
         except Exception as err:                             # noqa: BLE001 - said; the sync raises it with the rest
             held = getattr(err, "ddl_holders", None)
             refused[name] = (f"its lock was not had (held by {held}) - end that session or wait for it, then start "
                              f"or save again" if held else f"{told(err)} - fix what it names, then start or save again")
             log.error("[Lines] %s: %s", name, refused[name], exc_info=None if held else err)
+            continue
+        if not built or engine.dialect.name != "postgresql":
+            continue
+        try:                    # the head index is speed only: said, never a refusal - the next sync asks it again
+            wide = sum(1 for c in have if c.startswith("head_")) > 1
+            if missing:
+                with Session(engine) as db:
+                    wide = chunk_count(db, name) > 1
+            if wide:
+                head_index(engine, name, cfg, say=log.info)
+        except Exception as err:                             # noqa: BLE001
+            log.error("[Lines] %s: head index not built - %s", name, told(err))
     return refused
 
 

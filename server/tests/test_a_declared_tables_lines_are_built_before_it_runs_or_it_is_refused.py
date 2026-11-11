@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.pool import StaticPool
 
 from conftest import retire_dynamic_model
-from database import crud, lines, models, schemas
+from database import crud, lines, models
 
 CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
 LONG = "b63_" + "l" * 50                       # 54 bytes, one past lines.MAX_TABLE_NAME_BYTES
@@ -101,6 +101,15 @@ def test_a_built_table_declaring_a_framework_column_takes_no_ddl_at_the_next_sta
     assert [s for s in ddl if s.lstrip().upper().startswith(("CREATE", "ALTER", "DROP"))] == []
 
 
+def test_a_view_declared_without_kind_view_is_refused_by_name(fresh):
+    with fresh.begin() as conn:
+        conn.execute(text('CREATE VIEW "b63_view" AS SELECT 1 AS k, 2 AS a'))
+    crud.TABLE_CONFIG["b63_view"] = CFG
+    assert lines.ensure_declared(fresh, ["b63_view"]) == {"b63_view": "it is a view - declare it kind: view"}
+    assert str(lines.LineTablesRefused({"b63_view": "it is a view - declare it kind: view"})) == \
+        "b63_view: line table not built - it is a view - declare it kind: view"
+
+
 def test_a_declared_table_the_database_lacks_is_refused_not_skipped(fresh):
     crud.TABLE_CONFIG["b63_absent"] = CFG
     assert lines.ensure_declared(fresh, ["b63_absent"]) == {
@@ -146,19 +155,14 @@ def test_the_build_and_the_save_ask_one_judge(fresh, save, monkeypatch):
     assert raised.value.detail["message"] == "probe: line table not built - judged - by the one judge"
 
 
-def test_a_table_a_watcher_reload_creates_keeps_its_lines(fresh, monkeypatch):
+def test_a_watcher_or_worker_reload_makes_the_table_and_builds_no_line_table(fresh, monkeypatch):
+    """SYSTEM_RELOAD's refresh reads only (lead 11-11 ㄴ): the launcher and config_watcher's reload are the builders."""
     table = "b63_reload_new"
     declared = dict(crud.TABLE_CONFIG, **{table: CFG})
     monkeypatch.setattr(crud, "load_table_config", lambda *a, **k: dict(declared))
     assert table in models.refresh_dynamic_models(fresh), "canary: the reload made t"
-    from sqlalchemy.orm import Session
-
-    with Session(fresh) as db:
-        crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-            business_key_val="K1", updates={"k": "K1", "a": "x"}, source_name="f.csv", updated_by="b63")]))
-        db.commit()
-        assert lines.has_lines(db, table)
-        assert db.execute(text('SELECT count(*) FROM "%s"' % lines.lines_relation(table))).scalar() == 1
+    assert not inspect(fresh).has_table(lines.lines_relation(table))
+    assert "won_by" not in {c["name"] for c in inspect(fresh).get_columns(table)}
 
 
 def test_a_column_add_refused_on_reload_leaves_both_tables_without_it(fresh, monkeypatch, caplog):
@@ -187,5 +191,7 @@ def test_a_column_add_refused_on_reload_leaves_both_tables_without_it(fresh, mon
     assert any(s.startswith(refused_on) for s in seen), "canary: the line column's add was tried"
     said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Reload] declaration refused - ")]
     assert len(said) == 1 and said[0].startswith("[Reload] declaration refused - %s: line table not built - " % table)
+    assert said[0].endswith(" - restarting the server builds it again; if it still cannot be built, the boot stops "
+                            "with that reason"), said
     assert "c" not in {c["name"] for c in inspect(fresh).get_columns(table)}
     assert lines.value_column("c") not in {c["name"] for c in inspect(fresh).get_columns(lines.lines_relation(table))}

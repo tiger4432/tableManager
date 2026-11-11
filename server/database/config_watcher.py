@@ -551,7 +551,9 @@ class ConfigChangeHandler:
                 try:
                     models.sync_dynamic_tables_schema(self.engine)
                 except lines.LineTablesRefused as refused:          # the declaration refused; the process runs on
-                    logger.error("[Reload] declaration refused - %s", refused)
+                    for line in str(refused).splitlines():
+                        logger.error("[Reload] declaration refused - %s - restarting the server builds it again; if it "
+                                     "still cannot be built, the boot stops with that reason", line)
                     return
                 logger.info("Physical database schema synced successfully.")
 

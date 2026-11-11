@@ -1877,10 +1877,7 @@ def sync_dynamic_tables_schema(engine):
                         col_name, table_name, told(err))
 
     # the declared tables' lines (t__lines + won_by) after their columns - the same door, so a new column reaches
-    # t__lines too (C 11-11). Any refused: every one, raised at once (lead 11-11 ㄴ). The lines' own tables first -
-    # the launcher builds before any process's create_all has made them
-    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource):
-        model.__table__.create(bind=engine, checkfirst=True)
+    # t__lines too (C 11-11). Any refused: every one, raised at once (lead 11-11 ㄴ)
     refused = lines.ensure_declared(engine)
     if refused:
         raise lines.LineTablesRefused(refused)
@@ -3160,9 +3157,8 @@ def refresh_dynamic_models(engine=None):
 
     호출처: 웹서버 reload_local_process_cache(/admin/reload-configs),
             워커 SYSTEM_RELOAD 핸들러(run_watcher 폴러, chain_ingestion_worker 루프).
-    만든 뒤에는 `sync_dynamic_tables_schema` - 선언된 표를 짓는 한 자리(열 · 줄 표, lead 11-11): 다시 읽은 표가 줄 표
-    없이 쓰기를 받지 않게. 거절은 `lines.LineTablesRefused` 로 호출자에게 - 리로드 호출자는 로그로 그 선언을 거절하고,
-    `build_before_start` 는 아무것도 띄우지 않는다.
+    줄 표는 짓지 않는다(lead 11-11 ㄴ): 짓는 자리는 시작(런처 `build_before_start` · 각 부팅 동기화)과
+    config_watcher 의 리로드뿐 - SYSTEM_RELOAD 를 받은 워처 · 워커가 같이 지어 서로 겨루지 않게.
 
     반환: 새로 CREATE된 테이블명 리스트 (engine 미지정 또는 config 로드 실패 시 []).
     """
@@ -3184,7 +3180,6 @@ def refresh_dynamic_models(engine=None):
         # 사라져서 이제는 되살릴 수단이 없다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
-        sync_dynamic_tables_schema(engine)
         # the map-key and decision-key indexes are the scheduler's index line's (`runtime.maintenance_line`, 소유자 10-15:
         # the chain worker builds nothing) - built at its start and at a Reload, not in every process that reloads
         return created
@@ -3199,6 +3194,7 @@ def build_before_start(engine, say) -> bool:
 
     try:
         refresh_dynamic_models(engine)
+        sync_dynamic_tables_schema(engine)
     except lines.LineTablesRefused as refused:
         for line in str(refused).splitlines():
             say(line)

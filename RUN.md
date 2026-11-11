@@ -22,14 +22,17 @@
 >            뜻: 다른 세션이 그 표를 잡고 있어 잠금 대기 시한 안에 못 얻었다
 >            할 일: 그 pid 의 세션을 끝내거나 끝나기를 기다린 뒤 런처 재기동
 >   표 없음    it is declared but the database has no such table - start the server or save the declaration again; both make it
+>   뷰        it is a view - declare it kind: view
+>            뜻: DB 에서 뷰인 것을 kind: view 없이 표로 선언했다. 뷰는 줄 표를 갖지 않는다
 >   그 밖      <오류 문장> - fix what it names, then start or save again
 >
-> 선언 저장  그 표의 줄 표가 거절될 것이면(이름 · 옛 줄 표) 저장이 400 이고 파일은 그대로다
+> 선언 저장  그 표의 줄 표가 거절될 것이면(이름 · 옛 줄 표 · 뷰) 저장이 400 이고 파일은 그대로다
 >          {"code": "line_table_refused", "path": "tables.<표>", "message": "<표>: line table not built - <사유> - <할 일>"}
-> 리로드    [Reload] declaration refused - <표>: line table not built - <사유> - <할 일>
+> 리로드    [Reload] declaration refused - <표>: line table not built - <사유> - <할 일> - restarting the server builds it again; if it still cannot be built, the boot stops with that reason
 >          뜻: 파일은 이미 저장됐다. 새 칸 추가가 거절됐으면 <표>와 <표>__lines 둘 다 그 칸이 없다
->          이 프로세스의 모델은 그 칸을 가진 채라 그 표 읽기가 «no such column <칸>» 으로 실패한다 — 다시 저장해 지어지거나 재기동할 때까지 (sqlite 에서 잼)
->          할 일: 사유의 할 일을 한 뒤 다시 저장하거나 런처 재기동(다음 시작이 다시 짓는다 — 같은 사유면 다시 멈춘다)
+>          그때까지 그 표 읽기는 «no such column <칸>» 으로 실패한다
+>          할 일: 사유의 할 일을 한 뒤 다시 저장하거나 런처 재기동
+>          줄 표를 짓는 것은 시작(런처)과 이 리로드뿐 — 리로드 버튼의 워처 · 워커 새로 읽기는 표 모델만 읽는다
 > 볼 것    launcher.log 의 위 줄. 다 지어졌으면 아무 줄 없이 자식이 뜬다
 > 끄기     없음 — 줄 표 없이 띄우는 스위치는 없다
 > ```
