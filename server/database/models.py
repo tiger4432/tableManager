@@ -700,34 +700,15 @@ def _owner_columns_missing(bind) -> list:
     return missing
 
 
-def ensure_owner_columns(engine):
-    """`cell_sources`' owner columns on a database without them - ADD COLUMN, nullable, no default: metadata only on
-    PostgreSQL 11+, no rewrite whatever the table's size. Added at BOOT only (`sync_dynamic_tables_schema`, lead 11-06:
-    no DDL on a write path), through `db_safety.short_ddl` (lead 11-09 ⓐ) - never had, its lock error raises."""
-    import db_safety
-
-    missing = _owner_columns_missing(engine)
-    if missing:
-        postgres = engine.dialect.name == "postgresql"
-
-        def add(conn):
-            for name in missing:
-                conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s%s VARCHAR"
-                                  % ("IF NOT EXISTS " if postgres else "", name)))
-        db_safety.short_ddl(engine, "cell_sources", add, "owner columns")
-        logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
-    _OWNER_COLUMNS.add(engine)
-
-
 def require_owner_columns(engine):
     """The layer write's question: the owner columns are there, or a refusal that says why and what to do - never a
     write that fails inside the ORM."""
     if _owner_columns_missing(engine):
-        raise RuntimeError("cell_sources has no owner_rule / owner_key yet - the boot adds them (sync_dynamic_tables_"
-                           "schema); restart the API or the chain worker, and see its log for «[Layers] cell_sources»")
+        raise RuntimeError("cell_sources has no owner_rule / owner_key - the old layer table is retired (the cell-"
+                           "source overhaul) and nothing adds them any more; a write to it cannot run here")
 
 
-#: The databases `ensure_owner_columns` found or made the columns on, in this process.
+#: The databases the owner columns were found on, in this process.
 _OWNER_COLUMNS = weakref.WeakSet()
 
 
@@ -894,20 +875,6 @@ HUMAN_CLAIMS_INDEX = "idx_sources_human_claims"
 RETIRED_CLAIMS_INDEX = "idx_sources_by_source"
 
 
-def human_claims_index_ddl():
-    """`(name, CREATE statement)` for the human-claims index - the one spelling.
-
-    CONCURRENTLY, because this runs at boot on a live box; `IF NOT EXISTS` because it runs
-    at every boot. The columns and the predicate are read off the same two constants the
-    model declaration uses, so a change there cannot leave the ensure building the old
-    shape under the new name.
-    """
-    return HUMAN_CLAIMS_INDEX, (
-        f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{HUMAN_CLAIMS_INDEX}" '
-        f'ON "cell_sources" ("table_name", "row_id", "column_name") '
-        f"WHERE source_name = '{HUMAN_SOURCE_NAME}'")
-
-
 class CellSource(Base):
     __tablename__ = "cell_sources"
 
@@ -968,8 +935,8 @@ class CellSource(Base):
     origin_row_id = Column(String, nullable=True)
     # owner 11-06 step 2: the (rule, key) that owns a chain layer - what settling, picking and the tests read; its
     # name (`crud.owned_layer_name`) says the same. NULL = a layer no owner has adopted yet (a person's, a file's, or a
-    # chain layer written before). Deferred: a process reading cell_sources before `ensure_owner_columns` added them
-    # never selects them.
+    # chain layer written before). Deferred: a database without them (the boot added them until the old layer
+    # table retired - lead 11-11) is never asked for them by a read.
     owner_rule = deferred(Column(String, nullable=True))
     owner_key = deferred(Column(String, nullable=True))
 
@@ -1036,8 +1003,8 @@ class CellSource(Base):
         # ⚠️ REMOVING THE OLD ONE HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never
         # drops an index. An existing database keeps it until a person runs
         # `server/migrations/drop_redundant_layering_indexes.py --apply`, whose REPLACED
-        # section refuses to drop it until this index exists and is valid. The boot ensure
-        # creates this one and NAMES the old one with its size and the command.
+        # section refuses to drop it until this index exists and is valid. `create_all` builds this one on a new
+        # database; nothing builds it at boot any more (the old layer table retires - lead 11-11).
         Index(HUMAN_CLAIMS_INDEX, "table_name", "row_id", "column_name",
               postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME),
               info={"purpose": "the cells a person typed", "serves": "enrichment analysis, human claims"}),
@@ -1752,12 +1719,6 @@ def sync_dynamic_tables_schema(engine):
     from sqlalchemy.schema import CreateColumn
 
     import db_safety
-
-    try:
-        ensure_owner_columns(engine)        # cell_sources' owner columns (owner 11-06 step 2) - boot, not the writes
-    except Exception as err:                                     # noqa: BLE001 - said; the write path refuses
-        logger.error("[Layers] cell_sources: the owner columns were not added - layer writes refuse until a boot "
-                     "adds them: %s", told(err), exc_info=err)
 
     inspector = inspect(engine)
     dialect = engine.dialect
