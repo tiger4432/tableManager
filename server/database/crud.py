@@ -2218,6 +2218,10 @@ def rank_terms(table_name: str = None):
         # 2b. newest first
         (lambda ln, u: -ln["at"] if ln["at"] is not None else 0.0,
          lambda c, u: c.at.desc()),
+        # 2c. one instant, the later line - a batch's lines share its time and the later item wins, as
+        #     layer_instant's later time for it did (A QA 11-11); a layer with no line (cell_sources) skips it
+        (lambda ln, u: -(ln.get("line_id") or 0),
+         lambda c, u: c.line_id.desc()),
         # 3. total order, always decides
         (lambda ln, u: ln["source_name"],
          lambda c, u: c.source_name.asc()),
