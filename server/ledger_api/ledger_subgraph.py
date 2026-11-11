@@ -532,6 +532,18 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
+def _kept(filters, read, entities):
+    """`read` (atoms, cut) without the atoms the walk's value filters refuse (`walk_filter.keeps_atom`, the calculator)
+    - the stored and in-memory reads' judge; the virtual read says the same in its SQL (`_filtered`)."""
+    if not filters:
+        return read
+    from ledger import walk_filter
+
+    atoms, cut = read
+    frontier = walk_filter.frontier_of(entities)
+    return [atom for atom in atoms if walk_filter.keeps_atom(filters, atom, frontier)], cut
+
+
 def _qualifier_values(payload, names):
     """The values `names` take in an edge's qualifiers (`_json_key`), or None when one is not there - an edge without
     the value binds nothing and is bound by nothing (`follow=<predicate>:<qualifier>`, lead 10-27)."""
@@ -849,7 +861,7 @@ class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
     def __init__(self, connection, worlds=None, since=None, until=None,
-                 one=(), current_only=True, leave_out=None, indexed=()):
+                 one=(), current_only=True, leave_out=None, indexed=(), filters=None):
         from ledger import schema
 
         self.connection = connection
@@ -879,6 +891,8 @@ class SqlEvidenceLookup:
         #: the qualifiers every walked ledger keeps an index on (`schema.qualifier_index`) - a read bound on one of
         #: them asks its equality (`_bound_on`); none: every read as it was
         self.indexed = frozenset(indexed)
+        #: the walk's value filters (`walk_filter`) - judged over each atom fetched (`_kept`): the cap reads first
+        self.filters = filters or {}
         #: A continued walk's «as of» (총괄 10-12 이어 걷기): only atoms recorded before this uuid7 bound - `_as_of_bound`.
         self.recorded_before = None
 
@@ -1045,7 +1059,7 @@ class SqlEvidenceLookup:
             LIMIT %(fetch)s
         """, params)
         self._count_excluded(cte, _arms, params)
-        return self._bounded(rows, limit)
+        return _kept(self.filters, self._bounded(rows, limit), entities)
 
     def _count_excluded(self, frontier_cte, arms, params):
         """One aggregate per hop, and ONLY when an interval was asked for (ruling 208).
@@ -1096,7 +1110,7 @@ class SqlEvidenceLookup:
             ORDER BY e.occurred_at {order}, e.id {order}
             LIMIT %(fetch)s
         """, params)
-        return self._bounded(rows, limit)
+        return _kept(self.filters, self._bounded(rows, limit), [entity])
 
     def count_not_event_time(self, entity, direction, predicate):
         """How many of those atoms the time page leaves out because their time is not an event
@@ -1289,9 +1303,10 @@ class _DescribedSeeds:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, indexed=()):
+    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, indexed=(), filters=None):
         # `indexed`: the SQL lookup's, taken for its signature - a list in memory has no index to read by
         self.atoms = list(atoms)
+        self.filters = filters or {}
         self.one = frozenset(one)
         self.current_only = current_only
         # 🔴 THE SAME TWO ARGUMENTS AND THE SAME ACCUMULATOR AS THE SQL LOOKUP. A double
@@ -1390,7 +1405,7 @@ class InMemoryEvidenceLookup:
                         continue
                     atom = replace(atom, not_current=True)
                 rows.append(atom)
-        return self._result(rows, limit)
+        return _kept(self.filters, self._result(rows, limit), entities)
 
     def count_far_ends(self, entities, direction, predicate, far_type):
         """`SqlEvidenceLookup.count_far_ends` over the atoms held here - the read's filters, its census left alone."""
@@ -1437,7 +1452,8 @@ class VirtualEvidenceLookup:
     refuses a continued walk. `said`: the answer's `engine` cell - «left_out» gains a `one` predicate more than one
     source says (its current fact is read in one table)."""
 
-    def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None):
+    def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None,
+                 filters=None):
         from ledger import schema
         from ledger.trace_router import _instant_arg
 
@@ -1459,6 +1475,8 @@ class VirtualEvidenceLookup:
             for source, world, predicate in sorted({(leg.source, leg.world_name, leg.predicate) for leg in legs
                                                     if said_by.get((leg.world_name, leg.predicate), 0) > 1}))
         self._census_of = {}
+        #: the walk's value filters (`walk_filter`), said in each read's WHERE (`_filtered`)
+        self.filters = filters or {}
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -1504,6 +1522,57 @@ class VirtualEvidenceLookup:
         said.append("(%s) IN (SELECT * FROM unnest(%s))" % (", ".join(cells), ", ".join(
             f"CAST(%({name}{index})s AS {kind}[])" for index, kind in enumerate(types))))
         return "(" + " AND ".join(said) + ")"
+
+    def _filtered(self, leg, other, entities, params, name):
+        """SQL AND-ed to a read of `leg` from the end opposite `other` - the walk's filters (`walk_filter.where`): its
+        predicate's over the row's qualifiers, `other`'s type's over that end's keys unless it is one of `entities`
+        (a node the read starts from); "" when none applies."""
+        from ledger import walk_filter
+
+        said = []
+        edge = (self.filters.get("edge") or {}).get(leg.predicate)
+        if edge:
+            said.append(walk_filter.where(edge, lambda ref: self._qualifier_cell(leg, ref), params, f"{name}fe"))
+        far_type = leg.ends[other][0]
+        node = (self.filters.get("node") or {}).get(far_type) if far_type is not None else None
+        if node:
+            start = self._in(leg, other, [texts for _item, texts in leg.named(other, entities)], params, f"{name}fs")
+            keys = walk_filter.where(node, lambda ref: self._key_cell(leg, other, ref), params, f"{name}fn")
+            said.append(f"({keys} OR {start})")
+        return "".join(f" AND {each}" for each in said)
+
+    @staticmethod
+    def _qualifier_cell(leg, ref):
+        """A qualifier as a filter reads it (`walk_filter.where`): its cell, its kind, its blank - as the atom carries
+        it (`_atom`: a blank cell says nothing); None when the sentence carries no such qualifier."""
+        import expression
+        from ledger.sql_translate import _NUMBERS, _TEXT, _literal, _missing, _quoted
+
+        spec = leg.qualifiers.get(ref)
+        if spec is None:
+            return None
+        if "constant" in spec:
+            value = spec["constant"]
+            return (_literal(value), "number" if isinstance(value, (int, float)) and not isinstance(value, bool)
+                    else "text", "TRUE" if expression.is_blank(value) else "FALSE")
+        if spec["kind"] not in (_TEXT, *_NUMBERS):
+            raise ValueError(f"[{ref}] of {leg.predicate} is a {spec['kind']} qualifier - a walk filter does not read "
+                             f"it yet")
+        return f"w.{_quoted(spec['column'])}", "text" if spec["kind"] == _TEXT else "number", _missing(spec)
+
+    @staticmethod
+    def _key_cell(leg, arm, ref):
+        """A key of `arm`'s end as a node filter reads it: its spelling - the text the node's id carries - as the column
+        where that is the spelling (`Leg.compared`, its index serves it), else the join's (`Leg.key`)."""
+        from ledger.sql_translate import _literal
+
+        spec = leg.ends[arm][1].get(ref)
+        if spec is None:
+            return None
+        if "constant" in spec:
+            return _literal(spec["constant"]), "text", "FALSE"
+        cell, kind = leg.compared(spec)
+        return (cell if kind == "text" else leg.key(spec)), "text", f"(btrim({leg.key(spec)}) = '')"
 
     @staticmethod
     def _bound(leg, bound, params, name):
@@ -1559,6 +1628,7 @@ class VirtualEvidenceLookup:
             if far:
                 door = self._in(leg, other, [texts for _item, texts in leg.named(other, far[1])], params, f"{arm[0]}f")
                 said += f" AND {'' if far[0] == 'in' else 'NOT '}{door}"
+            said += self._filtered(leg, other, entities, params, arm[0])
             arms.append(said)
         return "(" + " OR ".join(arms) + ")" if arms else None
 
@@ -1769,6 +1839,7 @@ class VirtualEvidenceLookup:
                 continue
             params = {"fetch": MAX_CLAIM_SCAN + 1}
             where = self._in(leg, direction, [texts for _item, texts in leg.named(direction, [entity])], params, "p")
+            where += self._filtered(leg, "incoming" if direction == "outgoing" else "outgoing", [entity], params, "p")
             if at is not None:
                 params["at"] = leg.edge(at[0])
                 where += f" AND {leg.at()} {'<=' if op == '<' else '>='} %(at)s"
