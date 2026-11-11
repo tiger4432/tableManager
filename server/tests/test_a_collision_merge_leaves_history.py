@@ -80,13 +80,8 @@ def test_both_collision_sites_go_through_the_one_helper():
     the pin, a withdraw) and merge_into_key_holders reach `write_lines._merge_into`; the pin spells none."""
     from database import write_lines
 
-    module = inspect.getsource(crud)
-    assert module.count("prime_merge_cells(db, table_name, merge_ow,") == 1
-    merge = inspect.getsource(crud._merge_into_key_holder)
-    assert "prime_merge_cells(" in merge
-    assert "CellOverwrite.column_name == col_name" not in merge
     assert "_merge_into(" in inspect.getsource(write_lines._rekey)
     assert "_merge_into(" in inspect.getsource(write_lines.merge_rows)
     assert "merge_rows(" in inspect.getsource(crud.merge_into_key_holders)
     pin = inspect.getsource(crud.set_cell_manual_priority_batch)
-    assert "_merge_into_key_holder(" not in pin and "_merge_into(" not in pin
+    assert "_merge_into(" not in pin

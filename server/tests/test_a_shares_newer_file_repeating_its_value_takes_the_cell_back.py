@@ -6,7 +6,6 @@ resent says nothing new and changes nothing (the seat's `source_unchanged`).
 """
 import os
 import sys
-from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -23,7 +22,6 @@ from database.database import Base                                  # noqa: E402
 T = "sf_tgt"
 TABLES = {T: {"business_key": "k", "composite_key_source": ["k"],
               "column_types": {"k": "string", "v": "string"}, "display_columns": ["k", "v"]}}
-T0 = datetime(2026, 11, 8, 9, 0, 0)
 
 
 def _ext(share_root, name):
@@ -35,8 +33,6 @@ A1, A2, B1 = _ext("c:\\share_a", "f1.csv"), _ext("c:\\share_a", "f2.csv"), _ext(
 
 @pytest.fixture(name="db")
 def fixture_db(monkeypatch):
-    clock = iter(T0 + timedelta(minutes=n) for n in range(1000))
-    monkeypatch.setattr(crud, "layer_instant", lambda: next(clock))
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)

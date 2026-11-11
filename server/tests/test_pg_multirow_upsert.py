@@ -36,7 +36,7 @@ pytestmark = pytest.mark.pg
 
 from conftest import PG_TEST_SCHEMA, _resolve_pg_test_url
 from tests.support.isolated_pg import scratch_connect_args
-from database import crud, models, schemas
+from database import crud, schemas
 
 
 TABLE = "pgqa_bk_table"
