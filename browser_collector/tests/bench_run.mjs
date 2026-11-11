@@ -290,8 +290,9 @@ async function crossCases(chrome, ext, cb) {
   eq('X1 opens in time - 36 rows, each its own mail', [got.X1.rows, got.X1.wrong], [36, 0]);
   eq('X2 X6 opens later than the wait - no row holds the mail before it; every mail kept or its own',
     [got.X2.wrong, got.X2.rows + got.X2.kept, got.X6.wrong, got.X6.rows + got.X6.kept], [0, 36, 0, 36]);
-  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (under 60 s)',
-    [got.X8.kept, got.X8.rows, got.X8.wrong, got.X8.seconds < 60], [1, 35, 0, true]);
+  // a wait held after every item past the slow one costs its page's rest (7 × 3 s - the frame's next page starts clean)
+  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (within X1 + 10 s)',
+    [got.X8.kept, got.X8.rows, got.X8.wrong, got.X8.seconds < got.X1.seconds + 10], [1, 35, 0, true]);
 }
 
 async function frameCases(chrome, ext, ask, fb) {
