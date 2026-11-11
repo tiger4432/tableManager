@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(SERVER, "scripts"))
 from database import crud, models, schemas                            # noqa: E402
 from database.database import Base                                    # noqa: E402
 import rebuild_blank_business_keys as rekey                           # noqa: E402
+from tests.support import line_tables                                 # noqa: E402
 
 SRC, DERIVED = "bkp_src", "bkp_derived"
 CONFIG = {
@@ -38,6 +39,8 @@ def db():
     models.init_dynamic_models(CONFIG)
     crud.TABLE_CONFIG.update(CONFIG)
     Base.metadata.create_all(bind=engine)
+    for table in CONFIG:
+        line_tables.build(engine, table)       # the world the product runs in: every declared table keeps lines
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     yield session
     session.close()
