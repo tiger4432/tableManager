@@ -1662,8 +1662,6 @@ def _count_fold_written_notation(db, params, scan_limit):
         detail += (f" The time rule leaves values as written - no matching format: "
                    f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}, "
                    f"no year and no time it came in: {left.get('no_arrival', 0)}.")
-    detail += (" Afterwards run Fold file layers on this table, then give the space back: "
-               "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated else None if affected
@@ -2267,10 +2265,9 @@ OPERATIONS = {
         "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
         "downstream_note": ("The chain follows a withdrawal as it follows a live write - the rules that take chain "
                             "events from this table take back what the withdrawn value fed"),
-        # It deletes a source's CLAIM, not the cell: the revealed value is recomputed and
-        # written, and every changed cell gets an AuditLog entry naming the withdrawn source.
-        # A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
-        "deletes": "cell_sources rows (one source's claim on a cell), and the rows left with no layer",
+        # It withdraws a source's CLAIM, not the cell: a withdraw line per (row, source), the revealed value
+        # shown. A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
+        "deletes": "the rows left with no layer (a withdrawn claim stays as a withdraw line)",
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
@@ -2419,7 +2416,7 @@ OPERATIONS = {
                             "a text column keeps numbers stored before text took them, and a row keyed "
                             "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
         "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
-        "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
+        "next": ["fold_file_layers - the folded layers that now repeat go"],
         "params": [_p("table"),
                    # the cell chain_replay takes (S-254): the grid holds row_id on every table
                    _p("row_ids", required=False, kind="csv",

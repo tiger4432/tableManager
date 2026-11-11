@@ -779,9 +779,10 @@ def _gone_maps(db, rule, run_id):
     """`(columns, [key tuple])` - the maps or jobs the rule's layers sit on in its target that this run's batches never
     named, by the target's own values; or `(None, why)` when it cannot be told."""
     import json
-    from sqlalchemy import or_, tuple_
+    from sqlalchemy import select, tuple_
     import mapper_sdk
     from chain import rule_shape
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from database import crud, models
 
     table = rule.get("target_table")
@@ -807,10 +808,12 @@ def _gone_maps(db, rule, run_id):
             target = tuple_(*columns)
         for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
             covered.update(r for (r,) in db.query(model.row_id).filter(target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
-    S = models.CellSource
-    owned = {r for (r,) in db.query(S.row_id).filter(
-        S.table_name == table, S.updated_by == rule_shape.declaration_of(rule),
-        or_(S.source_name == crud.CHAIN_SOURCE, S.source_name.like(crud.CHAIN_SOURCE + " (%"))).distinct()}
+    # the rule's chain lines that still say a column - a line whose columns are all withdrawn owns nothing
+    lt, bits = claimed_lines(db, table)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    owned = {line["row_id"] for line in db.execute(select(lt.c.row_id, *said).where(*_claimed_filter(
+        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)])).distinct()).mappings()
+        if _claimed_cells(line, bits)}
     gone_rows = sorted(owned - covered)
     found = set()
     key_columns = [getattr(model, column) for column in keys]
