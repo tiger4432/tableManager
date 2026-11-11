@@ -42,7 +42,8 @@
   const q = new URLSearchParams(location.search);
   const page = Number(q.get('page') || 1);
   const delay = Number(q.get('delay') || 150);
-  const slow = Number(q.get('slow') || 0);           // one mail that opens in 4 s among fast ones
+  const slow = Number(q.get('slow') || 0);           // one mail that opens in slowMs among fast ones
+  const slowMs = Number(q.get('slowMs') || 4000);
   const list = document.getElementById('mail-list');
   const tabs = [...document.querySelectorAll('.tab')];
   const title = (id) => `Thread ${Math.ceil(id / 2)}`;
@@ -60,7 +61,7 @@
       tabs.forEach((x) => x.classList.toggle('off', x !== tab && x !== keep));
       tab.querySelector('.reader-body-pane').innerHTML = `<span class="reader-id">${id}</span><p class="reader-text">Body of mail ${id}</p>`;
       shownTab = tab;
-    }, id === slow ? 4000 : delay));
+    }, id === slow ? slowMs : delay));
     list.appendChild(li);
   }
   const next = document.getElementById('next-page');
