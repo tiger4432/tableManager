@@ -503,9 +503,11 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 원장 확인  _ledgers_ready(원장 표 · Source Event 칸 · 인덱스)는 _walk_lookup 의 저장 갈래만 — 가상은 원장을 안
           읽으므로 원장 표가 없는 설치에서도 503 없이 답함. 저장의 reach · gaps 도 이제 같은 확인을 지남
 답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}]}
-          left_out = 컴파일이 안 읽는 소스(계획 안 됨 — 글자 시각의 거절도 여기 · 코드 맵퍼 · 묶음 단위 ·
-          attributes · value 목적어 · 숫자 칸 when · 필수 수식어 · 소스 둘이 말하는 one 술어) — 그 소스의 사실은
-          이 답에 없음. 글자 시각의 거절 문장이 다음 행동: 행 · 맵 키 칸이면 «add a datetime column filled by a
+          left_out = 컴파일이 안 읽는 소스(계획 안 됨 — 글자 시각의 거절 · 엔티티 속성에 맡긴 필수 수식어의
+          저장 거절도 여기 · 코드 맵퍼 · 묶음 단위 · 숫자 칸 when · 소스 둘이 말하는 one 술어) — 그 소스의 사실은
+          이 답에 없음. 문장 · 속성 하나만 빠지는 줄은 «<문장>: qualifier <이름> not read»(zone 없는 시각 칸) ·
+          «attributes of <타입> not read» · «<자리>: column '<칸>' not built yet»(스키마 동기화 전) ·
+          «<문장>: a value object not read» — 소스의 다른 문장은 걸림. 글자 시각의 거절 문장이 다음 행동: 행 · 맵 키 칸이면 «add a datetime column filled by a
           chain: =ParseDateTime([<칸>], "<형식>")», 아니면 «declare <칸> datetime»
           scans = 다리 끝의 글자 키 칸 중 어느 것도 DB 가 가진 인덱스(선언 · 자동 · 손)의 첫 칸이 아님 — 그 표를
           훑음. 판정은 ask 와 같은 models.auto_index_serves(카탈로그, 다리 표마다 한 번 — 박스 넷 6~8 ms).

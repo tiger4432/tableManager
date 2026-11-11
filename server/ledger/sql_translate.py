@@ -546,8 +546,9 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
             binding = subject_attributes[name] if attribute else binding
             if binding is None:
                 continue
+            # a required qualifier is bound in the sentence - the save refuses one left to an attribute (lead 11-11 ㄱ)
             role = emission_plan.claim.roles.get(reference.role_id)
-            if role is None or (role.required and attribute):
+            if role is None:
                 unsaid = f"{sentence}: qualifier {name} not read"           # the sentence alone, not its source
                 break
             try:
