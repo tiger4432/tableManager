@@ -23,7 +23,7 @@ const SRC = join(HERE, '..', 'src');
 //    page reads are asked through `fetchData` directly. ──
 function fakeNode(tag) {
   const node = {
-    tagName: String(tag).toUpperCase(), children: [], _text: '', style: {}, dataset: {}, attrs: {}, value: '',
+    tagName: String(tag).toUpperCase(), children: [], _text: '', style: { setProperty() {}, removeProperty() {} }, getBoundingClientRect: () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 }), dataset: {}, attrs: {}, value: '',
     checked: false, _on: {}, _classes: [],
     get className() { return node._classes.join(' '); },
     set className(v) { node._classes = String(v).split(/\s+/).filter(Boolean); },
@@ -220,6 +220,29 @@ async function leftovers(M) {
   try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
   left.followed = followed.slice();
   M.api.seatTableFollower(null);
+  // Table tabs (owner 11-05 ㄱ): a table left and opened again comes back - its filter set without a read, its columns
+  // (hidden · widths) put back, its page drawn from the pages it held - no read of it.
+  const { TableStateStore } = await import('../src/table_state.js');
+  M.api.seatTableStates(new TableStateStore());
+  reset();
+  let colState = [{ colId: 'a', hide: true, width: 90 }];
+  const applied = [];
+  model = filterOn();
+  S.gridApi = { ...gridApi, getFilterModel: () => model, getColumnState: () => colState,
+    applyColumnState: (p) => applied.push(p.state),
+    setFilterModel: (m) => { model = m || {}; setTimeout(() => { try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ } }, 5); } };
+  S.currentTable = 'dt_log';
+  S.pageCache = new Map([[0, { data: [{ row_id: 'R1', data: {} }], count: { total: 1 }, looks: null }]]);
+  S.currentSkip = 0;
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  colState = [];
+  urls = [];
+  try { await M.api.switchTable('dt_log'); } catch (e) { /* as above */ }
+  await new Promise((r) => setTimeout(r, 30));
+  await settle();
+  left.backAgain = { filter: Object.keys(model), columns: applied.at(-1) || null,
+    reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length, page: S.pageCache.has(0) };
+  M.api.seatTableStates(null);
   // A stored 28.5 the grid holds since a Refresh; the edit was staged over the 28 from before it.
   const node = { data: { row_id: 'R1', data: { a: { value: 28.5, is_overwrite: true, priority_source: 'user' } } } };
   reset();
@@ -912,6 +935,8 @@ function suite(out, sent) {
     out.left.jumpReads.sameView, { asked: 0, lock: false });
   eq('W41 a jump ends only its own lock: one ending after its watchdog let the next start leaves that one\'s',
     out.left.jumpReads.ownLock, [true, true]);
+  eq('W44 a table left and opened again comes back - its filter, its columns, its page from the pages it held, no read (owner 11-05, table tabs)',
+    out.left.backAgain, { filter: ['row_id'], columns: [{ colId: 'a', hide: true, width: 90 }], reads: 0, page: true });
   eq('W42 a log the socket brings while Row is shown marks Global old - read when picked; one while Global is shown leaves it',
     out.left.globalReads, [true, false]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',

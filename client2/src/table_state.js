@@ -19,7 +19,8 @@ export class TableStateStore {
   constructor({ storage = null, keep = KEEP } = {}) {
     this.storage = storage;
     this.keep = keep;
-    this.data = new Map();   // table -> its rows, newest last; at most `keep`
+    this.data = new Map();   // table -> its pages, newest last; at most `keep`
+    this.settings = new Map();   // table -> its settings for this page; the storage is their copy for a reload
     this.open = this._read(TABS_KEY, []).filter((t) => typeof t === 'string' && t);
   }
 
@@ -56,6 +57,7 @@ export class TableStateStore {
   park(table, snap) {
     if (!table) return;
     const { settings, data } = splitSnapshot(snap);
+    this.settings.set(table, settings);
     this._write(settingsKey(table), settings);
     this.data.delete(table);
     if (data) this.data.set(table, data);
@@ -64,7 +66,7 @@ export class TableStateStore {
 
   /** What a table was left as: its settings (or null, never seen) and its rows (or null, read them again). */
   take(table) {
-    const settings = this._read(settingsKey(table), null);
+    const settings = this.settings.get(table) ?? this._read(settingsKey(table), null);
     const data = this.data.get(table) || null;
     if (data) { this.data.delete(table); this.data.set(table, data); }   // the newest again
     return { settings, data };

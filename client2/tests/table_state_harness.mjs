@@ -55,8 +55,8 @@ console.log('[N] a browser that refuses storage');
   const refusing = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); }, removeItem() {} };
   const store = new TableStateStore({ storage: refusing });
   store.opened('a'); store.park('a', snap('a'));
-  eq('N1 nothing thrown - the tabs and rows held for this page, no settings', [store.tables(), store.take('a').data.pages.length, store.take('a').settings],
-    [['a'], 1, null]);
+  eq('N1 nothing thrown - the tabs, settings and pages held for this page', [store.tables(), store.take('a').data.pages.length, store.take('a').settings.scrollTop],
+    [['a'], 1, 40]);
   eq('N2 no storage at all works the same', new TableStateStore().take('a'), { settings: null, data: null });
 }
 
