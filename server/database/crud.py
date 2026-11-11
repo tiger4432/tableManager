@@ -4632,6 +4632,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             continue
         values[col_name] = val
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
+             "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "source_name": update_item.source_name, "written_by": update_item.updated_by,
              "input_row": update_item.origin_row_id, "version_judged": plan.get("map_judged", False)}, formulas)
 

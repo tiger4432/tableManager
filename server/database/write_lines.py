@@ -23,6 +23,9 @@ An item is a dict:
                   pin, and a key merge reads it as neither named nor a person's
     rekey         true: step 5½ rebuilds the row's key though no key part moved (a key in an old spelling; a mark
                   item with no columns carries it)
+    old_key       the key the item was sent with when it is not its assembled key (a raw spelling, a rename by
+                  the old key): asked when the assembled key is nobody's - ruling 191, S-90 - and the row it
+                  names is re-keyed
     folds         {source name: columns} whose head bits the write's line also takes off there - set by step 2 (a file's
                   layers of its share that say the same value, `crud.file_layer_fold`)
     of            the item step 2 split this one off (a column written under its share's older layer - owner 11-08)
@@ -316,6 +319,7 @@ def _claim(db, table, cfg, now, items):
         else:
             wanted.setdefault(bk, crud._engine_minted_row_id(it.get("row_id"), table))
             by_key[i] = bk
+    _by_old_key(db, now, items, targets, old, wanted, by_key)
     keys = {row_id: row.get("business_key_val") for row_id, row in old.items()}
     if wanted and lines.key_index_standing(db.connection(), table):
         if db.get_bind().dialect.name == "postgresql":
@@ -349,6 +353,28 @@ def _claim(db, table, cfg, now, items):
     for page in _pages(bare, 1):
         db.execute(insert(now), [{"row_id": row_id} for row_id in page])
     return targets, old, keys
+
+
+def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
+    """Ruling 191 (S-90, lead 3eb161a9c ②): an item's assembled key first; when that is nobody's, the key it was
+    sent with (`old_key`) - a row stored under a raw spelling, a rename naming the row by its old key. Both read
+    under the claim's lock before a new key is put; the row found is the item's target, re-keyed in step 5½ (a key
+    another row took meanwhile merges it there). `wanted` and `by_key` lose what it took."""
+    asks = {i: items[i]["old_key"] for i in by_key if not crud.is_blank_value(items[i].get("old_key"))
+            and items[i]["old_key"] != by_key[i]}
+    if not asks:
+        return
+    held = key_owners(db, now, set(asks.values()) | {by_key[i] for i in asks}, lock=True, read=list(now.c))
+    for i, old_key in sorted(asks.items()):
+        if by_key[i] in held or old_key not in held:
+            continue
+        row = held[old_key]
+        targets[i] = row["row_id"]
+        old.setdefault(row["row_id"], row)
+        items[i]["rekey"] = True
+        del by_key[i]
+    for bk in set(wanted) - set(by_key.values()):
+        del wanted[bk]
 
 
 def _version_gate(table, cfg, items, targets, old) -> dict:
@@ -714,7 +740,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
         if parts:
             key = crud.rebuilt_business_key(table, SimpleNamespace(**new[row_id]))
         else:
-            if row_id in by_key:                   # the item's own key wins (looked up by it)
+            if row_id in by_key and row_id not in forced:   # the item's own key wins (looked up by it)
                 continue
             key = crud.compose_business_key(table, [new[row_id].get(key_column)], [key_column])
             if crud.is_blank_value(key):
