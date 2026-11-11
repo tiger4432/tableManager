@@ -22,6 +22,43 @@
 >
 > ---
 >
+> ## [11-11] **AI 규칙이 설정 없이 사람 교정을 기억하고 다음 물음에 싣는다 · AI 표 넷은 «AI» 그룹** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 재기동 전  Chain 탭에서 memory 를 적은 ask · report 규칙을 하나씩 열어 그대로 Save
+>          거절되면(«<규칙>: memory.columns: …» · «<규칙>: memory.table … is not a declared table» · «… may not end in ':target'»)
+>          그 칸을 표에 맞추거나 memory.columns 를 지우고(기본 칸) · 이름 꼬리를 떼고 Save 한 뒤 재기동
+>          저장 검사(ledger/admin.save_chain_rule_raw)와 로더(chain/ingestion_worker.load_chain_rules)는
+>          같은 함수 rule_shape.expand_declaration 로 판정 — Save 가 받으면 재기동 뒤에도 그 규칙이 섬
+>          (꺼 둔 규칙도 Save 는 «켰다면» 으로 판정한다)
+> 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
+>          memory 블록도 prompts.memory 도 안 적은 규칙은 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
+>          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼) —
+>          아래 저장 거절에 걸리는 규칙만 빼고, 그리고 memory.columns 의 빈 칸("" · 공백 · null · NaN)은 이제 그 역할의 기본 칸에 씀
+>          (전: 그 역할을 안 씀 — 그 기본 칸이 표에 없으면 이제 거절),
+>          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
+>          저장 거절 여섯: 이름이 «:target» 으로 끝나는 규칙 · memory.table 이 선언 안 된 표
+>          · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐) · memory.columns 가 {역할: 칸} 이 아닐 때
+>          · 칸 값이 있는데 글자가 아닐 때(숫자 · 목록 · dict, «who=5» 처럼 역할을 댐)
+>          · memory.columns 를 적었는데 purpose 나 key 가 없을 때(«key not named (default: situation)», 역할과 기본 칸을 댐)
+>          🔴 이 거절은 «로드» 때도 같음 — 운영에 이미 그런 AI 규칙이 있으면 재기동 뒤 그 규칙이 «통째로» 안 섬
+>          (전: 규칙은 답하고 기억 쓰기만 실패)
+>          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
+>          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
+>          적었다 지운 칸("")은 그 기본값으로 돎 · 손대지 않은 역할은 안 씀(purpose · key 는 빠지면 거절)
+>          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
+> 재기동 뒤 chain_worker.log «[ChainRules] <규칙>: memory.columns: …» · «[ChainRules] <규칙>: memory.table … is not a declared table»
+>          또는 «[ChainRules] … may not end in ':target'» — 보이면 그 AI 규칙 «하나»가 빠진 것(같은 파일의 다른 규칙은 섬)
+>          «[ChainRules] unified grammar unreadable» 이 보이면 새 문법 규칙이 «전부» 빠진 것
+>          칸 이름을 표에 맞추거나 memory.columns 를 지우면(기본 칸) 다시 섬 · 이름은 «:target» 꼬리를 떼면 섬
+> 볼 것    AI 출력 칸을 사람이 고치면 sys_ai_memory 에 행 하나 · 그 규칙의 Test run 프롬프트에 «Past corrections»
+>          체인 규칙 목록에 memory 를 안 적은 AI 규칙의 반쪽 규칙 «<규칙 이름>:target» 이 새로 보임
+> 이 박스  샘플 ask/report 4 중 memory 없던 것 1 · 박스 설정 1 중 0 (박스 수 — 운영 주장 아님)
+> 끄기     없음 (다른 표에 쓰려면 그 규칙의 memory.table 에 적음)
+> ```
+>
+> ---
+>
 > ## [11-09] **수집 확장: iframe 안 목록 · ↑↓ 부모 넓히기 · Shift+클릭 영역 더하기 · 숨은 사본 건너뛰기 · 표 없이 Preview · 템플릿 Delete** — git pull · 크롬 확장 새로 고침(chrome://extensions 의 ↻), API 재기동(sys_templates 칸 하나 선언)
 >
 > ```
@@ -33,6 +70,24 @@
 > 답의 뜻  «no frame on this page matches <패턴>» → 그 프레임 주소가 바뀜. Frame 칸을 비우고 다시 고르면 다시 적힘
 >          Preview 에 «Table not set - keys not checked» → 표나 키 칸이 빔(읽기는 됨, 중복 확인만 안 함)
 > 끄기     확장 폴더를 이 착지 전으로 되돌리고 ↻ (서버 칸은 비어 있으면 아무 일도 안 함)
+> ```
+>
+> ---
+>
+> ## [11-11] **도움말이 운영 안내서 12 개를 더 읽는다 (9 -> 21)** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
+>
+> ```
+> 무엇     수집기(AUTO_UPDATE) · 소급(BACKFILL) · 파일 인제스트 · 원장 · 텍스트 연결 · 체인 · 표기 규칙 · 맵 프리셋 · 맵 오버레이
+>          · DOE · 유효 다이 맵 · 롤백 안내서가 Help 답의 근거와 Guide 목록에 든다
+>          맵 · DOE · 유효 다이 · 롤백은 어드민 탭이 아니라 Guide 의 «All N» 에만 보임
+> 볼 것    Help 에서 «수집기 하나 만들기» 를 물으면 AUTO_UPDATE_GUIDE.md 의 «0. 한눈에 보기 — 수집기 하나 만들기» 절이 답에 실림
+>          Auto Update 탭 Guide 칩에 AUTO_UPDATE_GUIDE.md
+> 답의 뜻  안 나오면 API 가 재기동 전
+>          체인(chain_ingestion_guide) · 소급(BACKFILL) 은 낡은 문장을 고쳐서 넣음
+>          (BACKFILL 이 이제 말함: ledger.backfill --source · --catch-up 과 run_here 줄은 --apply 없이 바로 씀)
+>          소급 연산의 pace 도움말이 «ONE AT A TIME» 대신 «같은 곳에 쓰는 run 만 기다린다» 로 나옴
+>          11-11 셈의 낡은 문장(약 70)은 고침 — 그래도 도우미가 지금과 다른 문장을 인용하면 그 안내서가 낡은 것
+> 끄기     server/admin/help_guides.json 에서 그 줄을 빼고 API 재기동
 > ```
 >
 > ---
