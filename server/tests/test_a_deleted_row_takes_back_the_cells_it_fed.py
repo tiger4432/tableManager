@@ -197,11 +197,11 @@ def test_a_shared_layer_name_takes_only_the_cells_the_deleted_row_stamped(db):
 # (source, value) written in this order - the newest shows. Layers are withdrawn in name order.
 LAYERS = [("seed", "Z"), ("s_b", "B"), ("s_a", "A")]
 TWO_LAYER_CASES = {
-    # case: (apply, pinned layer, layers left, shown, cells withdrawn) - a layer written through the door names
-    # the key column too, so each withdrawn source gives up part_no and grade
-    "apply": (True, None, ["seed"], "Z", 4),
-    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A", 3),
-    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A", 4),
+    # case: (apply, pinned layer, layers left, shown) - each withdrawn source gives up every cell its line said, the
+    # pinned layer's grade kept; which cells a line says through the door is the write's (the key column or not)
+    "apply": (True, None, ["seed"], "Z"),
+    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A"),
+    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A"),
 }
 
 
@@ -214,7 +214,7 @@ def test_a_cell_two_withdrawn_layers_claim_gives_up_each_in_turn(db, case):
 
     from database import lines
 
-    apply, pinned, left, shown, withdrawn = TWO_LAYER_CASES[case]
+    apply, pinned, left, shown = TWO_LAYER_CASES[case]
     row_id = _write(db, TARGET, {"part_no": "P-1"})
     for source, value in LAYERS:
         _layer(db, "P-1", "grade", source, value, None if source == "seed" else "origin-" + source)
@@ -224,12 +224,15 @@ def test_a_cell_two_withdrawn_layers_claim_gives_up_each_in_turn(db, case):
         db.commit()
     assert sorted(lines.layers(db, TARGET, [row_id], {"grade"})[(row_id, "grade")]) == ["s_a", "s_b", "seed"], \
         "canary: three layers stand on the cell"
+    said = [(column, source) for (_r, column), named in lines.layers(db, TARGET, [row_id]).items() for source in named
+            if source in ("s_a", "s_b") and not (source == pinned and column == "grade")]
+    assert ("grade", "s_b") in said, "canary: the withdrawn layers say the cell"
     batches = db.query(lines.AuditBatch).count()
 
     stats = cell_layer.withdraw_by_origin(db, ["origin-s_a", "origin-s_b"], apply=apply)
     db.commit()
 
-    assert stats["cells_withdrawn"] == withdrawn
+    assert stats["cells_withdrawn"] == len(said), said
     assert sorted(lines.layers(db, TARGET, [row_id], {"grade"}).get((row_id, "grade"), {})) == left
     assert db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade == shown, (
         "the second layer was resolved against what was there before the first one left")
