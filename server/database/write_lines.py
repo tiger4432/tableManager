@@ -436,7 +436,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                                                 held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
-    heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at)}}}
+    heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at, line_id)}}}
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
                                                                  in (WRITE, WITHDRAW)}, columns).items():
         heads.setdefault(row_id, {})[source] = said
@@ -470,11 +470,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                 items.append(kid)
                 same |= cs
                 for c in cs:
-                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when)
+                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i)
             it["folds"] = {s: f - same for s, f in folds.items() if f - same}
             it["values"] = {c: value for c, value in it["values"].items() if c not in same}
             for c, value in it["values"].items():
-                own[c] = hand + (value, when)
+                own[c] = hand + (value, when, UNNUMBERED + i)
             for s, f in folds.items():             # a folded source no longer heads the column, whichever line took it
                 for c in f:
                     row.get(s, {}).pop(c, None)
@@ -487,6 +487,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
     return kept, left_out
 
 
+#: the line_id step 2 ranks a batch line by before step 3 numbers it (rank 2c): after every stored line, in the
+#: batch's item order - an item split off its parent at its parent's place (`_lines`; the two say no column alike)
+UNNUMBERED = 1 << 62
+
+
 def _head_text(text, kind):
     """A head line's value as step 2 compares it with a write's text: a blank is absence; a text column's text as it
     stands - a person re-sending it trimmed is a change (lead 11-11 ㄴ); any other kind its line text (a number's
@@ -497,7 +502,7 @@ def _head_text(text, kind):
 
 
 def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text, at)}} - the columns each source heads on the row
+    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id)}} - the columns each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
     row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
     item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
@@ -506,14 +511,14 @@ def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
     values = [ln.c[lines.value_column(c)] for c in columns]
     out = {}
     for page in _pages(sorted(row_ids), 1):
-        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at, *heads,
-                                     *withdrawn, *values)
+        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
+                                     ln.c.line_id, *heads, *withdrawn, *values)
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
-            said = dict(zip(columns, row[5 + 2 * chunks:]))
+            said = dict(zip(columns, row[6 + 2 * chunks:]))
             for c in bits:
                 k, m = _bit(bits, c)
-                if row[5 + k] & m and not row[5 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4])
+                if row[6 + k] & m and not row[6 + chunks + k] & m:
+                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5])
     return out
 
 
@@ -541,8 +546,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
         if c in same:
             continue
         kind, pin = held.get(c, "string"), pins.get((row_id, c))
-        layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3])
-                  for s, said in row.items() if c in said]
+        layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3],
+                                  line_id=said[c][4]) for s, said in row.items() if c in said]
         if crud.is_file_layer(source):
             repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin, ranks)
             if repeat:
@@ -552,7 +557,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
             if moved is not None and c not in row.get(source, {}):   # its own layer takes it (the old `src_obj or moved`)
                 moves.setdefault(moved.source_name, set()).add(c)
         elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
-            shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+            shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at,
+                                                                 "line_id": s.line_id}
                                                  for s in layers}, pin, table, ranks=ranks)[0]
             if not crud.values_differ(shown, value, kind):
                 same.add(c)

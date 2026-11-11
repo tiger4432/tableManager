@@ -1043,7 +1043,8 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
         return False, [], None
 
     def newest(layers):
-        name = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+        name = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at,
+                                                       "line_id": getattr(s, "line_id", None)}
                                        for s in layers}, None, table_name, ranks=ranks)[1]
         return next(s for s in layers if s.source_name == name)
     top = newest(same_class)
@@ -2298,8 +2299,10 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
         # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
         owner = layer_owner(name)
+        entry = sources[name]
         line = {"ranks_as": layer_ranks_as(name), "owner_rule": owner[0] if owner else None,
-                "at": resolution_ingested_at(sources[name], name, ingested_at_by_source), "source_name": name}
+                "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
+                "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
         return tuple(py(line, unowned) for py, _ in terms)
 
     # `min` rather than `sorted`: the same first element, without materialising and

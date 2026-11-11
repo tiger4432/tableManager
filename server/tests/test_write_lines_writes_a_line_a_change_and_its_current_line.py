@@ -210,6 +210,33 @@ def test_a_column_of_no_history_shows_the_batch_s_last_word(db, monkeypatch):
     assert _now(db)[r]["n"] == 5.0
 
 
+def test_at_one_instant_step_two_asks_the_later_line_as_the_merge_shows_it(db, monkeypatch):
+    """B 11-11: a.csv says x, then b.csv says y, at one instant - the cell shows y (rank 2c, the later line). A chain's
+    new layer of x is then no repeat of what the cell shows and is written; step 2 used to rank the two by name (a.csv
+    first) and saw x shown."""
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "b.csv"}, tx="tx2")
+    assert _now(db)[r]["a"] == "y"
+    _write(db, {"row_id": r, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE}, tx="tx3")
+    assert crud.CHAIN_SOURCE in lines.layers(db, TABLE, [r])[(r, "a")]
+
+
+def test_at_one_instant_a_batch_s_line_ranks_after_every_stored_line(db, monkeypatch):
+    """B 11-11: a.csv said x; one batch [b.csv y, the chain x] at a.csv's instant - step 2 ranks b.csv's line (not
+    numbered yet) after a.csv's, so the cell shows y and the chain's x is written. A naive instant: sqlite reads a
+    stored `at` back naive, and the batch's own aware one would not tie with it."""
+    from datetime import datetime
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "b.csv"},
+           {"row_id": r, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE}, tx="tx2")
+    assert crud.CHAIN_SOURCE in lines.layers(db, TABLE, [r])[(r, "a")]
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})
