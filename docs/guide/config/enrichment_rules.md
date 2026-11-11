@@ -60,7 +60,7 @@ derive 는 모든 통합 규칙의 칸 이름이고 종류는 kind 가 정한다
 }
 ```
 
-- `aggregations` — 파생 칸 이름 → 식. 대괄호 안은 «원천 표»의 칸. 예: `"stack_height": "=UniqueCount([stack_height])"` (같은 key 의 서로 다른 stack_height 수)
+- `aggregations` — 파생 칸 이름 → 식. 대괄호 안은 «원천 표»의 칸. 예: `"stack_height": "=UniqueCount([stack_height])"` (같은 key 의 서로 다른 stack_height 수). `lot` 마다 파생 행을 만들고 그 lot 의 `wafer` 수를 세려면 key `["lot"]` · `"wafer_count": "=UniqueCount([wafer])"`
 - `key` — 파생 행 하나를 정하는 칸. 원천 · 파생 표 양쪽에 같은 이름, 다르면 짝 — §2
 - `fields` — 사람이 확인해 채울 칸. 없으면 `[]`(확인 큐 없음)
 - 두 표는 `table_config.json` 에 선언되어 있어야 한다 — 파생 칸은 파생 표의 `column_types` 에

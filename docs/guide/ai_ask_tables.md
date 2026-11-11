@@ -66,7 +66,7 @@
                "fail": "defective_chip_count", "total": "total_chip_count"},
    "results": {"file": "report_path", "summary": "report_summary"},
    "prompts": {"memory": {"scope": ["wafer"], "limit": 5}},
-   "memory":  {"table": "ai_memory", "comment": "reviewer_comment",
+   "memory":  {"table": "sys_ai_memory", "comment": "reviewer_comment",
                "columns": {"purpose": "purpose", "key": "situation", "cell": "cell", "ai": "ai",
                            "right": "right", "memo": "memo", "who": "who", "when": "at"}}}}}
 ```
