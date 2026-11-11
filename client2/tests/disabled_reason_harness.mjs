@@ -230,6 +230,8 @@ const CENSUS_TABLE = new Map([
   ['file_ingestion/parts.js :: go.disabled = true', ['STATED', 'Pick files 의 Read these — 패턴에 맞는 파일 0: 같은 렌더가 «0 files» 와 «Read these (0)» 을 그립니다']],
   ['gallery.js :: b.disabled = true', ['STATED', 'the gallery board\'s empty cell - the cell itself says 0 and «none»; it has no rows to open (lead 3589216b9)']],
   ['walk/main.js :: o.disabled = true', ['STATED', '«N more routes» 줄 — 고르는 길이 아니라 더 있는 길의 수라고 그 글이 말합니다 (+ Column 길 목록)']],
+  ['table_tabs.js :: back.disabled = at <= 0', ['END', 'the table tabs\' Back - the first table opened in this browser tab, nothing behind it (owner 11-05, mockup v3)']],
+  ['table_tabs.js :: forward.disabled = at >= top', ['END', 'the table tabs\' Forward - nothing ahead, as a browser\'s own forward (owner 11-05, mockup v3)']],
   ['admin.js :: btn.disabled = true', ['BUSY', '설정 저장 중']],
   ['admin.js :: btn.disabled = false', ['BUSY', '저장이 끝나 되돌아옴']],
   ['admin.js :: countBtn.disabled = actions.count.disabled', ['BUSY', '세는 중 · buildActionsView 가 판정']],

@@ -37,6 +37,10 @@
         </div>
 
         <div class="controls-area">
+          <div class="control-group table-steps">
+            <button id="table-back" type="button" class="table-step" aria-label="Back" title="Back" disabled>←</button>
+            <button id="table-forward" type="button" class="table-step" aria-label="Forward" title="Forward" disabled>→</button>
+          </div>
           <div class="control-group">
             <label for="table-select">Table</label>
             <input id="table-search" type="search" class="glass-input" placeholder="Search tables"
@@ -360,6 +364,7 @@
           </div>
         </div>
       </header>
+      <nav id="table-tabs" class="table-tabs" aria-label="Open tables" hidden></nav>
 
       <!-- the Flow strip's own div (owner 11-06 mockup: under the top bar, the page's width): drawn while «Flow» is pressed -->
       <div id="flow-strip-host" hidden></div>

@@ -2,6 +2,7 @@ import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-communit
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import { TableStateStore } from './table_state.js';
+import { TableTabs, tableNote, tableSteps } from './table_tabs.js';
 import './tokens.css';
 import './style.css';
 import './base.css';
@@ -236,14 +237,34 @@ async function init() {
       // 🔴 부팅 자동 선택도 · 드롭다운도 · 이력 점프도 «표를 고른 것»입니다 — 셋 다 switchTable 을 지나므로 거기서 한 번
       //    알립니다. 손으로 알리던 두 자리(부팅 · 드롭다운)는 이력 점프를 빠뜨렸습니다(총괄 10-12).
       flowStrip = initFlowStrip();
+      // the open tables and what each was left as (owner 11-05 ㄱ) - in this browser; a refused storage keeps it for the page
+      const tableStates = new TableStateStore({ storage: (() => { try { return window.localStorage; } catch { return null; } })() });
+      seatTableStates(tableStates);
+      const tabsMount = document.getElementById('table-tabs');
+      const tableTabs = tabsMount ? new TableTabs({
+        mount: tabsMount,
+        onPick: (table) => switchTable(table),
+        onClose: (table) => {
+          tableStates.close(table);
+          const left = tableStates.tables();
+          if (table === state.currentTable && left.length) switchTable(left[left.length - 1]);
+          else tableTabs.draw(left, state.currentTable);
+        },
+        noteOf: (table) => tableNote(table === state.currentTable ? {
+          filterModel: state.gridApi ? state.gridApi.getFilterModel() : null, pivot: state.pivotView,
+        } : tableStates.take(table).settings),
+      }) : null;
+      // ← → walk the tables opened in this tab, and the address says the table (?table=) - a reload opens it again
+      const steps = tableSteps({ back: document.getElementById('table-back'), forward: document.getElementById('table-forward'),
+        open: (table) => switchTable(table) });
       seatTableFollower((table) => {
         if (sourceLabel) sourceLabel.setRelation(table);
         if (flowStrip) flowStrip.setTable(table);
         redoBannerFollows(table);
         if (formulaPop) formulaPop.close();
+        if (tableTabs) tableTabs.draw(tableStates.tables(), table);
+        steps.went(table);
       });
-      // the open tables and what each was left as (owner 11-05 ㄱ) - in this browser; a refused storage keeps it for the page
-      seatTableStates(new TableStateStore({ storage: (() => { try { return window.localStorage; } catch { return null; } })() }));
       // Seated before the table list loads, so the first table switch finds it.
       const tabsHost = document.getElementById('world-tabs-host');
       if (tabsHost) seatWorldTabs(new WorldTabs(tabsHost, { doc: document, onPick: (name) => void pickGridWorld(name) }));

@@ -3460,3 +3460,86 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 .value-filter__join { display: flex; gap: var(--space-4); font-size: var(--fs-label); }
 .value-filter__foot { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); }
 .value-floating__input.is-read { cursor: pointer; }
+
+/* The Open tables row under the top bar (owner 11-05, mockup v3): one tab per open table, the open one marked. */
+.table-tabs {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--control-h-small);
+  padding: 0 var(--space-2);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  overflow: visible;
+}
+.table-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+}
+.table-tab.is-open {
+  background: var(--bg-surface);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.table-tab-name {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  padding: 0;
+  cursor: pointer;
+}
+.table-tab-note {
+  font-size: var(--fs-tag);
+  color: var(--text-dim);
+}
+.table-tab-close,
+.table-tab-more-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  padding: 0 var(--space-1);
+  cursor: pointer;
+}
+.table-tab-more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+}
+.table-tab-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: var(--space-1) 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .18);
+}
+.table-tab-menu-item {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.table-steps { gap: var(--space-1); }
+.table-step {
+  height: var(--control-h-small);
+  width: var(--control-h-small);
+  padding: 0;
+}
