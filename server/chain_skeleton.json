@@ -1670,6 +1670,23 @@
                             }
                           }
                         }
+                      },
+                      {
+                        "key": "by",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.images.table"
+                            ]
+                          }
+                        }
                       }
                     ]
                   }

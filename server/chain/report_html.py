@@ -324,16 +324,13 @@ def _images(embedded, spec) -> str:
         return '<p class="note">%s</p>' % _e(report_shape.word(spec, "no_image"))
     out = []
     for item, pictures in embedded.items():
-        figures = "".join(
-            _stack(item, p) if len(p.get("layers") or ()) > 1 else
-            '<figure>%s<figcaption>%s</figcaption></figure>'
-            % (_img(p, "%s on %s" % (_e(item), _e(p["wafer"]))), _e(p["wafer"])) if p.get("src") else
-            '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused")))
-            for p in pictures)
         # every patch one box of images.px, the picture fitted inside it - one grid, no ragged row (owner 10-24 «이미지
         # 패치들 정렬 일정하게 해 · 지금 삐뚤빼뚤함»)
         px = ((spec or {}).get("images") or {}).get("px", 320)
-        out.append("<h3>%s</h3><div class=\"gallery\" style=\"--px:%dpx\">%s</div>" % (_e(item), px, figures))
+        out.append("<h3>%s</h3>%s" % (_e(item), "".join(
+            "%s<div class=\"gallery\" style=\"--px:%dpx\">%s</div>" % ("" if by is None else "<h4>%s</h4>" % _e(by), px,
+                                                                         "".join(_figure(item, p) for p in group))
+            for by, group in _by(pictures))))
     return "".join(out) + (STACK_SCRIPT if 'class="stack"' in "".join(out) else "")
 
 
@@ -359,6 +356,21 @@ LINK_SCRIPT = ("<script>document.querySelectorAll('a.%s').forEach(function(a){"
                "(here.endsWith('/reports/')||here.endsWith('/shared/report/'))){"
                "if(a.dataset.rel)a.setAttribute('href',a.dataset.rel);a.search=location.search;}});</script>"
                % ORIGINAL)
+
+
+def _figure(item, p) -> str:
+    return (_stack(item, p) if len(p.get("layers") or ()) > 1 else
+            '<figure>%s<figcaption>%s</figcaption></figure>'
+            % (_img(p, "%s on %s" % (_e(item), _e(p["wafer"]))), _e(p["wafer"])) if p.get("src") else
+            '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused"))))
+
+
+def _by(pictures) -> list:
+    """[(images.by value or None, its pictures)] - in the values' order; undeclared, one gallery."""
+    groups = {}
+    for p in pictures:
+        groups.setdefault(p.get("by"), []).append(p)
+    return sorted(groups.items(), key=lambda pair: (pair[0] is None, str(pair[0])))
 
 
 def _stack(item, picture):

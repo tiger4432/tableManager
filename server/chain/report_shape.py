@@ -43,6 +43,9 @@ IMAGE_SOURCE = "source"
 #: (owner 10-24 «void, signal -> typeA»: {"typeA": ["void", "signal"]}). Undeclared, a picture is its summary item by
 #: the same name.
 IMAGE_MATCH = "match"
+#: `images.by`: key columns of the image table - a defect's pictures one gallery each value of them, under it (owner
+#: 11-11 «불량별 이미지는 leg별로 나눠서해»). Undeclared, one gallery a defect.
+IMAGE_BY = "by"
 #: `conditions.time_item`: the condition item whose value is the unit's time when the wafer role names no time column
 #: (owner 10-24: the wafer's time is a conditions row, not a column) - a table keyed by the wafer alone gives it to
 #: every leg, as every condition.
@@ -255,6 +258,7 @@ def _role_node(role):
         fields.append({"key": IMAGE_MATCH, "required": False, "node": {
             "kind": "map", "keyed_by": "name", "member": "item",
             "of": chain_bindings.list_node("kind", {"kind": "leaf", "hint": "free"})}})
+        fields.append({"key": IMAGE_BY, "required": False, "node": chain_bindings.list_node("column", _column(role))})
     if role == "summary":
         fields.append({"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}})
         fields.append({"key": YIELD_ITEM, "required": False,
@@ -498,15 +502,16 @@ def _keys_refusal(spec, wafer_key):
         return ("derive.report.keys is {key column: [what it does]} - each word one of %s, [] for a plain part; got %r"
                 % (" · ".join(KEY_WORDS), keys))
     for column, words in keys.items():
-        if (KEY_UNIT in words or KEY_LATEST in words) and column not in wafer_key:
-            return ("derive.report.keys.%s %s is a wafer key column's - derive.report.wafer.key (%s)"
-                    % (column, " · ".join(w for w in words if w != KEY_FOLD), ", ".join(wafer_key)))
+        if KEY_UNIT in words and column not in wafer_key:
+            return ("derive.report.keys.%s unit is a wafer key column's - derive.report.wafer.key (%s)"
+                    % (column, ", ".join(wafer_key)))
         if KEY_FOLD in words and column in wafer_key:
             return ("derive.report.keys.%s fold is a column beyond the wafer key - the rows that differ only there are "
                     "one (a chip's layers)" % column)
         if KEY_UNIT in words and KEY_LATEST in words:
             return "derive.report.keys.%s is the unit or the latest of it, not both" % column
-    if any(KEY_LATEST in words for words in keys.values()) and not unit_columns(spec):
+    # latest on a column beyond the wafer key folds a table's rows of one wafer (owner 11-11) - no unit needed
+    if any(KEY_LATEST in words and column in wafer_key for column, words in keys.items()) and not unit_columns(spec):
         return "derive.report.keys latest needs a unit column - the latest is each report's"
     return None
 
@@ -620,6 +625,12 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                                   key_names)
             if said:
                 return said
+    by = (spec.get("images") or {}).get(IMAGE_BY) if isinstance(spec.get("images"), dict) else None
+    if by is not None:
+        named = wafer_columns(spec["images"].get(WAFER_CELL))
+        if not isinstance(by, list) or not by or any(c not in named for c in wafer_columns(by)):
+            return ("derive.report.images.by is a list of the image table's key columns - of derive.report.images.wafer "
+                    "(%s), e.g. [\"leg\"]; got %r" % (", ".join(named), by))
     match = (spec.get("images") or {}).get(IMAGE_MATCH) if isinstance(spec.get("images"), dict) else None
     if match is not None and not (isinstance(match, dict) and all(
             isinstance(kinds, str) or isinstance(kinds, list) and all(isinstance(k, str) for k in kinds)

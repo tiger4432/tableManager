@@ -283,17 +283,7 @@ class Report:
         unit of no value keeps its rows."""
         for column in [c for c in self.keys if report_shape.KEY_LATEST in self.key_words.get(c, ())]:
             at, unit = self.keys.index(column), [self.keys.index(c) for c in self.picked_by]
-            said = {}
-            for wafer, _row in read:
-                if wafer[at] is not None:
-                    said.setdefault(tuple(wafer[i] for i in unit), set()).add(wafer[at])
-            best = {}
-            for mine, values in said.items():
-                order = _instant if all(_instant(v) is not None for v in values) else str
-                best[mine] = (order, max(order(v) for v in values))
-            read = [(wafer, row) for wafer, row in read if tuple(wafer[i] for i in unit) not in best
-                    or wafer[at] is not None and best[tuple(wafer[i] for i in unit)][0](wafer[at]) == best[
-                        tuple(wafer[i] for i in unit)][1]]
+            read = _keep_latest(read, lambda pair: pair[0][at], lambda pair: tuple(pair[0][i] for i in unit))
         return read
 
     def _matched(self, role, columns, wafers, capped=False, where=None):
@@ -311,6 +301,12 @@ class Report:
         for row in _rows(self.db, role, shared + columns + beyond, list(by), where=where, keys=shared, capped=capped):
             for wafer in by.get(_parts(row[:len(shared)]), ()):
                 out.append((wafer, row[len(shared):]))
+        # a `keys` latest column beyond the wafer key: of the rows that differ only there, the latest (owner 11-11
+        # «마지막 마킹 시간해소») - the same fold as the wafer key's (`_latest`); two rows of it still say «twice»
+        latest = [len(columns) + at for at, c in enumerate(beyond) if report_shape.KEY_LATEST in self.key_words.get(c, ())]
+        for at in latest:
+            rest = [len(columns) + i for i in range(len(beyond)) if len(columns) + i not in latest]
+            out = _keep_latest(out, lambda pair: pair[1][at], lambda pair: (pair[0], tuple(pair[1][i] for i in rest)))
         return out
 
     def _long_conditions(self, wafers, only_time=False):
@@ -843,6 +839,9 @@ class Report:
                 and report_shape.KEY_FOLD in self.key_words[c]]
         chip = [at for at, c in enumerate(beyond) if at not in fold]
         first = role.get(report_shape.FIRST_LAYER)
+        # images.by: a defect's pictures a gallery each value of these key columns (owner 11-11 «leg별로 나눠서»)
+        by = [(True, self.keys.index(c)) if c in self.keys else (False, beyond.index(c))
+              for c in report_shape.wafer_columns(role.get(report_shape.IMAGE_BY))]
         rows = self._matched(role, [role["item"], role["image"]] + ([first] if first else []), picked,
                              capped=True)                                       # capped, not refused
         lead = 3 if first else 2
@@ -879,6 +878,8 @@ class Report:
                     continue
                 picture = _picture(ref, px)
                 entry = dict(picture, wafer=self.said(wafer))
+                if by:
+                    entry["by"] = " · ".join(str(wafer[at] if own else row[lead + at]) for own, at in by)
                 if fold:
                     entry["layers"] = [dict(picture, layer=layer)] if "src" in picture else []
                     named[(item, whose)] = [tuple(_part(row[lead + at]) for at in fold)] if "src" in picture else []
@@ -1656,6 +1657,22 @@ def _walk(db, cell, **asked):
 
 
 READS = report_shape.READS
+
+
+def _keep_latest(read, value_of, group_of) -> list:
+    """`read` with each group's rows of its latest value only - read as a time by the one reader, or as its text when
+    one of the group's values is not a time the reader knows (lead 10-24: 20261001123000 · 2026/10/01 · 2026.10.01
+    sort as text); a group of no value keeps its rows. The one fold `keys` latest is (the wafer key's and beyond)."""
+    said = {}
+    for each in read:
+        if value_of(each) is not None:
+            said.setdefault(group_of(each), set()).add(value_of(each))
+    best = {}
+    for group, values in said.items():
+        order = _instant if all(_instant(v) is not None for v in values) else str
+        best[group] = (order, max(order(v) for v in values))
+    return [each for each in read if group_of(each) not in best or value_of(each) is not None
+            and best[group_of(each)][0](value_of(each)) == best[group_of(each)][1]]
 
 
 def _instant(value):
