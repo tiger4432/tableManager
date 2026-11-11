@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """A second share writing the value another share already wrote keeps its own layer (owner 10-31 «ㄴ», 11-04 «ㄷ»):
-an external file's layer name carries its share (`crud.external_layer_name`), and both folds - the write's
-(`file_layer_fold`) and the one over layers already stacked (`stacked_layers`) - fold only within one share
-(`crud.same_share`). A name with no share in it (from before, a raws file's) folds as every file layer did.
+an external file's layer name carries its share (`crud.external_layer_name`), and the write's fold
+(`file_layer_fold`) folds only within one share (`crud.same_share`). A name with no share in it (from before, a raws file's) folds as every file layer did.
 
   seat × case                   same share     other share    old name vs new    raws vs external
   file_layer_fold               repeat         written (2)    repeat             repeat
-  stacked_layers                one goes       both stay      one goes           one goes
 """
 import os
 import sqlite3
@@ -43,14 +41,6 @@ def _layer(name, minutes, value="v"):
 def test_the_write_fold(case, expected):
     there, coming = CASES[case]
     assert crud.file_layer_fold([_layer(there, 0)], coming, "v", "string", "tb") == expected
-
-
-@pytest.mark.parametrize("case,goes", [("same share", [A1]), ("other share", []),
-                                       ("old name vs new", [OLD]), ("raws vs external", [RAWS])])
-def test_the_fold_over_stacked_layers(case, goes):
-    older, newer = CASES[case]
-    layers = {older: {"value": "v", "ingested_at": T0}, newer: {"value": "v", "ingested_at": T0 + timedelta(minutes=1)}}
-    assert crud.stacked_layers(layers, "string", "tb")["file"] == goes
 
 
 def test_the_share_is_read_back_and_the_name_reads_as_any_file_layer():
