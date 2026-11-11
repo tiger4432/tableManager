@@ -63,6 +63,18 @@ def _walk(board, seat, kind):
                                             follow=["register" if seat == "attribute" else f"p_{cell}"])
 
 
+def _bound_reds(board, cell):
+    """A walk bound on `q` from S1 over O comes back to S4 - S1's value - and to no other subject (D, lead 11-11): the
+    unbound walk does not come back the way it went at all (`_skip`)."""
+    seed = explorer.entity_id("subj", {"sid": "S1"})
+    with board["engine"].connect() as conn:
+        answer = trace_router._evidence_graph(conn, node_id={"positive": [seed], "negative": []}, hops=2,
+                                              direction="both", node_limit=500, edge_limit=500, engine="virtual",
+                                              follow=[f"p_{cell}"], follow_keys={f"p_{cell}": ["q"]})
+    got = sorted(node["keys"]["sid"] for node in answer["nodes"] if node["type"].split("@")[0] == "subj")
+    return [] if got == ["S1", "S4"] else [f"bound from S1: {got}, not ['S1', 'S4']"]
+
+
 def census(board):
     """{cell: [the reasons it is red]} - every cell, an empty list when it walks."""
     snapshot = load_setup(schema.require_world(None).declaration_root).snapshot
@@ -119,6 +131,8 @@ def census(board):
                 got = edge.get("occurred_at")
             if got != want:
                 red.append(f"{row}: {got!r}, not {want!r}")
+        if seat == "follow_bound" and (seat, kind) in gate.ENABLED:
+            red += _bound_reds(board, cell)
         out[cell] = red
     dump = os.environ.get("SHAPE_GATE_DUMP")
     if dump:
@@ -131,7 +145,7 @@ def test_every_cell_walks(board):
     """Every cell is walked and its reds collected; the ENABLED cells are held (none red), every other one carries
     the reason it is not held yet (`gate.not_yet`)."""
     assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 94
-    assert len(gate.ENABLED) == 74 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - D's row
+    assert len(gate.ENABLED) == 83 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - a bound formatted time
     assert all(gate.not_yet(*cell) for cell in gate.CELLS if cell not in gate.ENABLED)
     reds = census(board)
     assert len(reds) == len(gate.CELLS), "canary: every cell walked"
