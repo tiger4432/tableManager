@@ -69,8 +69,12 @@ def test_two_shares_with_one_value_leave_two_layers_through_the_real_watcher(tmp
     _settings(str(data), {"tb": TABLE}, [("tb", share_a, "*.csv"), ("tb", share_b, "*.csv")])
 
     def layers(c):
+        # a source's standing word on tb.val: its head line says val and did not withdraw it (the layers live in
+        # tb__lines since the overhaul - cell_sources is cold); tb's few columns sit in chunk 0
         return sorted(crud.layer_share(name) for (name,) in c.execute(
-            "SELECT source_name FROM cell_sources WHERE table_name = 'tb' AND column_name = 'val'"))
+            "SELECT l.source_name FROM tb__lines l JOIN line_columns k ON k.table_name = 'tb' AND "
+            "k.column_name = 'val' AND k.bit < 64 WHERE (l.head_0 >> k.bit) & 1 = 1 "
+            "AND (l.withdrawn_0 >> k.bit) & 1 = 0"))
     _run(tmp_path, db, lambda c: c.execute("SELECT count(*) FROM file_ingestion_logs WHERE table_name = 'tb' "
                                            "AND status = 'SUCCESS'").fetchone()[0] >= 2)
     with sqlite3.connect(str(db)) as c:
