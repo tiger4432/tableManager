@@ -99,7 +99,7 @@ def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
 
 
 def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transaction_id: str,
-              written_by: str = "system") -> tuple:
+              written_by: str = "system", mismatched: list = None) -> tuple:
     """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines: one
     «write» line per (row, source, ingested_at, updated_by, owner), each value the one today's write would have stored
     (`crud.cast_value_by_type` on the declared type, then `crud.line_text` - lead 11-11) - so each cell keeps its own time
@@ -108,6 +108,8 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     is what t shows. In the caller's transaction - the caller commits per page.
     The last page (next_after None) writes the «copy» audit row; a first page (after None) on a copied table
     raises AlreadyCopied, on a table an earlier run left half copied resumes after copied_through.
+    `mismatched`: filled with (row_id, column, t's value, the lines' winner) where the copied lines merged again do not
+    give what t shows - the migration's gate (owner 11-11); the caller rolls the page back.
     -> (cells copied, next_after or None)."""
     from sqlalchemy import func, select, update
 
@@ -185,6 +187,9 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
             now = shown[row_id]._mapping
             won = {c: lid for c, (v, lid) in cols.items() if lid is not None and c in t.c
                    and crud.line_text(now[c], kinds.get(c, "string")) == crud.line_text(v, kinds.get(c, "string"))}
+            if mismatched is not None:
+                mismatched.extend((row_id, c, now[c], v) for c, (v, lid) in sorted(cols.items())
+                                  if lid is not None and c in t.c and c not in won)
             if won:
                 db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: {**(now[lines.WON_BY] or {}), **won}}))
     if next_after is None:
