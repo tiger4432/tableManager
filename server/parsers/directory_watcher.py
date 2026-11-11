@@ -4503,7 +4503,8 @@ SWEEP_LAP_PREFIX = "sweep:"
 #: The lap a (table, source)'s re-read stop leaves - «reread:<table>@<source>», its `stopped` the sentence, none when
 #: let go - read by the file page's line beside the sweep's.
 REREAD_LAP_PREFIX = "reread:"
-#: The reads a re-read makes: the retry door's three words, and a sweep's file whose stamp was let go (`reread.uncheck`).
+#: The reads a re-read makes: the retry door's three words, and a sweep's file with no stamp - let go by hand
+#: (`reread.uncheck`, replay_ingestion --apply; a changed reading no longer lets any go, 소유자 11-11).
 REREAD_WHYS = frozenset({ingestion.checkpoint.WHY_RETRY, ingestion.checkpoint.WHY_READ_AGAIN,
                          ingestion.checkpoint.WHY_READ_NOW, ingestion.checkpoint.WHY_UNSTAMPED})
 

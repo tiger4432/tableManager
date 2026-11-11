@@ -9,9 +9,12 @@
 > 돌릴 것   git pull -> 와처 재기동
 > 볼 줄    watcher.log  [Watcher] <표>: its reading changed (<부분>) - N read file(s) kept as read (Read all again on the
 >          file page applies the change to them), failed files are not read again by themselves (Retry on the file page)
->          - D dispatched to be read again
+>          - D new or changed file(s) dispatched
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
-> 답의 뜻   N = 새 읽는 법이 아직 안 닿은 읽은 파일 수. D = 그 표에 새로 왔거나 다시 저장된 파일 수(보통 0)
+> 답의 뜻   N = 그 표 훑기 폴더(raws · 외부 저장소)에 «제자리에 있는» 읽은 파일 수 — 실패 · 기다리는 파일과
+>          archives/ 로 옮겨진 파일은 안 셈. archive 를 켠 raws 표는 0 이어도 Read all again 은 옮겨진 파일까지 읽는다
+>          D = 그 표에 새로 왔거나 다시 저장된 파일 수(보통 0)
+>          멈춘 다시 읽기(Stopped: 3 failed in a row)도 스크립트를 고쳐서는 안 풀린다 -> 고친 뒤 그 쌍에 Read all again · Retry
 >          «... unchecked» 가 보이면 -> 옛 와처가 돌고 있다(재기동이 안 됨)
 > 다시 읽기  파일 화면에서 그 표 · 폴더 -> «Read all again» -> 미리보기 수 확인 -> 실행
 > 재기동 뒤  꺼져 있는 동안 고친 스크립트도 기동 첫 틱에 위 줄이 한 번 — 다시 읽지는 않음
@@ -4639,7 +4642,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> (기본 3 이 아니면) ingestion_settings.json 에 "reread_stop_after_failures": N
 > 뜻      파일 화면 진행 줄 Last sweep 에 «Stopped: 3 failed in a row - <첫 줄> · waiting N» -> 그 쌍의 다시 읽기를 와처가 멈춤
->            파서를 고치면(스크립트 변경) 풀리고 다시 읽음. 고치지 않고 Read all again · Retry · Read now 를 누르면 풀리되 3 개 뒤 다시 멈춤
+>            파서를 고친 뒤 Read all again · Retry · Read now 를 누르면 풀리고 다시 읽음(스크립트 변경만으로는 안 풀림). 고치지 않고 누르면 3 개 뒤 다시 멈춤
 >            기다리는 파일을 아예 물리려면 그 행의 Cancel waiting re-reads
 >          파일이 여럿 실패하는데 안 멈춤 -> 그 다시 읽기에서 읽힌 파일이 하나라도 있었음(불량 파일 몇 개 - 지금처럼 하나씩 실패)
 > 끄기    ingestion_settings.json "reread_stop_after_failures": 0
@@ -4945,13 +4948,13 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 낱말의 뜻과 할 일
 >   new           기록 없는 파일 - 처음 보는 것. 다 읽힌 폴더에서 계속 나오면 그 경로의 기록이 지워진 것(시작 정리 줄을 봄)
 >   changed       읽은 때와 수정 시각 · 크기가 다름 - 원천이 파일을 다시 씀. 같은 파일이 계속 나오면 원천이 계속 쓰는 것
->   unstamped     기록은 있는데 도장 없음 - 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기
+>   unstamped     기록은 있는데 도장 없음 - 손으로 체크 해제됨(replay_ingestion --apply), 또는 잠금 대기로 끝난 읽기
 >   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 새 한 줄)
 >   retry         실패 파일을 다시 넘김(Retry · 읽기 바뀜)
 >   read now      기록 없던 파일을 Read now 로 넘김
 >   checklist not read   체크리스트를 못 읽어 일단 읽음 - 그 앞 WARNING 줄이 사유
 > 🔴 voids 표가 끝없이 읽히면  이 줄의 낱말 하나로 갈림: read again · retry 가 계속이면 아래 «대기 중인 다시 읽기를 되돌린다» 블록,
->          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 체크 해제가 되풀이되는 것
+>          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 누가 손으로 체크 해제를 되풀이하는 것
 > 파일 화면  GET /admin/file-ingestion/tables 의 sources[].sweep - state(sweeping · rested · unavailable) · age_seconds(지난 기록
 >          뒤 초) · seconds(훑기에 걸린 초) · looked · already_read · dispatched · why. 화면 줄은 클라 착지 뒤
 > 급할 때   끄는 스위치 없음 - 읽을지 말지는 그대로, 말만 바뀜
@@ -5111,7 +5114,6 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >            N  다시 읽지 않고 둔 파일 수 — 새 선언(예: 더한 칸)은 이 파일들의 행에 아직 안 들어감
 >            M  다시 넘긴 실패 파일 수
 > 반영할 때  파일 화면에서 그 표 · 폴더를 골라 «Read all again» -> 미리보기 수 확인 -> 실행
-> 되돌리기  git revert 53d547bbb -> 런처 재기동 (표 선언이 바뀌면 다시 전부 다시 읽음)
 > ```
 >
 
@@ -6030,7 +6032,6 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          그다음 훑기: «External sweep: … X already read, Y dispatched» — 다시 기동해도 Y 는 새로 온 파일 수
 > 뜻      M = 배포 뒤 한 번 다시 읽히는 수(실패했던 파일 · 읽은 뒤 바뀐 파일). 그 뒤로는 안 읽힘
 >          stamped 가 0 인데 파일이 많음 -> 로그 행의 경로가 지금 훑는 폴더와 다름(공유 경로 바뀜) -> 그 파일들은 한 번 다시 읽힘
->          옮겨진(archives/) 파일은 표 읽기가 바뀌어도 다시 안 읽음 — 제자리 파일(외장 · archive 끈 raws)만
 >          한 파일을 다시 -> 파일 화면 Retry. 여럿 -> python server/scripts/replay_ingestion.py --path <파일> --path ... --apply
 >          __force__ 파일 이름 · dedup_by_signature · dedup_by_path_stat 는 은퇴(값은 안 읽힘)
 > 급할 때   외장 소스 하나 멈춤: ingestion_settings.json 그 항목에 "enabled": false 저장(재기동 없이 · 다시 켜도 다시 안 읽음)
@@ -6357,7 +6358,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇     와처가 3 초마다 표마다 «읽기 모양»을 잰다 — table_config 의 그 표 항목(display_columns · search_columns · source_priority 빼고 전부)
 >          · ingestion_settings 의 그 표 external_sources 항목 · 그 표 scripts\*.py 파일(이름 · 수정 시각 · 크기)
 >          (⚰️ 10-24 부터 안 넘김) 바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
-> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) kept as read (Read all again on the file page applies the change to them), ~~K failed file(s) handed again~~ (10-24 부터 «failed files are not read again by themselves (Retry on the file page)») - D dispatched to be read again» (10-21 4492b8813 부터)
+> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) kept as read (Read all again on the file page applies the change to them), ~~K failed file(s) handed again~~ (10-24 부터 «failed files are not read again by themselves (Retry on the file page)») - D new or changed file(s) dispatched» (10-21 4492b8813 부터)
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
 > 못 읽음   table_config.json 이 쓰는 중이라 못 읽히는 틱은 견주지 않는다 · ingestion_settings.json 이 못 읽히면 외부 소스 부분만 지난 기억 그대로(플러그인 · 표 항목은 그대로 견줌)

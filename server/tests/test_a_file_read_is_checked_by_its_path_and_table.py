@@ -328,10 +328,10 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
         # a plugin changed - a comment is enough, its mtime moves: said, its files are not read (소유자 11-11)
         (data / "ingestion_workspace" / "tb" / "scripts" / "p.py").write_text(PLUGIN + "\n# fixed\n", encoding="utf-8")
         assert until(lambda: said("[Watcher] tb: its reading changed (scripts\\p.py) - 1 read file(s) " + KEPT + ", "
-                                  + NOT_AGAIN + " - 0 dispatched to be read again"), watcher)
+                                  + NOT_AGAIN + " - 0 new or changed file(s) dispatched"), watcher)
         (data / "ingestion_workspace" / "ta" / "scripts" / "p.py").write_text(PLUGIN + "\n# changed\n", encoding="utf-8")
         assert until(lambda: said("[Watcher] ta: its reading changed (scripts\\p.py) - 2 read file(s) " + KEPT + ", "
-                                  + NOT_AGAIN + " - 0 dispatched to be read again"), watcher)
+                                  + NOT_AGAIN + " - 0 new or changed file(s) dispatched"), watcher)
         time.sleep(5)
         assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 1, ("tb", "b1.csv"): 1,
                            ("tb", "rb.csv"): 1}
