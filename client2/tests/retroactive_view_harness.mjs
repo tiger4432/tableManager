@@ -306,6 +306,15 @@ async function suite(source) {
     }).operations[0].params[0];
     ok(holed.choices && holed.choices.length === 1 && holed.choices[0].value === 'a',
       'H5 an option with nothing to send is dropped rather than drawn dead', holed.choices);
+
+    // A list the declaration names ("type": "csv", lead 11-11): drawn as the base layer's list field, not one line.
+    const typed = view.buildOperationsView({
+      operations: [{ op: 'x', label: 'x', params: [{ name: 'row_ids', required: false, type: 'csv', help: '' },
+        { name: 'table', required: true, type: 'string', help: '' }, { name: 'p', required: false }],
+        cli: 'c', cli_only: [], deletes: null, restartable: true, commit_granularity: 'g' }],
+    }).operations[0].params.map((p) => p.list);
+    ok(JSON.stringify(typed) === '[true,false,false]',
+      'H6 a parameter declared a list (type csv) is a list field; a string, or none said, is one line', typed);
   }
 
   // The row's colour follows the two flags; the WORDS come from the payload.
@@ -985,6 +994,7 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['H6: a list parameter drawn as one line', swap("list: Boolean(param && param.type === 'csv'),", 'list: false,')],
   ['G12: a done replay with pages waiting leaves after the ten minutes',
     swap('    else if (now - stopped < FINISHED_STAYS_MS || chainWaits(run)) recent.push(row);',
       '    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);')],

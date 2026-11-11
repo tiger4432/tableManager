@@ -1020,7 +1020,7 @@ CELLS.push({ entry: 'index.html', after: 'Filter, two values applied', rule: 'se
 CELLS.push({ entry: 'index.html', after: 'Filter, Paste list', rule: 'paste counted', at: 'value-filter', expr: `(() => {
   const f = document.querySelector('.value-filter');
   if (!f) return 'the filter is not open';
-  const said = [(f.querySelector('.value-filter__count') || {}).textContent, (f.querySelector('.value-filter__line .meta') || {}).textContent];
+  const said = [(f.querySelector('.list-field__count') || {}).textContent, (f.querySelector('.list-field__line .meta') || {}).textContent];
   return said[0] === '3 values · equals any' && said[1] === '1 duplicate removed' ? null : 'the list says ' + JSON.stringify(said);
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Filter, two conditions', rule: 'second condition', at: 'value-filter', expr: `(() => {

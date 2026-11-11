@@ -117,9 +117,6 @@ async function suite(m) {
   eq('P1 a held row\'s cell passes as AG Grid (a condition) and the server (a set) judge it - each row',
     PASSES.map(([, kind, md, cell]) => m.passes(kind, md, cell)), PASSES.map((r) => r[4]));
 
-  eq('L1 a pasted list: lines, commas and tabs; trimmed, empty dropped, each once; a number column\'s numbers as numbers',
-    [m.pasteValues('text', 'a\nb, a\tc\r\n\n'), m.pasteValues('number', '1, 2.5, x')],
-    [{ values: ['a', 'b', 'c'], duplicates: 1 }, { values: [1, 2.5, 'x'], duplicates: 0 }]);
 
   // V — the filter on a page
   const doc = makeDoc('light');
@@ -171,8 +168,9 @@ async function suite(m) {
   one.pending.shift()({ values: [], more: false });
 
   click(one.f.tabButtons[1]);
-  setInput(one.f.pasteArea, 'a\nb\na');
-  const pasteWords = [one.f.pasteCount.textContent, one.f.pasteDup.textContent];
+  // the base layer's list field reads it (list_field_harness scores the reading)
+  setInput(byClass(one.f.paste, 'list-field__box')[0], 'a\nb\na');
+  const pasteWords = [byClass(one.f.paste, 'list-field__count')[0].textContent, byClass(one.f.paste, 'list-field__line')[0].children[1].textContent];
   click(one.f.applyButton);
   eq('V08 Paste list: counted, duplicates said, applied as a set', [pasteWords, one.f.getModel()],
     [['2 values · equals any', '1 duplicate removed'], { filterType: 'set', values: ['a', 'b'] }]);
@@ -263,7 +261,8 @@ const MUTANTS = [
   { id: 'M5', what: 'a set\'s null not the blank cells', catches: ['P1'], mutate: swap('if (isBlankCell(cell)) return values.includes(null);', 'if (isBlankCell(cell)) return false;') },
   { id: 'M6', what: 'two conditions typeable in the floating cell', catches: ['F1'],
     mutate: swap("if (model.filterType === 'set' || model.operator) return false;", "if (model.filterType === 'set') return false;") },
-  { id: 'M7', what: 'a pasted list not made unique', catches: ['L1'], mutate: swap('if (seen.has(word)) { duplicates += 1; continue; }', '') },
+  { id: 'M7', what: 'the Paste list applies nothing typed', catches: ['V08'],
+    mutate: swap("filterType: 'set', values: this.pasteField.values() });", "filterType: 'set', values: [] });") },
   { id: 'M8', what: 'a search drops the picks', catches: ['V02'], mutate: swap('  searched() {\n', '  searched() {\n    this.picked.clear();\n') },
   { id: 'M9', what: 'Apply with nothing picked', catches: ['V01'], mutate: swap("if (this.tab === 'pick') this.applyButton.disabled = !this.picked.size;", '') },
   { id: 'M10', what: 'a late answer drawn over a newer one', catches: ['V10'], mutate: swap('    if (read !== this.reads) return;\n', '') },

@@ -581,7 +581,7 @@ const DEFECTS = [
   ['view', 'a column cell hides its table', (s) => s.replace('  if (!table) return control;', '  return control;')],
   ['view', "a plan row's folded list is its JSON again",
     (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],
-  ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
+  ['path', "the adder's words go in as one member", (s) => s.replace('listValues(name).values', "[String(name || '')]")],
   ['view', "a take's chips carry no «+ record» - its record is reached by editing the file alone (lead 10-23 ㄴ)",
     (s) => s.replace("  if (item && item.pick === 'shape') {\n    for (const key of Object.keys(item.branches || {})) {",
       "  if (false) {\n    for (const key of Object.keys(item.branches || {})) {")],

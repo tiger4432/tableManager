@@ -6018,10 +6018,17 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **`conditionModel(kind, rows, operator)`** · **`rowsOf(model, defaultOption)`** — Condition 탭 ↔ AG Grid 35 의 모델(SimpleFilter.getModelFromUi · createCondition), 조건 둘 · AND/OR
 - **`floatingModel` · `lastTypeOf` · `floatingEditable` · `floatingText`** — 필터 칸 타이핑(AG Grid 의 SimpleFloatingFilter, `FLOAT_DEBOUNCE_MS` 500)
 - **`passes(kind, model, cell)`** — 그리드가 든 행: 조건은 AG Grid 의 text/number 핸들러, 셋은 서버 규칙(null = 빈 칸, 숫자 칸은 숫자로)
-- **`pasteValues(kind, text)`** — 줄 · 쉼표 · 탭, 중복 제거 수
+- Paste list 탭 = 바탕 층 `list_field.js` 의 `ListField`(11-11, «N values · equals any») — 목록 읽기는 거기 하나
 - **`class ValueFilter`**(AG Grid 사용자 필터) · **`class ValueFloatingFilter`** — Pick 은 `filterParams.readValues` = `api.js` `readColumnValues(column, search)`(`GET /tables/<t>/data/values`, 그리드 narrowing 통째 + world), 1 만 넘으면 서버 검색(`SEARCH_DEBOUNCE_MS`), 늦은 답 버림, 거절 문장 그대로. 그리는 값 `PICK_SHOWN` 500
 - **바탕 층** — AG Grid 안의 우리 부품은 `.base-in-grid` 로 base.css 의 단추 · 입력 규칙을 받는다(`:not(:is([class^="ag-"], …) :not(.base-in-grid, .base-in-grid *))`)
-- **채점자**: `client2/tests/value_filter_harness.mjs`(`harness_floors.mjs` 에 **37** 건) · `screen_layout_harness.mjs` DRIVE «Filter, …» 다섯
+- **채점자**: `client2/tests/value_filter_harness.mjs`(`harness_floors.mjs` 에 **36** 건) · `screen_layout_harness.mjs` DRIVE «Filter, …» 다섯
+
+### 🆕 `list_field.js` (11-11 — 총괄 11-11, 어드민 셈 «목록을 입력 하나로») — 바탕 층 목록 칸
+
+- **`listValues(text, kind)`** — 줄 · 쉼표 · 탭, 다듬기, 빈 것 버림, 하나씩(중복 수), 숫자 칸은 숫자로. 목록을 읽는 자리는 이것 하나
+- **`listCountWords(values, duplicates)`** · **`class ListField(mount, deps)`** — 글상자 + «N values» · «M duplicates removed», `values()` · `setValues()` · `onChange`. 모양은 base.css `.list-field`, sample.html «List field»
+- **쓰는 곳 셋**: `value_filter.js` Paste list · Retroactive 의 `"type": "csv"` 파라미터(`retroactive_view.buildParam` 의 `list` → `admin.js` `retroParamsEl`, 쉼표로 이어 그대로 보냄) · `ontology_path.addMember` Form D 단어 추가
+- **채점자**: `client2/tests/list_field_harness.mjs`(**12**) · `retroactive_view_harness` H6 · `declaration_form_harness` 추가 변이
 
 ### 🆕⑰ `dropdown.js` (🆕 **108줄** @`f3b6391d2` · 75줄 @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
