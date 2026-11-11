@@ -359,64 +359,6 @@ def setup_performance():
         except Exception as e:
             print(f"   Suggestion index step failed: {told(e)}")
 
-        # 3.10 [R2 withdraw] The index that bounds "which cells does this source claim".
-        #   `models.py CellSource.__table_args__` carries the SAME definition —
-        #   **fix both places**. create_all builds it on a NEW database; on an
-        #   existing one it never adds an index to a table that is already there,
-        #   so this step is the only path.
-        #
-        #   Why it is needed: the existing composite is
-        #   (table_name, row_id, column_name, source_name) — `source_name` LAST, so
-        #   it cannot serve a (table_name, source_name) filter at all. Measured on
-        #   this box 2026-07-31, 13,148,355 rows: the count route's aggregate fell
-        #   to a full parallel Seq Scan — 861ms, 263,369 buffers, 13.07M rows thrown
-        #   away by Filter to return 75,000 matches. That cost is O(whole table) and
-        #   sits on a REQUEST path (`GET /admin/retroactive/count?op=withdraw`).
-        #
-        #   This does NOT make the existing composite redundant: that one is UNIQUE
-        #   and is the upsert's conflict target (13.2M scans on this box vs 858 for
-        #   its non-unique prefix). Nothing here drops anything.
-        # 3.10-bis [Frame confirmation, spec MAP_ALIGNMENT layer 8] The index that
-        #   bounds "which cells were derived under this confirmation".
-        #   `models.py CellSource.__table_args__` and
-        #   `migrations/add_frame_confirmation.py` carry the SAME definition — the
-        #   migration covers the box it is run on, this step covers every other
-        #   install, and create_all covers a brand new database. An index that
-        #   exists on one machine and not on a fresh one is a performance defect
-        #   that surfaces later as a mystery.
-        #
-        #   PARTIAL on purpose: `confirmation_uid` is NULL for every row that was
-        #   not derived under a confirmation, which is and will stay the
-        #   overwhelming majority of this table. A non-partial index would carry
-        #   all of them to answer a question none of them can be part of.
-        print("\nStep 3.10: Creating cell_sources withdraw-scope index (R2)...")
-        # ⚰️ THE WITHDRAW-SCOPE INDEX IS GONE FROM HERE (S-118, 판정 245-b). It was a
-        #   tuple this loop had already stopped iterating over - dead in place - and the
-        #   index itself is retired: it carried all 34M rows to serve a rare batch path,
-        #   and the human half of that path is now `models.HUMAN_CLAIMS_INDEX`, which the
-        #   chain worker's boot ensure creates. Dropping the old one is a person's
-        #   command, printed by that same ensure.
-        confirm_idx = ("idx_sources_confirmation", "cell_sources",
-                       "(confirmation_uid, table_name, row_id)",
-                       " WHERE confirmation_uid IS NOT NULL")
-        for idx_name, table, definition, where in (confirm_idx,):
-            print(f" - Creating {idx_name} on {table} {definition}{where}...")
-            t1 = time.time()
-            try:
-                conn.execute(text(
-                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
-                    f"ON {table} {definition}{where}"))
-                size = conn.execute(text(
-                    "SELECT pg_size_pretty(pg_relation_size(:n))"),
-                    {"n": idx_name}).scalar()
-                print(f"   Success ({time.time() - t1:.2f}s, {size})")
-            except Exception as e:
-                print(f"   Failed to create {idx_name}: {told(e)}")
-
-        # ⚰️ THE WITHDRAW INDEX'S BUILD AND ITS PLAN CHECK (3.11) STOOD HERE, reading a
-        #   `withdraw_idx` this file no longer defines - the step died with NameError
-        #   (총괄 10-09: «안 죽게만»). The index is retired (the ⚰️ above).
-
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
