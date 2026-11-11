@@ -122,7 +122,7 @@ git grep -n -w -E "CellSource|CellSourceModel|cell_sources" <ref> -- server ':!s
 git grep -c "def copy_page" <ref> -- server/database/line_migration.py
 ```
 - 기대(소유자 ② «착지 때 cell_sources 쓰기 0»): 쓰는 자리 0. 읽는 자리는 복사(line_migration 의 copy_page · copy_total · copied_through) · 되돌리기(B 의 write_back) · 모델 정의뿐. 그 밖이 남으면 그 이름이 관문 글에 오른다.
-- 11-11 c-reads 8123a3895 ~ 839f67b64 에서 이 낱말이 걸린 파일은 54 개다(git grep -l, 카나리아 1). 줄 단위로 열어 본 수가 아니다.
+- 11-11 c-reads 839f67b64 에서 이 낱말이 걸린 파일은 54 개다(git grep -l, 카나리아 1). 줄 단위로 열어 본 수가 아니다.
 
 ```bash
 git grep -n -w -E "AuditLog|audit_logs" <ref> -- server ':!server/tests'
