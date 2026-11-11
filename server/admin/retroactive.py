@@ -262,11 +262,12 @@ def _count_withdraw(db, params, scan_limit):
         "detail": (
             f"'{source}' claims {c['cells_claimed']} cell(s) in '{table}', and "
             f"{c['pinned']} of them are pinned by a person "
-            f"(manual_priority_source) and will not be touched. {affected} are withdrawn "
-            f"- the cells whose visible value changes can be fewer (where the source "
-            f"underneath holds the same value, the display stays as it is). Rows left with "
-            f"nothing that keeps them are deleted too - counted when it runs (shown on the "
-            f"run's line)."
+            f"(manual_priority_source) and will not be touched. "
+            + (f"{affected} are withdrawn - the cells whose visible value changes can be fewer "
+               f"(where the source underneath holds the same value, the display stays as it is). "
+               if affected else "Nothing is withdrawn. ")
+            + "Rows left with nothing that keeps them are deleted too - counted when it runs "
+            "(shown on the run's line)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],

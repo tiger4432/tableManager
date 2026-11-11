@@ -647,9 +647,8 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 - [ ] **[신설] 그리드에서 넘긴 범위가 «한 번만» 먹힌다**: 그리드에서 행을 골라 범위를 어드민으로 넘긴 뒤, 어드민을 **다시 열면** 그 범위가 **비어 있다**. 🔴 남아 있으면 결함이다 — 운영자가 「지금 고른 적 없는」 범위를 자기가 고른 것으로 읽는다. 그리고 **주소창에 범위 값이 안 보인다.**
 - [ ] 🎯 **연산 차이를 응답이 말한다**: 각 항목에 **`deletes`·`restartable`·`commit_granularity`**가 있고, 클라이언트가 확인 문구를 추측하지 않는다.
 - [ ] **DB를 건드리지 않는다**: 인벤토리 호출은 config만 읽는다(DB를 내려도 200이면 정상).
-- [ ] 🎯 **모든 카운트가 `count_kind`를 함께 준다**: 네 연산 각각 `GET /admin/retroactive/{op}/count` → 응답에 `count_kind`가 있고 값이 `exact`/`sample`/`upper_bound` 중 하나다. 🔴 **수만 있고 종류가 없으면 결함**이다.
+- [ ] 🎯 **모든 카운트가 `count_kind`를 함께 준다**: 네 연산 각각 `GET /admin/retroactive/{op}/count` → 응답에 `count_kind`가 있고 값이 `exact`/`sample` 중 하나다. 🔴 **수만 있고 종류가 없으면 결함**이다.
   - `sample`이면 `scanned`·`truncated`가 함께 있고, **`detail` 문장이 「표본에 대한 수」라고 말한다.**
-  - `upper_bound`면 `extra.why_upper_bound`가 **무엇이 빠졌는지를 말로** 설명한다.
 - [ ] **`scan_limit`은 안 훑은 연산에서 `null`이다**: `withdraw` 응답의 `scan_limit`은 요청에 `?scan_limit=500`을 줘도 **`null`**이다. 🔴 요청한 예산을 그대로 되돌려주면 **하지 않은 표본을 했다고 말하는 것**이다.
 - [ ] 🎯 **카운트는 쓰지 않는다**: 네 연산 모두 카운트를 두 번씩 돌린 뒤 대상 테이블의 행 수·값·`cell_sources` 건수가 **불변**이다. 🔴 **표시값만 보고 판정하지 마십시오** — R1은 레이어를 쓰고도 사람 값이 이겨 화면이 그대로일 수 있습니다. **`cell_sources`를 보십시오**.
 - [ ] **오타는 조용히 무시되지 않는다**: `?rul=foo`처럼 **없는 파라미터 이름**을 주면 **400**이고 메시지가 허용 이름을 말한다. 🔴 조용히 무시되면 「0건」이 정답처럼 보인다.

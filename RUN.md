@@ -5619,7 +5619,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          층이 하나도 안 남은 행은 그 자리에서 지워짐 — 지금까지는 키 칸이 빈 채(business_key_val 만 남음) 남았음
 > 보이는 것 chain_worker.log «[ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left»
 >          바로 뒤 «[ChainRetract] … rows_told=… rows_deleted=N»
->          R2 미리보기 «At most N row(s) are left with no layer and are deleted as shells.» · 결과 rows_deleted
+>          R2 미리보기 «Rows left with nothing that keeps them are deleted too - counted when it runs (shown on the run's line).» · 결과 rows_deleted
 > 남는 것  사람 층 · 파일 층 · 다른 규칙 층이 있는 행은 안 지움 · 출신 행 없는 맵퍼(SELECT 로 다시 읽어 냄)는 거둘 것을 못 고름 (그대로)
 > 이미 남은 껍데기  어드민 소급 «Remove rows with no source left» 를 그 표에 한 번 — 끝
 > 틈      거두기 커밋과 지우기 커밋 사이에 프로세스가 죽으면 그 행은 껍데기로 남음 (재시도는 거둘 층이 없어 안 물음) -> 위 op 로
