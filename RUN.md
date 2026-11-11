@@ -16,7 +16,7 @@
 >          시각 · 참거짓 칸 속성과 수식어, 참거짓 · 날짜 칸 키, 날짜 칸 이벤트 시각도 이제 읽힌다 (전엔 «not read»)
 >          전처럼 «...: a qualifier read from a float column» 줄이 보이면 -> 옛 api 가 돌고 있다(재기동이 안 됨)
 > 답의 뜻   left_out 이 비거나 줄었다 -> 고쳐짐
->          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시각 칸이거나 필수 수식어가 엔티티 속성에서 온다.
+>          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시간대를 안 적은 zone 없는 시각 칸이다.
 >          그 문장의 선언(그 수식어의 칸)을 보낸다
 > 11-11f 뒤  numeric 칸 수식어 · 속성이 있으면 걷기가 «Decimal is not JSON serializable» 로 실패했다 -> 이 릴리스로 풀린다
 >          찾기  Select-String -Path server\*.log -Pattern "Decimal is not JSON"  — 재기동 뒤 새 줄이 없어야 한다

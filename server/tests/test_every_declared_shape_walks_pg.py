@@ -55,12 +55,24 @@ def fixture_board(world, config, monkeypatch):
 def _walk(board, seat, kind):
     """One cell's walk - its own seeds, its own predicate, so a cell that breaks the read breaks only itself."""
     cell = gate.name(seat, kind)
-    held = cell if seat == "attribute" else "subj"
+    held = cell if seat in ("attribute", "qualifier_required_attribute") else "subj"
     seeds = [explorer.entity_id(held, {"sid": row}) for row in gate.ROWS]
     with board["engine"].connect() as conn:
         return trace_router._evidence_graph(conn, node_id={"positive": seeds, "negative": []}, hops=1,
                                             direction="both", node_limit=500, edge_limit=500, engine="virtual",
                                             follow=["register" if seat == "attribute" else f"p_{cell}"])
+
+
+def _bound_reds(board, cell):
+    """A walk bound on `q` from S1 over O comes back to S4 - S1's value - and to no other subject (D, lead 11-11): the
+    unbound walk does not come back the way it went at all (`_skip`)."""
+    seed = explorer.entity_id("subj", {"sid": "S1"})
+    with board["engine"].connect() as conn:
+        answer = trace_router._evidence_graph(conn, node_id={"positive": [seed], "negative": []}, hops=2,
+                                              direction="both", node_limit=500, edge_limit=500, engine="virtual",
+                                              follow=[f"p_{cell}"], follow_keys={f"p_{cell}": ["q"]})
+    got = sorted(node["keys"]["sid"] for node in answer["nodes"] if node["type"].split("@")[0] == "subj")
+    return [] if got == ["S1", "S4"] else [f"bound from S1: {got}, not ['S1', 'S4']"]
 
 
 def census(board):
@@ -87,7 +99,7 @@ def census(board):
         want = gate.expected(seat, kind, ledger_subgraph._instant)
         for row in gate.ROWS:
             said = not roleframe._is_missing(gate.cell_of_row(kind, row)) or seat == "key_constant"
-            subject = explorer.entity_id("subj", {"sid": row})
+            subject = explorer.entity_id(cell if seat == "qualifier_required_attribute" else "subj", {"sid": row})
             if seat == "attribute":
                 node = nodes.get(explorer.entity_id(cell, {"sid": row})) or {}
                 got = (node.get("attributes") or {}).get("v", "<none>")
@@ -97,7 +109,7 @@ def census(board):
                     red.append(f"{row}: a blank said attribute v {got!r}")
                 continue
             edges = [e for e in answer["edges"] if e["source"] == subject and e["predicate"] == f"p_{cell}"]
-            if seat == "qualifier_optional" and not said:
+            if seat in ("qualifier_optional", "follow_bound") and not said:
                 if len(edges) != 1 or "q" in (edges[0].get("qualifiers") or {}):
                     red.append(f"{row}: a blank optional qualifier - edges {[e.get('qualifiers') for e in edges]}")
                 continue
@@ -111,7 +123,7 @@ def census(board):
             edge = edges[0]
             if seat in ("key_one", "key_several", "key_constant"):
                 got = (nodes.get(edge["target"]) or {}).get("keys", {}).get("k", "<no node>")
-            elif seat in ("qualifier_optional", "qualifier_required"):
+            elif seat.startswith("qualifier") or seat == "follow_bound":
                 got = (edge.get("qualifiers") or {}).get("q", "<none>")
             elif seat == "value":
                 got = (nodes.get(edge["target"]) or {}).get("value", "<no value node>")
@@ -119,6 +131,8 @@ def census(board):
                 got = edge.get("occurred_at")
             if got != want:
                 red.append(f"{row}: {got!r}, not {want!r}")
+        if seat == "follow_bound" and (seat, kind) in gate.ENABLED:
+            red += _bound_reds(board, cell)
         out[cell] = red
     dump = os.environ.get("SHAPE_GATE_DUMP")
     if dump:
@@ -130,8 +144,8 @@ def census(board):
 def test_every_cell_walks(board):
     """Every cell is walked and its reds collected; the ENABLED cells are held (none red), every other one carries
     the reason it is not held yet (`gate.not_yet`)."""
-    assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 74
-    assert len(gate.ENABLED) == 64 and gate.ENABLED <= set(gate.CELLS)      # 74 - the value-object row (pending owner)
+    assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 94
+    assert len(gate.ENABLED) == 83 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - a bound formatted time
     assert all(gate.not_yet(*cell) for cell in gate.CELLS if cell not in gate.ENABLED)
     reds = census(board)
     assert len(reds) == len(gate.CELLS), "canary: every cell walked"
