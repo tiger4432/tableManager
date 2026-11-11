@@ -1018,7 +1018,7 @@ def line_value(text, col_type: str):
 
 
 def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name: str,
-                    pin=None):
+                    pin=None, ranks=None):
     """(repeat, folded, moved) for a file layer about to be written into a cell (총괄 225b2c658 · f224477c1), by the
     file layers of its share that hold the same value (`same_share`; each share keeps its own layer, owner «ㄷ») and
     the newest layer of its whole priority class - the one the cell shows of it (QA 11-08):
@@ -1029,19 +1029,22 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
             the cell back from share B's change); the share's other layers of the value are `folded`
     neither its share does not hold the value - its own layer is written
     The same layer resent unchanged is the seat's `source_unchanged`, not this: it is not a new statement.
-    Never the pinned one.
+    Never the pinned one. `ranks`: a write's memo over one table (`compute_priority_value`'s).
     """
-    rank = get_source_priority(source_name, table_name)
-    same_class = [s for s in col_srcs if get_source_priority(s.source_name, table_name) == rank]
-    same = [s for s in same_class
+    same = [s for s in col_srcs
             if same_share(s.source_name, source_name) and s.source_name not in (source_name, pin)
             and is_file_layer(s.source_name) and not values_differ(s.value, value, col_type)]
+    if not same:                                   # the class is asked only of a cell its share says it on
+        return False, [], None
+    rank = get_source_priority(source_name, table_name)
+    same_class = [s for s in col_srcs if get_source_priority(s.source_name, table_name) == rank]
+    same = [s for s in same if s in same_class]
     if not same:
         return False, [], None
 
     def newest(layers):
         name = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
-                                       for s in layers}, None, table_name)[1]
+                                       for s in layers}, None, table_name, ranks=ranks)[1]
         return next(s for s in layers if s.source_name == name)
     top = newest(same_class)
     if is_file_layer(top.source_name) and not values_differ(top.value, value, col_type):

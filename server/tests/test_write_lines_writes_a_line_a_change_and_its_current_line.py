@@ -407,3 +407,51 @@ def test_a_line_that_moves_no_shown_value_leaves_the_row_s_updated_at(db):
     assert first is not None and out["lines"] == 1 and _now(db)[r]["updated_at"] == first, out
     _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "user", "written_by": "kim"}, tx="tx3")
     assert _now(db)[r]["a"] == "y" and _now(db)[r]["updated_at"] != first
+
+
+@pytest.mark.parametrize("batch", [
+    [{"values": {"a": "y"}}, {"values": {"a": "x"}}],                        # x said again after y in one batch
+    [{"line_kind": "withdraw", "columns": ["a"]}, {"values": {"a": "x"}}],    # x said again after its withdraw
+])
+def test_a_batch_s_last_word_on_a_cell_wins(db, batch):
+    """Lead 11-11 ㄱ: step 2 judges a batch's items on the heads as its earlier items left them, as the old write wrote
+    them one by one - not each on the heads the batch began with."""
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    out = _write(db, *[dict(it, row_id=r, source_name="f1") for it in batch], tx="tx2")
+    assert (out["lines"], _now(db)[r]["a"]) == (2, "x"), out
+
+
+@pytest.mark.parametrize("column, head, again, left_out", [
+    ("a", " x ", "x", False),          # a text column's head as it stands: the trimmed text is a change
+    ("a", "", None, True),             # a blank is absence (CLAUDE.md «길이 0 은 NULL»)
+    ("n", "1", 1.0, True),             # a number column: one number, one text (lead 11-11 accepted)
+])
+def test_a_head_written_before_line_text_compares_by_its_column(db, column, head, again, left_out):
+    """Lead 11-11 ㄴ: a head whose text is not what line_text would store (written before it) - a text column's
+    compares as it stands, any other column's by its line text."""
+    item = {"key": {"k": "K1"}, "source_name": "f1", "written_by": "loader", "input_row": "r1"}
+    _write(db, dict(item, values={"k": "K1", column: "5"}))
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    db.execute(ln.update().values({lines.value_column(column): head}))
+    before = len(_lines(db))
+    _write(db, dict(item, values={column: again}), tx="tx2")
+    assert (len(_lines(db)) == before) is left_out
+
+
+def test_a_key_that_moves_a_declared_key_column_moves_updated_at(db, monkeypatch):
+    """QA 11-11: a re-key (step 5½) after the merge moves the declared key column - a shown column - so updated_at
+    moves, as the old write's written_col did; a table keyed in business_key_val alone keeps it (no shown column
+    moved)."""
+    table, cfg = "wl_keyed", {"business_key": "bk", "composite_key_source": ["k"],
+                              "column_types": {"bk": "string", "k": "string", "a": "string"}}
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, cfg)
+    keep_lines(db, table, cfg)
+    [r] = write_lines(db, table, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"}],
+                      kind="funnel", transaction_id="tx1")["changed"]
+    now = lines.shape(db, table, cfg)["table"]
+    db.execute(now.update().where(now.c.row_id == r).values(business_key_val="OLD", bk="OLD"))
+    before = dict(db.execute(select(now).where(now.c.row_id == r)).mappings().one())
+    write_lines(db, table, [{"row_id": r, "line_kind": "mark", "columns": [], "rekey": True, "source_name": "f1"}],
+                kind="mark", transaction_id="tx2")
+    after = dict(db.execute(select(now).where(now.c.row_id == r)).mappings().one())
+    assert (before["bk"], after["bk"]) == ("OLD", "K1") and after["updated_at"] != before["updated_at"], (before, after)

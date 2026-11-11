@@ -138,10 +138,11 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
     # a mark still merges its row again (a re-key it asks for)
-    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old) if keeps
+    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at) if keeps
                       else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
                             sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
-    moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
+    split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
+    moved = [i for i in sorted(plain) if i not in kept and i not in split]  # changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
@@ -152,7 +153,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         _heads(db, ln, chunks, written)
         unpinned = _marks(db, table, shape, items, kept, targets, asked)
     for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
-        if targets[i] in unpinned and i not in work:
+        if targets[i] in unpinned and i not in work and i not in split:
             work[i] = "edit"
             moved.append(i)
             left_out -= 1
@@ -373,14 +374,14 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
     return gated
 
 
-def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old):
-    """Step 2 - the items that change something. A write's column is left out when its source's head line there says
-    the same text, from the same hand and input row (ruling 434) - both texts through `crud.line_text` on t's stored
-    kind, the one fold a line's value takes (a blank is None, «1» and 1.0 one text on a number column) - or when
-    another source says it already (`_others`), and the write when no column is left. A withdraw keeps the columns its
-    source still speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL
-    would speak on). All ask one read of the head lines (`_spoken`). Deletes and marks are kept. Returns (kept
-    indexes, how many left)."""
+def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
+    """Step 2 - the items that change something, judged in their order on the head lines as the batch's earlier
+    items left them (the last word of a batch wins - lead 11-11). A write's column is left out when its source's head
+    there says the same text (`_head_text`), from the same hand and input row (ruling 434), or when another source
+    says it already (`_others`); the write when no column is left. A withdraw keeps the columns its source still
+    speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL would speak
+    on). All ask one read of the head lines (`_spoken`). Deletes and marks are kept. Returns (kept indexes, how many
+    left)."""
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
@@ -388,38 +389,61 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old):
                                                 held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
-    heads = _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"] in (WRITE, WITHDRAW)},
-                    columns)
-    same = {}
-    for i in writes:                               # its source's head line there: the same text, hand and input row
-        said = heads.get((targets[i], items[i].get("source_name")), {})
-        hand = (_text_or_none(items[i].get("written_by")), _text_or_none(items[i].get("input_row")))
-        same[i] = {c for c, value in items[i]["values"].items() if c in said and said[c][:2] == hand
-                   and crud.line_text(said[c][2], held.get(c, "string")) == value}
-    folds, moves = _others(db, table, items, writes, targets, heads, held, old, same)
-    for i, by in sorted(moves.items()):            # its share's layer of the value, written under its own source
-        for source, cs in sorted(by.items()):
-            kid = dict(items[i], source_name=source, values={c: items[i]["values"][c] for c in cs}, of=i,
-                       folds={s: f & cs for s, f in (folds.get(i) or {}).items() if f & cs})
-            targets[len(items)] = targets[i]
-            items.append(kid)
-            same[i] |= cs
-    for i, by in folds.items():
-        items[i]["folds"] = {s: f - same[i] for s, f in by.items() if f - same[i]}
-    kept, left_out = set(), 0
+    heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at)}}}
+    for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
+                                                                 in (WRITE, WITHDRAW)}, columns).items():
+        heads.setdefault(row_id, {})[source] = said
+    asking = [i for i in writes if _asks_others(items[i], targets[i] in old)]
+    pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
+                                                       {c for i in asking for c in items[i]["values"]}).items()}
+            if asking else {})
+    kept, left_out, ranks = set(), 0, {}
     for i in sorted(targets):
-        it = items[i]
+        it, row_id = items[i], targets[i]
+        row = heads.setdefault(row_id, {})
+        own = row.setdefault(it.get("source_name"), {})
         if it["line_kind"] == WITHDRAW:
-            it["columns"] = [c for c in it.get("columns") or () if c in heads.get((targets[i], it.get("source_name")), {})]
-        if it["line_kind"] == WRITE and same.get(i):
-            it["values"] = {c: value for c, value in it["values"].items() if c not in same[i]}
-        if it["line_kind"] == WRITE and not it["values"] and i in moves:
-            continue                               # its columns went to the items split off it
+            it["columns"] = [c for c in it.get("columns") or () if c in own]
+            for c in it["columns"]:
+                own.pop(c)
+        elif it["line_kind"] == WRITE:
+            hand = (_text_or_none(it.get("written_by")), _text_or_none(it.get("input_row")))
+            same = {c for c, value in it["values"].items() if c in own and own[c][:2] == hand
+                    and _head_text(own[c][2], held.get(c, "string")) == value}
+            folds, moves = (_others(table, it, row_id, row, held, pins, same, ranks) if i in asking else ({}, {}))
+            when = it.get("at") or at
+            for source, cs in sorted(moves.items()):   # its share's layer of the value, under its own source
+                kid = dict(it, source_name=source, values={c: it["values"][c] for c in cs}, of=i,
+                           folds={s: f & cs for s, f in folds.items() if f & cs})
+                targets[len(items)] = row_id
+                kept.add(len(items))
+                items.append(kid)
+                same |= cs
+                for c in cs:
+                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when)
+            it["folds"] = {s: f - same for s, f in folds.items() if f - same}
+            it["values"] = {c: value for c, value in it["values"].items() if c not in same}
+            for c, value in it["values"].items():
+                own[c] = hand + (value, when)
+            for s, f in folds.items():             # a folded source no longer heads the column, whichever line took it
+                for c in f:
+                    row.get(s, {}).pop(c, None)
+            if not it["values"] and moves:
+                continue                           # its columns went to the items split off it
         if (it["line_kind"] == WRITE and not it["values"]) or (it["line_kind"] == WITHDRAW and not it["columns"]):
             left_out += 1
         else:
             kept.add(i)
     return kept, left_out
+
+
+def _head_text(text, kind):
+    """A head line's value as step 2 compares it with a write's text: a blank is absence; a text column's text as it
+    stands - a person re-sending it trimmed is a change (lead 11-11 ㄴ); any other kind its line text (a number's
+    «1» and «1.0», one instant's two zone spellings are one text)."""
+    if crud.is_blank_value(text):
+        return None
+    return text if kind == "string" else crud.line_text(text, kind)
 
 
 def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
@@ -443,53 +467,45 @@ def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
     return out
 
 
-def _others(db, table, items, writes, targets, heads, held, old, same):
+def _asks_others(item, there) -> bool:
+    """Whether step 2 asks what another source on the cell says (`_others`) of this write: a file's or the chain's,
+    on a row there before, never a re-spelling (no new statement: its own line is re-spelled where it is)."""
+    source = item.get("source_name")
+    return (item["line_kind"] == WRITE and there and not item.get("respelled")
+            and (crud.is_file_layer(source) or crud.writer_kind(source) == "chain"))
+
+
+def _others(table, item, row_id, row, held, pins, same, ranks):
     """What another source on the cell says, for a write the old seat asked it of (lead 11-11 ㄴ - its two answers, on
-    the layers `_spoken` read): a file's `crud.file_layer_fold` - a repeat is left out, its share's other layers of
-    the value fold into the line, a value its share holds behind another layer is written under that layer's source
-    (owner 11-08 «층을 새로하지 말고 순서를 바꿔»); a chain's new layer saying what the cell shows is left out (owner
-    11-08). On a row there before, never the pinned layer, never a re-spelling (no new statement: its own line is
-    re-spelled where it is). Adds to `same`; -> ({item: {source: {column}}} folds,
-    {item: {source: {column}}} moves)."""
+    the row's head lines as step 2 holds them): a file's `crud.file_layer_fold` - a repeat is left out, its share's
+    other layers of the value fold into the line, a value its share holds behind another layer is written under that
+    layer's source when the file has no layer of its own there (owner 11-08 «층을 새로하지 말고 순서를 바꿔»; one it
+    has takes the value, as the old write's `src_obj or moved`); a chain's new layer saying what the cell shows is
+    left out (owner 11-08). Never the pinned layer. Adds to `same`; `ranks` the write's rank memo (one table); ->
+    ({source: {column}} folds, {source: {column}} moves)."""
     from types import SimpleNamespace
 
-    asks = {}
-    for i in writes:
-        source = items[i].get("source_name")
-        if targets[i] in old and not items[i].get("respelled") and (crud.is_file_layer(source)
-                                                                   or crud.writer_kind(source) == "chain"):
-            cs = [c for c in items[i]["values"] if c not in same[i]]
-            if cs:
-                asks[i] = cs
-    if not asks:
-        return {}, {}
-    rows = {targets[i] for i in asks}
-    cells = {}
-    for (row_id, source), said in heads.items():
-        if row_id in rows:
-            for c, (_by, _input, text, at) in said.items():
-                cells.setdefault((row_id, c), []).append(SimpleNamespace(
-                    source_name=source, value=crud.line_value(text, held.get(c, "string")), ingested_at=at))
-    pins = {cell: was[2] for cell, was in _overwrites(db, table, rows, {c for cs in asks.values() for c in cs}).items()}
+    source = item.get("source_name")
     folds, moves = {}, {}
-    for i, cs in sorted(asks.items()):
-        source = items[i].get("source_name")
-        for c in cs:
-            layers, kind, value = cells.get((targets[i], c), []), held.get(c, "string"), items[i]["values"][c]
-            pin = pins.get((targets[i], c))
-            if crud.is_file_layer(source):
-                repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin)
-                if repeat:
-                    same[i].add(c)
-                for gone in folded:
-                    folds.setdefault(i, {}).setdefault(gone.source_name, set()).add(c)
-                if moved is not None:
-                    moves.setdefault(i, {}).setdefault(moved.source_name, set()).add(c)
-            elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
-                shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
-                                                     for s in layers}, pin, table)[0]
-                if not crud.values_differ(shown, value, kind):
-                    same[i].add(c)
+    for c, value in item["values"].items():
+        if c in same:
+            continue
+        kind, pin = held.get(c, "string"), pins.get((row_id, c))
+        layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3])
+                  for s, said in row.items() if c in said]
+        if crud.is_file_layer(source):
+            repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin, ranks)
+            if repeat:
+                same.add(c)
+            for gone in folded:
+                folds.setdefault(gone.source_name, set()).add(c)
+            if moved is not None and c not in row.get(source, {}):   # its own layer takes it (the old `src_obj or moved`)
+                moves.setdefault(moved.source_name, set()).add(c)
+        elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
+            shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+                                                 for s in layers}, pin, table, ranks=ranks)[0]
+            if not crud.values_differ(shown, value, kind):
+                same.add(c)
     return folds, moves
 
 
@@ -706,7 +722,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
                 taken[key] = row_id
         else:
             into[row_id] = holder
-    _put_keys(db, now, key_column if parts else None, moving, moves, new, keys)
+    _put_keys(db, now, key_column if parts else None, moving, moves, new, keys, at)
     merged = {}
     for row_id, holder in sorted(into.items()):
         explicit, human, who = {}, set(), None
@@ -736,10 +752,11 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
     return merged
 
 
-def _put_keys(db, now, key_column, moving, moves, new, keys) -> None:
+def _put_keys(db, now, key_column, moving, moves, new, keys, at) -> None:
     """Every row whose key moves - free or merged away - cleared first, then each free move's new key taken: two
     statements, a swap or a key passed along meets no unique key. On business_key_val and the declared key column
-    where t has it (`crud.put_business_key`'s two)."""
+    where t has it (`crud.put_business_key`'s two) - and then updated_at, a shown column having moved (the old
+    write's written_col)."""
     if not moving:
         return
     column = key_column if key_column and key_column in now.c else None
@@ -748,7 +765,7 @@ def _put_keys(db, now, key_column, moving, moves, new, keys) -> None:
     if not moves:
         return
     db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
-        {"business_key_val": bindparam("__key"), **({column: bindparam("__key")} if column else {})}),
+        {"business_key_val": bindparam("__key"), **({column: bindparam("__key"), "updated_at": at} if column else {})}),
         [{"__row": row_id, "__key": key} for row_id, key in sorted(moves.items())])
     for row_id, key in moves.items():
         keys[row_id] = key
