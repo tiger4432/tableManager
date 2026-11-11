@@ -79,11 +79,13 @@ def test_both_doors_ask_the_one_function():
 
 
 def test_the_write_path_accepts_exactly_that_set():
-    """The `crud` half, read off the seat that decides it rather than off a config key."""
+    """The `crud` half, read off the seat that decides it rather than off a config key: the funnel builds the set
+    once a batch and each item's cells are judged against it (the old write door retired with the lines, 11-11)."""
     import inspect
 
-    body = inspect.getsource(crud.apply_row_update_internal)
-    assert "loadable_columns(config)" in body, body[:400]
+    funnel = inspect.getsource(crud._apply_batch_updates_once)
+    assert "loadable_columns(TABLE_CONFIG.get(table_name, {}))" in funnel, funnel[:400]
+    assert 'col_name not in plan["loadable"]' in inspect.getsource(crud.update_item_as_line)
 
 
 def test_the_parser_and_the_loader_agree_on_a_divergent_declaration():

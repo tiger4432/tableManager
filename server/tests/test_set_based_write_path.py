@@ -21,7 +21,6 @@ audit trail and the outbox.
 """
 
 import pytest
-from sqlalchemy.sql import func
 
 from database import crud, models, schemas
 from sql_budget import inserts_into, record_statements, selects_from
@@ -286,16 +285,18 @@ def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_sessi
 
 
 def test_the_read_side_spells_a_float_the_way_the_write_side_did(db_session):
-    """`get_row_by_business_key` is the other end of the same seam. Given the value the
-    payload carried, it must reach the row that value stored.
+    """The other end of the same seam: a later write that names no key and carries the value 931.0 must reach the
+    row that value stored - the write's row claim (`write_lines._claim`) reads the key as the write side spelled it
+    (the old lookup, `crud.get_row_by_business_key`, retired with the lines, 11-11).
 
     ⚠️ It folds a FLOAT, not a string that looks like one: `'931.0'` is a different
     identity and stays one. This unifies how a VALUE is spelled, it does not add
     string-level normalisation."""
     crud.apply_batch_updates(db_session, PLAIN,
                              _batch([_plain_item(931.0, 8, key="931")]))
-    found = crud.get_row_by_business_key(db_session, PLAIN, 931.0)
-    assert found is not None and found.business_key_val == "931"
+    crud.apply_batch_updates(db_session, PLAIN, _batch([_plain_item(931.0, 9)]))
+    rows = _plain_rows(db_session, "931")
+    assert [(r.business_key_val, r.stock_qty) for r in rows] == [("931", 9)]
 
 
 def test_a_rename_inside_one_batch_does_not_orphan_the_old_key(db_session):
@@ -471,121 +472,6 @@ def test_audit_trail_still_records_the_ingest(db_session):
         models.AuditLog.table_name == TABLE,
         models.AuditLog.column_name == "ROW_UPDATE").all()
     assert len(logs) == n
-
-
-# --------------------------------------------------------------------------
-# 4. The bulk upsert FALLBACK
-#
-# 🔴 EVERY TEST IN THIS SECTION RUNS ON THE FALLBACK, AND THE NAMES NOW SAY SO.
-# `_pg_multirow_upsert` returns False on `dialect.name != "postgresql"`, and
-# this suite's engine is in-memory SQLite, so the accepted branch is
-# unreachable from here - measured with a counting spy over this file plus
-# `test_bulk_chunking_budget.py` and `test_business_key_conflict_retry.py`:
-# `entered=28 accepted=0 declined=28` across 42 passing tests. Two of these
-# tests used to be called "the fast path", which meant a later change could
-# break the accepted branch outright while 42 green tests reported it covered.
-#
-# The fallback is worth testing - it is what SQLite, psycopg3 and every
-# declined shape actually take. It is simply not what these names used to
-# claim. The accepted branch is covered by `test_pg_multirow_upsert.py`, which
-# skips unless an isolated PostgreSQL is declared.
-# --------------------------------------------------------------------------
-
-def test_bulk_upsert_falls_back_when_a_mapping_holds_a_sql_expression(db_session):
-    """`_is_executemany_safe` refuses a `ClauseElement` - a parameter set cannot
-    carry one. The refusal must degrade to the old VALUES path, not to an error:
-    an outside caller is allowed to hand one in."""
-    rows = [{"table_name": TABLE, "row_id": f"EX_{i}", "column_name": "bn",
-             "source_name": "probe.csv", "value": str(i), "updated_by": "p3",
-             "ingested_at": func.now()}
-            for i in range(5)]
-    crud.bulk_upsert_cell_sources(db_session, rows)
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id.like("EX_%")).all()
-    assert len(stored) == 5
-    assert all(s.ingested_at is not None for s in stored)
-
-
-def test_a_ragged_mapping_list_is_filled_not_refused(db_session):
-    """Different key sets across mappings.
-
-    🔴 THIS USED TO ASSERT 「a ragged list is REFUSED」, AND THAT WAS HALF TRUE (총괄
-    1495534c9). `.values(ragged_list)` raises `CompileError` only when the FIRST mapping has
-    the key another lacks; when the first is the one lacking it, the whole chunk is sent
-    without that key - NULL, without a word. A merge's layers lacked `origin_row_id` beside a
-    write's, and both faces reached production. The seat now gives every mapping the same
-    keys, a missing one None: no error, and the value a mapping did carry stays.
-    """
-    rows = [
-        {"table_name": TABLE, "row_id": "RG_1", "column_name": "bn",
-         "source_name": "probe.csv", "value": "a", "updated_by": "p3"},
-        {"table_name": TABLE, "row_id": "RG_2", "column_name": "bn",
-         "source_name": "probe.csv", "value": "b"},
-    ]
-    for ordered in (rows, rows[::-1]):
-        crud.bulk_upsert_cell_sources(db_session, ordered)
-        db_session.flush()
-        stored = dict(db_session.query(models.CellSource.row_id, models.CellSource.updated_by)
-                      .filter(models.CellSource.row_id.like("RG_%")).all())
-        assert stored == {"RG_1": "p3", "RG_2": None}, stored
-        db_session.rollback()
-
-
-def test_bulk_upsert_fallback_still_updates_on_conflict(db_session):
-    """The FALLBACK keeps ON CONFLICT DO UPDATE semantics: a second write of the
-    same (table, row, column, source) replaces the value rather than raising.
-
-    The accepted branch's own conflict target is a string `_pg_multirow_upsert`
-    assembles by hand and is therefore the one that can be wrong; it is
-    asserted in `test_pg_multirow_upsert.py::
-    test_on_conflict_do_update_replaces_the_value_on_the_accepted_branch`.
-    """
-    from datetime import datetime
-    def rows(v):
-        return [{"table_name": TABLE, "row_id": "CF_1", "column_name": "bn",
-                 "source_name": "probe.csv", "value": v, "updated_by": "p3",
-                 "ingested_at": datetime.now()}]
-
-    crud.bulk_upsert_cell_sources(db_session, rows("first"))
-    db_session.flush()
-    crud.bulk_upsert_cell_sources(db_session, rows("second"))
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id == "CF_1").all()
-    assert len(stored) == 1
-    assert stored[0].value == "second"
-
-
-@pytest.mark.parametrize("n", [0, 1, crud.BULK_CHUNK_SIZE - 1,
-                               crud.BULK_CHUNK_SIZE, crud.BULK_CHUNK_SIZE + 1])
-def test_fallback_chunk_boundaries_write_every_mapping(db_session, n):
-    """Off-by-one guard on the chunk loop, at and around the boundary, for the
-    send this suite can reach.
-
-    ⚠️ It used to be called `test_fast_path_chunk_boundaries_...`. It never ran
-    the fast path; the equivalent on the accepted branch (which also asserts
-    the STATEMENT count, because `row_sql_cache` is keyed by chunk length) is
-    `test_pg_multirow_upsert.py::
-    test_chunk_boundaries_write_every_mapping_on_the_accepted_branch`.
-    """
-    from datetime import datetime
-    now = datetime.now()
-    mappings = [{"table_name": TABLE, "row_id": f"CB_{i}", "column_name": "bn",
-                 "source_name": "probe.csv", "value": str(i),
-                 "updated_by": "p3", "ingested_at": now}
-                for i in range(n)]
-    crud.bulk_upsert_cell_sources(db_session, mappings)
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id.like("CB_%")).count()
-    assert stored == n
 
 
 # ------------------------------------------------- S-83 ③: the row write is ONE statement

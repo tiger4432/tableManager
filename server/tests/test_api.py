@@ -420,37 +420,7 @@ def test_file_ingestion_callback_direct(db_session, tmp_path, monkeypatch):
 
 def test_bulk_upsert_deduplication(db_session):
     from database import models
-    from database.crud import bulk_upsert_cell_sources, bulk_upsert_cell_overwrites
-    
-    # Verify cell_sources deduplication (keep last)
-    mappings_sources = [
-        {
-            "table_name": "inventory_master",
-            "row_id": "row-dedup-1",
-            "column_name": "part_no",
-            "source_name": "test_src",
-            "value": '"ABC-1"',
-            "updated_by": "system"
-        },
-        {
-            "table_name": "inventory_master",
-            "row_id": "row-dedup-1",
-            "column_name": "part_no",
-            "source_name": "test_src",
-            "value": '"ABC-2"',
-            "updated_by": "user1"
-        }
-    ]
-    bulk_upsert_cell_sources(db_session, mappings_sources)
-    db_session.commit()
-    
-    srcs = db_session.query(models.CellSource).filter(
-        models.CellSource.row_id == "row-dedup-1",
-        models.CellSource.column_name == "part_no"
-    ).all()
-    assert len(srcs) == 1
-    assert srcs[0].value == '"ABC-2"'
-    assert srcs[0].updated_by == "user1"
+    from database.crud import bulk_upsert_cell_overwrites
     
     # Verify cell_overwrites deduplication (keep last)
     mappings_overwrites = [

@@ -53,9 +53,9 @@ def test_a_name_no_owner_built_has_no_owner(name):
     assert crud.layer_owner(name) is None
 
 
-def test_both_write_doors_stamp_the_owner_cells_off_the_name():
-    """A layer row says its owner in `owner_rule` / `owner_key` - the bulk upsert and an ORM insert alike, both off the
-    one parser; a layer no rule owns says none."""
+def test_a_layer_row_stamps_the_owner_cells_off_the_name():
+    """A layer row says its owner in `owner_rule` / `owner_key` - an ORM insert, off the one parser;
+    a layer no rule owns says none (the bulk upsert door retired with the lines, 11-11)."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -65,15 +65,11 @@ def test_both_write_doors_stamp_the_owner_cells_off_the_name():
     models.CellSource.__table__.create(engine)
     db = sessionmaker(bind=engine)()
     owned = crud.owned_layer_name("r (1)", "k|2")
-    crud.bulk_upsert_cell_sources(db, [
-        {"table_name": "t", "row_id": "a", "column_name": "c", "source_name": owned, "value": 1},
-        {"table_name": "t", "row_id": "a", "column_name": "d", "source_name": "file_a", "value": 2}])
     db.add(models.CellSource(table_name="t", row_id="b", column_name="c", source_name=owned, value=3))
     db.add(models.CellSource(table_name="t", row_id="b", column_name="d", source_name="user", value=4))
     db.commit()
     got = {(row.row_id, row.column_name): (row.owner_rule, row.owner_key) for row in db.query(models.CellSource)}
-    assert got == {("a", "c"): ("r (1)", "k|2"), ("a", "d"): (None, None),
-                   ("b", "c"): ("r (1)", "k|2"), ("b", "d"): (None, None)}
+    assert got == {("b", "c"): ("r (1)", "k|2"), ("b", "d"): (None, None)}
 
 
 A, B = crud.owned_layer_name("rule_a", "k"), crud.owned_layer_name("rule_b", "k")
