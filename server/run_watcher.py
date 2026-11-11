@@ -501,8 +501,9 @@ def folders_of(watcher, table, table_config):
 
 
 def sweep_a_table_now(watcher, raws, sources, line):
-    """What a changed reading unchecked is looked at now, by that table's own sweeps - not the next periodic one - and
-    ONE line says both: what was unchecked and what was dispatched to be read again (총괄 10-21)."""
+    """A table whose reading changed is swept now by its own sweeps - not the next periodic one - and ONE line says
+    both: its read files kept as read and what was dispatched (총괄 10-21): a file new or saved again, not a read one
+    (소유자 11-11 - those are read again only by hand)."""
     dispatched = 0
     try:
         if raws:
@@ -516,7 +517,8 @@ def sweep_a_table_now(watcher, raws, sources, line):
 
 def hear_changed_readings(db, stamps):
     """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
-    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
+    changed -> said, its files left as they are (`reread.hand_on_a_changed_reading`, 소유자 11-11); a table seen the
+    first time is only kept. A
     table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. An
     ingestion_settings.json there that reads as nothing (mid-write, 총괄 10-20) keeps each table's external part as
     kept - neither compared nor written over; its table_config and plugins are compared as ever. -> the stamps."""
