@@ -34,14 +34,45 @@ def _module(rel):
     return ".".join(parts), parts[:-1]
 
 
-def askers(names, table, files=None, allowed=(), via=None) -> set:
+#: audit_logs keeps the events that are not a cell - ledger receipts, set_aside, reset (owner 11-11 ㄱ): its writers
+#: and the history screen's two routes. A cell line written there still counts (`cell_line_to_audit`).
+AUDIT_EVENTS_ALLOWED = {"database/crud.py:create_audit_log", "database/crud.py:bulk_insert_audit_logs",
+                        "ledger/store.py:_insert_audit_row", "main.py:get_recent_audit_logs",
+                        "main.py:get_transaction_logs"}
+#: the column words an event line is written under - not a cell's column
+EVENT_COLUMNS = {"*", "RECEIPT_COLUMN"}
+
+
+def cell_line_to_audit(call) -> bool:
+    """A create_audit_log call whose column (4th argument or column_name=) is not an event's word - a cell line."""
+    f = call.func
+    if (f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)) != "create_audit_log":
+        return False
+    col = call.args[3] if len(call.args) > 3 else next((k.value for k in call.keywords if k.arg == "column_name"),
+                                                       None)
+    word = (col.value if isinstance(col, ast.Constant) else col.id if isinstance(col, ast.Name)
+            else col.attr if isinstance(col, ast.Attribute) else None)
+    return word not in EVENT_COLUMNS
+
+
+def _dotted(node):
+    """`a.b.c` of an expression made of names and attributes, else None."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and (head := _dotted(node.value)):
+        return f"{head}.{node.attr}"
+    return None
+
+
+def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> set:
     """{"file:function"} of every function whose own body names one of `names` (a Name or an attribute) or `table`
     in SQL - a nested function counted as itself - and {"file:<module>"} of a module whose top-level statements do;
     then every function or module calling one of those, until nothing is added. A call reaches a def by its full
     dotted module (server/ the root, relative imports resolved): its name in the same module, `from <module> import
     name`, or `<alias of module>.name`. A seat in `allowed` («file:function» or «*:function») is counted, its callers
     are not. Docstrings are words, not questions. `files`: [(relative path, source)] - server/ without its tests when
-    None. `via`: filled with {caller: a callee it was counted through}. THE census the questions ask."""
+    None. `via`: filled with {caller: a callee it was counted through}. `asks_call(call)`: a call that asks too
+    (`cell_line_to_audit`). THE census the questions ask."""
     sql = re.compile(r"(?i)\b(from|into|update|join|table|on)\s+[\"`]?" + re.escape(table) + r"\b")
     seats, calls, defs = {}, {}, {}                            # seat -> asks? · seat -> {(module, name)}
     for rel, source in (files if files is not None else _server_files()):
@@ -77,11 +108,15 @@ def askers(names, table, files=None, allowed=(), via=None) -> set:
                             or (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
                                 and (sub.value.strip() == table or sql.search(sub.value)))):
                         asks = True
-                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                    if not isinstance(sub, ast.Call):
+                        continue
+                    asks = asks or bool(asks_call and asks_call(sub))
+                    if isinstance(sub.func, ast.Name):
                         called.add((imported.get(sub.func.id, own), sub.func.id))
-                    elif (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
-                          and isinstance(sub.func.value, ast.Name) and sub.func.value.id in alias):
-                        called.add((alias[sub.func.value.id], sub.func.attr))
+                    elif isinstance(sub.func, ast.Attribute) and (path := _dotted(sub.func.value)):
+                        head, _, rest = path.partition(".")
+                        if head in alias:
+                            called.add((".".join([alias[head], *([rest] if rest else [])]), sub.func.attr))
             return asks, called
 
         for node in ast.walk(tree):
@@ -137,10 +172,23 @@ def test_cell_sources_is_asked_only_by_the_copy_and_the_rollback():
     assert _outside(found, CELL_SOURCES_ALLOWED) == []
 
 
-def test_audit_logs_is_asked_by_no_function():
+def test_a_dotted_call_and_a_cell_line_to_audit_are_counted():
+    files = [("a/b.py", "def f():\n    return db.query(CellSource)\n"),
+             ("c.py", "import a.b\ndef g():\n    return a.b.f()\n")]
+    assert askers({"CellSource"}, "cell_sources", files) == {"a/b.py:f", "c.py:g"}
+    events = [("e.py", "def reset():\n    crud.create_audit_log(db, t, '*', '*', 1, 0, S, by)\n"
+                       "def receipt():\n    create_audit_log(db, t, b, RECEIPT_COLUMN, None, v, s, w)\n"
+                       "def cell():\n    crud.create_audit_log(db, t, r, col, 1, 2, s, w)\n"
+                       "def named():\n    crud.create_audit_log(db, t, r, column_name='lot')\n")]
+    assert askers({"AuditLog"}, "audit_logs", events, asks_call=cell_line_to_audit) == {"e.py:cell", "e.py:named"}
+
+
+def test_audit_logs_keeps_only_the_events_that_are_not_a_cell():
     assert "database/write_lines.py:_audit" in askers({"AuditBatch"}, "audit_batches"), \
         "canary: the same census must see the audit row's one writer"
-    assert _outside(askers({"AuditLog"}, "audit_logs"), set()) == []
+    found = askers({"AuditLog"}, "audit_logs", allowed=AUDIT_EVENTS_ALLOWED, asks_call=cell_line_to_audit)
+    assert "chain/replay.py:full_reset" not in found, "a reset event is allowed"
+    assert _outside(found, AUDIT_EVENTS_ALLOWED) == []
 
 
 def test_cell_layer_reads_no_cell_sources():
