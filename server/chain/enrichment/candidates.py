@@ -575,26 +575,16 @@ def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     """Which (row_id, column) target cells have NO provenance at all - but `own`'s (the asking rule's declaration,
     owner 11-06 step 2 ㄴ D-1: its answer is asked again, not kept because it was there)?
 
-    Batched on `idx_sources_lookup` (table_name, row_id, column_name) in
-    CHUNK_SIZE chunks - one query per chunk, never per row. Returns the set of
-    (row_id, column) pairs that are safe to write absent-only.
+    A cell's layers are `lines.layers` - each source's standing word, blank or not. Returns the set of (row_id,
+    column) pairs that are safe to write absent-only.
     """
-    from database import models
+    from database import lines
 
     row_ids = [r for r in row_ids if r]
     if not row_ids or not target_fields:
         return set()
-    taken = set()
-    for i in range(0, len(row_ids), CHUNK_SIZE):
-        chunk = row_ids[i:i + CHUNK_SIZE]
-        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.updated_by)
-                .filter(models.CellSource.table_name == derived_table,
-                        models.CellSource.row_id.in_(chunk),
-                        models.CellSource.column_name.in_(list(target_fields)))
-                .all())
-        for row_id, column, by in rows:
-            if by not in own:
-                taken.add((row_id, column))
+    taken = {cell for cell, named in lines.layers(db, derived_table, row_ids, columns=list(target_fields)).items()
+             if any(layer["updated_by"] not in own for layer in named.values())}
     return {(r, c) for r in row_ids for c in target_fields if (r, c) not in taken}
 
 

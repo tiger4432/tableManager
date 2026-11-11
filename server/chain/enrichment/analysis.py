@@ -546,24 +546,16 @@ def _human_resolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     A promotion must be mined from human judgements only. A value written by any
     machine source (a backfill, a previous auto-confirm) is not evidence that a
     person decided anything, and promoting from it would launder a machine guess
-    into a rule. `source_name == 'user'` is the one layer that means "a human
-    typed this" (crud.SOURCE_PRIORITY comment).
+    into a rule. «A person wrote this cell» is `cell_layer.person_cells` - the one
+    judgement (a key merge's backup «user (old_exist_…)» is a person's too).
     """
-    from database import models
+    from chain import cell_layer
 
     out = set()
     row_ids = [r for r in row_ids if r]
     for i in range(0, len(row_ids), SCAN_CHUNK):
-        chunk = row_ids[i:i + SCAN_CHUNK]
-        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name)
-                .filter(models.CellSource.table_name == derived_table,
-                        models.CellSource.row_id.in_(chunk),
-                        models.CellSource.column_name.in_(list(target_fields)),
-                        # Same seam as `chain_replay._protected_by_user`: the partial
-                        # index's predicate is this constant, not a second quotation.
-                        models.CellSource.source_name == models.HUMAN_SOURCE_NAME)
-                .all())
-        out.update(rows)
+        out.update(cell for cell in cell_layer.person_cells(db, derived_table, row_ids[i:i + SCAN_CHUNK])
+                   if cell[1] in target_fields)
     return out
 
 

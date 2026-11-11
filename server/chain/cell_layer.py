@@ -283,19 +283,43 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
         "changed": crud.values_differ(old_val, new_val, col_types.get(col, "string")),
     }
 
-def unowned_layers(db, after_id, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
-    """One page of `cell_sources` by id after `after_id`: `([(table, written by)] of the chain's layers no rule owns -
-    written before ownership (owner 11-06 step 2), the last id read, the rows read)`. The census of «Not adopted».
-    READ ONLY."""
-    from database import crud, models
+def unowned_layers(db, after, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
+    """One page of the head lines, table by table and by line_id after `after` ((table, line_id); None to start):
+    `([(table, written by)] of the chain's standing layers no rule owns - written before ownership (owner 11-06 step
+    2), one per column a head line says, the cursor read to, the layers read)`. A page of lines saying nothing (every
+    column withdrawn) reads on, so 0 layers read is the lap's end. The census of «Not adopted». READ ONLY."""
+    from sqlalchemy import BigInteger, Column, MetaData, String, Table, or_, select
 
-    S = models.CellSource
-    rows = (db.query(S.id, S.table_name, S.source_name, S.updated_by).filter(S.id > after_id)
-            .order_by(S.id).limit(size).all())
+    from database import crud, lines
+
     bases = crud._ownable_bases()
-    found = [(table, by) for _id, table, name, by in rows
-             if crud.layer_writer(name) in bases and crud.layer_owner(name) is None]
-    return found, (rows[-1][0] if rows else after_id), len(rows)
+    built = lines._catalogue(db, list(crud.TABLE_CONFIG))
+    maps = lines.bit_maps(db, list(built))
+    table, after_id = after or (None, None)
+    for table_name in sorted(t for t in built if table is None or t >= table):
+        chunks = built[table_name]
+        heads, gone = lines.bit_columns("head", chunks), lines.bit_columns("withdrawn", chunks)
+        by_bit = {bit: col for col, bit in maps.get(table_name, {}).items()}
+        lt = Table(lines.lines_relation(table_name), MetaData(), Column("line_id", BigInteger),
+                         Column("source_name", String), Column("written_by", String),
+                         *[Column(n, BigInteger) for n in heads + gone])
+        since = after_id if table_name == table else None
+        while True:
+            q = select(lt).where(or_(*[lt.c[h] != 0 for h in heads]))
+            rows = db.execute((q if since is None else q.where(lt.c.line_id > since))
+                              .order_by(lt.c.line_id).limit(size)).mappings().all()
+            if not rows:
+                break
+            since, found, read = rows[-1]["line_id"], [], 0
+            for r in rows:
+                said = lines._columns_of([r[h] for h in heads], by_bit) - lines._columns_of([r[g] for g in gone],
+                                                                                              by_bit)
+                read += len(said)
+                if crud.layer_writer(r["source_name"]) in bases and crud.layer_owner(r["source_name"]) is None:
+                    found.extend([(table_name, r["written_by"])] * len(said))
+            if read:
+                return found, (table_name, since), read
+    return [], after, 0
 
 
 def cells_stamped_by(db, table_name, origin_row_ids) -> list:

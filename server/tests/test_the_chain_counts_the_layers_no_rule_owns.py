@@ -41,6 +41,24 @@ def test_the_lap_counts_unowned_chain_layers_by_writer_and_the_route_reads_it(db
     assert answer["not_adopted"] == {"at": lap["at"], "layers": 4, "names": names}
 
 
+def test_the_lap_reads_every_table_on_its_own_cursor_and_a_withdrawn_column_is_no_layer(db, monkeypatch):
+    """The lines (A 11-11): a page of one line a time crosses from table to table, each table's lines read from its
+    first; a column the layer withdrew stands no more - the old census never met it (a withdrawal deleted the row)."""
+    from tests.test_a_chain_groups_writes_are_one_commit import SRC
+    for table, column in ((SRC, "v"), (DST, "w")):
+        crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            updates={"k": "K1", column: "x"}, source_name=crud.CHAIN_SOURCE, updated_by="old_rule")]))
+    db.commit()
+    cell_layer.withdraw_source(db, SRC, crud.CHAIN_SOURCE, columns=["v"], apply=True)
+    db.commit()
+    monkeypatch.setattr(cell_layer, "DEFAULT_CHUNK_SIZE", 1)
+    monkeypatch.setattr("pacing.job_pace", lambda job: (1, 0))
+
+    names = worker.count_unowned_layers_sync(sessionmaker(bind=db.get_bind()), log=lambda line: None)
+
+    assert names == [{"name": "old_rule", "layers": 3, "tables": [[DST, 2], [SRC, 1]]}]
+
+
 def test_before_a_lap_ended_the_route_says_none(db, monkeypatch):
     import main
     monkeypatch.setattr(main._heartbeat_mod, "read_all", lambda: {"chain": {"laps": {}}})
