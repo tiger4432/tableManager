@@ -170,10 +170,11 @@ export class HeldColumnFilter {
   setModel(model) { this.model = model || null; }
 }
 
-/** A switch between the long view and the pivot (owner 11-05 ㄴ · ㄱ, both ways): the key and item column filters are
- *  kept - the server reads both in either view - and the rest dropped (the value column's, an item's «item:<v>»). */
+/** A switch between the long view and the pivot (owner 11-05 ㄴ · ㄱ, both ways): the key, carried (owner 11-11 ㄴ) and
+ *  item column filters are kept - the server reads them in either view - and the rest dropped (the value column's, an
+ *  item's «item:<v>»). */
 export function carriedFilters(model, pivot, keySources) {
-  const kept = [...pivotKeys(pivot, keySources), pivot.column];
+  const kept = [...pivotKeys(pivot, keySources), ...carryColumns(null, pivot), pivot.column];
   const keep = {};
   const dropped = [];
   for (const [col, filter] of Object.entries(model || {})) {

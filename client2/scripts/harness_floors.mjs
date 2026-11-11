@@ -1466,7 +1466,7 @@ export const FLOORS = new Map([
   // New (owner 11-05 ㄱ): a picture pasted or dropped on an image cell - the text wins beside it, image cells only, one picture,
   // the topmost cell under a drop; the real paste listener uploads once and writes the ref through the paste's own PUT.
   ['image_paste_harness.mjs', 23],
-  ['pivot_filter_carry_harness.mjs', 25],
+  ['pivot_filter_carry_harness.mjs', 34],
   // New (owner 11-05): a table's columns fitted once to their first rows, a column hidden from its header and «N hidden».
   // 27 -> 30 (owner 11-06): «#» fitted with them, one digit past its widest number.
   // 30 -> 28 (lead 11-08 ㄱ): W3 and its mutant X8 retired - the read no longer pays the fit, the grid's rowDataUpdated
