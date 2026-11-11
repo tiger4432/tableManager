@@ -17,8 +17,9 @@
    「이 소스의 claim 을 되돌린다」입니다 — 같은 연산, 다른 사유. 그래서 둘보다 «아래»로 내렸습니다.
 
 ⚠️ 같이 내려온 것이 «열»입니다 (제 첫 보고는 「셋」이라 했고 그것이 과소 측정이었습니다):
-   상수·예외 다섯 + 사설 헬퍼 셋(`_claimed_filter`·`_load_cell_state`·`_resolve_cell`).
-   헬퍼 셋은 `chain_replay` 의 «다른 함수들도» 쓰므로 그쪽이 여기서 읽습니다 — 둘째 철자 0.
+   상수·예외 다섯 + 사설 헬퍼 둘(`_claimed_filter`·`_load_cell_state`; `_resolve_cell` 은 11-11 은퇴 -
+   R3 가 write_lines 의 다시 병합으로 접혔다).
+   헬퍼 둘은 `chain_replay` 의 «다른 함수들도» 쓰므로 그쪽이 여기서 읽습니다 — 둘째 철자 0.
 
 ⚠️ `ReplayRefused` 의 «이름»은 재생에서 왔습니다. 이름을 바꾸면 이 예외를 잡는 자리
    (`main`·`retroactive`·`frame_confirmation`·CLI)가 전부 바뀜므로 그대로 둡니다 — 이동이
@@ -259,29 +260,6 @@ def delete_shells(db, table_name: str, gone) -> list:
         logger.info("[ChainShell] table=%s rows_deleted=%d - nothing but the chain's keys and values another chain attached was left", table_name, len(gone))
     return gone
 
-
-def _resolve_cell(table_name: str, col_types: dict, row, col: str,
-                  cell_sources: dict, pin, exclude_source: str = None) -> dict:
-    """Re-answer "what should this cell display" from its STORED layers.
-
-    The one place R2 and R3 agree, and the reason they must: R2 is exactly R3 with
-    one layer removed. Returns the decision without writing it, so a dry-run and an
-    apply run the identical computation.
-    """
-    from database import crud
-
-    survivors = {s: d for s, d in (cell_sources or {}).items() if s != exclude_source}
-    old_val = getattr(row, col, None)
-    new_val, top_src = crud.compute_priority_value(survivors, pin, table_name, cell=(table_name, col, row))
-    if new_val is not None:
-        new_val = crud.cast_value_by_type(new_val, col_types.get(col, "string"), col)
-    return {
-        "survivors": survivors,
-        "old_value": old_val,
-        "new_value": new_val,
-        "top_source": top_src,
-        "changed": crud.values_differ(old_val, new_val, col_types.get(col, "string")),
-    }
 
 def unowned_layers(db, after, size: int = DEFAULT_CHUNK_SIZE) -> tuple:
     """One page of the head lines after the cursor `after` ((table, line_id); falsy = the first table), the declared

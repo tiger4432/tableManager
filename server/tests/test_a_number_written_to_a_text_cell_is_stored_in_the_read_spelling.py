@@ -10,7 +10,6 @@ other value keeps today's path.
 import json
 import os
 import sys
-from datetime import datetime, timezone
 
 import numpy as np
 import pytest
@@ -21,7 +20,6 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import cell_layer                                       # noqa: E402
 from conftest import retire_dynamic_model                          # noqa: E402
 from database import crud, lines, models, schemas                  # noqa: E402
 from database.database import Base                                 # noqa: E402
@@ -53,14 +51,6 @@ def test_everything_else_keeps_todays_path(value, stored):
         crud.cast_value_by_type(float("inf"), "string", "v")
     assert crud.cast_value_by_type(1.0, "number", "n") == 1.0
     assert isinstance(crud.cast_value_by_type(1.0, "number", "n"), float)
-
-
-def test_the_cell_a_layer_recompute_shows_is_the_same_answer():
-    """`cell_layer` re-decides a shown cell from its stored layers through the same cast."""
-    row = type("Row", (), {"v": None})()
-    layers = {"f.csv": {"value": 1.0, "ingested_at": datetime(2026, 10, 1, tzinfo=timezone.utc)}}
-    decided = cell_layer._resolve_cell(T, TABLE["column_types"], row, "v", layers, None)
-    assert decided["new_value"] == "1"
 
 
 def _write(db, rows):
