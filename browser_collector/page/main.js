@@ -3,7 +3,7 @@
 import { DomPage, readOpenedHere } from '../lib/page_dom.js';
 import { readBatch } from '../lib/batch.js';
 import { selectorFor, itemSelector, repeating } from '../lib/selectors.js';
-import { visibleText } from '../lib/open_check.js';
+import { visibleText, shownAll } from '../lib/open_check.js';
 
 /** A question to the service worker -> its answer (a refusal throws its sentence). */
 const ask = (msg) => chrome.runtime.sendMessage(msg).then((a) => { if (!a || !a.ok) throw new Error(a ? a.error : 'no answer'); return a.value; });
@@ -65,9 +65,12 @@ function overlay() {
   return { draw, remove: () => host.remove() };
 }
 
+/** The template's list area on the screen - a hidden copy passed by, as the run finds it - or null. */
+const areaOf = (t) => shownAll(document, t.listArea, window)[0] || null;
+
 /** What a click on `el` gives for `kind` under the template `t` -> {selector, count, base} | {refused}. */
 function pickOf(kind, el, t) {
-  const area = (t.listArea && document.querySelector(t.listArea)) || null;
+  const area = areaOf(t);
   const itemOf = (n) => (t.item ? [...(area || document).querySelectorAll(t.item)].find((i) => i.contains(n)) : null);
   const contentOf = (n) => (t.content ? [...document.querySelectorAll(t.content)].find((c) => c.contains(n)) : null);
   if (kind === 'item') { const within = area && area.contains(el) ? area : null; return itemSelector(repeating(el, within), within); }
@@ -91,24 +94,39 @@ function startPick(kind, t) {
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); };
   const alikeOf = (el) => {
     if (kind !== 'item' || !el.parentElement) return [el];
-    const area = (t.listArea && document.querySelector(t.listArea)) || null;
+    const area = areaOf(t);
     try { return [...(area && area.contains(el) ? area : document).querySelectorAll(pickOf(kind, el, t).selector)]; } catch { return [el]; }
   };
+  // the element under the mouse, `up` parents higher - ↑ ↓ widen and narrow it (a title and a body under one box)
+  let under = null;
+  let up = 0;
+  const now = () => { let n = under; for (let i = 0; i < up; i += 1) n = n.parentElement; return n; };
+  const draw = () => { const el = now(); ov.draw(alikeOf(el), kind === 'item' ? repeating(el) : el); };
+  // Shift adds the element to the content area picked before (a list «a, b») - a title and a body with no box of their own
+  const take = (el, add) => {
+    const p = pickOf(kind, el, t);
+    const attrs = [...el.attributes].map((a) => a.name);
+    say({ type: 'pick.done', kind, ...p, add: add && kind === 'content', sample: visibleText(el).slice(0, 80), attrs, frame: window === window.top ? '' : location.href });
+    stopPick();
+  };
+  const key = (k, shift) => {
+    if (k === 'Escape') { say({ type: 'pick.done', kind, cancelled: true }); stopPick(); return true; }
+    if (!under) return false;
+    if (k === 'ArrowUp' && now().parentElement && now().parentElement !== document.documentElement) up += 1;
+    else if (k === 'ArrowDown' && up > 0) up -= 1;
+    else if (k === 'Enter') { take(now(), shift); return true; }
+    else return false;
+    draw();
+    return true;
+  };
   const on = {
-    mousemove: (e) => { const el = e.target; if (el && el.nodeType === 1) ov.draw(alikeOf(el), kind === 'item' ? repeating(el) : el); },
-    click: (e) => {
-      stop(e);
-      const el = e.target;
-      const p = pickOf(kind, el, t);
-      const attrs = [...el.attributes].map((a) => a.name);
-      say({ type: 'pick.done', kind, ...p, sample: visibleText(el).slice(0, 80), attrs });
-      stopPick();
-    },
+    mousemove: (e) => { const el = e.target; if (el && el.nodeType === 1 && el !== under) { under = el; up = 0; draw(); } },
+    click: (e) => { stop(e); take(e.target === under ? now() : e.target, e.shiftKey); },
     mousedown: stop, mouseup: stop, pointerdown: stop, pointerup: stop,
-    keydown: (e) => { if (e.key === 'Escape') { stop(e); say({ type: 'pick.done', kind, cancelled: true }); stopPick(); } },
+    keydown: (e) => { if (key(e.key, e.shiftKey)) stop(e); },
   };
   for (const [name, fn] of Object.entries(on)) window.addEventListener(name, fn, true);
-  picking = { label: (el) => `${el.tagName.toLowerCase()}${el.classList.length ? `.${[...el.classList].join('.')}` : ''}`, end: () => {
+  picking = { key, label: (el) => `${el.tagName.toLowerCase()}${el.classList.length ? `.${[...el.classList].join('.')}` : ''}`, end: () => {
     for (const [name, fn] of Object.entries(on)) window.removeEventListener(name, fn, true);
     ov.remove();
   } };
@@ -120,7 +138,9 @@ const DOORS = {
   ping: async () => true,
   'pick.start': async ({ kind, t }) => { startPick(kind, t); return true; },
   'pick.stop': async () => { stopPick(); return true; },
-  preview: async ({ t, room }) => readBatch(t, pageFor(t), { room, existing: existingFor(t) }),
+  // a key pressed while the side panel has the focus - the frame the mouse is over answers
+  'pick.key': async ({ key, shift }) => Boolean(picking && picking.key(key, shift)),
+  preview: async ({ t, room }) => readBatch(t, pageFor(t), { room, existing: t.table && t.keys.length ? existingFor(t) : null }),
   batch: async ({ t, runId, room, first }) => readBatch(t, pageFor(t, runId), { room, existing: existingFor(t), firstIndex: first }),
   next: async ({ t, runId }) => pageFor(t, runId).next(),
   'read.here': async ({ t, fields, pairValue }) => readOpenedHere(t, fields, pairValue),

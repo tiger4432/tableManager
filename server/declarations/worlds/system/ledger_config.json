@@ -395,6 +395,7 @@
       "class": "static",
       "attributes": [
         "url_pattern",
+        "frame_pattern",
         "list_area",
         "list_item",
         "click_target",
@@ -1488,6 +1489,10 @@
               "url_pattern": {
                 "kind": "column",
                 "column": "url_pattern"
+              },
+              "frame_pattern": {
+                "kind": "column",
+                "column": "frame_pattern"
               },
               "list_area": {
                 "kind": "column",

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-09] **수집 확장: iframe 안 목록 · ↑↓ 부모 넓히기 · Shift+클릭 영역 더하기 · 숨은 사본 건너뛰기 · 표 없이 Preview · 템플릿 Delete** — git pull · 크롬 확장 새로 고침(chrome://extensions 의 ↻), API 재기동(sys_templates 칸 하나 선언)
+>
+> ```
+> 무엇     sys_templates.frame_pattern — 목록과 내용이 페이지 안 프레임(iframe)에 있으면 그 프레임의 주소. 고를 때 저절로 적힘, 빈칸 = 페이지 자체
+>          고르는 동안 ↑ 부모로 넓힘 · ↓ 되돌림 · Enter/클릭 정함 · 내용 영역 Shift+클릭 = 영역 하나 더(타이틀 · 본문 따로인 사이트)
+>          같은 선택자의 숨은 사본(열리지 않은 탭 등)은 건너뜀 — 보이는 것 · 여럿이면 누른 뒤 글이 바뀐 것
+>          Preview 는 넣을 표 · 키가 비어도 읽은 값을 보여 줌 · 카드의 Delete → 확인 한 줄 → 템플릿 두 표 행 지움(모은 행 · 기록은 남음)
+> 볼 줄    패널 Edit 화면 Address 아래 «Frame» 칸 · 고르는 동안 위 띠에 «↑ ↓ widen · Shift+click adds an area · Esc stops»
+> 답의 뜻  «no frame on this page matches <패턴>» → 그 프레임 주소가 바뀜. Frame 칸을 비우고 다시 고르면 다시 적힘
+>          Preview 에 «Table not set - keys not checked» → 표나 키 칸이 빔(읽기는 됨, 중복 확인만 안 함)
+> 끄기     확장 폴더를 이 착지 전으로 되돌리고 ↻ (서버 칸은 비어 있으면 아무 일도 안 함)
+> ```
+>
+> ---
+>
 > ## [11-11] **필수 한정어 칸이 빈 행도 그 문장만 빠진다 — 행째 거절 아님** — git pull · API 재기동
 >
 > ```
