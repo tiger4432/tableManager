@@ -3395,6 +3395,32 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The open tables (owner 11-05, mockup v3): the row under the top bar after three tables opened, then ← back one -
+    // the address and the row on the table before; then the first table again.
+    ['Open tables, three and Back', async (c, log) => {
+      const pick = (name) => evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
+        sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await evaluate(c, "window.__tabsFrom = (document.getElementById('table-select') || {}).value; true");
+      const names = await evaluate(c, "[...document.getElementById('table-select').options].map((o) => o.value).filter(Boolean).slice(0, 3)");
+      for (const name of names) {
+        await pick(name);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+      await until(c, "document.querySelectorAll('#table-tabs .table-tab').length >= 3");
+      await evaluate(c, "(() => { const b = document.getElementById('table-back'); if (!b || b.disabled) return false; b.click(); return true; })()");
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    ['Open tables, the first table again', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__tabsFrom || sel.value === window.__tabsFrom) return true;
+        sel.value = window.__tabsFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
     // The grid pivoted (owner 10-22): dt_log with its pivot declared (PIVOT), «Pivot» pressed, then pressed again.
     ['Pivot on', async (c, log) => {
       PIVOT.on = true;
