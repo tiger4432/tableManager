@@ -251,10 +251,10 @@ def _count_withdraw(db, params, scan_limit):
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
-        # An upper bound is not exhaustive either: fewer cells may actually change.
-        "absence": ABSENCE_NOT_EXHAUSTIVE if affected else ABSENCE_TRULY_NONE,
-        "affected_label": "cells to withdraw (at most)",
-        "count_kind": COUNT_UPPER_BOUND,
+        # exact - the run's cells (the gate test holds them equal), so the exact counts' absence
+        "absence": ABSENCE_TRULY_NONE if not affected else None,
+        "affected_label": "cells to withdraw",
+        "count_kind": COUNT_EXACT,
         "scanned": None,
         # null, not the requested budget: this count reads every line the source claims
         # (two grouped reads) and takes no sample, so echoing a scan budget would imply one.
@@ -263,21 +263,15 @@ def _count_withdraw(db, params, scan_limit):
         "detail": (
             f"'{source}' claims {c['cells_claimed']} cell(s) in '{table}', and "
             f"{c['pinned']} of them are pinned by a person "
-            f"(manual_priority_source) and will not be touched. At most {affected} "
-            f"are in scope for withdrawal - the number of cells whose VISIBLE value "
-            f"actually changes can be smaller (where the source underneath holds the "
-            f"same value, the display stays as it is). Rows left with nothing that keeps "
-            f"them are deleted too - counted when it runs (shown on the run's line)."
+            f"(manual_priority_source) and will not be touched. {affected} are withdrawn "
+            f"- the cells whose visible value changes can be fewer (where the source "
+            f"underneath holds the same value, the display stays as it is). Rows left with "
+            f"nothing that keeps them are deleted too - counted when it runs (shown on the "
+            f"run's line)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
-            "why_upper_bound": (
-                "The number in scope shrinks in only two ways: (1) the row was "
-                "already deleted and only its lines remain, (2) the value "
-                "revealed after the withdrawal equals the current one. Both need a "
-                "cell-by-cell recomputation, which a cheap query cannot answer."
-            ),
         },
     }
 

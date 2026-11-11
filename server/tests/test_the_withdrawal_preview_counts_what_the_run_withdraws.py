@@ -195,6 +195,10 @@ def test_the_screen_draws_no_row_number_and_says_rows_are_counted_when_it_runs(e
     out = retroactive.count(env.db, "withdraw", {"table": TABLE, "source": SOURCE})
 
     assert out["affected"] == 7, "canary: 8 cells claimed, 1 pinned"
+    assert (out["count_kind"], out["affected_label"], out["absence"]) == (
+        retroactive.COUNT_EXACT, "cells to withdraw", None), "the run's cells, exact (lead ㄱ)"
+    assert "at most" not in out["detail"].lower(), out["detail"]
+    assert "why_upper_bound" not in out["extra"] and "deleted" not in str(out["extra"]), out["extra"]
     assert "counted when it runs" in out["detail"], out["detail"]
     assert not re.search(r"\d+ rows?\b|\d+ row\(s\)", out["detail"]), out["detail"]
     assert not [key for key in out["extra"] if "row" in key], out["extra"]
