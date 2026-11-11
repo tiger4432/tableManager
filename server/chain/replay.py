@@ -790,8 +790,10 @@ def _gone_maps(db, rule, run_id):
     if model is None:
         return None, "the target %s has no model in this process" % table
     came_as, keys = mapper_sdk.removal_columns(rule, table)
-    if not lines.has_lines(db, table):          # sys_* keep no lines (lead 11-11 ㄱ)
-        logger.info("[ReplaySweep] %s: no lines table - nothing to sweep", table)
+    if not lines.has_lines(db, table):
+        if lines.keeps_lines(table, crud.TABLE_CONFIG.get(table)):     # declared, its line table not built
+            return None, "%s: line table not built - the sweep cannot tell" % table
+        logger.info("[ReplaySweep] %s: no lines table - nothing to sweep", table)    # sys_* keep none (lead 11-11 ㄱ)
         return came_as, []
     named = [spelled for (spelled,) in db.query(models.ReplayNamedMap.scope).filter(
         models.ReplayNamedMap.run_id == run_id, models.ReplayNamedMap.rule == rule.get("name"),
@@ -815,7 +817,8 @@ def _gone_maps(db, rule, run_id):
     lt, bits = claimed_lines(db, table)
     said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
     owned = {line["row_id"] for line in db.execute(select(lt.c.row_id, *said).where(*_claimed_filter(
-        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)])).distinct()).mappings()
+        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)]),
+        lt.c.row_id.in_(select(model.__table__.c.row_id))).distinct()).mappings()
         if _claimed_cells(line, bits)}
     gone_rows = sorted(owned - covered)
     found = set()
@@ -1649,12 +1652,13 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
                setup=None, rules=None, log=logger.info) -> dict:
     """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
     총괄 35b76ba92): the rows and pins in ONE transaction with one summary history line - the table's lines stay, its
-    history (a271f5726, lead ruling ㄴ 11-11): `layers` counts the cells no one sees after it - then
+    history with no head (a271f5726, lead ruling ㄴ 11-11 - a row made again on an old id starts from nothing):
+    `layers` counts the cells no one sees after it - then
     every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
     grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
     person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
     and refuses a table that moved since."""
-    from sqlalchemy import func, select
+    from sqlalchemy import func, select, update
 
     from chain.cell_layer import _claimed_cells, claimed_lines
     from chain.ingestion_worker import loaded_chain_rules, watches_table
@@ -1671,7 +1675,8 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
     setup = load_setup() if setup is None else setup
     rules = loaded_chain_rules() if rules is None else rules
     layers = {}            # {source: the cells its head lines on t's rows still claim} - count_withdrawable's count
-    if lines.has_lines(db, table_name):
+    lined = lines.has_lines(db, table_name)
+    if lined:
         lt, bits = claimed_lines(db, table_name)
         said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
         rows = models.DYNAMIC_TABLES[table_name].__table__
@@ -1698,6 +1703,10 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' has %d row(s) now, not %s - read the preview again and give its count"
                             % (table_name, found["rows"], confirm_rows))
     tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
+    if lined:              # the leaving rows' lines stay as history with no head - no event (lead 11-11)
+        heads = [c for c in said if c.name.startswith("head_")]
+        db.execute(update(lt).where(lt.c.row_id.in_(select(rows.c.row_id)), or_(*[c != 0 for c in heads]))
+                   .values({c.name: 0 for c in heads}))
     found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
     found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
                                              {"t": table_name}).rowcount
@@ -1709,7 +1718,7 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
                                  world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
         for source in found["ledger_atoms"]}
     log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['overwrites_deleted']} pin(s) deleted "
-        f"in {tx}, its lines kept as history; ledger atoms withdrawn {found['ledger_withdrawn']}")
+        f"in {tx}, its lines kept as history with no head; ledger atoms withdrawn {found['ledger_withdrawn']}")
     return found
 
 

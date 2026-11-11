@@ -64,7 +64,12 @@ def test_the_rules_chain_lines_name_its_maps_and_a_withdrawn_line_names_none(db)
     assert replay._gone_maps(db, RULE, "run-1") == (["job"], [("J1",), ("J2",)])
 
 
-def test_a_table_without_lines_has_nothing_to_sweep_and_says_so(db, caplog):
+def test_a_table_without_lines_has_nothing_to_sweep_and_says_so(db, caplog, monkeypatch):
+    """Declared and its line table not built: the sweep cannot tell (lead 11-11). Shipped (keeps no lines): nothing."""
+    import shipped
+
+    assert replay._gone_maps(db, BARE_RULE, "run-1") == (None, "gm_bare: line table not built - the sweep cannot tell")
+    monkeypatch.setattr(shipped, "tables", lambda: {BARE: CFG})
     with caplog.at_level(logging.INFO, logger=replay.logger.name):
         assert replay._gone_maps(db, BARE_RULE, "run-1") == (["job"], [])
     assert [r.getMessage() for r in caplog.records if "no lines table" in r.getMessage()] == ["[ReplaySweep] gm_bare: no lines table - nothing to sweep"]
@@ -73,16 +78,15 @@ def test_a_table_without_lines_has_nothing_to_sweep_and_says_so(db, caplog):
 REASON = "gm_bare: has no line table - nothing written to it can be withdrawn here"
 
 
-def test_a_table_without_lines_gets_one_reason_from_the_count_the_preview_and_the_run(db):
-    from admin import retroactive
-
+def test_a_table_without_lines_gets_one_reason_from_the_count_the_preview_and_the_run(db, client):
+    """The preview is the screen's route - its 400 detail is what the operator reads."""
     said = {}
     with pytest.raises(cell_layer.ReplayRefused) as count:
         replay.count_withdrawable(db, BARE, "f.csv")
     said["count"] = str(count.value)
-    with pytest.raises(retroactive.RetroactiveRefused) as preview:
-        retroactive.count(db, "withdraw", {"table": BARE, "source": "f.csv"})
-    said["preview"] = str(preview.value)
+    preview = client.get("/admin/retroactive/withdraw/count", params={"table": BARE, "source": "f.csv"})
+    assert preview.status_code == 400, preview.text
+    said["preview"] = preview.json()["detail"]
     for apply in (False, True):
         with pytest.raises(cell_layer.ReplayRefused) as run:
             cell_layer.withdraw_source(db, BARE, "f.csv", apply=apply, log=lambda m: None)
@@ -118,6 +122,6 @@ def test_a_table_without_lines_does_not_stop_the_sweep_judging_the_next(db, monk
         db.commit()
     said = []
     assert replay.sweep_finished_replays(said.append, session_factory=lambda: _Kept(db)) == 2
-    assert said == ["[ReplaySweep] run w-bare r0: 0 map(s) its batches never named emptied in gm_bare",
+    assert said == ["[ReplaySweep] run w-bare r0: not swept - gm_bare: line table not built - the sweep cannot tell",
                     "[ReplaySweep] run w-lines r: 1 map(s) its batches never named emptied in gm_lines"]
     assert replay._gone_maps(db, RULE, "w-lines") == (["job"], []), "the second table's map was taken back"

@@ -343,7 +343,7 @@ def main(argv=None):
             if full and args.apply:
                 s = written("delete_every_row", dict(params, confirm_rows=args.confirm_rows))
                 print(f"\ndelete-every-row '{args.table}' full reset: {s['rows_deleted']} row(s), "
-                      f"{s['overwrites_deleted']} pin(s) deleted, lines kept as history; ledger atoms "
+                      f"{s['overwrites_deleted']} pin(s) deleted, lines kept as history with no head; ledger atoms "
                       f"withdrawn {s['ledger_withdrawn']}; no chain rule told")
             elif args.apply:
                 s = written("delete_every_row", params)

@@ -101,3 +101,23 @@ def test_a_full_reset_deletes_only_the_rows_keeps_the_lines_tells_no_one_and_say
         preview["rows"], preview["overwrites"], preview["layers"], preview["user_layers"]), (preview, run)
     assert "layers_deleted" not in run
     assert "chain/replay.py:full_reset" not in askers({"CellSource", "CellSourceModel"}, "cell_sources")
+
+
+def test_a_row_made_again_on_its_old_id_after_a_full_reset_starts_from_nothing(env):
+    """Lead 11-11 (qa): the reset takes the head off the leaving rows' lines in its transaction - a row written
+    again on an old id and key does not take back the cells its old lines said."""
+    from database.write_lines import write_lines
+
+    model = models.DYNAMIC_TABLES[TABLE]
+    old = env.query(model).filter(model.business_key_val == "K1").one()
+    assert (old.a, old.b) == ("p", "1"), "canary: K1 shows a person's a and the loader's b"
+    old_id = old.row_id
+    preview = replay.full_reset(env, TABLE, setup=NO_LEDGER, rules=[])
+    replay.full_reset(env, TABLE, confirm_rows=preview["rows"], apply=True, setup=NO_LEDGER, rules=[], by="tester")
+    write_lines(env, TABLE, [{"row_id": old_id, "business_key_val": "K1", "values": {"k": "K1", "a": "new"},
+                              "source_name": LOADER, "written_by": "tester"}], kind="funnel", transaction_id="tx-again")
+    env.commit()
+    env.expire_all()
+    again = env.query(model).filter(model.business_key_val == "K1").one()
+    assert again.row_id == old_id, "canary: the row came back on its old id"
+    assert (again.a, again.b) == ("new", None), (again.a, again.b)

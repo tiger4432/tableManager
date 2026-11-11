@@ -5028,7 +5028,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          명령  python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
 >                python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <위의 행 수> --apply
 > 답의 뜻   미리보기 「Full reset of '<표>': N row(s) … No chain rule is told …」   아무것도 안 씀
->          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 체인은 안 깸 — 필요하면 Read all again
+>          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 줄은 이력으로 남고 머리 없음 · 체인은 안 깸 — 필요하면 Read all again
 >          「REFUSED: … has K row(s) now, not M」                                     그 사이 표가 움직였거나 confirm_rows 를 안 적음 -> 미리보기부터
 >          how 를 비우면 예전 그대로 Row by row(그리드 삭제처럼 쪽마다 · 체인이 먹인 것을 거둠)
 > 급할 때   쓰지 않으면 아무 일 없음. 옛 명령 empty_table.py 는 없어짐
@@ -8295,7 +8295,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
 >            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
 >            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
-> ①c ⚰️ 겹친 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
+> ①c ⚰️ 겹친 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > ①d (이 pull «전»에 층 접기를 돌린 공식 표만) python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply   2.6 · 4.4 초 — ⑤ · ⑥ 전에
 >    답      source rows scanned : 127 · rows handed over : 127 — 공식 표 전부
 >    뜻      공식 표 키 칸의 plain 체인 층이 다시 선다 — 리허설 B(꼬임 7e2fc0575 · pull 전 그 코드로 공식 표 층 접기 -> pull 1a022befe): 키 칸 층 381 -> 접기 뒤 12 -> ①c 뒤 12 -> 이 명령 뒤 381 · 끝 상태 공식 행 200 · agreed 200 · 원자 200 · 키 밖 값 없는 행 0
@@ -9082,7 +9082,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇        원천 행을 찍은 체인 쓰기(조인 · @mapper · 복사 규칙 · 접기 맵퍼)는 그 행의 층 chain_ingestion (<원천 행>) 에 써진다
 >            행 층은 체인 순위(4) — 같은 순위 안에서는 늦게 쓴 것. 합치기 사본(user (…) 등)은 오늘 순위 그대로
 > 순서        ① pull -> 체인 워커 · 서버 재기동
->            ② ⚰️ 체인이 쓴 표마다 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
+>            ② ⚰️ 체인이 쓴 표마다 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
 >            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
 >                   M whose row's layer is already there go            원천이 찍힌 plain 인데 그 행 층이 이미 있음
@@ -12435,7 +12435,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
->              ② ⚰️ 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
+>              ② ⚰️ 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 >              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
@@ -12522,7 +12522,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
 >            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
 >            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
-> 쌓인 것     ⚰️ 소급 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
+> 쌓인 것     ⚰️ 소급 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > 뜻         되돌릴 수 없음 — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐. 칸 값 · 이력 · 이기는 층은 그대로
 > 되돌리기    코드: git revert 98471a546 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴 (그 --grep 은 보고 커밋 461c6fdbd 를 먼저 집었다 · 09-26 — 단독 되돌리기는 충돌할 수 있음)
 > ```

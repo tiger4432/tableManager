@@ -139,17 +139,23 @@ def _stack(db, key, col, layers, pin=None):
 
 
 def test_withdrawing_the_newest_reveals_the_layer_beneath(env, monkeypatch):
-    """R2's edge (225b2c658): f01 B · f03 A · f10 A, written as lines - withdraw f10, f03's A shows."""
+    """R2's edge (225b2c658): f01 B · f03 A · f10 A, written as lines - withdraw f10, f03's A shows. Three
+    shares: a file of one share saying its share's value again folds into that line (A's share fold, f2629199c)."""
     from chain import cell_layer
     from database import lines
     from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
+    def share_file(n):
+        root = "c:\\share_%s" % n
+        return crud.external_layer_name("workspace", "%s@%s" % (TABLE, root), "%s\\f%s.csv" % (root, n))
+
+    f01, f03, f10 = share_file("01"), share_file("03"), share_file("10")
     lines.ensure_line_table(env, TABLE, TABLES[TABLE])
     env.commit()
     ticking_clock(monkeypatch)
-    for source, value in (("f01.csv", "B"), ("f03.csv", "A"), ("f10.csv", "A")):
+    for source, value in ((f01, "B"), (f03, "A"), (f10, "A")):
         _write(env, source, [{"k": "K1", "v": value}])
-    run = cell_layer.withdraw_source(env, TABLE, "f10.csv", columns=["v"], apply=True)
+    run = cell_layer.withdraw_source(env, TABLE, f10, columns=["v"], apply=True)
     env.expire_all()
     assert run["cells_withdrawn"] == 1, "canary: f10 wrote the line its withdrawal takes back"
     assert _row(env, "K1").v == "A"
