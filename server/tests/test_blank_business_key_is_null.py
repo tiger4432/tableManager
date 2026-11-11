@@ -127,7 +127,7 @@ def _row(db, table, row_id):
 
 def test_a_blank_key_column_stores_null_not_the_empty_string(db):
     """KILLS: restoring `row.business_key_val = str_val` for a blank value in
-    `_update_row_business_key`.
+    the old key write.
 
     Asserted with `is None` rather than a falsiness check on purpose - `''` and `None`
     are both falsy in Python, so `assert not row.business_key_val` would pass against
@@ -255,7 +255,7 @@ def test_a_map_payload_survives_an_unchanged_re_push(db):
     "this row has no key".
 
     The trap is on the SECOND push. The rows resolve by their assembled key, so the
-    composite recomputation at the end of `apply_row_update_internal` is skipped
+    composite recomputation at the end of the old write door is skipped
     (`is_src_changed` is False, the row is not new) and nothing puts the key back. Any
     version of this branch that touches `business_key_val` on a blank value therefore
     strips every row of an unchanged map. Measured on real PostgreSQL: push 2 left all

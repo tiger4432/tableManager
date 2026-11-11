@@ -189,7 +189,7 @@ REASON_NO_DECISION_KEY = "no_decision_key"
 # The row carries no `business_key_val`. Reachable only since blank-key rows
 # entered the write path: the business key is usually COMPOSED from the decision
 # key, so the rows most likely to be missing it are exactly these. The writer
-# addresses by `row_id` first (`_get_or_create_row`), so this fires only when
+# addresses by `row_id` first (`write_lines._claim`), so this fires only when
 # neither identifier is present - and then the alternative is an INSERT of a
 # phantom row, not a write to the intended one.
 REASON_NO_ROW_IDENTITY = "no_row_identity"
@@ -756,7 +756,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
         business_key_val = entry.get("business_key_val")
         # Addressability is checked ONCE per row, before any probing, because a
         # row the writer cannot land on is not worth a query. `row_id` alone is
-        # enough (`crud._get_or_create_row` prefers it), and neither present
+        # enough (`write_lines._claim` prefers it), and neither present
         # would make the write CREATE a row rather than fill one.
         if not row_id and not crud.clean_str_value(business_key_val):
             st["refused"][REASON_NO_ROW_IDENTITY] = \

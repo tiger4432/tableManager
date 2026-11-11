@@ -5,7 +5,7 @@ chain - whose value is the formula over the row (`chain.formula.columns`).
 
     seat                                             gate
     no formula                                       every answer is the answer without the cell
-    crud write (apply_row_update_internal)           a file layer under the formula shows the formula; a person's wins
+    crud write (apply_batch_updates)               a file layer under the formula shows the formula; a person's wins
     crud delete_cell_source_batch                    the person's layer deleted -> the formula again, not blank
     crud set_cell_manual_priority_batch              a pinned file layer shows; unpinned -> the formula
     cell_layer withdraw (R2 · R3)                    the chain layer withdrawn -> the formula

@@ -3,7 +3,7 @@
 
 `create_audit_log`'s own docstring records the rule: with `add_to_cache=False` it skips the
 in-memory cache AND `db.add`, so every caller has to keep the returned dict itself. The write door
-whose merge dropped it (`crud.apply_row_update_internal`) retired with the lines (lead 11-11 ㄱ); a
+whose merge dropped it (the old write door) retired with the lines (lead 11-11 ㄱ); a
 merge is `write_lines._merge_into` now - its history is the lines it moves onto the holder
 (`test_a_moved_key_part_rekeys_and_merges_into_the_holder`). Two of the old assertions are kept here
 on that merge: a merge that moves no shown value tells no edit, and it reads the marks of both rows

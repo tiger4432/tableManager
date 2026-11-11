@@ -2,7 +2,7 @@
 """A row made on an id that still holds layers (an orphan's - a row removed before its layers were) computes from
 them (QA 11-08): the batch prefetch reads the layers of an id it was handed and found no row for, so the new row shows
 what its stored person's layer and pin say, not the incoming file's value. «Is this a new, empty row» has one answer -
-the id was not read (`LayersRead.rows`) - for the cell read and the COPY alike.
+the id was not read (the old door's read-cell set) - for the cell read and the COPY alike.
 """
 from datetime import datetime
 

@@ -506,8 +506,8 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     event staged outside their transaction re-opens the exact failure this pattern
     exists to prevent (rows durable, nobody ever told). Two facts make that hold:
 
-      1. `row_id` is minted in PYTHON (`crud._get_or_create_row`:
-         `row_id=update_item.row_id or str(uuid6.uuid7())`), not by a SERIAL, so
+      1. `row_id` is minted in PYTHON (`crud._engine_minted_row_id`, uuid7), not by a
+         SERIAL, so
          the complete id list is already known at `before_flush` time. No round
          trip is needed to learn what to name, so nothing has to happen after the
          flush.

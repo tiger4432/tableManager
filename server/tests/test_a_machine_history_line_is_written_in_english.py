@@ -2,7 +2,7 @@
 """총괄 6fa4c5094 (앱 발견, UI 는 영어 상설): the history pane drew «신규 데이터 생성: …» - the line a machine write leaves on
 a row it changed. It is written in English now: «New row: …», and a value that is not there reads «empty». Lines
 stored before keep their words - the history is not rewritten. The funnel's line is `crud._said_logs` (the old door's
-`row_update_line` retired with the lines, 11-11)."""
+line retired with the lines, 11-11)."""
 import re
 
 from database import crud

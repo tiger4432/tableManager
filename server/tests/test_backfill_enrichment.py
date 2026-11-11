@@ -549,7 +549,7 @@ def _rows_of(db, table):
 def test_a_partial_key_is_refused_when_the_blank_column_IS_the_business_key(bkfl_env):
     """`business_key ∈ decision_key`, no composite: the identity would be EMPTY.
 
-    `crud._update_row_business_key` copies `updates[business_key]` verbatim, so a
+    the old key write copies `updates[business_key]` verbatim, so a
     partial key whose blank column is the business key resolves to "" - and every
     such row on the table resolves to the same "", i.e. one row that successive
     writes overwrite. The mapper cannot out-vote that (crud composes the stored

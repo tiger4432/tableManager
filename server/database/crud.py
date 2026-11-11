@@ -140,7 +140,7 @@ def _warn_undeclared_column_once(table_name: str, col_name: str):
     once — warning once is what let a fixed deployment and a broken one produce
     identical logs. It is kept only because the sole call site was pinned by the
     change request; renaming it to `_record_undeclared_column_drop` is a four-line
-    follow-up (here, `apply_row_update_internal`, and a comment in
+    follow-up (here, `update_item_as_line`, and a comment in
     `parsers/directory_watcher.py` and `tests/test_ingestion_drop_visibility.py`).
     """
     warned = _undeclared_column_warned.get(table_name)
@@ -1244,8 +1244,8 @@ def normalize_stored_text(value: Any) -> Any:
     same predicate BY CONSTRUCTION.
 
     This is not a new policy; it is the layer that was never told. `clean_str_value`
-    already strips on every read and compare, `_update_row_business_key` already strips
-    `business_key_val`, and the line below already mapped a whitespace-only value to NULL.
+    already strips on every read and compare, a stored `business_key_val` is already
+    stripped, and the line below already mapped a whitespace-only value to NULL.
     Only the non-empty case still let surrounding whitespace through.
 
     Only `str` is stripped. A list/dict (the JSON columns - `map_doe.mat_*` carries raw
@@ -1336,9 +1336,8 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
                        table_name: str = None) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.
 
-    This is the write boundary: `apply_row_update_internal` runs EVERY value through it,
-    and that function's only caller is `apply_batch_updates` - the funnel every write
-    path converges on. Normalizing here rather than at each call site is the same
+    This is the write boundary: every value a write hands the lines goes through it - the
+    funnel's item judge (`update_item_as_line`) and `write_lines` itself. Normalizing here rather than at each call site is the same
     reasoning `refuse_virtual_join_columns` records: a per-call-site rule is one the next
     author has to remember.
     """
@@ -1993,11 +1992,10 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
         therefore cannot carry one. That caller passes `ingested_at_by_source`
         instead, which is why this override is checked FIRST.
 
-    Naive and aware datetimes coexist in one dict on purpose-free grounds: the write
-    path stamps `layer_instant()` (naive, local) while PostgreSQL's `timestamptz`
-    reads back aware. Comparing the two raises TypeError, so both are normalised to
-    UTC here - `astimezone()` reads a naive value as local, which is exactly what
-    `layer_instant()` produced.
+    Naive and aware datetimes coexist in one dict on purpose-free grounds: a layer stored
+    naive (local) sits beside PostgreSQL's `timestamptz`, which reads back aware. Comparing
+    the two raises TypeError, so both are normalised to UTC here - `astimezone()` reads a
+    naive value as local.
     """
     raw = None
     if ingested_at_by_source and source_name is not None:
@@ -2082,7 +2080,7 @@ def rank_terms(table_name: str = None):
         # 2b. newest first
         lambda ln, u: -ln["at"] if ln["at"] is not None else 0.0,
         # 2c. one instant, the later line - a batch's lines share its time and the later item wins, as
-        #     layer_instant's later time for it did (A QA 11-11); a layer with no line (cell_sources) skips it
+        #     the old write door's later stamp for it did (A QA 11-11); a layer with no line (cell_sources) skips it
         lambda ln, u: -(ln.get("line_id") or 0),
         # 3. total order, always decides
         lambda ln, u: ln["source_name"],
@@ -2098,7 +2096,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     file-derived source name is unregistered, so all of them return 99 and ALL OF
     THEM TIE; `sorted` is stable, so the winner fell to dict insertion order, and
     that order is not arbitrary - the write path loads the stored sources first and
-    appends the incoming one last (`apply_row_update_internal`), so the INCUMBENT
+    appended the incoming one last (the old write door), so the INCUMBENT
     won every tie by construction. A later delivery carrying a corrected value was
     stored in `cell_sources` and then discarded in silence, because `has_changed`
     was false and that suppresses the column write, the audit log AND the outbox
@@ -2121,7 +2119,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
        comparison would also have to order `None` against a float.
     3. **`source_name` ascending** - the final TOTAL order. Two layers can carry the
        same `ingested_at` (two processes stamp in one clock tick, or the layers were stored
-       before `layer_instant`),
+       before stamps were made unique),
        and without a total order the answer would fall back to dict order, which is
        the defect above. `idx_sources_lookup_source` is unique on
        (table, row, column, source_name), so within one cell `source_name` is unique
@@ -2366,7 +2364,7 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
 
 def keeps_history(table_name, column_name) -> bool:
     """Whether a change of this cell leaves a history line - asked where a line is made: `create_audit_log` (a cell's
-    line, whoever wrote it) and `row_update_line` (the columns a row's line names). Not when the table's entry lists
+    line, whoever wrote it) and `_said_logs` (the columns a row's line names). Not when the table's entry lists
     the column in `no_history_columns` (owner 11-09 ㄴ: the system tables' state cells, a person's hand write too -
     lead ㅁ'''). Unsaid: every column keeps its history."""
     return column_name not in ((TABLE_CONFIG.get(table_name) or {}).get("no_history_columns") or ())
@@ -2630,7 +2628,7 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
 
     [P3] `.values(chunk)` builds a fresh multi-row VALUES clause - one BindParameter
     object per cell - and compiles it per chunk. Measured on a 100,000-row map file:
-    `bulk_upsert_cell_sources` cost 223.2 s, of which only 60.2 s was SQL and 163 s
+    the layer upsert (retired with cell_sources' writes, 11-11) cost 223.2 s, of which only 60.2 s was SQL and 163 s
     was that construction. Being able to hand the driver a flat parameter list instead
     is what this predicate gates.
 
@@ -2645,8 +2643,8 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
     1. **Every mapping carries the same keys.** A ragged list is NOT refused either way
        (총괄 1495534c9 - this said it was): `.values(ragged_list)` raises `CompileError`
        only when the first mapping has the key another lacks, and sends the whole chunk
-       without it - NULL, silently - when the first is the one lacking it. So
-       `bulk_upsert_cell_sources` fills every mapping to one key set before it gets here.
+       without it - NULL, silently - when the first is the one lacking it. A caller fills
+       every mapping to one key set before it gets here.
     2. **No value is a SQL expression.** The collision-merge path used to put
        `func.now()` into these dicts; a `ClauseElement` cannot be bound as a
        parameter. Those sites now emit real datetimes, but an outside caller is free
@@ -2708,7 +2706,7 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     """Send `mappings` as one MULTI-ROW `VALUES` statement per chunk. `False` = declined.
 
     `copy=True` sends them as ONE `COPY ... FROM STDIN` instead - only for rows NO stored row can share a conflict
-    key with (the caller's to prove: `bulk_upsert_cell_sources`' new rows). Same declines, same bind processors; a
+    key with (the caller's to prove; no product caller passes it since 11-11). Same declines, same bind processors; a
     database error is translated by SQLAlchemy's own `DBAPIError.instance`, so a unique or NOT NULL failure still
     arrives as `IntegrityError` at the three sites below (lead 11-07: 1,000 new rows x 120 columns, 6.18 -> 3.68 s).
 
@@ -2918,14 +2916,6 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     return True
 
 
-#: What an existing `cell_sources` row takes from the incoming one on conflict.
-#
-# 🔴 ONE LIST, BECAUSE THERE WERE THREE AND THEY HAD TO AGREE. `bulk_upsert_cell_sources`
-# spells its update set three times — once as `update_cols` for the multi-row send and
-# twice as `set_={...}` for the two fallbacks — and a column added to two of the three is
-# a column that updates or does not depending on which path the batch takes and on nothing
-# else. Nothing would raise: the insert would carry the value and the conflicting row would
-# quietly keep its old one.
 def _copy_field(value) -> str:
     """One value in COPY's text format: NULL is \\N; tab, newline, carriage return and backslash escaped."""
     if value is None:
@@ -2981,8 +2971,7 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: i
     else:
         from sqlalchemy.dialects.postgresql import insert as upsert_insert
 
-    # Same fast path, same fallback, same chunk size - see `bulk_upsert_cell_sources`.
-    # [P4] Identical send-path repair, and it matters here for the same reason: a map
+    # [P4] The multi-row send path, and it matters here: a map
     # push declares `source_name='user'`, so EVERY cell takes an overwrite marker and
     # this list is the same length as the source list.
     if _is_executemany_safe(deduped_mappings):
@@ -3117,8 +3106,8 @@ def key_part(table_name: str, column: str, value):
 
 def rebuilt_business_key(table_name: str, row) -> Optional[str]:
     """The key this row's own parts compose to, or None when every part is blank (a blank part among filled ones is
-    a part, `_unfilled_composite_parts`) - what both seats that rebuild a key ask: the write's
-    (`apply_row_update_internal` «2.») and the pin's (`set_cell_manual_priority_batch`) (총괄 a61d32f4f ㄱ).
+    a part, `_unfilled_composite_parts`) - what a key rebuild asks (`write_lines._rekey`, every writer)
+    (총괄 a61d32f4f ㄱ).
 
     🔴 `fold_key_value` / `is_blank_key_part`, because this MAKES an identity: NaN passes `is_blank_value`, becomes
     the text 'nan' through `clean_str_value`, and rows missing different things collide on one key (2026-09-04).
@@ -3148,8 +3137,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 
     Returns True if it set one. Calling it twice is safe because this is a PURE
     FUNCTION of the payload's own columns - the second call assembles again and lands on
-    the same value - which is what lets `apply_batch_updates` call it up front while
-    `apply_row_update_internal` keeps calling it for its own protection.
+    the same value - which is what lets `apply_batch_updates` call it up front.
 
     ⚠️ THAT SAFETY USED TO BE CREDITED TO A GUARD (「an item that already carries a
     row_id OR a business_key_val is left alone」) and the credit was misplaced; 판정 190
@@ -3211,8 +3199,8 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     #
     # ⛔ AND THE ANSWER IS NOT "DO NOT ASSEMBLE WHEN A KEY WAS SENT" - that is 190
     # undone, and it is how 1,000 rows hid from three cleanups. The two live together
-    # because they are ORDERED: `_get_or_create_row` asks the assembled key first and
-    # reaches this one only when the assembled key names nothing.
+    # because they are ORDERED: the row claim (`write_lines._claim`) asks the assembled key
+    # first and reaches this one (`_by_old_key`) only when the assembled key names nothing.
     supplied = update_item.business_key_val
     if clean_str_value(supplied) not in ("", computed_key):
         # `clean_str_value`, the spelling a key is stored under and the prefetch asks
@@ -3500,9 +3488,8 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     A NON-EMPTY list names the columns, so a refusal can say WHICH column was blank
     instead of "some key is missing".
     """
-    # Truthiness, deliberately, on both - it is what `_get_or_create_row` uses to decide
-    # whether to look a row up, so a value it would ignore must not read as an identity
-    # here either.
+    # Truthiness, deliberately, on both: a value no row is looked up by must not read as an
+    # identity here either.
     if update_item.row_id:
         return []
     if (update_item.business_key_val
@@ -3570,7 +3557,7 @@ def batch_write_instant(db):
 
     🔴 S-83 ③. This exists so the row UPDATE can carry a VALUE rather than a SQL expression:
     an expression in the SET clause takes the write off its batched path, which is what made
-    a 1,000-row request send 1,000 UPDATE statements. See `apply_row_update_internal`.
+    a 1,000-row request send 1,000 UPDATE statements.
 
     ⚠️ ONE INSTANT PER REQUEST IS THE POINT, not merely a saving. On PostgreSQL `now()` is
     the TRANSACTION timestamp, so the per-row expression already gave every row of a batch
@@ -3639,7 +3626,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
                         replaces_map: bool = False):
     """One funnel item as a `write_lines` item (lead 11-10 ㄱ: the funnel's cell judgement stays, its end hands
     write_lines its items) - a system, undeclared or unmapped column, a refused value and a blank from a writer that
-    cannot mean emptied are dropped and counted by reason as `apply_row_update_internal` counts them; a formula's
+    cannot mean emptied are dropped and counted by reason (the funnel's drop report); a formula's
     column holds no line (its value is the merge's, its history the batch's receipt, tallied in `plan["receipts"]`).
     The item is named by its row_id or its assembled key - write_lines claims it. `plan`: what the batch works out
     once (loadable, unmapped, refused_times, receipts, map_judged). -> (the write_lines item, the formulas whose
@@ -4400,7 +4387,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
     # of transaction_context and ahead of the replace_map purge. The refusal is gone with
     # its subject: read-time joins are retired, so no column is computed at read time and
     # every name in a payload is either a stored column or already dropped by the
-    # undeclared-column gate in `apply_row_update_internal`.
+    # undeclared-column gate in `update_item_as_line`.
 
     tx_id = batch.transaction_id or str(uuid6.uuid7())
     
@@ -4535,34 +4522,15 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"Incoming Active Cells: {len(batch.updates)}"
             )
 
-        # [P6] Assemble the composite business key for every item BEFORE the prefetch
-        # filter is built from it.
-        #
-        # The key of a map row is a join of its own column values (`composite_key_source`
-        # - 11 of the 14 real tables declare one, including every map table). The payload
-        # a map push sends carries neither `row_id` nor `business_key_val`: it carries the
-        # source columns. The assembly used to happen inside `apply_row_update_internal`,
-        # i.e. per row and AFTER `target_bks` had already been collected - so `target_bks`
-        # was empty, the prefetch below matched nothing, `row_cache` stayed empty, and
-        # `_get_or_create_row` fell through to one full-model SELECT per row. Measured on
-        # a 200-cell update: 201 SELECTs on the data table where 1 is enough.
+        # [P6] Assemble the composite business key for every item BEFORE write_lines claims the
+        # batch's rows by key: the key of a map row is a join of its own column values
+        # (`composite_key_source`), and a map push carries neither `row_id` nor
+        # `business_key_val` - only the source columns.
         #
         # ⚠️ THIS MOVES WHEN THE KEY IS COMPUTED, NOT WHAT IT IS. Same function and the
         # same two side effects. The GUARD has since narrowed to `row_id` alone (판정 190)
         # and a supplied key that differs from the assembled one is now kept aside rather
         # than overwritten (판정 191) - both of which this block reads, never decides.
-        #
-        # ⚠️ AND IT DOES NOTHING FOR A `replace_map` PUSH - which is what the map editor
-        # sends. The purge above already deleted the scope's rows and flushed, so the
-        # prefetch looks up keys whose rows no longer exist, finds nothing, and
-        # `_get_or_create_row` probes for each of them anyway. Measured: 202 SELECTs
-        # before, 202 after, at 200 cells. This helps the paths that UPDATE existing
-        # composite-keyed rows - grid edits, file re-ingestion, chain writes, enrichment
-        # - where the same 200-cell batch goes from 2,604 statements to 406.
-        # Closing the insert case needs a business-key equivalent of
-        # `layers_read`: the prefetch PROVES those rows are absent, and
-        # `_get_or_create_row` does not read that proof. That is a separate correctness
-        # argument and is deliberately not made here.
         #
         # ⚠️ AND IT MUST STAY BELOW THE replace_map BLOCK. The assembly writes the key
         # into `updates[key_col]`, and `derive_replace_map_scope`'s legacy branch builds

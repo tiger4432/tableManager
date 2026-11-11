@@ -2350,9 +2350,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
         10-28 ㄱ). No other cell passes the gate below.
 
     WHY THIS EXISTS AND WHY R1/R2 CANNOT DO IT
-        The winning value is MATERIALISED: `apply_row_update_internal` ends with
-        `setattr(row, col, new_val)` and every read serves that column, not the
-        layers. So fixing `crud.compute_priority_value` fixes only the cells written
+        The winning value is MATERIALISED: a write stores the merged value in t's
+        column and every read serves that column, not the layers. So fixing `crud.compute_priority_value` fixes only the cells written
         AFTER the fix. Every cell that resolved wrongly in the past keeps displaying
         the wrong value until something re-delivers it - and nothing will, because
         the re-delivery is exactly what the defect discarded. R1 re-runs a MAPPER
@@ -2423,7 +2422,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     # ⚠️ THE LABEL AND THE LAYER ARE DIFFERENT FIELDS FROM DIFFERENT SOURCES, and
     # conflating them would be a far worse defect than the one this fixes.
     #   * the LAYER is `cell_sources.source_name`, written from
-    #     `update_item.source_name` (crud.py, `apply_row_update_internal`),
+    #     `update_item.source_name` (the write's item, `crud.update_item_as_line`),
     #   * the LABEL is the outbox payload's `source_name`, read from the
     #     `request_source` context var and NOWHERE ELSE - `_outbox_envelope` is
     #     its only reader in the whole server tree.

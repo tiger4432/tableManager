@@ -1,7 +1,7 @@
 """[P3] The `bulk_*` cell-metadata helpers must chunk, like every other bulk
 operation in this codebase (`graph_materializer.CHUNK_SIZE`).
 
-`bulk_upsert_cell_sources`, `bulk_upsert_cell_overwrites` and
+the old layer upsert, `bulk_upsert_cell_overwrites` and
 `bulk_delete_cell_overwrites` each built ONE statement over the whole batch. A
 5,000-die map save produced a single ~690 KB INSERT binding 210,000 parameters,
 and the delete was an N-term OR chain.

@@ -3,7 +3,7 @@
 WHAT THIS IS ABOUT
 
 `apply_batch_updates` resolves an incoming cell to a stored row by business key, and the
-lookup it falls through to (`crud._get_or_create_row` -> `crud.get_row_by_business_key`)
+lookup it falls through to (the old row lookup -> the old key lookup)
 filters on `business_key_val` ALONE - no map-scope filter, `.first()`. There is no unique
 index on that column (verified physically: 0 of 50 covering indexes on the live dev
 database are unique, 0 table constraints name it).

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """총괄 1495534c9: a write's layer dict always carries `origin_row_id` (09-16, e1318d28d) and a
-merge's did not, so a batch holding both sent `bulk_upsert_cell_sources` a ragged list - a
+merge's did not, so a batch holding both sent the old layer upsert a ragged list - a
 CompileError when the first mapping in sort order had the key, the whole chunk's origin NULL
 without a word when it had not. A merge carries it now (the shell's layer keeps its own; a
 person's backup none). The upsert seat retired with the lines (11-11)."""

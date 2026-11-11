@@ -153,7 +153,7 @@ def test_a_callers_shape_gives_the_same_layers_and_spoken_and_shape_reads_kinds_
 
 def test_one_batchs_two_sources_on_one_cell_the_later_item_wins(db):
     """A batch's lines share one instant, so time cannot order them: the later line wins (rank term 2c), as the old
-    write's later layer_instant for a later item did (A QA 11-11). By name alone src1 would win."""
+    write's later stamp for a later item did (A QA 11-11). By name alone src1 would win."""
     put(db, "r1", "src1", T0, "y")
     put(db, "r1", "src2", T0, "z")
     assert lines.merge(db, "t", CFG, ["r1"])["r1"]["lot"][0] == "z"

@@ -79,7 +79,7 @@ IDEMPOTENCY HAS TWO INDEPENDENT NETS AND BOTH ARE PROVEN SEPARATELY
 
 Net 1 alone would pass a test while net 2 was broken, and vice versa. This project has
 already paid for a fix that closed one of two doors and reported success
-(`_get_or_create_row`, 2026-08-11), so `test_ledger_l1_pg.py` exercises them separately.
+(the old write door's row lookup, 2026-08-11), so `test_ledger_l1_pg.py` exercises them separately.
 """
 from __future__ import annotations
 

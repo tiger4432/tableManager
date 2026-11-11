@@ -118,7 +118,7 @@ def _required_key_columns(table_name: str, columns) -> tuple:
 def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) -> list:
     """행 단위 키 존재 검사에 쓸 키 컬럼 그룹 목록을 만든다.
 
-    [F1] 키 셀이 공백인 행이 무음 적재되면 `_get_or_create_row`가
+    [F1] 키 셀이 공백인 행이 무음 적재되면 쓰기 문(`write_lines._claim`)이
     business_key_val=None 항목을 **매번 신규 행**으로 만들어 재드롭 때마다 고아 행이
     누적된다(업서트 불가). 그룹 중 하나라도 조각이 모두 비지 않았으면 keyed로 판정(`_row_has_key`):
       - (business_key,) — 단일 bk 직접 제공

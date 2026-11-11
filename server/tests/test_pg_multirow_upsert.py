@@ -483,7 +483,7 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     after the prefetch has proved the key absent and before the rows' flush
     (which goes first since 총괄 5c0a86cec - a competitor committing later
     would wait on this attempt's own uncommitted key),
-    which is precisely the window `ProbedIdentity` cannot cover because there
+    which is precisely the window the old prefetch proof cannot cover because there
     is no cross-process lock (`grep -rn "pg_advisory" server/` = 0).
 
     WHAT RECOVERY MEANS HERE, asserted rather than implied: one row for the

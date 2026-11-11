@@ -5,12 +5,12 @@ and 65% of its wall clock was Python and SQLAlchemy rather than the database.
 Three of those costs are attacked here, and each one is a place where "faster"
 and "wrong" are one edit apart:
 
-  1. Two identity SELECTs per row (`_get_or_create_row` -> `get_row_by_business_key`,
+  1. Two identity SELECTs per row (the old row lookup -> the old key lookup,
      and the composite-key collision probe). Both are replaced by reading the proof
-     the batch prefetch already produced - `ProbedIdentity`.
+     the batch prefetch already produced - the old prefetch proof.
   2. One `INSERT ... RETURNING` per new row, because `updated_at=func.now()` put a
      SQL expression in the parameter set and SQLAlchemy cannot batch those.
-  3. `bulk_upsert_cell_sources` building a fresh multi-row VALUES clause per chunk.
+  3. the old layer upsert building a fresh multi-row VALUES clause per chunk.
 
 🔴 WHAT THESE TESTS ARE REALLY GUARDING. A statement-count assertion alone would
 pass for an implementation that stopped looking up rows at all - which is to say
@@ -44,7 +44,7 @@ def _item(lot, slot, cx, cy, bn, source="probe.csv", by="watcher", cell_key=""):
     this file budgets is unchanged either way - neither value ever equals the
     assembled key - but `''` is a VALUE, so every keyless row in the database shared
     one identity and collided under `uq_bk_<table>`. See
-    `crud._update_row_business_key` and `data_model.md` §3.1-bis.
+    the old key write and `data_model.md` §3.1-bis.
     """
     updates = {"lot": lot, "slot": slot, "cx": cx, "cy": cy, "bn": bn}
     if cell_key is not None:
@@ -65,7 +65,7 @@ def test_fresh_insert_costs_one_identity_select_for_the_whole_chunk(db_session):
     """The headline: identity is resolved once per CHUNK, not twice per ROW.
 
     Before this change a 200-row fresh chunk issued 401 SELECTs against the data
-    table (1 prefetch + 200 `get_row_by_business_key` + 200 collision probes).
+    table (1 prefetch + 200 key lookups + 200 collision probes).
     """
     n = 200
     items = [_item("L1", "01", i, 0, "1") for i in range(n)]
@@ -156,7 +156,7 @@ def test_second_push_updates_the_same_rows_instead_of_duplicating_them(db_sessio
 
 
 def test_a_business_key_with_surrounding_whitespace_still_matches(db_session):
-    """`get_row_by_business_key` strips before comparing and the prefetch filter is
+    """the old key lookup strips before comparing and the prefetch filter is
     built from stripped values, so the membership test must strip too. Testing the
     raw value would be merely slow; testing a DIFFERENT normalisation on either side
     is what mints a duplicate."""
@@ -268,7 +268,7 @@ def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_sessi
     re-deriving. Here the payload carries the STRING '1234.0', which `clean_str_value`
     leaves alone, while the item was resolved by '1234'.
 
-    The item's key is what the prefetch filtered on and what `_get_or_create_row`
+    The item's key is what the prefetch filtered on and what the old row lookup
     matched, so storing anything else saves the row under a handle nothing looks it up
     by."""
     item = schemas.GeneralUpdateItem(
@@ -287,7 +287,7 @@ def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_sessi
 def test_the_read_side_spells_a_float_the_way_the_write_side_did(db_session):
     """The other end of the same seam: a later write that names no key and carries the value 931.0 must reach the
     row that value stored - the write's row claim (`write_lines._claim`) reads the key as the write side spelled it
-    (the old lookup, `crud.get_row_by_business_key`, retired with the lines, 11-11).
+    (the old door's key lookup retired with the lines, 11-11).
 
     ⚠️ It folds a FLOAT, not a string that looks like one: `'931.0'` is a different
     identity and stays one. This unifies how a VALUE is spelled, it does not add
@@ -375,10 +375,10 @@ def test_a_supplied_key_that_names_nothing_still_resolves_onto_the_assembled_row
     🔴 RENAMED AND RE-STATED BECAUSE WHAT IT MEASURES MOVED, and that was MEASURED
     rather than reasoned (2026-09-09, 판정 191). It used to be the collision-merge test:
     the assembly returned early on a supplied key, so the payload was looked up under
-    "SOMETHING_ELSE", missed, and `_find_business_key_conflict` had to run and merge.
+    "SOMETHING_ELSE", missed, and the old collision probe had to run and merge.
     Since 190/191 the assembly runs anyway and the prefetch carries the assembled key,
     so this row now comes back from `row_cache` and the merge is never reached. Stubbing
-    `_find_business_key_conflict` to return None leaves this test GREEN - its old
+    the old collision probe to return None leaves this test GREEN - its old
     docstring claimed the opposite, which is why the claim is not simply repeated here.
 
     ⚠️ THE MERGE ARM IS NOT UNCOVERED, also measured with that same stub:
@@ -400,7 +400,7 @@ def test_a_supplied_key_that_names_nothing_still_resolves_onto_the_assembled_row
 
     # THE discriminating assertion: with the probe skipped the merge never happens and
     # this row still reads "old". Proved to ring - stubbing
-    # `_find_business_key_conflict` to return None fails exactly this and nothing else.
+    # the old collision probe to return None fails exactly this and nothing else.
     #
     # ⚠️ Deliberately NOT asserting the row count. The merge leaves its shell row
     # behind (`db.delete` on a still-pending instance, inside a bare `except: pass`),

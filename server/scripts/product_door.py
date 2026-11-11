@@ -16,13 +16,13 @@ WHAT THE DOOR REQUIRES, each learned by measurement rather than assumed:
 
   business key   Supplied per row. A table whose key is composite over columns the caller
                  does not send would otherwise leave every row's identity blank, and
-                 `crud._update_row_business_key` records what follows - blank-keyed rows
+                 what follows is: blank-keyed rows
                  in one batch collide WITH EACH OTHER, the IntegrityError recovery cannot
                  resolve rows that were never committed, and the batch is refused.
   no `effort`    `EffortReport` says an automatic path must not send one: absent means
                  "not measured", and a zero dilutes the human-effort average that is this
                  product's first core value. Every caller here is such a path.
-  no `row_id`    The engine mints it (`crud._get_or_create_row`), and ruling 150 refuses a
+  no `row_id`    The engine mints it (`crud._engine_minted_row_id`), and ruling 150 refuses a
                  supplied id that is not a uuid7. A tool that mints its own is doing the
                  engine's job; sending the business key is enough to resolve or create.
   batch size     Ruling 170 caps a request at `MAX_ROWS_PER_REQUEST`. Not a tuning knob -

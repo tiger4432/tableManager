@@ -297,7 +297,7 @@ def run(apply=False, reverse=False, engine=None, readonly_engine=None):
             if not substitute:
                 why = ("no other valid non-partial btree index on this table leads "
                        "with business_key_val, so dropping this would leave identity "
-                       "lookups (crud.get_row_by_business_key) with no index at all")
+                       "lookups (a write's row claim by key) with no index at all")
                 print(f"      !! REFUSED: {why}")
                 refused.append((name, why))
                 continue
