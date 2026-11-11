@@ -1,35 +1,25 @@
 """[P1b] The discarded-merge pattern's remaining three copies, plus the copy that
 had no consumer at any size.
 
-Tier 0 corrected `PUT /tables/{t}/data/updates`: it built `msg_items` (one
-`cell_overwrites` read-back of everything just written, plus an O(rows x columns)
-merge) and only THEN asked whether the broadcast wanted items. The same decision
-is written at four more places, and this module pins all four.
-
-Three of them are the same shape as Tier 0's:
+Tier 0 corrected `PUT /tables/{t}/data/updates`: it built `msg_items` (a read-back of
+everything just written, plus an O(rows x columns) merge) and only THEN asked whether
+the broadcast wanted items. The same decision is written at four more places, and this
+module pins all four:
 
   * `PUT  /tables/{t}/cells/priority/batch`        (`set_cell_priority_batch_endpoint`)
   * `POST /tables/{t}/cells/sources/delete/batch`  (`delete_cell_source_batch_endpoint`)
   * `chain_ingestion_worker.process_chain_transaction_group`
+  * the SILENT batch update - `msg_items` is read only inside `if not batch.silent:`
 
-The fourth is not a size question at all: `msg_items` in the batch-update endpoint
-is read ONLY inside `if not batch.silent:`, so a SILENT save under the threshold
-paid the whole merge for nobody.
+The bill these tests price is the READS: constant in rows (the same SELECTs per table at
+n rows and at 2n - A 11-11, lead: the cell-source overhaul's lines changed which tables
+are read, never «one per row»), and an arm that ships no items reads less than the arm
+that ships them - the merge it would discard is skipped. Writes are not priced: on SQLite
+a line insert that returns its ids in order is one statement a line (PG batches them).
 
-WHY THE BILL IS N+1 AND NOT ONE QUERY. Every one of these sites runs after a crud
-function that COMMITS. `expire_on_commit` is true, so each written row is expired;
-the first attribute read on it (`[r.row_id for r in rows]` in
-`fetch_and_merge_metadata`, `row.created_at` in the chain worker) reloads it with
-its own SELECT. The merge query is the small half of the bill.
-
-Every test below is a matched PAIR. Skipping work is only correct if the branch
-that fires is unchanged, so each "skips it" test is accompanied by one pinning that
-the arm which really consumes the items still pays for them and still ships the
-merged cell shape. A skip that swallowed the consuming case would broadcast rows
-with no `is_overwrite`/`priority_source` and the grid would silently lose every
-overwrite marker.
-
-Counts, not timings: these numbers are identical on SQLite and PostgreSQL.
+Every skipping test is paired with the consuming arm, which still ships the merged cell
+shape: a skip that swallowed the consuming case would broadcast rows with no
+`is_overwrite`/`priority_source` and the grid would silently lose every overwrite marker.
 """
 
 import json
@@ -41,6 +31,7 @@ from sql_budget import record_statements, selects_from
 
 
 TABLE = "rmscope_test_map"
+READ = (TABLE, TABLE + "__lines", "cell_overwrites")
 
 # `rmscope_test_map` declares no `composite_key_source`, so every batch below resolves
 # its rows through the up-front prefetch. That is deliberate: it keeps these budgets
@@ -81,120 +72,69 @@ def _events(captured, name):
     return [m for m in captured if m["event"] == name]
 
 
-# ---------------------------------------------------------------------------
-# Copy 1: PUT /tables/{t}/cells/priority/batch
-# ---------------------------------------------------------------------------
+def _reads(recorded, tables=READ):
+    """{table: the SELECTs that read it} - CANARY: the write read its own table."""
+    said = {name: len(selects_from(recorded, name)) for name in tables}
+    assert said[tables[0]] > 0, ("CANARY: the recorder saw no read of the written table", said)
+    return said
 
-def test_priority_pin_above_threshold_skips_the_merge_it_would_discard(
-        client, db_session, captured_broadcasts):
-    ids = _seed_cells(client, db_session, "PRI_BIG", BROADCAST_ITEM_LIMIT + 1)
-    captured_broadcasts.clear()  # drop the seeding broadcast
 
-    body = {"updates": [{"row_id": r, "column_name": "val"} for r in ids],
-            "source_name": "user", "updated_by": "tester"}
+def _door(client, db_session, captured, door, tag, n):
+    """`door`'s write on `n` fresh rows' «val» - (its answer, the broadcasts it sent, its reads)."""
+    ids = _seed_cells(client, db_session, tag, n)
+    captured.clear()                                   # drop the seeding broadcast
     with record_statements(db_session) as recorded:
-        res = client.put(f"/tables/{TABLE}/cells/priority/batch", json=body)
+        if door == "priority":
+            res = client.put(f"/tables/{TABLE}/cells/priority/batch", json={
+                "updates": [{"row_id": r, "column_name": "val"} for r in ids],
+                "source_name": "user", "updated_by": "tester"})
+        else:
+            res = client.post(f"/tables/{TABLE}/cells/sources/delete/batch", json={
+                "cells": [{"row_id": r, "column_name": "val"} for r in ids], "source_name": "user"})
+    assert res.status_code == 200, res.text
+    return res.json(), list(captured), _reads(recorded)
 
-    assert res.status_code == 200
-    assert res.json()["count"] == BROADCAST_ITEM_LIMIT + 1
 
+# ---------------------------------------------------------------------------
+# Copies 1 and 2: PUT cells/priority/batch · POST cells/sources/delete/batch
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("door", ["priority", "sources_delete"])
+def test_above_threshold_the_door_skips_the_merge_it_would_discard(client, db_session, captured_broadcasts, door):
+    big = BROADCAST_ITEM_LIMIT + 1
+    answer, sent, reads = _door(client, db_session, captured_broadcasts, door, door + "_B1", big)
+    assert answer["count"] == big
     # The branch is unchanged: one refresh signal, carrying the same count it did
     # when that count was `len(msg_items)`.
-    assert _events(captured_broadcasts, "batch_row_upsert") == []
-    refreshes = _events(captured_broadcasts, "batch_refresh_required")
-    assert len(refreshes) == 1
-    assert refreshes[0]["change_count"] == BROADCAST_ITEM_LIMIT + 1
-    assert refreshes[0]["table_name"] == TABLE
+    assert _events(sent, "batch_row_upsert") == []
+    [refresh] = _events(sent, "batch_refresh_required")
+    assert (refresh["change_count"], refresh["table_name"]) == (big, TABLE)
 
-    # One SELECT on each table, and each one is work that produced the write:
-    # crud's row lookup, and crud's two metadata prefetches. The merge's own
-    # `cell_overwrites` + `cell_sources` reads are gone, and so are the 101 per-row
-    # reloads its first line used to trigger.
-    assert len(selects_from(recorded, TABLE)) == 1, (
-        "a discarded merge also pays one ORM refresh per row, because "
-        "set_cell_manual_priority_batch commits and expires them all")
-    assert len(selects_from(recorded, "cell_overwrites")) == 1
-    assert len(selects_from(recorded, "cell_sources")) == 1
+    assert _door(client, db_session, captured_broadcasts, door, door + "_B2", 2 * big)[2] == reads, \
+        "constant in rows - not one read per written row"
+    shipped = _door(client, db_session, captured_broadcasts, door, door + "_S", BROADCAST_ITEM_LIMIT)[2]
+    assert sum(reads.values()) < sum(shipped.values()), ("the merge it would discard is skipped", reads, shipped)
 
 
-def test_priority_pin_at_threshold_still_merges_because_it_ships_the_items(
-        client, db_session, captured_broadcasts):
+@pytest.mark.parametrize("door", ["priority", "sources_delete"])
+def test_at_threshold_the_door_still_merges_because_it_ships_the_items(client, db_session, captured_broadcasts,
+                                                                      door):
     """The consuming arm, unchanged. `include_sources=True` here, so the items carry
     the full `sources` map - dropping this merge would blank the source picker."""
-    ids = _seed_cells(client, db_session, "PRI_SMALL", BROADCAST_ITEM_LIMIT)
-    captured_broadcasts.clear()
-
-    body = {"updates": [{"row_id": r, "column_name": "val"} for r in ids],
-            "source_name": "user", "updated_by": "tester"}
-    with record_statements(db_session) as recorded:
-        res = client.put(f"/tables/{TABLE}/cells/priority/batch", json=body)
-
-    assert res.status_code == 200
-    assert _events(captured_broadcasts, "batch_refresh_required") == []
-    upserts = _events(captured_broadcasts, "batch_row_upsert")
-    assert len(upserts) == 1
-    assert len(upserts[0]["items"]) == BROADCAST_ITEM_LIMIT
-
-    cell = upserts[0]["items"][0]["data"]["val"]
+    _answer, sent, reads = _door(client, db_session, captured_broadcasts, door, door + "_S1", BROADCAST_ITEM_LIMIT)
+    assert _events(sent, "batch_refresh_required") == []
+    [upsert] = _events(sent, "batch_row_upsert")
+    assert len(upsert["items"]) == BROADCAST_ITEM_LIMIT
+    cell = upsert["items"][0]["data"]["val"]
     assert set(cell) >= {"value", "is_overwrite", "priority_source", "sources"}
-    assert cell["manual_priority_source"] == "user", "the pin this request set"
-    assert "user" in cell["sources"], "include_sources=True must still be paid for here"
+    if door == "priority":
+        assert cell["manual_priority_source"] == "user", "the pin this request set"
+        assert "user" in cell["sources"], "include_sources=True must still be paid for here"
+    else:
+        assert "user" not in cell["sources"], "the source this request deleted"
 
-    # The merge still runs on this arm: two reads of each metadata table (crud's
-    # prefetch and the merge's), and the per-row reloads after crud's commit.
-    assert len(selects_from(recorded, "cell_overwrites")) == 2
-    assert len(selects_from(recorded, "cell_sources")) == 2
-    assert len(selects_from(recorded, TABLE)) == BROADCAST_ITEM_LIMIT + 1
-
-
-# ---------------------------------------------------------------------------
-# Copy 2: POST /tables/{t}/cells/sources/delete/batch
-# ---------------------------------------------------------------------------
-
-def test_source_delete_above_threshold_skips_the_merge_it_would_discard(
-        client, db_session, captured_broadcasts):
-    ids = _seed_cells(client, db_session, "DEL_BIG", BROADCAST_ITEM_LIMIT + 1)
-    captured_broadcasts.clear()
-
-    body = {"cells": [{"row_id": r, "column_name": "val"} for r in ids],
-            "source_name": "user"}
-    with record_statements(db_session) as recorded:
-        res = client.post(f"/tables/{TABLE}/cells/sources/delete/batch", json=body)
-
-    assert res.status_code == 200
-    assert res.json()["count"] == BROADCAST_ITEM_LIMIT + 1
-
-    assert _events(captured_broadcasts, "batch_row_upsert") == []
-    refreshes = _events(captured_broadcasts, "batch_refresh_required")
-    assert len(refreshes) == 1
-    assert refreshes[0]["change_count"] == BROADCAST_ITEM_LIMIT + 1
-
-    assert len(selects_from(recorded, TABLE)) == 1
-    assert len(selects_from(recorded, "cell_overwrites")) == 1
-    assert len(selects_from(recorded, "cell_sources")) == 1
-
-
-def test_source_delete_at_threshold_still_merges_because_it_ships_the_items(
-        client, db_session, captured_broadcasts):
-    ids = _seed_cells(client, db_session, "DEL_SMALL", BROADCAST_ITEM_LIMIT)
-    captured_broadcasts.clear()
-
-    body = {"cells": [{"row_id": r, "column_name": "val"} for r in ids],
-            "source_name": "user"}
-    with record_statements(db_session) as recorded:
-        res = client.post(f"/tables/{TABLE}/cells/sources/delete/batch", json=body)
-
-    assert res.status_code == 200
-    upserts = _events(captured_broadcasts, "batch_row_upsert")
-    assert len(upserts) == 1
-    assert len(upserts[0]["items"]) == BROADCAST_ITEM_LIMIT
-    cell = upserts[0]["items"][0]["data"]["val"]
-    assert set(cell) >= {"value", "is_overwrite", "priority_source", "sources"}
-    assert "user" not in cell["sources"], "the source this request deleted"
-
-    assert len(selects_from(recorded, "cell_overwrites")) == 2
-    assert len(selects_from(recorded, "cell_sources")) == 2
-    assert len(selects_from(recorded, TABLE)) == BROADCAST_ITEM_LIMIT + 1
+    half = _door(client, db_session, captured_broadcasts, door, door + "_S2", BROADCAST_ITEM_LIMIT // 2)[2]
+    assert half == reads, "constant in rows - the items it ships cost no read a row"
 
 
 # ---------------------------------------------------------------------------
@@ -204,52 +144,37 @@ def test_source_delete_at_threshold_still_merges_because_it_ships_the_items(
 SILENT_ROWS = 50  # deliberately well under BROADCAST_ITEM_LIMIT
 
 
-def _silent_payload(tag, silent):
-    return {"updates": [
-        {"updates": {"die_key": f"{tag}_{i}", "ref_table": "bonding_map",
-                     "map_key": tag, "x": i, "y": 0, "val": "1"},
-         "source_name": "user", "updated_by": "tester"}
-        for i in range(SILENT_ROWS)], "silent": silent}
-
-
-def test_silent_save_builds_no_items_for_nobody(
-        client, db_session, captured_broadcasts):
-    """`silent=True` suppresses the broadcast entirely, and `msg_items` is read
-    nowhere else - so a small silent save used to pay a full metadata merge and 50
-    per-row reloads to produce a list that was dropped on the floor."""
+def _save(client, db_session, tag, silent, n=SILENT_ROWS):
     with record_statements(db_session) as recorded:
-        res = client.put(f"/tables/{TABLE}/data/updates",
-                         json=_silent_payload("SIL", True))
+        res = client.put(f"/tables/{TABLE}/data/updates", json={"updates": [
+            {"updates": {"die_key": f"{tag}_{i}", "ref_table": "bonding_map",
+                         "map_key": tag, "x": i, "y": 0, "val": "1"},
+             "source_name": "user", "updated_by": "tester"}
+            for i in range(n)], "silent": silent})
+    assert res.status_code == 200, res.text
+    assert res.json()["updated_count"] == n
+    return _reads(recorded)
 
-    assert res.status_code == 200
-    assert res.json()["updated_count"] == SILENT_ROWS
+
+def test_silent_save_builds_no_items_for_nobody(client, db_session, captured_broadcasts):
+    """`silent=True` suppresses the broadcast entirely, and `msg_items` is read
+    nowhere else - so a small silent save used to pay a full metadata merge to
+    produce a list that was dropped on the floor."""
+    reads = _save(client, db_session, "SIL", True)
     assert captured_broadcasts == [], "silent means silent - the contract is unchanged"
-
-    # Nothing read cell_overwrites back at all. Every row is new, so the batch itself
-    # never queries that table (P2 memoises the absence); a SELECT here could only be
-    # the merge.
-    assert selects_from(recorded, "cell_overwrites") == []
-    assert len(selects_from(recorded, TABLE)) == 1, (
-        "one lookup, the batch's own - not one reload per written row")
+    assert _save(client, db_session, "SIL2", True, 2 * SILENT_ROWS) == reads, "constant in rows"
+    loud = _save(client, db_session, "LOUD0", False)
+    assert sum(reads.values()) < sum(loud.values()), ("the merge for nobody is skipped", reads, loud)
 
 
-def test_non_silent_save_of_the_same_size_still_merges(
-        client, db_session, captured_broadcasts):
+def test_non_silent_save_of_the_same_size_still_merges(client, db_session, captured_broadcasts):
     """The mutation guard for the test above: identical payload, `silent=False`.
     If the skip were keyed on anything but silence this would go quiet too."""
-    with record_statements(db_session) as recorded:
-        res = client.put(f"/tables/{TABLE}/data/updates",
-                         json=_silent_payload("LOUD", False))
-
-    assert res.status_code == 200
-    upserts = _events(captured_broadcasts, "batch_row_upsert")
-    assert len(upserts) == 1
-    assert len(upserts[0]["items"]) == SILENT_ROWS
-    cell = upserts[0]["items"][0]["data"]["val"]
-    assert cell["priority_source"] == "user"
-
-    assert len(selects_from(recorded, "cell_overwrites")) == 1, "the merge"
-    assert len(selects_from(recorded, TABLE)) == SILENT_ROWS + 1
+    reads = _save(client, db_session, "LOUD", False)
+    [upsert] = _events(captured_broadcasts, "batch_row_upsert")
+    assert len(upsert["items"]) == SILENT_ROWS
+    assert upsert["items"][0]["data"]["val"]["priority_source"] == "user"
+    assert _save(client, db_session, "LOUD2", False, SILENT_ROWS // 2) == reads, "constant in rows"
 
 
 # ---------------------------------------------------------------------------
@@ -257,101 +182,83 @@ def test_non_silent_save_of_the_same_size_still_merges(
 # ---------------------------------------------------------------------------
 
 CHAIN_TABLE = "production_plan"  # business key given directly; no composite assembly
+CHAIN_READ = (CHAIN_TABLE, CHAIN_TABLE + "__lines", "cell_overwrites")
 
 
 def _chain_updates(n, line):
-    return [{"business_key_val": f"CB{i}",
-             "updates": {"plan_id": f"CB{i}", "prod_line": line},
+    """`n` rows of their own - keys none of another size's (a size meeting the rows another wrote reads them)."""
+    return [{"business_key_val": f"CB{n}_{i}",
+             "updates": {"plan_id": f"CB{n}_{i}", "prod_line": line},
              "source_name": "chain_ingestion"}
             for i in range(n)]
 
 
 def _seed_chain_rows(db, n):
-    """Create the target rows before measuring.
-
-    Without this the measured batch is an INSERT batch, and `_get_or_create_row`
-    issues its own `WHERE business_key_val = ?` per row looking for a row that does
-    not exist yet - a separate, real cost that has nothing to do with the item build
-    and would swamp it. Seeding first makes the prefetch resolve every row, so the
-    only per-row statements left in the window are the post-commit reloads this test
-    is about.
-    """
+    """Create the target rows before measuring, so the measured batch writes rows that are there."""
     from database import crud, schemas
     crud.apply_batch_updates(db, CHAIN_TABLE, schemas.GeneralUpdateBatch(
         updates=[schemas.GeneralUpdateItem(**u) for u in _chain_updates(n, "L0")]))
 
 
-def chain_budget_mapper_over(db, payload):
-    return {"updates": _chain_updates(BROADCAST_ITEM_LIMIT + 1, "L1")}
+def chain_budget_mapper(db, payload):
+    """The rows its trigger names - the rule imports this module under its own name, so no state here reaches it."""
+    said = payload.get("data", payload) if isinstance(payload, dict) else {}
+    return {"updates": _chain_updates(int(said["n"]), "L1")}
 
 
-def chain_budget_mapper_under(db, payload):
-    return {"updates": _chain_updates(BROADCAST_ITEM_LIMIT, "L1")}
-
-
-def _chain_rule(func_name):
+def _chain_rule():
     return {"name": "p1b_chain_rule", "trigger_table": "p1b_test_trigger",
             "target_table": CHAIN_TABLE,
             "mapper_module": "tests.test_discarded_merge_budget",
-            "mapper_function": func_name, "enabled": True, "is_batch": False}
+            "mapper_function": "chain_budget_mapper", "enabled": True, "is_batch": False}
 
 
-def _chain_trigger(tx_id):
+def _chain_trigger(tx_id, n):
     import uuid
     from database.models import DatabaseOutbox
     return DatabaseOutbox(event_uuid=str(uuid.uuid4()), event_type="CREATE",
                           table_name="p1b_test_trigger",
                           payload={"source_name": "user", "transaction_id": tx_id,
-                                   "data": {"k": "v"}})
+                                   "data": {"k": "v", "n": n}})
+
+
+async def _chain_group(db_session, n):
+    """One chain group answering `n` rows that are there - (its messages, its reads)."""
+    from chain.ingestion_worker import process_chain_transaction_group
+
+    _seed_chain_rows(db_session, n)
+    tx_id = "p1b_chain_%d" % n
+    with record_statements(db_session) as recorded:
+        ok, err, msgs = await process_chain_transaction_group(tx_id, [_chain_trigger(tx_id, n)], db_session,
+                                                              [_chain_rule()])
+    assert ok is True and err is None
+    return msgs, _reads(recorded, CHAIN_READ)
 
 
 @pytest.mark.anyio
 async def test_chain_above_threshold_builds_no_items_it_would_discard(db_session):
-    """The chain worker has no metadata merge, so its whole bill IS the reloads:
-    `to_local_str(row.created_at)` on a row expired by crud's commit."""
-    from chain.ingestion_worker import process_chain_transaction_group
-
-    _seed_chain_rows(db_session, BROADCAST_ITEM_LIMIT + 1)
-    tx_id = "p1b_chain_over"
-    with record_statements(db_session) as recorded:
-        ok, err, msgs = await process_chain_transaction_group(
-            tx_id, [_chain_trigger(tx_id)], db_session,
-            [_chain_rule("chain_budget_mapper_over")])
-
-    assert ok is True and err is None
-    refreshes = [m for m in msgs if m.get("event") == "batch_refresh_required"]
-    assert len(refreshes) == 1
-    assert refreshes[0]["change_count"] == BROADCAST_ITEM_LIMIT + 1
-    assert refreshes[0]["table_name"] == CHAIN_TABLE
-    assert refreshes[0]["transaction_id"] == f"chain_{tx_id}"
+    big = BROADCAST_ITEM_LIMIT + 1
+    msgs, reads = await _chain_group(db_session, big)
+    [refresh] = [m for m in msgs if m.get("event") == "batch_refresh_required"]
+    assert (refresh["change_count"], refresh["table_name"]) == (big, CHAIN_TABLE)
+    assert refresh["transaction_id"] == "chain_p1b_chain_%d" % big
     assert [m for m in msgs if m.get("event") == "batch_row_upsert"] == []
-
-    assert len(selects_from(recorded, CHAIN_TABLE)) == 1, (
-        "crud's own prefetch, and nothing else - not one reload per written row")
+    assert (await _chain_group(db_session, 2 * big))[1] == reads, "constant in rows - not one reload per written row"
+    shipped = (await _chain_group(db_session, BROADCAST_ITEM_LIMIT))[1]
+    assert sum(reads.values()) < sum(shipped.values()), ("the items it would discard are not built", reads, shipped)
 
 
 @pytest.mark.anyio
 async def test_chain_at_threshold_still_builds_the_items_it_ships(db_session):
-    from chain.ingestion_worker import process_chain_transaction_group
-
-    _seed_chain_rows(db_session, BROADCAST_ITEM_LIMIT)
-    tx_id = "p1b_chain_under"
-    with record_statements(db_session) as recorded:
-        ok, err, msgs = await process_chain_transaction_group(
-            tx_id, [_chain_trigger(tx_id)], db_session,
-            [_chain_rule("chain_budget_mapper_under")])
-
-    assert ok is True and err is None
-    upserts = [m for m in msgs if m.get("event") == "batch_row_upsert"]
-    assert len(upserts) == 1
-    assert len(upserts[0]["items"]) == BROADCAST_ITEM_LIMIT
-    item = upserts[0]["items"][0]
+    msgs, reads = await _chain_group(db_session, BROADCAST_ITEM_LIMIT)
+    [upsert] = [m for m in msgs if m.get("event") == "batch_row_upsert"]
+    assert len(upsert["items"]) == BROADCAST_ITEM_LIMIT
+    item = upsert["items"][0]
     assert item["data"]["prod_line"]["value"] == "L1"     # a wrapped cell, as every sender's (9eb902922 ①)
     assert item["created_at"] and item["updated_at"]
-
     # its write step ends in a savepoint, not a commit (총괄 09f58844f) - nothing written is expired, so the items
     # it ships cost no reload
-    assert len(selects_from(recorded, CHAIN_TABLE)) == 1, "crud's own prefetch, and nothing else"
+    assert (await _chain_group(db_session, BROADCAST_ITEM_LIMIT // 2))[1] == reads, "constant in rows"
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import pytest
 import shipped
 from database import crud, models
 from event_constants import BROADCAST_ITEM_LIMIT
+from tests.support import line_tables
 
 LOOKS = "sys_looks"
 PLAIN = "rmscope_test_map"
@@ -29,6 +30,8 @@ def sent(client, db_session, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, LOOKS, shipped.tables()[LOOKS])
     assert crud.TABLE_CONFIG[LOOKS]["access"]["edit_by"] == "look_table", "CANARY: sys_looks declares edit_by"
     assert "edit_by" not in (crud.TABLE_CONFIG[PLAIN].get("access") or {}), "CANARY: the plain table declares none"
+    bind = db_session.get_bind()
+    line_tables.build(bind, LOOKS)                 # its lines - a pin names a source with a head line (A 11-11)
     out = []
 
     async def capture(message):
@@ -40,6 +43,7 @@ def sent(client, db_session, monkeypatch):
     db_session.rollback()
     db_session.query(looks).delete()
     db_session.commit()
+    line_tables.drop(bind, LOOKS)
 
 
 def _write(client, table, rows):
