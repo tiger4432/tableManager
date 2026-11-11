@@ -547,6 +547,8 @@ def test_a_broken_counter_never_costs_the_user_their_correction(client, db_sessi
     the real consequence was that a client-side counter bug refused every save the
     operator attempted. The correction is the product; the measurement is not.
     """
+    from database import lines
+
     before = db_session.query(lines.AuditBatch).count()
     res = _put(client, {"session_id": S1, "key": -3, "mouse": 0, "nav": 0},
                value="EFF_ALWAYS_LANDS")

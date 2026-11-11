@@ -18,6 +18,7 @@ from database import crud, models, schemas  # noqa: E402
 from database.database import Base  # noqa: E402
 from ledger import meanings, trace_router, walk_cards  # noqa: E402
 from mappers import agent_walk  # noqa: E402
+from tests.support import line_tables  # noqa: E402
 from utils import llm  # noqa: E402
 
 TABLE = product_tables.MEANING_TABLE
@@ -35,6 +36,7 @@ def box(tmp_path, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, cfg[TABLE])
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    line_tables.build(engine, TABLE)                # the table keeps its lines - a person's word is a line there
     monkeypatch.setattr(trace_router, "_declaration", lambda world=None: DECLARATION)
     monkeypatch.setattr(walk_cards, "key_values", lambda sight, t, limit, starts_with=None: {
         "nodes": [{"keys": {"wafer": "W01"}, "count": 3}]})

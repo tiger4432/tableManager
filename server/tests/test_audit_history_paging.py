@@ -28,25 +28,33 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from admin import audit_history
-from database import models
+from tests.support import line_tables
 
-TABLE = "raw_table_1"
+TABLE = "inventory_master"      # two declared columns: the cell route's scope needs a second one
+COLUMN, OTHER = "category", "part_no"
 
 
-def _seed(db, n, row_id=None, column="EQP_ID", tie_size=1, base=None):
-    """`n` audit rows on one row_id, newest last. `tie_size` rows share a timestamp."""
+def _seed(db, n, row_id=None, column=COLUMN, tie_size=1, base=None):
+    """`n` lines on one row_id saying `column`, newest last. `tie_size` lines share an `at` (cell-source overhaul:
+    a row's history is its lines). -> (row_id, [line_id, ...])"""
     row_id = row_id or str(uuid.uuid4())
     base = base or datetime(2026, 1, 1, tzinfo=timezone.utc)
-    for i in range(n):
-        db.add(models.AuditLog(
-            table_name=TABLE, row_id=row_id, column_name=column,
-            old_value=f"old{i}", new_value=f"new{i}",
-            source_name="probe", updated_by="probe",
-            transaction_id=f"tx{i // max(tie_size, 1)}",
-            timestamp=base + timedelta(seconds=i // max(tie_size, 1)),
-        ))
-    db.commit()
-    return row_id
+    engine = db.get_bind()
+    bits = line_tables.bits_of(TABLE) if TABLE in line_tables._BUILT else line_tables.build(engine, TABLE)
+    with engine.begin() as conn:
+        made = [line_tables.line(conn, TABLE, bits, row_id, written_by="probe", source="probe",
+                                 batch=f"tx{i // max(tie_size, 1)}",
+                                 at=base + timedelta(seconds=i // max(tie_size, 1)), values={column: f"new{i}"})
+                for i in range(n)]
+    return row_id, made
+
+
+@pytest.fixture(autouse=True)
+def _fresh_lines():
+    """`build` empties t and makes its lines once a test; a test DB is fresh per test."""
+    line_tables._BUILT.pop(TABLE, None)
+    yield
+    line_tables._BUILT.pop(TABLE, None)
 
 
 def _page(client, url, **params):
@@ -62,7 +70,7 @@ def _page(client, url, **params):
 def test_row_history_is_capped_and_says_so(client, db_session, monkeypatch):
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 10, "max_limit": 50})
-    row_id = _seed(db_session, 25)
+    row_id, _ = _seed(db_session, 25)
 
     page = _page(client, f"/tables/{TABLE}/rows/{row_id}/history")
     assert page["limit"] == 10
@@ -76,7 +84,7 @@ def test_complete_history_is_not_marked_truncated(client, db_session, monkeypatc
     would pass the test above while making 더 보기 an infinite button."""
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 10, "max_limit": 50})
-    row_id = _seed(db_session, 10)  # exactly the page size - the off-by-one case
+    row_id, _ = _seed(db_session, 10)  # exactly the page size - the off-by-one case
 
     page = _page(client, f"/tables/{TABLE}/rows/{row_id}/history")
     assert page["returned"] == 10
@@ -86,7 +94,7 @@ def test_complete_history_is_not_marked_truncated(client, db_session, monkeypatc
 
 def test_the_cap_comes_from_config_not_from_source(client, db_session, monkeypatch):
     """Two different declarations produce two different pages over one fixture."""
-    row_id = _seed(db_session, 30)
+    row_id, _ = _seed(db_session, 30)
     for declared in (3, 7):
         monkeypatch.setattr(audit_history, "load_config",
                             lambda path=None, d=declared: {"default_limit": d, "max_limit": 50})
@@ -100,7 +108,7 @@ def test_requested_limit_is_clamped_to_max_not_refused(client, db_session, monke
     either, or one stale client breaks the sidebar."""
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 10, "max_limit": 20})
-    row_id = _seed(db_session, 40)
+    row_id, _ = _seed(db_session, 40)
 
     page = _page(client, f"/tables/{TABLE}/rows/{row_id}/history", limit=100000)
     assert page["limit"] == 20
@@ -119,7 +127,7 @@ def test_paging_visits_every_row_exactly_once(client, db_session, monkeypatch, t
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 5, "max_limit": 50})
     total = 23
-    row_id = _seed(db_session, total, tie_size=tie_size)
+    row_id, made = _seed(db_session, total, tie_size=tie_size)
 
     seen, cursor, pages = [], None, 0
     while True:
@@ -133,9 +141,8 @@ def test_paging_visits_every_row_exactly_once(client, db_session, monkeypatch, t
             break
         cursor = page["next_cursor"]
 
-    expected = [r.id for r in db_session.query(models.AuditLog)
-                .filter(models.AuditLog.row_id == row_id)
-                .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc()).all()]
+    # (at desc, line_id desc): the seed's `at` rises with i and line_id with insertion, so newest-first is reversed
+    expected = [audit_history.entry_id(line_id, COLUMN) for line_id in reversed(made)]
     assert len(seen) == total
     assert len(set(seen)) == total, "a row was returned on two pages"
     assert seen == expected, "paging order diverged from the endpoint's own sort"
@@ -145,9 +152,12 @@ def test_tie_fixture_actually_produces_ties(db_session):
     """The guard on the test above. A tie fixture that produced no ties would
     make `tie_size=7` a silent duplicate of `tie_size=1` - green, and testing
     nothing. (server-pm memory: an alarm that was never made to ring.)"""
-    row_id = _seed(db_session, 14, tie_size=7)
-    stamps = [r.timestamp for r in db_session.query(models.AuditLog)
-              .filter(models.AuditLog.row_id == row_id).all()]
+    import sqlalchemy as sa
+    from database import lines
+
+    row_id, _ = _seed(db_session, 14, tie_size=7)
+    stamps = [r[0] for r in db_session.execute(sa.text(
+        'SELECT at FROM "%s" WHERE row_id = :r' % lines.lines_relation(TABLE)), {"r": row_id})]
     assert len(stamps) == 14
     assert len(set(stamps)) == 2, f"expected 2 distinct timestamps, got {len(set(stamps))}"
 
@@ -157,7 +167,7 @@ def test_a_bad_cursor_is_refused_not_ignored(client, db_session, monkeypatch):
     page 2 - a 더 보기 loop that appends the same rows forever."""
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 5, "max_limit": 50})
-    row_id = _seed(db_session, 12)
+    row_id, _ = _seed(db_session, 12)
     for bad in ("not-base64!!",     # not base64url at all
                 "Zm9vYmFy",         # valid base64url, payload is not "timestamp|id"
                 "MjAyNi0wMS0wMXxi"  # right shape, id is not an integer
@@ -193,36 +203,29 @@ def test_cell_history_is_capped_and_scoped_to_the_column(client, db_session, mon
     monkeypatch.setattr(audit_history, "load_config",
                         lambda path=None: {"default_limit": 4, "max_limit": 50})
     row_id = str(uuid.uuid4())
-    _seed(db_session, 12, row_id=row_id, column="EQP_ID")
-    _seed(db_session, 12, row_id=row_id, column="other_col")
+    _seed(db_session, 12, row_id=row_id, column=COLUMN)
+    _seed(db_session, 12, row_id=row_id, column=OTHER)
 
-    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/EQP_ID/history")
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/{COLUMN}/history")
     assert page["returned"] == 4
     assert page["truncated"] is True
-    assert {log["column_name"] for log in page["logs"]} == {"EQP_ID"}
+    assert {log["column_name"] for log in page["logs"]} == {COLUMN}
 
 
 # --------------------------------------------------------------------------
 # An empty cell tab is NOT "no history"
 #
-# Machine writes (parser, chain, custom script) store ONE audit row per ROW, under
-# the literal column name `ROW_UPDATE`, so `column_name == col` NEVER matches them.
-# Measured on the isolated `assy_qa` copy 2026-08-11 (this workstation, not
-# production): 225,586 of 239,786 audit rows carry `ROW_UPDATE`, and 225,101
-# distinct rows have machine history and not one per-column entry. For every one of
-# those the cell tab is empty for EVERY column while the row tab is full - which is
-# why this was never reported as missing history.
-#
-# The fix is a disclosure, not a recovery: `row_history_total` is the one fact that
-# tells "this row has no history" apart from "this screen cannot show it".
+# `row_history_total` is the one fact that tells "this row has no history" apart
+# from "this cell has none, the row has some" (lines on the row's other columns).
+# The audit-log `ROW_UPDATE` summary row it was made for retired with the lines
+# (cell-source overhaul): every line says its columns.
 # --------------------------------------------------------------------------
 
-def test_a_machine_written_row_reports_the_history_the_cell_tab_cannot_show(
-        client, db_session):
-    row_id = _seed(db_session, 6, column="ROW_UPDATE")
+def test_a_row_with_history_elsewhere_reports_it_on_an_empty_cell_tab(client, db_session):
+    row_id, _ = _seed(db_session, 6, column=OTHER)
 
-    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/EQP_ID/history")
-    assert page["returned"] == 0, "fixture wrote per-column rows; the defect axis is off"
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/{COLUMN}/history")
+    assert page["returned"] == 0, "fixture wrote lines on this column; the defect axis is off"
     assert page["row_history_total"] == 6, \
         "the empty page did not say the row has history elsewhere"
     assert page["row_history_truncated"] is False
@@ -234,14 +237,14 @@ def test_a_row_with_no_history_at_all_reports_zero(client, db_session):
     Without this, a disclosure hardcoded to any non-zero number would pass the
     test above while telling every empty tab that records exist somewhere.
     """
-    page = _page(client, f"/tables/{TABLE}/rows/{uuid.uuid4()}/cells/EQP_ID/history")
+    page = _page(client, f"/tables/{TABLE}/rows/{uuid.uuid4()}/cells/{COLUMN}/history")
     assert page["returned"] == 0
     assert page["row_history_total"] == 0
 
 
 def test_the_row_route_does_not_carry_the_disclosure(client, db_session):
     """It would be a redundant second answer to what `returned`/`truncated` say."""
-    row_id = _seed(db_session, 6, column="ROW_UPDATE")
+    row_id, _ = _seed(db_session, 6, column=OTHER)
     page = _page(client, f"/tables/{TABLE}/rows/{row_id}/history")
     assert page["returned"] == 6
     assert page["row_history_total"] is None
@@ -255,45 +258,12 @@ def test_the_row_total_is_a_capped_probe(client, db_session, monkeypatch):
     exact-looking number would be the same silent wrong answer in a new place.
     """
     monkeypatch.setattr(audit_history, "ROW_TOTAL_PROBE_CAP", 4)
-    row_id = _seed(db_session, 9, column="ROW_UPDATE")
+    row_id, _ = _seed(db_session, 9, column=OTHER)
 
-    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/EQP_ID/history")
+    page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/{COLUMN}/history")
     assert page["row_history_total"] == 4
     assert page["row_history_truncated"] is True, \
         "a floor was reported as an exact count"
-
-
-def test_the_machine_summary_is_never_parsed_back_into_a_column(client, db_session):
-    """🔴 The trap this fix deliberately does NOT spring.
-
-    The machine row stores a RENDERED SENTENCE, not data: `f"{col}: {val}"` joined
-    on ", ", with NULL written as the Korean word 비어있음 and integer 0
-    indistinguishable from the string "0". Worse, a value can itself be JSON with
-    its own commas and colons - the literal below is the shape a live
-    `wafer_map_metadata` row carries. Splitting it on ", " to recover per-cell
-    history invents a column named `grid_rows`, and inventing a column is how a
-    fix produces confidently wrong history instead of no history.
-
-    So: the summary text mentions `grid_rows`, and the endpoint still answers
-    that this cell has no per-cell record. That is the correct answer.
-    """
-    row_id = str(uuid.uuid4())
-    db_session.add(models.AuditLog(
-        table_name=TABLE, row_id=row_id, column_name="ROW_UPDATE",
-        old_value=None,
-        new_value=('신규 데이터 생성: target_table: dt_log, '
-                   'grid_metadata: {"grid_cols": 2, "grid_rows": 2, "rotation": 0}, '
-                   'dt_slot: 비어있음, dt_x: 2'),
-        source_name="auto_map_meta", updated_by="system",
-        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)))
-    db_session.commit()
-
-    for invented in ("grid_rows", "grid_cols", "rotation", "dt_slot", "dt_x"):
-        page = _page(client, f"/tables/{TABLE}/rows/{row_id}/cells/{invented}/history")
-        assert page["returned"] == 0, \
-            f"the summary string was parsed: '{invented}' grew a per-cell history"
-        assert page["row_history_total"] == 1, \
-            "the disclosure went missing on the one row that needs it most"
 
 
 def test_only_one_route_serves_each_history_path():
