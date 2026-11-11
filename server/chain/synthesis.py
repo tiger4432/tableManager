@@ -300,6 +300,8 @@ def rules_without_key_index(db, rules) -> dict:
     from error_said import told
 
     keyless = {}
+    if db is None:                                     # a caller with no session (a test's direct call) reads nothing
+        return {}
     try:
         stood = {}
         for rule in rules:

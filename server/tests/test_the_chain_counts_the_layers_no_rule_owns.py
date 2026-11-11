@@ -30,7 +30,7 @@ def test_the_lap_counts_unowned_chain_layers_by_writer_and_the_route_reads_it(db
     assert {row["name"]: row["layers"] for row in names} == {"chain_worker": 2, "old_rule": 2}
     assert all(row["tables"] == [[DST, 2]] for row in names)
     lap = heartbeat._laps["chain"][worker.UNOWNED_CENSUS_LOOP]
-    assert lap["layers"] == 4 and lap["depth"] >= 8 and lap["not_adopted"] == names
+    assert lap["layers"] == 4 and lap["depth"] >= 4 and lap["not_adopted"] == names    # four writes, a line each
     assert said and said[0].startswith("[ChainUnowned] pass: 4 layer(s) under 2 name(s) no rule owns")
 
     import main

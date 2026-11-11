@@ -1,4 +1,4 @@
-"""database.lines.merge / winners_sql on PostgreSQL (scratch schema): the same cells as test_lines_merge give
+"""database.lines.merge on PostgreSQL (scratch schema): the same cells as test_lines_merge give
 compute_priority_value's winner - bigint masks (bit 63 is the sign), the CASE terms and row_number run on PG."""
 from datetime import timedelta
 

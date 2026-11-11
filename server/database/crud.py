@@ -952,7 +952,7 @@ def layer_share(source_name):
 
 
 def same_share(a, b) -> bool:
-    """May layer `a` fold into layer `b` - THE question both folds ask (`file_layer_fold` · `stacked_layers`): one
+    """May layer `a` fold into layer `b` - THE question the write's fold asks (`file_layer_fold`): one
     share, or either share not known (an old name, a raws file), which folds as every file layer did before."""
     share_a, share_b = layer_share(a), layer_share(b)
     return share_a is None or share_b is None or share_a == share_b
@@ -1052,53 +1052,6 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
     keep = newest(same)
     return False, [s for s in same if s is not keep], keep
 
-
-def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: bool = False) -> dict:
-    """What the fold over layers already stacked does to one cell (총괄 225b2c658 · 8ec008914): a layer
-    that says what another layer of the cell says goes, and the chain's plain layer becomes its source
-    row's. `layers` is `{source_name: {"value", "ingested_at", "origin_row_id"}}`
-    (`cell_layer._load_cell_state`). The pinned layer is never touched, nor a `key` column's plain chain
-    layer: a hold item writes the keys under it with no source row, and with it gone a marked row's
-    withdrawal blanked the keys the recount finds its row by (응용 7e2fc0575, 총괄 10-11).
-
-      file     file layers that repeat one - per priority class and value the layer it ranks first
-               stays; the cell's winner is first in its own group, so it stays
-      renamed  {chain_ingestion: chain_ingestion (<row>)} - the plain chain layer stamped with a source row
-      chain    [chain_ingestion] - its row's layer is there already
-      differs  the plain chain layer with no source row - never folded: decide, a hold item, a map derivation
-               stamp none and a write may lean on it (총괄 10-11 «다») - and no row layer of the cell holds its value
-      copies   chain layers whose bracket is not their source row (a collision merge's)"""
-    layers = layers or {}
-    groups = {}
-    for name, entry in layers.items():
-        if is_file_layer(name):
-            groups.setdefault((get_source_priority(name, table_name),
-                               value_key((entry or {}).get("value"), col_type)), {})[name] = entry
-    out = {"file": [], "renamed": {}, "chain": [], "differs": False, "copies": 0}
-    for group in groups.values():
-        if len(group) > 1:
-            # one kept per share (owner 11-04 «ㄷ»); a layer whose share is not known folds into any
-            kept = {compute_priority_value({name: entry for name, entry in group.items() if same_share(name, member)},
-                                           None, table_name)[1] for member in group}
-            out["file"].extend(name for name in group if name not in kept and name != pin)
-    out["file"].sort()
-    bracketed = [name for name in layers if name != CHAIN_SOURCE and layer_ranks_as(name) == CHAIN_SOURCE]
-    rows = [name for name in bracketed
-            if name == merged_layer_name(CHAIN_SOURCE, (layers[name] or {}).get("origin_row_id"))]
-    out["copies"] = len(bracketed) - len(rows)
-    plain = layers.get(CHAIN_SOURCE)
-    if plain is None or pin == CHAIN_SOURCE or key:
-        return out
-    origin = plain.get("origin_row_id")
-    if origin:
-        mine = merged_layer_name(CHAIN_SOURCE, origin)
-        if mine in layers:
-            out["chain"].append(CHAIN_SOURCE)
-        else:
-            out["renamed"][CHAIN_SOURCE] = mine
-    elif rows and all(values_differ(layers[name].get("value"), plain.get("value"), col_type) for name in rows):
-        out["differs"] = True
-    return out
 
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
 # Same import guard as event_constants above: crud can be imported without server/ on sys.path.
@@ -2182,49 +2135,32 @@ _TERMS_MEMO = ("rank_terms",)
 
 
 def rank_terms(table_name: str = None):
-    """THE layer order, as one list of terms - each (python(line, unowned), sql(cols, unowned)) - that
-    `compute_priority_value` (python) and `lines.winners_sql` (SQL) both walk, so the two cannot drift (C 11-11).
-    A line is {"ranks_as", "owner_rule", "at" (POSIX seconds or None), "source_name"}; `cols` carries the same names
-    as SQL expressions. `unowned`: a chain layer no rule owns sits on the cell (python bool / SQL condition).
+    """THE layer order, as one list of terms - each term(line, unowned) - that `compute_priority_value` and
+    `lines.merge` both walk, so the two cannot drift (C 11-11). A line is {"ranks_as", "owner_rule", "at" (POSIX
+    seconds or None), "source_name"}. `unowned`: a chain layer no rule owns sits on the cell.
     Smaller sorts first; the pin is not a term (it wins before the order is asked)."""
-    from sqlalchemy import and_, case, literal, not_
-
     priority_map = resolve_priority_map(table_name)
     said = _rule_priorities()
     order = _rule_order()
 
-    def _case(column, mapping, default):
-        if not mapping:
-            return literal(default)
-        return case(*[(column == k, literal(v)) for k, v in mapping.items()], else_=literal(default))
-
     return [
         # 1. declared ranking
-        (lambda ln, u: priority_map.get(ln["ranks_as"], 99),
-         lambda c, u: _case(c.ranks_as, priority_map, 99)),
+        lambda ln, u: priority_map.get(ln["ranks_as"], 99),
         # 1b. a rule that says its priority before one that does not
-        (lambda ln, u: 0 if ln["owner_rule"] in said else 1,
-         lambda c, u: case((c.owner_rule.in_(list(said)), literal(0)), else_=literal(1)) if said else literal(1)),
+        lambda ln, u: 0 if ln["owner_rule"] in said else 1,
         # 1c. the smaller priority
-        (lambda ln, u: said.get(ln["owner_rule"], 0),
-         lambda c, u: _case(c.owner_rule, said, 0)),
+        lambda ln, u: said.get(ln["owner_rule"], 0),
         # 1d. the rule declared later - unless an unowned chain layer sits on the cell
-        (lambda ln, u: -order.get(ln["owner_rule"], -1) if ln["owner_rule"] and not u else 0,
-         lambda c, u: case((and_(c.owner_rule.isnot(None), not_(u)),
-                            -_case(c.owner_rule, order, -1)), else_=literal(0))),
+        lambda ln, u: -order.get(ln["owner_rule"], -1) if ln["owner_rule"] and not u else 0,
         # 2a. a dated layer beats an undated one
-        (lambda ln, u: 0 if ln["at"] is not None else 1,
-         lambda c, u: case((c.at.is_(None), literal(1)), else_=literal(0))),
+        lambda ln, u: 0 if ln["at"] is not None else 1,
         # 2b. newest first
-        (lambda ln, u: -ln["at"] if ln["at"] is not None else 0.0,
-         lambda c, u: c.at.desc()),
+        lambda ln, u: -ln["at"] if ln["at"] is not None else 0.0,
         # 2c. one instant, the later line - a batch's lines share its time and the later item wins, as
         #     layer_instant's later time for it did (A QA 11-11); a layer with no line (cell_sources) skips it
-        (lambda ln, u: -(ln.get("line_id") or 0),
-         lambda c, u: c.line_id.desc()),
+        lambda ln, u: -(ln.get("line_id") or 0),
         # 3. total order, always decides
-        (lambda ln, u: ln["source_name"],
-         lambda c, u: c.source_name.asc()),
+        lambda ln, u: ln["source_name"],
     ]
 
 
@@ -2300,7 +2236,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         owner = layer_owner(name)
         line = {"ranks_as": layer_ranks_as(name), "owner_rule": owner[0] if owner else None,
                 "at": resolution_ingested_at(sources[name], name, ingested_at_by_source), "source_name": name}
-        return tuple(py(line, unowned) for py, _ in terms)
+        return tuple(term(line, unowned) for term in terms)
 
     # `min` rather than `sorted`: the same first element, without materialising and
     # sorting the whole list on a per-cell hot path.

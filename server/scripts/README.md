@@ -85,7 +85,6 @@ conda run -n assy_manager python scripts/<이름>.py
 | `seed_syn_process_ledger.py` | 공정 조건·레시피·두 번째 발견 종류 + **정답지** |
 | `syn_world_prove.py` | 위 둘의 **정답지 검산** — 양방향, 축마다 |
 | `seed_syn_journey_atoms.py` | 콘솔이 묻는 여정 축 세 개 |
-| `seed_syn_k1_lot.py` | 본딩→DT 홉이 k=1인 랏 (세 축이 다 그려지게) |
 | `seed_syn_lot_excursion.py` | 랏 단위 이탈 — 추세 격자가 찾으려는 그 이상치 |
 | `seed_syn_valid_die_floors.py` | 모든 SYN 프레임에 유효다이 기준 (맵 마스크 경로 발화용) |
 | `seed_syn_void_base_join.py` | 베이스 좌표 본딩 웨이퍼 + SAT 스캔 + 조인 |
@@ -93,7 +92,6 @@ conda run -n assy_manager python scripts/<이름>.py
 | `seed_syn_dt_alignment_samples.py` | PRD 유효다이 맵에서 DT 정렬 표본 둘 |
 | `seed_syn_composite_chip.py` | 복합 CHIP 이송 픽스처 |
 | `seed_syn_complex_composite.py` | 복합 CHIP R&D 픽스처 (`SYN-CX-*`) |
-| `seed_syn_split_merge_pressure.py` | 갈렸다 다시 합쳐지는 랏, 가지마다 다른 압력 |
 | `generate_syn_lot_split_merge_sources.py` | 위 분기/병합 소스 파일 생성 (**스테이징 파일만**, DB·`raws` 안 건드림) |
 
 ## 실데이터에서 뽑는 시드

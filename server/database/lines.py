@@ -24,6 +24,8 @@ WON_BY = "won_by"
 LINE_KINDS = ("write", "withdraw", "deleted", "mark")
 BIT_FAMILIES = ("written", "head", "withdrawn")
 BITS_PER_CHUNK = 64
+#: tables a stamped_by statement asks (a UNION ALL arm each) - under sqlite's 500 compound terms
+STAMPED_ARMS = 400
 #: «A person wrote this line» in SQL - the same answer as crud.layer_writer(source_name) == "user" (the key merge
 #: backup «user (old_exist_…)» included). A partial index below carries this exact text; a query must repeat it.
 HUMAN_SOURCE_SQL = "(source_name = 'user' OR source_name LIKE 'user (%')"
@@ -627,81 +629,58 @@ def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
     return out
 
 
-def winners_sql(s: dict, table_name: str, exclude_source: str = None):
-    """ONE statement for every column of the rows in the expanding bindparam `row_ids` (C board 11-11: a statement a
-    column was 30 x 45 ms for 1,000 rows): (row_id, col, line_id, value, lost, pin) a (row, column) some head line
-    spoke in - written or withdrawn, any source. `lost` 0: line_id is the winner, ordered by crud.rank_terms (the one
-    order compute_priority_value walks); 1: no candidate is left - every head line withdrew it, or the pin
-    (cell_overwrites.manual_priority_source) names a source with no head line, or `exclude_source` (R2's «what shows
-    once this source is gone») was the only one. The rank's «an unowned chain layer sits on the cell» counts the
-    head lines that say the cell, pinned or excluded or not, as before. s = shape(...)."""
-    from types import SimpleNamespace
-
-    from sqlalchemy import BigInteger as _Big, and_, bindparam, case, func, literal, or_, union_all
-
-    from . import crud
-    from .models import CellOverwrite
-
-    lt, bits, chunks = s["lines"], s["bits"], s["chunks"]
-    columns = [c for c in sorted(bits) if value_column(c) in lt.c and bits[c] // BITS_PER_CHUNK < chunks]
-    cv = union_all(*[select(literal(c).label("col"), literal(bits[c] // BITS_PER_CHUNK).label("k"),
-                            literal(_mask(bits[c]), _Big).label("m")) for c in columns]).subquery("cv")
-
-    def chunk(family):
-        if chunks == 1:
-            return lt.c[f"{family}_0"]
-        return case(*[(cv.c.k == k, lt.c[f"{family}_{k}"]) for k in range(chunks)])
-
-    src = LineSource.__table__
-    ov = CellOverwrite.__table__
-    says = case((chunk("withdrawn").op("&")(cv.c.m) == 0, 1), else_=0)
-    inner = (select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at, src.c.ranks_as,
-                    cv.c.col, case(*[(cv.c.col == c, lt.c[value_column(c)]) for c in columns]).label("value"),
-                    says.label("says"), ov.c.manual_priority_source.label("pin"),
-                    func.max(case((and_(chunk("withdrawn").op("&")(cv.c.m) == 0, src.c.ranks_as == crud.CHAIN_SOURCE,
-                                        lt.c.owner_rule.is_(None)), 1), else_=0))
-                    .over(partition_by=[lt.c.row_id, cv.c.col]).label("unowned"))
-             .select_from(lt.join(cv, chunk("head").op("&")(cv.c.m) != 0)
-                          .outerjoin(src, src.c.source_name == lt.c.source_name)
-                          .outerjoin(ov, and_(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id,
-                                              ov.c.column_name == cv.c.col)))
-             .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)),
-                    or_(*[lt.c[h] != 0 for h in bit_columns("head", chunks)]))
-             .subquery("i"))
-    candidate = and_(inner.c.says == 1, or_(inner.c.pin.is_(None), inner.c.source_name == inner.c.pin),
-                     *([inner.c.source_name != exclude_source] if exclude_source is not None else []))
-    lost = case((candidate, 0), else_=1)
-    cols = SimpleNamespace(ranks_as=inner.c.ranks_as, owner_rule=inner.c.owner_rule, at=inner.c.at,
-                           source_name=inner.c.source_name, line_id=inner.c.line_id)
-    order = [lost] + [sql(cols, inner.c.unowned == 1) for _, sql in crud.rank_terms(table_name)]
-    ranked = (select(inner.c.row_id, inner.c.col, inner.c.line_id, inner.c.value, lost.label("lost"), inner.c.pin,
-                     func.row_number().over(partition_by=[inner.c.row_id, inner.c.col], order_by=order).label("rn"))
-              .subquery("r"))
-    return select(ranked.c.row_id, ranked.c.col, ranked.c.line_id, ranked.c.value, ranked.c.lost,
-                  ranked.c.pin).where(ranked.c.rn == 1)
-
-
 def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
        a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
-       a spoken column with no candidate left (all withdrawn) is (None, None).
-    Values are read back as t's stored kind (crud.line_value). One statement (`winners_sql`). `s`: the shape the
-    caller already holds (a write reads it once - A 11-11), else read here."""
-    from . import crud
+       a spoken column with no candidate left (all withdrawn, or `exclude_source` - R2's «what shows once this source
+       is gone» - was the only one) is (None, None).
+    The head lines are read once (1,000 rows a statement) and ranked here by crud.rank_terms - the one order
+    compute_priority_value walks (C board 2 11-11: the ranking in SQL was 1.0 s for 1,000 rows x 30 columns). «An
+    unowned chain layer sits on the cell» counts the head lines that say it, pinned or excluded or not. Values read
+    back as t's stored kind (crud.line_value). `s`: the shape the caller already holds (a write - A 11-11)."""
+    from sqlalchemy import or_
 
-    row_ids = list(row_ids)
+    from . import crud
+    from .models import CellOverwrite
+
+    row_ids = list(dict.fromkeys(row_ids))
     if not row_ids:
         return {}
     s = s if s is not None else shape(db, table_name, table_cfg)
-    kinds = s["kinds"]
+    lt, kinds, chunks = s["lines"], s["kinds"], s["chunks"]
+    by_bit = {bit: c for c, bit in s["bits"].items() if value_column(c) in lt.c and bit // BITS_PER_CHUNK < chunks}
+    heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
+    src, ov = LineSource.__table__, CellOverwrite.__table__
+    terms = crud.rank_terms(table_name)
     out = {}
-    for r, column, line_id, value, lost, pin in db.execute(winners_sql(s, table_name, exclude_source),
-                                                          {"row_ids": row_ids}):
-        if not lost:
-            out.setdefault(r, {})[column] = (crud.line_value(value, kinds.get(column, "string")), line_id)
-        elif pin is None:
-            out.setdefault(r, {})[column] = (None, None)
+    for i in range(0, len(row_ids), 1000):
+        part = row_ids[i:i + 1000]
+        pins = {(r, c): p for r, c, p in db.execute(
+            select(ov.c.row_id, ov.c.column_name, ov.c.manual_priority_source)
+            .where(ov.c.table_name == table_name, ov.c.row_id.in_(part), ov.c.manual_priority_source.isnot(None)))}
+        cells = {}                                                     # (row, col) -> [(line, says, value)]
+        for r in db.execute(select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at,
+                                   src.c.ranks_as, *[lt.c[n] for n in heads + gone],
+                                   *[lt.c[value_column(c)] for c in by_bit.values()])
+                            .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
+                            .where(lt.c.row_id.in_(part), or_(*[lt.c[h] != 0 for h in heads]))).mappings():
+            line = {"ranks_as": r["ranks_as"], "owner_rule": r["owner_rule"], "source_name": r["source_name"],
+                    "at": crud.resolution_ingested_at({"ingested_at": r["at"]}), "line_id": r["line_id"]}
+            withdrawn = _columns_of([r[g] for g in gone], by_bit)
+            for col in _columns_of([r[h] for h in heads], by_bit):
+                cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[value_column(col)]))
+        for (row, col), said in cells.items():
+            pin = pins.get((row, col))
+            unowned = any(ok and ln["ranks_as"] == crud.CHAIN_SOURCE and ln["owner_rule"] is None
+                          for ln, ok, _ in said)
+            left = [(ln, v) for ln, ok, v in said if ok and (pin is None or ln["source_name"] == pin)
+                    and ln["source_name"] != exclude_source]
+            if left:
+                ln, value = min(left, key=lambda c: tuple(term(c[0], unowned) for term in terms))
+                out.setdefault(row, {})[col] = (crud.line_value(value, kinds.get(col, "string")), ln["line_id"])
+            elif pin is None:
+                out.setdefault(row, {})[col] = (None, None)
     return out
 
 
@@ -769,9 +748,10 @@ def ensure_declared(engine, tables=None) -> dict:
 def stamped_by(db, table_names, origin_row_ids) -> list:
     """[(table, row_id, column, source_name, input_row)] - the cells of these tables these source rows feed now: each
     line carrying one of them as its input_row, its head columns it did not withdraw (the index t__lines_i). The
-    catalogue and the slots are read once for all the tables (`_catalogue`, `bit_maps`); a table, one data query.
-    Reads only."""
-    from sqlalchemy import or_
+    catalogue and the slots are read once for all the tables (`_catalogue`, `bit_maps`), and the tables' lines in
+    ONE statement - a UNION ALL arm a table, STAMPED_ARMS arms a statement (C board 2 11-11: a statement a table
+    was 11 s for 1,183 tables). Reads only."""
+    import json
 
     ids = list(dict.fromkeys(str(i) for i in origin_row_ids or () if i))
     if not ids:
@@ -779,28 +759,35 @@ def stamped_by(db, table_names, origin_row_ids) -> list:
     built = _catalogue(db, table_names)
     maps = bit_maps(db, list(built))
     postgres = db.get_bind().dialect.name == "postgresql"
+    tables = [t for t in dict.fromkeys(table_names) if t in built]
     out = []
-    for table_name in [t for t in dict.fromkeys(table_names) if t in built]:
-        chunks = built[table_name]
-        heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
-        by_bit = {bit: col for col, bit in maps.get(table_name, {}).items()}
-        lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
-                   Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+    for at in range(0, len(tables), STAMPED_ARMS):
+        group = tables[at:at + STAMPED_ARMS]
+        width = max(built[t] for t in group)
+        heads, gone = bit_columns("head", width), bit_columns("withdrawn", width)
+        arms, names = [], {}
+        for k, table_name in enumerate(group):
+            names[f"t{k}"] = table_name
+            have = bit_columns("head", built[table_name])
+            picked = ", ".join([f"CAST(:t{k} AS varchar) AS t", "s.row_id", "s.source_name", "s.input_row",
+                                *[f"s.{n}" if int(n.rsplit("_", 1)[1]) < built[table_name] else f"0 AS {n}"
+                                  for n in heads + gone]])
+            said = " OR ".join(f"s.{h} <> 0" for h in have)
+            # 🔴 PG: each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
+            #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
+            arms.append(f'SELECT {picked} FROM o CROSS JOIN LATERAL (SELECT * FROM "{lines_relation(table_name)}" s '
+                        f"WHERE s.input_row = o.id AND ({said}) OFFSET 0) s" if postgres else
+                        f'SELECT {picked} FROM "{lines_relation(table_name)}" s '
+                        f"WHERE s.input_row IN (SELECT id FROM o) AND ({said})")
+        origins = ("WITH o(id) AS (SELECT unnest(CAST(:ids AS varchar[]))) " if postgres else
+                   "WITH o(id) AS (SELECT value FROM json_each(:ids)) ")
         for i in range(0, len(ids), 1000):
-            if postgres:
-                # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
-                #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
-                picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
-                rows = db.execute(text(
-                    f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
-                    f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
-                    f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
-            else:
-                rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
-                                                   or_(*[lt.c[h] != 0 for h in heads]))).mappings()
-            for r in rows:
+            part = ids[i:i + 1000]
+            for r in db.execute(text(origins + " UNION ALL ".join(arms)),
+                                {"ids": part if postgres else json.dumps(part), **names}).mappings():
+                by_bit = {bit: col for col, bit in maps.get(r["t"], {}).items()}
                 cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
-                out.extend((table_name, r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
+                out.extend((r["t"], r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
     return out
 
 

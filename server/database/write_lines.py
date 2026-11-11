@@ -669,7 +669,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
 
 
 def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
-    """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge; `lines.winners_sql` under it):
+    """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge, ranked by crud.rank_terms):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
     with won_by; updated_at is the write's instant on a new row or one whose values moved (`_moved`), else it stays -

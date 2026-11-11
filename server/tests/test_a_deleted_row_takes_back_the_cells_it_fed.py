@@ -170,16 +170,22 @@ def test_a_dry_run_writes_nothing(db):
         "a dry run withdrew the cell, so nothing distinguishes previewing from doing")
 
 
+def _layer(db, part_no, column, source, value, origin):
+    """One layer written through the door - its line carries `origin` as its input row."""
+    crud.apply_batch_updates(db, TARGET, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        updates={"part_no": part_no, column: value}, source_name=source, updated_by="s280",
+        origin_row_id=origin)]))
+    db.commit()
+
+
 def test_a_shared_layer_name_takes_only_the_cells_the_deleted_row_stamped(db):
     """🔴 [총괄 10-07 ②] THE STAMP, NOT (COLUMNS x ROWS) OF A NAME. O1 fed (P-1, grade) and (P-2,
     ref_key), O2 fed (P-2, grade), all under the one name `chain_ingestion`. A per-name group
     of O1 is {grade, ref_key} x {P-1, P-2}, which names (P-2, grade) - O2's cell."""
     rows = [_write(db, TARGET, {"part_no": p}) for p in ("P-1", "P-2")]
-    for row_id, column, origin in ((rows[0], "grade", "O1"), (rows[1], "ref_key", "O1"),
-                                   (rows[1], "grade", "O2")):
-        db.add(models.CellSource(table_name=TARGET, row_id=row_id, column_name=column,
-                                 source_name=join_into.CHAIN_LAYER, value="v", origin_row_id=origin))
-    db.commit()
+    for part_no, column, origin in (("P-1", "grade", "O1"), ("P-2", "ref_key", "O1"), ("P-2", "grade", "O2")):
+        _layer(db, part_no, column, join_into.CHAIN_LAYER, "v", origin)
+    assert _chain_cells(db) == {rows[0]: "O1", rows[1]: "O2"}, "canary: both grades are the chain's"
 
     cell_layer.withdraw_by_origin(db, ["O1"], apply=True)
     db.commit()
@@ -188,46 +194,54 @@ def test_a_shared_layer_name_takes_only_the_cells_the_deleted_row_stamped(db):
 
 
 # 총괄 10-07 ① — one pass per table, so a cell two withdrawn layers claim gives them up in turn.
-# (source, value, hour stamped) - the newest shows. Layers are withdrawn in name order.
-LAYERS = [("seed", "Z", 1), ("s_b", "B", 2), ("s_a", "A", 3)]
+# (source, value) written in this order - the newest shows. Layers are withdrawn in name order.
+LAYERS = [("seed", "Z"), ("s_b", "B"), ("s_a", "A")]
 TWO_LAYER_CASES = {
-    # case: (apply, pinned layer, layers left, shown, audit [(old, new, by)], cells withdrawn)
-    "apply": (True, None, ["seed"], "Z", [("A", "B", "withdraw:s_a"), ("B", "Z", "withdraw:s_b")], 2),
-    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A", [], 1),
-    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A", [], 2),
+    # case: (apply, pinned layer, layers left, shown) - each withdrawn source gives up every cell its line said, the
+    # pinned layer's grade kept; which cells a line says through the door is the write's (the key column or not)
+    "apply": (True, None, ["seed"], "Z"),
+    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A"),
+    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A"),
 }
 
 
 @pytest.mark.parametrize("case", sorted(TWO_LAYER_CASES))
 def test_a_cell_two_withdrawn_layers_claim_gives_up_each_in_turn(db, case):
-    from datetime import datetime, timezone
+    """The audit carries no values since the overhaul (owner 11-10): what the old «A -> B -> Z» audit
+    lines kept is asserted on the lines - the withdrawn layers' values stay there as history, and the
+    cell shows what the survivors decide - and the audit keeps one batch row a withdrawal that wrote."""
+    from sqlalchemy import text
 
-    apply, pinned, left, shown, audit, withdrawn = TWO_LAYER_CASES[case]
+    from database import lines
+
+    apply, pinned, left, shown = TWO_LAYER_CASES[case]
     row_id = _write(db, TARGET, {"part_no": "P-1"})
-    db.query(models.CellSource).filter_by(table_name=TARGET, row_id=row_id).delete()
-    for source, value, hour in LAYERS:
-        db.add(models.CellSource(table_name=TARGET, row_id=row_id, column_name="grade",
-                                 source_name=source, value=value,
-                                 ingested_at=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
-                                 origin_row_id=None if source == "seed" else "origin-" + source))
+    for source, value in LAYERS:
+        _layer(db, "P-1", "grade", source, value, None if source == "seed" else "origin-" + source)
     if pinned:
         db.add(models.CellOverwrite(table_name=TARGET, row_id=row_id, column_name="grade",
                                     is_overwrite=True, updated_by="t", manual_priority_source=pinned))
-    db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade = "A"
-    db.commit()
-    audit_from = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+        db.commit()
+    assert sorted(lines.layers(db, TARGET, [row_id], {"grade"})[(row_id, "grade")]) == ["s_a", "s_b", "seed"], \
+        "canary: three layers stand on the cell"
+    said = [(column, source) for (_r, column), named in lines.layers(db, TARGET, [row_id]).items() for source in named
+            if source in ("s_a", "s_b") and not (source == pinned and column == "grade")]
+    assert ("grade", "s_b") in said, "canary: the withdrawn layers say the cell"
+    batches = db.query(lines.AuditBatch).count()
 
     stats = cell_layer.withdraw_by_origin(db, ["origin-s_a", "origin-s_b"], apply=apply)
     db.commit()
 
-    assert stats["cells_withdrawn"] == withdrawn
-    assert sorted(s for (s,) in db.query(models.CellSource.source_name).filter_by(
-        table_name=TARGET, row_id=row_id, column_name="grade")) == left
-    assert db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade == shown
-    assert [(a.old_value, a.new_value, a.updated_by) for a in db.query(models.AuditLog).filter(
-        models.AuditLog.id > audit_from, models.AuditLog.column_name == "grade")
-        .order_by(models.AuditLog.id)] == audit, (
+    assert stats["cells_withdrawn"] == len(said), said
+    assert sorted(lines.layers(db, TARGET, [row_id], {"grade"}).get((row_id, "grade"), {})) == left
+    assert db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade == shown, (
         "the second layer was resolved against what was there before the first one left")
+    kept = {src: v for src, v in db.execute(text(
+        f'SELECT source_name, "{lines.value_column("grade")}" FROM "{lines.lines_relation(TARGET)}" '
+        "WHERE row_id = :r AND source_name IN ('s_a', 's_b')"), {"r": row_id}) if v is not None}
+    assert kept == {"s_a": "A", "s_b": "B"}, "a withdrawn layer's value stays in the lines as history"
+    assert (db.query(lines.AuditBatch).count() > batches) == apply, \
+        "a withdrawal that wrote lines leaves its batch row; a dry run leaves none"
 
 
 # ---------------------------------------------------------------------------

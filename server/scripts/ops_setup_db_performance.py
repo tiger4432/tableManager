@@ -84,121 +84,6 @@ def _verify_plan_shapes(conn, targets):
               "collation — re-running this script will NOT fix it.")
 
 
-# A seq scan of a small `cell_sources` is correct behaviour, not a defect: below
-# roughly this many rows the whole table is a few thousand pages and an index
-# cannot pay for itself, so the planner is RIGHT to ignore it. Verifying the plan
-# there would report a failure that is not one. Stated as a threshold rather than
-# left implicit so the skip is visible in the output instead of silent.
-WITHDRAW_PLAN_MIN_ROWS = 100_000
-
-
-def _verify_withdraw_plan(conn, idx_name):
-    """EXPLAIN two statements over the claimed lines; prove the index BOUNDS them.
-
-    🔴 NOTHING CALLS THIS since 9acf4243e (indexes are the models' declarations; the chain worker builds
-    them). Kept as it was, and what it checks is narrower than the route: its first probe is a plain count over the
-    lines `_claimed_filter` matches, not `count_withdrawable`'s read grouped by head/withdrawn bits, and its row
-    floor and probe pair still read `cell_sources` (both below).
-
-    Same discipline as Step 3.9 and for the same reason: "CREATE INDEX ...
-    Success" proves the index EXISTS, which is a different fact from the planner
-    choosing it. An index that exists and is not chosen is worse than none,
-    because the next reader sees the DDL and stops looking.
-
-    Reuses `value_suggest.classify_seek_plan` — the same verdict vocabulary —
-    with `expect_range=False`. That flag exists for exactly this distinction:
-    the predicate here is EQUALITY on (table_name, source_name), so an
-    `Index Cond` carrying no range operator is the correct shape, and demanding
-    a range would fail a healthy index.
-
-    The predicate is compiled from `chain_replay._claimed_filter`, the single
-    builder `count_withdrawable` and `withdraw_source` share - the predicate, not
-    the statements around it. The probe pair is the LARGEST
-    real (table_name, source_name) in the data — a literal that matches nothing
-    produces a plan that proves nothing, and the worst case is the case worth
-    proving.
-    """
-    import value_suggest
-    from chain import replay
-    from sqlalchemy import func
-    from database import models
-
-    total = conn.execute(text("SELECT count(*) FROM cell_sources")).scalar() or 0
-    if total < WITHDRAW_PLAN_MIN_ROWS:
-        print(f" - NOT VERIFIED: cell_sources has {total} row(s) (< "
-              f"{WITHDRAW_PLAN_MIN_ROWS}). A Seq Scan is the correct plan at this "
-              f"size, so this check would report a failure that is not one. "
-              f"Re-run once the table is large.")
-        return
-
-    from database import crud
-
-    # The largest pair the predicate asks by equality alone: `chain_ingestion` also takes its row layers
-    # (`chain_ingestion (<row>)`, 총괄 8ec008914) - a scan of the table's slice, as large as what it returns.
-    pair = next((p for p in conn.execute(text(
-        "SELECT table_name, source_name, count(*) AS n FROM cell_sources "
-        "GROUP BY 1, 2 ORDER BY n DESC LIMIT 20"))
-        if crud.layer_ranks_as(crud.merged_layer_name(p[1], "x")) != p[1]), None)
-    if pair is None:
-        print(" - !! NOT VERIFIED: no (table_name, source_name) pair found.")
-        return
-    table, source, matches = pair
-    print(f" - Probe: table_name={table!r} source_name={source!r} "
-          f"({matches} of {total} rows)")
-
-    from sqlalchemy.orm import Session
-
-    from chain.cell_layer import claimed_lines
-
-    with Session(conn) as db:
-        lt, bits = claimed_lines(db, table)
-    conds = replay._claimed_filter(lt, bits, source)
-    # A plain count over the claimed lines (the count route groups them by bits instead)
-    # and a (row_id, source_name) projection of `withdraw_source` step 1's predicate (step 1 reads whole lines). The pinned
-    # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner
-    # drives it from `cell_overwrites` (bounded by the number of manual pins, not
-    # by cell_sources), so it does not exercise this index and its unrelated seq
-    # scan would be miscounted as this index failing.
-    probes = [
-        ("claimed lines count",
-         select(func.count()).select_from(lt).where(*conds)),
-        ("withdraw_source step 1",
-         select(lt.c.row_id, lt.c.source_name).where(*conds)),
-    ]
-    ok = 0
-    for label, stmt in probes:
-        sql = str(stmt.compile(conn.engine, compile_kwargs={"literal_binds": True}))
-        t0 = time.time()
-        try:
-            plan = "\n".join(r[0] for r in conn.execute(
-                text("EXPLAIN (ANALYZE) " + sql)).fetchall())
-        except Exception as e:
-            print(f" - !! {label}: could not EXPLAIN ({told(e)}) — UNCHECKED")
-            continue
-        elapsed = time.time() - t0
-        verdict, reasons, discarded = value_suggest.classify_seek_plan(
-            plan, expect_range=False)
-        # classify_seek_plan judges the SHAPE. It cannot tell which index produced
-        # the Index Cond, and a bounded-looking plan from some other index would
-        # still leave this one dead weight, so the name is checked separately.
-        used = idx_name in plan
-        if verdict == value_suggest.PLAN_OK and used:
-            ok += 1
-            print(f"   {label}: bounded by {idx_name} "
-                  f"({discarded} rows discarded, {elapsed:.2f}s)")
-        else:
-            why = list(reasons) + ([] if used else [f"{idx_name}_not_used"])
-            print(f" - !! {label}: {', '.join(why)} "
-                  f"[rows discarded by filter: {discarded}]")
-            for line in plan.splitlines():
-                print(f"      {line}")
-    print(f" - Plan shape: {ok}/{len(probes)} bounded by {idx_name}.")
-    if ok < len(probes):
-        print("   !! A filter-shaped plan here means the withdraw count is LINEAR "
-              "in cell_sources. Re-running this script will NOT fix it — check the "
-              "index definition against chain_replay._claimed_filter.")
-
-
 def setup_performance():
     print("🚀 AssyManager DB Performance Setup Starting...")
     
@@ -309,30 +194,10 @@ def setup_performance():
             except Exception as e:
                 print(f"   Failed to drop {idx_name}: {told(e)}")
 
-        # 3.6 [재교정률] 대시보드 재교정률 집계 전용 부분 커버링 인덱스.
-        #   create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않으므로, 운영 DB에는 이 경로로만
-        #   반영된다(models.py AuditLog.__table_args__ 와 동일 정의 — 두 곳을 함께 고칠 것).
-        #   없으면 /dashboard/summary 의 재교정률 집계가 병렬 Seq Scan으로 떨어진다(실측 512ms/2.6M행).
-        print("\nStep 3.6: Creating audit_logs re-correction index...")
-        recorrection_idx = (
-            "idx_audit_user_recorrection", "audit_logs",
-            "(timestamp) INCLUDE (table_name, row_id, column_name, transaction_id) "
-            "WHERE source_name = 'user'",
-        )
-        idx_name, table, definition = recorrection_idx
-        print(f" - Creating {idx_name} on {table}...")
-        t0 = time.time()
-        try:
-            conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
-            print(f"   Success ({time.time() - t0:.2f}s)")
-        except Exception as e:
-            print(f"   Failed to create {idx_name}: {told(e)}")
-
         # 3.7 [V1 계기 — 완료까지의 상호작용 점수] interaction_effort_logs 집계/멱등성 인덱스.
         #   models.py InteractionEffortLog.__table_args__ 와 동일 정의 — **두 곳을 함께 고칠 것**.
         #   신규 설치에서는 create_all 이 테이블과 함께 만들지만, 테이블이 이미 존재하는 DB에는
-        #   create_all 이 인덱스를 추가하지 않으므로 이 경로가 유일한 반영 수단이다
-        #   (idx_audit_user_recorrection 이 정확히 그 이유로 여기 있다).
+        #   create_all 이 인덱스를 추가하지 않으므로 이 경로가 유일한 반영 수단이다.
         #
         #   - uq_effort_transaction : tx당 1행 불변식. 없으면 클라 재시도가 같은 공수를 두 번
         #     세어 세션 평균이 왜곡된다.
@@ -384,7 +249,7 @@ def setup_performance():
         # 3.8 [F3 값 제안] 접두 조회 인덱스 — `(lower(col) COLLATE "C", col COLLATE "C")`.
         #   **models.py에 선언하지 않는다.** 두 가지 이유가 겹친다:
         #     ① create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않는다
-        #        (idx_audit_user_recorrection·idx_effort_window이 여기 있는 바로 그 이유).
+        #        (idx_effort_window이 여기 있는 바로 그 이유).
         #     ② `COLLATE "C"`는 PostgreSQL 전용 표현이라 테스트 스위트의 sqlite
         #        create_all이 깨진다. 따라서 이 경로가 **유일한** 반영 수단이다.
         #
@@ -494,69 +359,9 @@ def setup_performance():
         except Exception as e:
             print(f"   Suggestion index step failed: {told(e)}")
 
-        # 3.10 [R2 withdraw] The index that bounds "which cells does this source claim".
-        #   `models.py CellSource.__table_args__` carries the SAME definition —
-        #   **fix both places**. create_all builds it on a NEW database; on an
-        #   existing one it never adds an index to a table that is already there,
-        #   so this step is the only path (idx_audit_user_recorrection, Step 3.6,
-        #   is here for that identical reason).
-        #
-        #   Why it is needed: the existing composite is
-        #   (table_name, row_id, column_name, source_name) — `source_name` LAST, so
-        #   it cannot serve a (table_name, source_name) filter at all. Measured on
-        #   this box 2026-07-31, 13,148,355 rows: the count route's aggregate fell
-        #   to a full parallel Seq Scan — 861ms, 263,369 buffers, 13.07M rows thrown
-        #   away by Filter to return 75,000 matches. That cost is O(whole table) and
-        #   sits on a REQUEST path (`GET /admin/retroactive/count?op=withdraw`).
-        #
-        #   This does NOT make the existing composite redundant: that one is UNIQUE
-        #   and is the upsert's conflict target (13.2M scans on this box vs 858 for
-        #   its non-unique prefix). Nothing here drops anything.
-        # 3.10-bis [Frame confirmation, spec MAP_ALIGNMENT layer 8] The index that
-        #   bounds "which cells were derived under this confirmation".
-        #   `models.py CellSource.__table_args__` and
-        #   `migrations/add_frame_confirmation.py` carry the SAME definition — the
-        #   migration covers the box it is run on, this step covers every other
-        #   install, and create_all covers a brand new database. An index that
-        #   exists on one machine and not on a fresh one is a performance defect
-        #   that surfaces later as a mystery.
-        #
-        #   PARTIAL on purpose: `confirmation_uid` is NULL for every row that was
-        #   not derived under a confirmation, which is and will stay the
-        #   overwhelming majority of this table. A non-partial index would carry
-        #   all of them to answer a question none of them can be part of.
-        print("\nStep 3.10: Creating cell_sources withdraw-scope index (R2)...")
-        # ⚰️ THE WITHDRAW-SCOPE INDEX IS GONE FROM HERE (S-118, 판정 245-b). It was a
-        #   tuple this loop had already stopped iterating over - dead in place - and the
-        #   index itself is retired: it carried all 34M rows to serve a rare batch path,
-        #   and the human half of that path is now `models.HUMAN_CLAIMS_INDEX`, which the
-        #   chain worker's boot ensure creates. Dropping the old one is a person's
-        #   command, printed by that same ensure.
-        confirm_idx = ("idx_sources_confirmation", "cell_sources",
-                       "(confirmation_uid, table_name, row_id)",
-                       " WHERE confirmation_uid IS NOT NULL")
-        for idx_name, table, definition, where in (confirm_idx,):
-            print(f" - Creating {idx_name} on {table} {definition}{where}...")
-            t1 = time.time()
-            try:
-                conn.execute(text(
-                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
-                    f"ON {table} {definition}{where}"))
-                size = conn.execute(text(
-                    "SELECT pg_size_pretty(pg_relation_size(:n))"),
-                    {"n": idx_name}).scalar()
-                print(f"   Success ({time.time() - t1:.2f}s, {size})")
-            except Exception as e:
-                print(f"   Failed to create {idx_name}: {told(e)}")
-
-        # ⚰️ THE WITHDRAW INDEX'S BUILD AND ITS PLAN CHECK (3.11) STOOD HERE, reading a
-        #   `withdraw_idx` this file no longer defines - the step died with NameError
-        #   (총괄 10-09: «안 죽게만»). The index is retired (the ⚰️ above).
-
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
-        conn.execute(text("ANALYZE audit_logs"))
         if effort_table_exists:
             conn.execute(text("ANALYZE interaction_effort_logs"))
         print("Done.")
