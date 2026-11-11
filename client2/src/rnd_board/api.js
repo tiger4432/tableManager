@@ -1865,6 +1865,9 @@ export async function fetchDeclaration(params) {
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
              worlds: body.worlds || [],
+             // each source's relation, the types its columns key and the predicates it emits - the Tables page's paths
+             // between two tables; absent (null) when the setup would not compile, as the server omits it
+             sources: Array.isArray(body.sources) ? body.sources : null,
              operating: typeof body.operating === 'string' ? body.operating : null,
              // the zone the calculators cut dates in - the server's setting (expression.useZone)
              zone: typeof body.expression_time_zone === 'string' ? body.expression_time_zone : null };
