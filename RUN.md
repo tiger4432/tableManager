@@ -12,12 +12,12 @@
 > 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
 >          memory 블록도 prompts.memory 도 안 적은 규칙은 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
 >          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼) —
->          아래 저장 거절에 걸리는 규칙만 빼고, 그리고 memory.columns 의 빈 칸("")은 이제 그 역할의 기본 칸에 씀
+>          아래 저장 거절에 걸리는 규칙만 빼고, 그리고 memory.columns 의 빈 칸("" · 공백 · null · NaN)은 이제 그 역할의 기본 칸에 씀
 >          (전: 그 역할을 안 씀 — 그 기본 칸이 표에 없으면 이제 거절),
 >          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
 >          저장 거절 여섯: 이름이 «:target» 으로 끝나는 규칙 · memory.table 이 선언 안 된 표
 >          · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐) · memory.columns 가 {역할: 칸} 이 아닐 때
->          · 칸 값이 글자가 아닐 때(null · 숫자 · 목록, «who=null» 처럼 역할을 댐)
+>          · 칸 값이 있는데 글자가 아닐 때(숫자 · 목록 · dict, «who=5» 처럼 역할을 댐)
 >          · memory.columns 를 적었는데 purpose 나 key 가 없을 때(«key not named (default: situation)», 역할과 기본 칸을 댐)
 >          🔴 이 거절은 «로드» 때도 같음 — 운영에 이미 그런 AI 규칙이 있으면 재기동 뒤 그 규칙이 «통째로» 안 섬
 >          (전: 규칙은 답하고 기억 쓰기만 실패)

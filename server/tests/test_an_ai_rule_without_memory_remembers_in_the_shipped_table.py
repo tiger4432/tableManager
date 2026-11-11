@@ -154,7 +154,8 @@ def _ask(name, memory):
 
 
 BAD = {                                        # a memory block -> the role its refusal names
-    "null": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=None)}, "who=null"),
+    "an empty list": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=[])}, "who=[]"),
+    "a dict": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who={})}, "who={}"),
     "a number": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=5)}, "who=5"),
     "a list": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=["who"])}, 'who=["who"]'),
     "columns as text": ({"columns": "situation"}, 'not "situation"'),
@@ -197,7 +198,8 @@ def test_a_blank_memory_column_is_its_roles_default_at_save_and_load(world, tmp_
     """QA 11-11 ②: the form's emptied box writes "" - it was refused as «memory.columns:  not in …», no name."""
     from chain import ingestion_worker as worker
 
-    blank = {"table": "am_memory", "columns": dict(WRITTEN["columns"], who="", memo="  ")}
+    blank = {"table": "am_memory",                          # null is absence too (lead 11-11: length 0 = NULL)
+             "columns": dict(WRITTEN["columns"], who="", memo="  ", right=None, at=float("nan"))}
     rules, refusal, _notes = rule_shape.expand_declaration(_ask("eval_blank", blank))
     assert refusal is None and len(rules) == 2, refusal
     assert ask_rule.memory_of({"memory": blank})["columns"] == ask_rule.MEMORY_COLUMNS

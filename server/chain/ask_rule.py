@@ -83,7 +83,7 @@ def memory_refusal(spec):
     if not isinstance(written, dict) and not crud.is_blank_value(written, containers=True):
         return "memory.columns must be {role: column}, not %s" % json.dumps(written, default=str)
     odd = ["%s=%s" % (role, json.dumps(column, default=str)) for role, column in (written if isinstance(written, dict) else {}).items()
-           if not isinstance(column, str)]
+           if not isinstance(column, str) and not crud.is_blank_value(column)]
     if odd:
         return "memory.columns: %s - a column is named by text (blank for the default)" % ", ".join(odd)
     memory = memory_of(spec)
