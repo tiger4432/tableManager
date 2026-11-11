@@ -1773,7 +1773,8 @@ FULL_RESET_SOURCE = "full_reset"
 def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = False, by: str = EVERY_ROW_DELETER,
                setup=None, rules=None, log=logger.info) -> dict:
     """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
-    총괄 35b76ba92): the rows, the table's cell layers and pins in ONE transaction with one summary history line, then
+    총괄 35b76ba92): the rows and pins in ONE transaction with one summary history line - the table's lines stay, its
+    history (a271f5726, lead ruling ㄴ 11-11): `layers` counts the cells no one sees after it - then
     every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
     grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
     person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
@@ -1823,8 +1824,6 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
                             % (table_name, found["rows"], confirm_rows))
     tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
     found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
-    found["layers_deleted"] = db.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
-                                         {"t": table_name}).rowcount
     found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
                                              {"t": table_name}).rowcount
     crud.create_audit_log(db, table_name, "*", "*", found["rows"], 0, FULL_RESET_SOURCE, by, transaction_id=tx)
@@ -1834,8 +1833,8 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         source: backfill.rescope(db.get_bind(), setup, source, None, (), apply=True, whole_source=True,
                                  world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
         for source in found["ledger_atoms"]}
-    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['layers_deleted']} layer(s), "
-        f"{found['overwrites_deleted']} pin(s) deleted in {tx}; ledger atoms withdrawn {found['ledger_withdrawn']}")
+    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['overwrites_deleted']} pin(s) deleted "
+        f"in {tx}, its lines kept as history; ledger atoms withdrawn {found['ledger_withdrawn']}")
     return found
 
 

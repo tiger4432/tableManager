@@ -1517,8 +1517,9 @@ def _count_delete_every_row(db, params, scan_limit):
             "scanned": s["rows"],
             "scan_limit": scan_limit,
             "truncated": False,
-            "detail": (f"Full reset of '{table}': {s['rows']} row(s), {s['layers']} cell layer(s) - {s['user_layers']} "
-                       f"of them a person's - and {s['overwrites']} pin(s) go in one transaction. Cannot be undone. "
+            "detail": (f"Full reset of '{table}': {s['rows']} row(s) and {s['overwrites']} pin(s) go in one "
+                       f"transaction; {s['layers']} cell(s) - {s['user_layers']} of them a person's - are shown no "
+                       f"more, their lines stay as history. Cannot be undone. "
                        f"No chain rule is told: {', '.join(s['chain_rules']) or 'none reads it'}. Ledger atoms taken "
                        f"back afterwards: {atoms}. Run it with confirm_rows {s['rows']}."),
             "extra": {key: s[key] for key in ("rows", "layers", "user_layers", "overwrites", "ledger_atoms",
@@ -1563,8 +1564,7 @@ def _run_delete_every_row(db, params, log, control=None):
         except replay.ReplayRefused as e:
             raise RetroactiveRefused(str(e)) from None
         _final_progress(control, s["rows_deleted"], s)
-        return {"rows_deleted": s["rows_deleted"], "layers_deleted": s["layers_deleted"],
-                "overwrites_deleted": s["overwrites_deleted"],
+        return {"rows_deleted": s["rows_deleted"], "overwrites_deleted": s["overwrites_deleted"],
                 "ledger_atoms_withdrawn": sum(s["ledger_withdrawn"].values())}
     s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
                                 checkpoint=_checkpoint(control))

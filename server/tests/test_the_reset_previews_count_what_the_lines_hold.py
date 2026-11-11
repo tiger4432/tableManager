@@ -75,3 +75,29 @@ def test_the_by_row_preview_counts_the_rows_a_person_wrote_on_and_the_run_delete
     assert "2 of them hold a person's value" in out["detail"], out["detail"]
     run = retroactive._run_delete_every_row(env, {"table": TABLE}, log=lambda m: None)
     assert out["affected"] == run["rows_deleted"] == 3, (out, run)
+
+
+def test_a_full_reset_deletes_only_the_rows_keeps_the_lines_tells_no_one_and_says_what_it_said(env):
+    """Lead ruling 11-11 (ㄴ): t's rows and pins go, t__lines stays (history, a271f5726), no outbox event (35b76ba92),
+    no old-table write - and the run's numbers are the preview's."""
+    from sqlalchemy import func, text
+
+    from test_the_old_layer_and_audit_tables_are_asked_only_where_allowed import askers
+
+    outbox = models.DatabaseOutbox
+    count_lines = 'SELECT count(*) FROM "%s"' % lines.lines_relation(TABLE)
+    preview = replay.full_reset(env, TABLE, setup=NO_LEDGER, rules=[])
+    held = env.execute(text(count_lines)).scalar()
+    told = env.query(func.max(outbox.id)).scalar() or 0
+    run = replay.full_reset(env, TABLE, confirm_rows=preview["rows"], apply=True, setup=NO_LEDGER, rules=[],
+                            by="tester")
+
+    assert (preview["rows"], preview["layers"]) == (3, 13) and preview["overwrites"] > 0 and told > 0, \
+        "canary: rows, cells, pins to go and events the fixture's writes told"
+    assert env.query(models.DYNAMIC_TABLES[TABLE]).count() == 0
+    assert env.execute(text(count_lines)).scalar() == held > 0, "the lines are history - they stay"
+    assert env.query(outbox).filter(outbox.id > told).count() == 0, "a full reset tells no one"
+    assert (run["rows_deleted"], run["overwrites_deleted"], run["layers"], run["user_layers"]) == (
+        preview["rows"], preview["overwrites"], preview["layers"], preview["user_layers"]), (preview, run)
+    assert "layers_deleted" not in run
+    assert "chain/replay.py:full_reset" not in askers({"CellSource", "CellSourceModel"}, "cell_sources")
