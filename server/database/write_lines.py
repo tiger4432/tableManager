@@ -25,6 +25,8 @@ An item is a dict:
                   item with no columns carries it)
     A mark naming no column and asking no re-key merges its row again and writes no line (`_merges_again` -
     lead 11-11: a formula saved, R3, the notation backfill's re-merge, a formula column offered alone).
+    blank         on such a mark: columns that go blank where no line speaks (a removed formula's - owner 11-11, no
+                  value of no source; t keeps its value elsewhere); a name t does not hold is ignored
     old_key       the key the item was sent with when it is not its assembled key (a raw spelling, a rename by
                   the old key): asked when the assembled key is nobody's - ruling 191, S-90 - and the row it
                   names is re-keyed
@@ -170,8 +172,11 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     rows_plain = {}
     for i in sorted(plain):
         rows_plain.setdefault(targets[i], {}).update(plain[i])
+    blank = {}
+    for i in sorted(again):
+        blank.setdefault(targets[i], set()).update(items[i].get("blank") or ())
     new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
-                     at, old, rows_plain, keeps)
+                     at, old, rows_plain, keeps, blank)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
     changed = {}
     for i in sorted(list(kept) + moved):
@@ -699,24 +704,29 @@ def _marks(db, table, shape, items, kept, targets, asked):
     return unpinned
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
+def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None):
     """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge; `lines.winners_sql` under it):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
     with won_by; updated_at is the write's instant on a new row or one whose values moved (`_moved`), else it stays -
-    a line that moved nothing shown is no change of the row (the old write's rule, lead 11-11 ㄱ). Returns {row_id:
-    {column: value}} as written."""
+    a line that moved nothing shown is no change of the row (the old write's rule, lead 11-11 ㄱ). `blank` {row_id:
+    columns}: of those, a column the merge leaves out goes blank (a removed formula's). Returns {row_id: {column:
+    value}} as written."""
     now = shape["table"]
     data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
     if not row_ids:
         return {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
     won_by = {row_id: {} for row_id in row_ids}
-    for row_id, decided in (lines.merge(db, table, cfg, row_ids, s=shape) if keeps else {}).items():
+    spoke = lines.merge(db, table, cfg, row_ids, s=shape) if keeps else {}
+    for row_id, decided in spoke.items():
         for c, (value, line_id) in decided.items():
             merged[row_id][c] = value
             if line_id is not None:
                 won_by[row_id][c] = line_id
+    for row_id, columns in (blank or {}).items():
+        for c in set(columns) & set(data) - set(spoke.get(row_id, ())):
+            merged[row_id][c] = None
     for row_id, values in plain.items():
         if row_id in merged:
             merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
