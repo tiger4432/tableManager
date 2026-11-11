@@ -466,8 +466,14 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
     from sqlalchemy import select
 
-    lt, bits = claimed_lines(db, table_name)
-    q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
+    from database import lines
+
+    q = None
+    if lines.has_lines(db, table_name):
+        lt, bits = claimed_lines(db, table_name)
+        q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
+    else:                                       # sys_* keep no lines (lead 11-11 ㄱ)
+        log(f"[withdraw] {table_name}: no lines table - nothing to withdraw")
     asked = [chunk_size]
 
     class _Asked:
@@ -480,7 +486,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     def read(size):
         """(the page's rows this source claims, their claims), None past the last row."""
         asked[0] = size
-        page = next(pages, None)
+        page = next(pages, None) if q is not None else None
         if page is None:
             return None
         ids = [row_id for (row_id,) in page]

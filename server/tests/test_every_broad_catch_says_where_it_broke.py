@@ -57,7 +57,7 @@ QUIET_KEPT = {
     "server/mapper_sdk.py": {"import": 1, "probe": 1},
     "server/outbox_listener.py": {"cleanup": 1},
     "server/parsers/advanced_ingester.py": {"parse": 1},
-    "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 3},
+    "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 2},
     "server/run_watcher.py": {"import": 2},
     "server/runtime/process_supervisor.py": {"cleanup": 2, "logging": 4, "parse": 1, "probe": 5, "elsewhere": 1},
     "server/scripts/check_one_row_one_fact.py": {"stream": 1},

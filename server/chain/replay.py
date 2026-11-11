@@ -779,16 +779,20 @@ def _gone_maps(db, rule, run_id):
     """`(columns, [key tuple])` - the maps or jobs the rule's layers sit on in its target that this run's batches never
     named, by the target's own values; or `(None, why)` when it cannot be told."""
     import json
-    from sqlalchemy import or_, tuple_
+    from sqlalchemy import select, tuple_
     import mapper_sdk
     from chain import rule_shape
-    from database import crud, models
+    from chain.cell_layer import _claimed_cells, claimed_lines
+    from database import crud, lines, models
 
     table = rule.get("target_table")
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
         return None, "the target %s has no model in this process" % table
     came_as, keys = mapper_sdk.removal_columns(rule, table)
+    if not lines.has_lines(db, table):          # sys_* keep no lines (lead 11-11 ㄱ)
+        logger.info("[ReplaySweep] %s: no lines table - nothing to sweep", table)
+        return came_as, []
     named = [spelled for (spelled,) in db.query(models.ReplayNamedMap.scope).filter(
         models.ReplayNamedMap.run_id == run_id, models.ReplayNamedMap.rule == rule.get("name"),
         models.ReplayNamedMap.scope != TALLY)]
@@ -807,10 +811,12 @@ def _gone_maps(db, rule, run_id):
             target = tuple_(*columns)
         for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
             covered.update(r for (r,) in db.query(model.row_id).filter(target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
-    S = models.CellSource
-    owned = {r for (r,) in db.query(S.row_id).filter(
-        S.table_name == table, S.updated_by == rule_shape.declaration_of(rule),
-        or_(S.source_name == crud.CHAIN_SOURCE, S.source_name.like(crud.CHAIN_SOURCE + " (%"))).distinct()}
+    # the rule's chain lines that still say a column - a line whose columns are all withdrawn owns nothing
+    lt, bits = claimed_lines(db, table)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    owned = {line["row_id"] for line in db.execute(select(lt.c.row_id, *said).where(*_claimed_filter(
+        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)])).distinct()).mappings()
+        if _claimed_cells(line, bits)}
     gone_rows = sorted(owned - covered)
     found = set()
     key_columns = [getattr(model, column) for column in keys]
@@ -1218,8 +1224,11 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
     from sqlalchemy import func, select
 
     from chain.cell_layer import _claimed_cells, claimed_lines
-    from database import models
+    from database import lines, models
 
+    if not lines.has_lines(db, table_name):     # sys_* keep no lines (lead 11-11 ㄱ)
+        logger.info("[withdraw] %s: no lines table - nothing to withdraw", table_name)
+        return {"cells_claimed": 0, "pinned": 0}
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
     rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
