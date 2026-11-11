@@ -205,10 +205,9 @@ conda run -n assy_manager python -m ledger.backfill --source <source>
 마이그레이션 명령은 [OPERATOR_RUNBOOK §6](../process/OPERATOR_RUNBOOK.md) 이 소유한다.
 
 🔴 **「드라이버는 하나뿐이다」는 «선언을 거치는 길»에만 참이다** (실측 2026-08-29).
-`store.write_batch` 를 직접 부르는 파일이 `server/scripts/` 에 «일곱» 있다 —
+`store.write_batch` 를 직접 부르는 파일이 `server/scripts/` 에 «여섯» 있다 (11-11 `git grep -c write_batch`) —
 `seed_syn_complex_composite` · `seed_syn_composite_chip` · `seed_syn_journey_atoms` ·
-`seed_syn_lot_excursion` · `seed_syn_process_ledger` · `seed_syn_split_merge_pressure` ·
-`seed_syn_world`. 그 문으로 들어온 원자는 **선언에 이름이 없어서 walk 의 주어가 되지 못한다.**
+`seed_syn_lot_excursion` · `seed_syn_process_ledger` · `seed_syn_world`. 그 문으로 들어온 원자는 **선언에 이름이 없어서 walk 의 주어가 되지 못한다.**
 정당한 호출자는 `server/ledger/runtime_v2.py` «하나»이고, 상설 규율은
 **「표에 원천 데이터를 넣고 그걸로 원장」** 이다. 새로 `write_batch` 를 부르고 싶어지면
 멈추고 올린다 — 답은 대개 「표를 만들어라」다.

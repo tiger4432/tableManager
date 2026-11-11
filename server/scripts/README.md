@@ -92,7 +92,6 @@ conda run -n assy_manager python scripts/<이름>.py
 | `seed_syn_dt_alignment_samples.py` | PRD 유효다이 맵에서 DT 정렬 표본 둘 |
 | `seed_syn_composite_chip.py` | 복합 CHIP 이송 픽스처 |
 | `seed_syn_complex_composite.py` | 복합 CHIP R&D 픽스처 (`SYN-CX-*`) |
-| `seed_syn_split_merge_pressure.py` | 갈렸다 다시 합쳐지는 랏, 가지마다 다른 압력 |
 | `generate_syn_lot_split_merge_sources.py` | 위 분기/병합 소스 파일 생성 (**스테이징 파일만**, DB·`raws` 안 건드림) |
 
 ## 실데이터에서 뽑는 시드
