@@ -30,12 +30,7 @@ ROW_MARKS = {"row_id", "business_key_val"}
 ALLOWED_MODULES = ("database/write_lines.py:", "database/lines.py:", "database/line_migration.py:")
 #: seats that write t outside write_lines, each with its reason and what closes it
 KNOWN = {
-    "chain/replay.py:_write_resolved": "R3's setattr - closed by the b64 merge (R3 through write_lines); "
-                                       "when b64 is merged into this line, this line goes",
     "chain/replay.py:full_reset": "allowed - the declared full reset (lead 11-11 ㄴ)",
-    "database/crud.py:put_business_key": "caller: apply_row_update_internal on the pre-merge tree / apply_rekeys "
-                                         "until C's 4d65be2bd; closes when the A -> C -> B merge lands",
-    "scripts/migrate_jsonb_to_rdb.py:main": "closed by C's script cleanup",
     "scripts/dev_env/snapshot_db.py:copy_rows": "allowed - dev restore",
     "database/crud.py:update_by_arrays": "pending lead - the before_flush hook's write (11-14 gate item)",
 }

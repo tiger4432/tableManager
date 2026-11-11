@@ -3119,18 +3119,6 @@ def rebuilt_business_key(table_name: str, row) -> Optional[str]:
     return compose_business_key(table_name, values, parts)
 
 
-def put_business_key(table_name: str, row, key) -> tuple:
-    """Write a rebuilt key onto the row: `business_key_val` always, the declared `business_key`
-    column only on a table that has one - the one seat that asks which of the two shapes this
-    is (총괄 a61d32f4f ㄱ). Returns (that column, its old value), or (None, None)."""
-    column = TABLE_CONFIG.get(table_name, {}).get("business_key")
-    old = getattr(row, column, None) if column else None
-    row.business_key_val = key
-    if column:
-        setattr(row, column, key)
-    return column, old
-
-
 def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
     """Fill in `business_key_val` from the payload's own column values, for a table
     whose business key is a join of other columns (`composite_key_source`).

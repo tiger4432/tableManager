@@ -99,7 +99,7 @@
 
 - 찾기: `t__now` 의 business_key_val. 새 키는 «쓰기» 1(ON CONFLICT). 지운 뒤 같은 키는 새 row_id(«지움» 절).
 - 키 칸 손 편집 · 키 칸 쓰기: 오늘 `_update_row_business_key` 와 같다 — 그 줄이 키 칸을 쓰고 «쓰기» 5 가 business_key_val 을 바꾼다. 빈 값은 키를 바꾸지 않는다. row_id 는 그대로다.
-- 키 다시 짓기: 오늘 `rebuilt_business_key` + `put_business_key` 그대로. 빈 키 채우기는 `fill_nokey_keys` 그대로.
+- 키 다시 짓기: `rebuilt_business_key` 그대로. `put_business_key` 는 11-12 은퇴 — 두 칸 쓰기는 `write_lines._rekey`. 빈 키 채우기는 `fill_nokey_keys` 그대로.
 - 바뀐 키가 다른 지금 줄과 부딪힘: row_id 를 키 주인 한쪽으로 몬다 (소유자 11-10 «합쳐지면 rowid를 한쪽으로 몰아야»).
   - 오늘 `_merge_into_key_holder` 가 병합 뒤 남기는 층을 1:1 로 옮긴다 — 오늘 남는 층 하나 = 같은 출처 이름의 머리 줄 하나. 키 주인의 사람 층을 살려 두는 `merged_layer_name(USER_SOURCE, "old_exist_…")` 층도 그 이름의 머리 줄로 남는다(사람 층 보존). 어느 값이 이기나(`explicit` · `human_columns`)는 그 함수의 판단 그대로다.
   - 합쳐지는 쪽 행의 줄 전부를 키 주인 row_id 로 옮긴다(`t__lines` 안의 UPDATE — 출처 · 언제 · 누가 · 값은 그대로). 합쳐지는 쪽 row_id 의 지금 줄은 DELETE 다.

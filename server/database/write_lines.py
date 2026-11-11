@@ -731,7 +731,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         if row_id in merged:
             merged[row_id].update(values)          # a column of no history: its value, no line, no won_by
     key_column = cfg.get("business_key") if cfg.get("composite_key_source") else None
-    if key_column in data:                         # its key column shows its key (`crud.put_business_key`), never a line
+    if key_column in data:                         # its key column shows its key, never a line
         for row_id in row_ids:
             key = (old.get(row_id) or {}).get("business_key_val")
             if key is not None:
@@ -792,7 +792,7 @@ def _moved(old, new, columns, types) -> list:
 
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
     """Step 5½ - a row that was there before whose key part's value step 5 moved gets its key rebuilt
-    (`crud.rebuilt_business_key` on the merged values, `crud.put_business_key`'s two columns - design «업무 키가 바뀔
+    (`crud.rebuilt_business_key` on the merged values, business_key_val and the declared key column - design «업무 키가 바뀔
     때»); on a table keyed by one column, that column's value composed (`crud.compose_business_key`) - a blank one
     writes nothing, and a row an item named by its key keeps that key: the old write door's rules.
     NEW for that shape: a key another row holds merges the row into it (design «업무 키가 바뀔 때», owner 11-10) -
@@ -871,7 +871,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
 def _put_keys(db, now, key_column, moving, moves, new, keys, at) -> None:
     """Every row whose key moves - free or merged away - cleared first, then each free move's new key taken: two
     statements, a swap or a key passed along meets no unique key. On business_key_val and the declared key column
-    where t has it (`crud.put_business_key`'s two) - and then updated_at, a shown column having moved (the old
+    where t has it - and then updated_at, a shown column having moved (the old
     write's written_col)."""
     if not moving:
         return
