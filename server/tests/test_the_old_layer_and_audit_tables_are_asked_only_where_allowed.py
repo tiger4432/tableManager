@@ -15,7 +15,8 @@ DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 #: who may still name cell_sources after the landing: the copy (database/line_migration) and the rollback (B's
 #: write_back, wherever it lands - by name). Their callers are not counted through them.
-CELL_SOURCES_ALLOWED = {"database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
+CELL_SOURCES_ALLOWED = {# 까닭: 운영 복사 전 - the copy retires the round after it has run in operation (lead 11-11)
+                        "database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
                         "*:write_back",
                         # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)
@@ -41,7 +42,16 @@ def _module(rel):
 #: and the history screen's two routes. A cell line written there still counts (`cell_line_to_audit`).
 AUDIT_EVENTS_ALLOWED = {"database/crud.py:create_audit_log", "database/crud.py:bulk_insert_audit_logs",
                         "ledger/store.py:_insert_audit_row", "main.py:get_recent_audit_logs",
-                        "main.py:get_transaction_logs"}
+                        "main.py:get_transaction_logs",
+                        # replay._write_resolved — 칸 사건이 audit_logs 에 남는 마지막 자리. 소유자 «전 → 후» 물음과 A 의
+                        # _merges_again 착지 대기 (B, lead 11-11 ㄱ: R3 writes no line, only t's shown value)
+                        "chain/replay.py:_write_resolved"}
+#: who hands rows to the event writers (bulk_insert_audit_logs · _insert_audit_row): each builds them with
+#: crud.receipt_log - RECEIPT_COLUMN lines, whose create_audit_log call `cell_line_to_audit` reads - and
+#: store.write_batch writes what its `receipt` callable returns, which only execute_scoped_batch passes
+#: (runtime_v2._batch_receipt). A new hand of rows is a seat to read before it joins (lead 11-11)
+EVENT_ROW_SEATS = {"database/crud.py:_apply_batch_updates_once", "ledger/followup.py:_write_failure_receipt",
+                   "ledger/store.py:write_batch"}
 #: the column words an event line is written under - not a cell's column
 EVENT_COLUMNS = {"*", "RECEIPT_COLUMN"}
 
@@ -238,6 +248,34 @@ def test_audit_logs_keeps_only_the_events_that_are_not_a_cell():
     found = askers({"AuditLog"}, "audit_logs", allowed=AUDIT_EVENTS_ALLOWED, asks_call=cell_line_to_audit)
     assert "chain/replay.py:full_reset" not in found, "a reset event is allowed"
     assert _outside(found, AUDIT_EVENTS_ALLOWED) == []
+
+
+def _seats_calling(names) -> dict:
+    """{"file:function": the def} of every function of server/ (tests left out) with a call to one of `names` in
+    its own body (a nested def is its own seat)."""
+    out = {}
+    for rel, source in _server_files():
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, DEFS):
+                nested = {id(x) for sub in ast.walk(node) if sub is not node and isinstance(sub, DEFS)
+                          for x in ast.walk(sub)}
+                if any(isinstance(c, ast.Call) and _callee(c) in names and id(c) not in nested
+                       for c in ast.walk(node)):
+                    out[f"{rel}:{node.name}"] = node
+    return out
+
+
+def test_the_event_writers_take_rows_only_from_the_receipt():
+    """audit_logs keeps the events that are not a cell (owner 11-11 ㄱ): no hand gives its writers a cell line."""
+    writers = _seats_calling({"bulk_insert_audit_logs", "_insert_audit_row"})
+    assert writers.keys() == EVENT_ROW_SEATS, sorted(writers)
+    builders = _seats_calling({"receipt_log"})
+    assert "ledger/runtime_v2.py:build" in builders, "canary: the census must see the batch receipt's builder"
+    assert {s for s in EVENT_ROW_SEATS if s in builders} == EVENT_ROW_SEATS - {"ledger/store.py:write_batch"}
+    passers = {seat for seat, node in _seats_calling({"write_batch"}).items()
+               if any(isinstance(c, ast.Call) and _callee(c) == "write_batch"
+                      and any(k.arg == "receipt" for k in c.keywords) for c in ast.walk(node))}
+    assert passers == {"ledger/runtime_v2.py:execute_scoped_batch"}, sorted(passers)
 
 
 def test_cell_layer_reads_no_cell_sources():
