@@ -214,8 +214,6 @@ WHERE ci.relname = 'idx_sources_by_source';
 - 🔴 **기존 `idx_sources_lookup_source`가 이 일을 대신하지 못한다.** 그쪽 키 순서는 `(table_name, row_id, column_name, source_name)`이라 **`source_name`이 마지막**이고, `(table_name, source_name)` 술어로는 쓸 수 없다. 없으면 플래너는 `cell_sources` **전량 스캔**으로 떨어진다 — 실측 근거(행 수·소요·버퍼·버려진 행 수)는 `server/database/models.py`의 이 인덱스 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있으니 그쪽을 읽을 것**(여기 사본을 두지 않는다).
 - **키 순서가 계약이다** — `column_name`이 **세 번째**라야 `--columns` 허용목록이 인덱스 내부 Filter가 아니라 **`Index Cond`의 일부**가 되고, `row_id`가 **네 번째**라야 회수 1단계(`(row_id, column_name)` 조회)가 **커버링**이 된다. 커버링이 아니면 플래너가 매치당 heap fetch와 Seq Scan을 저울질하다 **다시 Seq Scan을 고를 수 있다.**
 - **두 곳에 선언돼 있고 둘 다 고쳐야 한다** — `models.py`(신규 설치의 `create_all`)와 `ops_setup_db_performance.py` Step 3.10(~~기존 DB의 유일한 경로~~ — 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`)). 위 ⚠️ 경고가 그대로 적용된다.
-- **스크립트는 만든 뒤 플래너가 실제로 그것을 골랐는지까지 검사한다**(Step 3.11). 검사 술어는 `chain_replay._claimed_filter` — **서빙되는 질의를 만드는 그 빌더**에서 컴파일하므로 검증한 계획과 서빙되는 계획이 갈릴 수 없고, 프로브 쌍은 합성 리터럴이 아니라 **데이터에서 가장 큰 실제 `(table_name, source_name)`**이다. 인덱스 **이름이 계획에 나타나는지**까지 따로 본다(다른 인덱스가 만든 그럴듯한 계획은 이 인덱스를 죽은 무게로 남긴다).
-- ⚠️ **`WITHDRAW_PLAN_MIN_ROWS` 미만이면 실패가 아니라 `NOT VERIFIED`**를 찍는다. 작은 표에서 Seq Scan은 **옳은 계획**이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만든다. 표가 커진 뒤 다시 돌릴 것.
 - 이 인덱스는 **아무것도 대체하지 않는다** — 기존 UNIQUE 복합 인덱스는 업서트의 충돌 대상이라 그대로 필요하다.
 
 #### 값 제안 접두 인덱스 (`idx_suggest_<테이블>_<컬럼>`) — F3

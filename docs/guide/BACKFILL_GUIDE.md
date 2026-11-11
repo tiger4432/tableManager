@@ -435,7 +435,6 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 
 - **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
 - 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`). ~~**반영 경로는 하나입니다**~~: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
-- 스크립트가 만든 뒤 **플래너가 실제로 그것을 골랐는지까지 검사**합니다(Step 3.11). 표가 작으면(`WITHDRAW_PLAN_MIN_ROWS` 미만) **실패가 아니라 `NOT VERIFIED`**를 찍습니다 — 작은 표에서 Seq Scan은 옳은 계획이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만듭니다.
 - 운영 관점 전문은 [POSTGRES_OPERATIONS §3.1](./POSTGRES_OPERATIONS_GUIDE.md).
 
 ---

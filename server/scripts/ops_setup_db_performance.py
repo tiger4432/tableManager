@@ -84,121 +84,6 @@ def _verify_plan_shapes(conn, targets):
               "collation — re-running this script will NOT fix it.")
 
 
-# A seq scan of a small `cell_sources` is correct behaviour, not a defect: below
-# roughly this many rows the whole table is a few thousand pages and an index
-# cannot pay for itself, so the planner is RIGHT to ignore it. Verifying the plan
-# there would report a failure that is not one. Stated as a threshold rather than
-# left implicit so the skip is visible in the output instead of silent.
-WITHDRAW_PLAN_MIN_ROWS = 100_000
-
-
-def _verify_withdraw_plan(conn, idx_name):
-    """EXPLAIN two statements over the claimed lines; prove the index BOUNDS them.
-
-    🔴 NOTHING CALLS THIS since 9acf4243e (indexes are the models' declarations; the chain worker builds
-    them). Kept as it was, and what it checks is narrower than the route: its first probe is a plain count over the
-    lines `_claimed_filter` matches, not `count_withdrawable`'s read grouped by head/withdrawn bits, and its row
-    floor and probe pair still read `cell_sources` (both below).
-
-    Same discipline as Step 3.9 and for the same reason: "CREATE INDEX ...
-    Success" proves the index EXISTS, which is a different fact from the planner
-    choosing it. An index that exists and is not chosen is worse than none,
-    because the next reader sees the DDL and stops looking.
-
-    Reuses `value_suggest.classify_seek_plan` — the same verdict vocabulary —
-    with `expect_range=False`. That flag exists for exactly this distinction:
-    the predicate here is EQUALITY on (table_name, source_name), so an
-    `Index Cond` carrying no range operator is the correct shape, and demanding
-    a range would fail a healthy index.
-
-    The predicate is compiled from `chain_replay._claimed_filter`, the single
-    builder `count_withdrawable` and `withdraw_source` share - the predicate, not
-    the statements around it. The probe pair is the LARGEST
-    real (table_name, source_name) in the data — a literal that matches nothing
-    produces a plan that proves nothing, and the worst case is the case worth
-    proving.
-    """
-    import value_suggest
-    from chain import replay
-    from sqlalchemy import func
-    from database import models
-
-    total = conn.execute(text("SELECT count(*) FROM cell_sources")).scalar() or 0
-    if total < WITHDRAW_PLAN_MIN_ROWS:
-        print(f" - NOT VERIFIED: cell_sources has {total} row(s) (< "
-              f"{WITHDRAW_PLAN_MIN_ROWS}). A Seq Scan is the correct plan at this "
-              f"size, so this check would report a failure that is not one. "
-              f"Re-run once the table is large.")
-        return
-
-    from database import crud
-
-    # The largest pair the predicate asks by equality alone: `chain_ingestion` also takes its row layers
-    # (`chain_ingestion (<row>)`, 총괄 8ec008914) - a scan of the table's slice, as large as what it returns.
-    pair = next((p for p in conn.execute(text(
-        "SELECT table_name, source_name, count(*) AS n FROM cell_sources "
-        "GROUP BY 1, 2 ORDER BY n DESC LIMIT 20"))
-        if crud.layer_ranks_as(crud.merged_layer_name(p[1], "x")) != p[1]), None)
-    if pair is None:
-        print(" - !! NOT VERIFIED: no (table_name, source_name) pair found.")
-        return
-    table, source, matches = pair
-    print(f" - Probe: table_name={table!r} source_name={source!r} "
-          f"({matches} of {total} rows)")
-
-    from sqlalchemy.orm import Session
-
-    from chain.cell_layer import claimed_lines
-
-    with Session(conn) as db:
-        lt, bits = claimed_lines(db, table)
-    conds = replay._claimed_filter(lt, bits, source)
-    # A plain count over the claimed lines (the count route groups them by bits instead)
-    # and a (row_id, source_name) projection of `withdraw_source` step 1's predicate (step 1 reads whole lines). The pinned
-    # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner
-    # drives it from `cell_overwrites` (bounded by the number of manual pins, not
-    # by cell_sources), so it does not exercise this index and its unrelated seq
-    # scan would be miscounted as this index failing.
-    probes = [
-        ("claimed lines count",
-         select(func.count()).select_from(lt).where(*conds)),
-        ("withdraw_source step 1",
-         select(lt.c.row_id, lt.c.source_name).where(*conds)),
-    ]
-    ok = 0
-    for label, stmt in probes:
-        sql = str(stmt.compile(conn.engine, compile_kwargs={"literal_binds": True}))
-        t0 = time.time()
-        try:
-            plan = "\n".join(r[0] for r in conn.execute(
-                text("EXPLAIN (ANALYZE) " + sql)).fetchall())
-        except Exception as e:
-            print(f" - !! {label}: could not EXPLAIN ({told(e)}) — UNCHECKED")
-            continue
-        elapsed = time.time() - t0
-        verdict, reasons, discarded = value_suggest.classify_seek_plan(
-            plan, expect_range=False)
-        # classify_seek_plan judges the SHAPE. It cannot tell which index produced
-        # the Index Cond, and a bounded-looking plan from some other index would
-        # still leave this one dead weight, so the name is checked separately.
-        used = idx_name in plan
-        if verdict == value_suggest.PLAN_OK and used:
-            ok += 1
-            print(f"   {label}: bounded by {idx_name} "
-                  f"({discarded} rows discarded, {elapsed:.2f}s)")
-        else:
-            why = list(reasons) + ([] if used else [f"{idx_name}_not_used"])
-            print(f" - !! {label}: {', '.join(why)} "
-                  f"[rows discarded by filter: {discarded}]")
-            for line in plan.splitlines():
-                print(f"      {line}")
-    print(f" - Plan shape: {ok}/{len(probes)} bounded by {idx_name}.")
-    if ok < len(probes):
-        print("   !! A filter-shaped plan here means the withdraw count is LINEAR "
-              "in cell_sources. Re-running this script will NOT fix it — check the "
-              "index definition against chain_replay._claimed_filter.")
-
-
 def setup_performance():
     print("🚀 AssyManager DB Performance Setup Starting...")
     
@@ -556,7 +441,6 @@ def setup_performance():
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")
         conn.execute(text("ANALYZE database_outbox"))
-        conn.execute(text("ANALYZE audit_logs"))
         if effort_table_exists:
             conn.execute(text("ANALYZE interaction_effort_logs"))
         print("Done.")
