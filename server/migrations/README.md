@@ -40,8 +40,7 @@
 # conda 환경 활성화
 conda activate assy_manager
 
-# 마이그레이션 실행
-python server/migrations/normalize_schema.py
+# 마이그레이션 실행 - normalize_schema.py 는 11-11 은퇴(옛 층 표를 만든 일회용, 갈아엎기 뒤 쓸 곳 없음)
 ```
 
 ### 3. 검증
@@ -54,7 +53,6 @@ python -m pytest server/tests -v
 
 | 파일 | 설명 |
 |---|---|
-| `normalize_schema.py` | JSONB → Native SQL 컬럼 정규화 마이그레이션 메인 스크립트 |
 | `README.md` | 이 문서 |
 
 ## 안전장치

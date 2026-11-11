@@ -175,7 +175,6 @@
 | 🔴 | `migrations/drop_graph_storage` | 10,069 | 2026-08-14 | Retire the old graph branch's STORAGE: drop `graph_nodes`, `graph_edges` and |
 | 🔴 | `migrations/drop_redundant_layering_indexes` | 21,795 | 2026-08-13 | Retire indexes on `cell_sources` / `cell_overwrites` / `audit_logs` that no |
 | 🔴 | `migrations/migrate_jsonb_numeric` | 5,106 | 2026-06-01 |  |
-| 🔴 | `migrations/normalize_schema` | 14,840 | 2026-07-25 | JSONB → Normalized Schema Migration Script |
 
 ## parsers/
 
