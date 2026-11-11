@@ -170,6 +170,13 @@
             <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
           </div>
 
+          <!-- The last action's line just before the status button, always shown (owner 11-11, out of the panel again):
+               Last · status · ⋯, so a line that holds ⋯ and these words holds the status button too. -->
+          <div class="status-panel__last">
+            <span class="status-panel__key">Last</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
+          </div>
+
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
                button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
@@ -350,11 +357,6 @@
                 </button>
               </div>
             </div>
-          </div>
-          <!-- The last action's line after ⋯ beside the status button, always shown; short of room it alone takes the next line (owner 11-11, out of the panel again). -->
-          <div class="status-panel__last">
-            <span class="status-panel__key">Last</span>
-            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
           </div>
         </div>
       </header>
