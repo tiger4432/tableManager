@@ -4,23 +4,30 @@
 >
 > ```
 > 재기동 전  Chain 탭에서 memory 를 적은 ask · report 규칙을 하나씩 열어 그대로 Save
->          거절되면(«<규칙>: memory.columns: <칸> not in <표> (it has: …)» · «… may not end in ':target'»)
+>          거절되면(«<규칙>: memory.columns: …» · «<규칙>: memory.table … is not a declared table» · «… may not end in ':target'»)
 >          그 칸을 표에 맞추거나 memory.columns 를 지우고(기본 칸) · 이름 꼬리를 떼고 Save 한 뒤 재기동
 >          저장 검사(ledger/admin.save_chain_rule_raw)와 로더(chain/ingestion_worker.load_chain_rules)는
 >          같은 함수 rule_shape.expand_declaration 로 판정 — Save 가 받으면 재기동 뒤에도 그 규칙이 섬
 >          (꺼 둔 규칙도 Save 는 «켰다면» 으로 판정한다)
 > 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
 >          memory 블록도 prompts.memory 도 안 적은 규칙은 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
->          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼),
+>          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼) —
+>          아래 저장 거절에 걸리는 규칙만 빼고, 그리고 memory.columns 의 빈 칸("")은 이제 그 역할의 기본 칸에 씀
+>          (전: 그 역할을 안 씀 — 그 기본 칸이 표에 없으면 이제 거절),
 >          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
->          저장 거절 둘: 이름이 «:target» 으로 끝나는 규칙 · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐)
+>          저장 거절 여섯: 이름이 «:target» 으로 끝나는 규칙 · memory.table 이 선언 안 된 표
+>          · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐) · memory.columns 가 {역할: 칸} 이 아닐 때
+>          · 칸 값이 글자가 아닐 때(null · 숫자 · 목록, «who=null» 처럼 역할을 댐)
+>          · memory.columns 를 적었는데 purpose 나 key 가 없을 때(«key not named (default: situation)», 역할과 기본 칸을 댐)
 >          🔴 이 거절은 «로드» 때도 같음 — 운영에 이미 그런 AI 규칙이 있으면 재기동 뒤 그 규칙이 «통째로» 안 섬
 >          (전: 규칙은 답하고 기억 쓰기만 실패)
 >          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
 >          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
+>          적었다 지운 칸("")은 그 기본값으로 돎 · 손대지 않은 역할은 안 씀(purpose · key 는 빠지면 거절)
 >          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
-> 재기동 뒤 chain_worker.log «[ChainRules] <규칙>: memory.columns: <칸> not in <표> (it has: …)»
->          또는 «[ChainRules] … may not end in ':target'» — 보이면 그 AI 규칙이 빠진 것
+> 재기동 뒤 chain_worker.log «[ChainRules] <규칙>: memory.columns: …» · «[ChainRules] <규칙>: memory.table … is not a declared table»
+>          또는 «[ChainRules] … may not end in ':target'» — 보이면 그 AI 규칙 «하나»가 빠진 것(같은 파일의 다른 규칙은 섬)
+>          «[ChainRules] unified grammar unreadable» 이 보이면 새 문법 규칙이 «전부» 빠진 것
 >          칸 이름을 표에 맞추거나 memory.columns 를 지우면(기본 칸) 다시 섬 · 이름은 «:target» 꼬리를 떼면 섬
 > 볼 것    AI 출력 칸을 사람이 고치면 sys_ai_memory 에 행 하나 · 그 규칙의 Test run 프롬프트에 «Past corrections»
 >          체인 규칙 목록에 memory 를 안 적은 AI 규칙의 반쪽 규칙 «<규칙 이름>:target» 이 새로 보임

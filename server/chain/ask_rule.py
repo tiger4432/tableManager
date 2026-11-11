@@ -54,31 +54,49 @@ MEMORY_READING = {"limit": 5}
 
 def memory_of(spec) -> dict:
     """`spec`'s memory - what its `memory` writes over the defaults: `MEMORY_TABLE` unless it names a table,
-    `MEMORY_COLUMNS` unless it writes `columns` - written ones go as written, a role not named is not kept (a rule
-    declared before the defaults keeps what it wrote) - a `comment` as written. The one reading of the block."""
+    `MEMORY_COLUMNS` unless it writes `columns` - written ones go as written, a blank one (the form's emptied box) its
+    role's default, a role not named is not kept (a rule declared before the defaults keeps what it wrote) - a
+    `comment` as written. The one reading of the block."""
     from database import crud
 
-    memory = (spec or {}).get("memory")
+    memory = spec.get("memory") if isinstance(spec, dict) else None
     memory = memory if isinstance(memory, dict) else {}
-    table = memory.get("table")
+    table, written = memory.get("table"), memory.get("columns")
+    columns = {role: MEMORY_COLUMNS[role] if crud.is_blank_value(column) else column
+               for role, column in (written.items() if isinstance(written, dict) else ())
+               if role in MEMORY_COLUMNS or not crud.is_blank_value(column)}
     return {**memory, "table": MEMORY_TABLE if crud.is_blank_value(table) else str(table).strip(),
-            "columns": dict(memory.get("columns") or MEMORY_COLUMNS)}
+            "columns": columns or dict(MEMORY_COLUMNS)}
 
 
 def memory_refusal(spec):
-    """A `memory` naming a column its memory table does not declare - refused by name at save, not left to fail on the
-    first correction. None when it holds (or there is no `memory`)."""
+    """A `memory` a correction cannot be written by - refused by name at save, not left to fail on the first
+    correction: `columns` not {role: column}, a column not text, purpose or key not named (`remember` keys a memory
+    row by them), an undeclared table, a column the table does not declare. None when it holds (or no `memory`)."""
     import chain_bindings
+    from database import crud
 
-    if not isinstance((spec or {}).get("memory"), dict):
+    memory = spec.get("memory") if isinstance(spec, dict) else None
+    if not isinstance(memory, dict):
         return None
+    written = memory.get("columns")
+    if not isinstance(written, dict) and not crud.is_blank_value(written, containers=True):
+        return "memory.columns must be {role: column}, not %s" % json.dumps(written, default=str)
+    odd = ["%s=%s" % (role, json.dumps(column, default=str)) for role, column in (written or {}).items()
+           if not isinstance(column, str)]
+    if odd:
+        return "memory.columns: %s - a column is named by text (blank for the default)" % ", ".join(odd)
     memory = memory_of(spec)
     declared = set(chain_bindings.declared_columns(memory["table"]) or ())
     if not declared:
         return "memory.table %r is not a declared table" % memory["table"]
     missing = sorted({column for column in memory["columns"].values() if column not in declared})
-    return ("memory.columns: %s not in %s (it has: %s)" % (", ".join(missing), memory["table"], ", ".join(sorted(declared)))
-            if missing else None)
+    if missing:
+        return "memory.columns: %s not in %s (it has: %s)" % (", ".join(missing), memory["table"],
+                                                              ", ".join(sorted(declared)))
+    unnamed = [role for role in ("purpose", "key") if role not in memory["columns"]]
+    return ("memory.columns: %s not named (default: %s) - write it, or leave columns out" % (
+        ", ".join(unnamed), ", ".join(MEMORY_COLUMNS[role] for role in unnamed)) if unnamed else None)
 
 
 def comment_column(spec):

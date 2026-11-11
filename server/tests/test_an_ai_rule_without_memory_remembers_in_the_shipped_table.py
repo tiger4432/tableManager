@@ -143,3 +143,66 @@ def test_a_memory_writing_some_columns_keeps_those_and_stands(world):
     rules, refusal, _notes = rule_shape.expand_declaration(_declaration("ask", {"table": "am_memory", "columns": columns}))
     assert refusal is None and len(rules) == 2, refusal
     assert ask_rule.memory_of({"memory": {"columns": columns}})["columns"] == columns
+
+
+def _ask(name, memory):
+    spec = {"output": {"cells": ["summary_text"]}}
+    if memory is not None:
+        spec["memory"] = memory
+    return {"name": name, "on": {"table": "am_report"}, "into": {"table": "am_report"},
+            "derive": {"kind": "ask", "ask": spec}}
+
+
+BAD = {                                        # a memory block -> the role its refusal names
+    "null": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=None)}, "who=null"),
+    "a number": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=5)}, "who=5"),
+    "a list": ({"table": "am_memory", "columns": dict(WRITTEN["columns"], who=["who"])}, 'who=["who"]'),
+    "columns as text": ({"columns": "situation"}, 'not "situation"'),
+    "no key": ({"table": "am_memory", "columns": {"purpose": "purpose", "cell": "cell"}}, "key not named"),
+}
+
+
+@pytest.mark.parametrize("bad", list(BAD))
+def test_one_bad_memory_block_drops_only_its_rule_at_load(world, tmp_path, monkeypatch, bad):
+    """QA 11-11 ①: a column not text raised out of `memory_refusal` into the loader's «unified grammar unreadable» -
+    every unified rule of the file fell, not the bad one. ③: a `columns` without purpose or key stood and raised at
+    the first correction."""
+    import logging
+    from chain import ingestion_worker as worker
+
+    memory, said = BAD[bad]
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": [_ask("eval_a", None), _ask("eval_bad", memory),
+                                          _ask("eval_b", WRITTEN)]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(path))
+    lines = []
+    handler = logging.Handler()
+    handler.emit = lambda record: lines.append(record.getMessage())
+    worker.logger.addHandler(handler)
+    try:
+        stood = {r.get("name"): r for r in worker.load_chain_rules()}
+    finally:
+        worker.logger.removeHandler(handler)
+    assert not [l for l in lines if "unified grammar unreadable" in l], lines
+    assert "eval_bad" not in stood and "eval_bad" + rule_shape.COMPANION_SUFFIX not in stood, sorted(stood)
+    assert [l for l in lines if "[ChainRules] eval_bad: memory" in l and said in l], lines
+    for name in ("eval_a", "eval_b"):                       # the others stand, translated
+        assert stood[name]["mapper"] == ask_rule.ASK_MAPPER, stood[name]
+        assert name + rule_shape.COMPANION_SUFFIX in stood, sorted(stood)
+    rules, refusal, _notes = rule_shape.expand_declaration(_ask("eval_bad", memory))
+    assert rules == [] and said in refusal, refusal         # the save's judgement is the loader's
+
+
+def test_a_blank_memory_column_is_its_roles_default_at_save_and_load(world, tmp_path, monkeypatch):
+    """QA 11-11 ②: the form's emptied box writes "" - it was refused as «memory.columns:  not in …», no name."""
+    from chain import ingestion_worker as worker
+
+    blank = {"table": "am_memory", "columns": dict(WRITTEN["columns"], who="", memo="  ")}
+    rules, refusal, _notes = rule_shape.expand_declaration(_ask("eval_blank", blank))
+    assert refusal is None and len(rules) == 2, refusal
+    assert ask_rule.memory_of({"memory": blank})["columns"] == ask_rule.MEMORY_COLUMNS
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": [_ask("eval_blank", blank)]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(path))
+    half = {r.get("name"): r for r in worker.load_chain_rules()}["eval_blank" + rule_shape.COMPANION_SUFFIX]
+    assert ask_rule.written_columns(half) == ["purpose", "situation", "cell", "ai", "right", "who", "at"]
