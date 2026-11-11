@@ -104,15 +104,15 @@
     ]
   },
   "sys_templates": {
-    "__comment": "One row per page the browser collector reads into target_table (its rows' source_name is the template). Elements are CSS selectors; open_method in_place | new_tab; content_area the opened content, what base content reads under; next_method button | scroll (scroll ends after scroll_end_seconds with no new item); max_items empty = no limit; ready_match <item column>=<content column> - the content is the item's only when the two read the same. A row is an edit of target_table.",
+    "__comment": "One row per page the browser collector reads into target_table (its rows' source_name is the template). frame_pattern the address of the frame inside the page the list and content sit in (empty = the page itself). Elements are CSS selectors; open_method in_place | new_tab; content_area the opened content, what base content reads under; next_method button | scroll (scroll ends after scroll_end_seconds with no new item); max_items empty = no limit; ready_match <item column>=<content column> - the content is the item's only when the two read the same. A row is an edit of target_table.",
     "group": "System",
     "business_key": "template",
-    "column_types": {"template": "string", "url_pattern": "string", "list_area": "string", "list_item": "string",
+    "column_types": {"template": "string", "url_pattern": "string", "frame_pattern": "string", "list_area": "string", "list_item": "string",
                      "click_target": "string", "open_method": "string", "content_area": "string",
                      "timeout_seconds": "number", "close_element": "string", "next_method": "string",
                      "next_element": "string", "scroll_end_seconds": "number", "max_items": "number",
                      "ready_match": "string", "key_columns": "string", "target_table": "string"},
-    "display_columns": ["template", "target_table", "url_pattern", "list_area", "list_item", "click_target",
+    "display_columns": ["template", "target_table", "url_pattern", "frame_pattern", "list_area", "list_item", "click_target",
                         "open_method", "content_area", "timeout_seconds", "close_element", "next_method",
                         "next_element", "scroll_end_seconds", "max_items", "ready_match", "key_columns"],
     "access": {"edit_by": "target_table"}

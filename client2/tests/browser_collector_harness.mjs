@@ -5,7 +5,8 @@
 //   V  a value: text or @attribute, the regex's first group, length 0 is no value
 //   O  opened: shown, changed from before the click, the pair equal; waiting ends in time with the reason
 //   B  a batch: a key the table has is skipped unopened · an item that does not open is kept «not_opened», never read
-//      from the previous item's content · no key is kept «no_key» with its cells · a key read after opening is asked after
+//      from the previous item's content · no key is kept «no_key» with its cells · a key read after opening is asked after ·
+//      no `existing` (a preview with no table or key): the table not asked, every item read, said unchecked
 //   R  a run: written · seen twice is skipped · the limit · a refused write named row by row · not allowed ends the run ·
 //      a page read in batches of BATCH_MOST before its next page · a pause holds between batches · a retry reads only the
 //      kept items (by the values read before opening) and ends when each is found
@@ -121,6 +122,10 @@ async function cases(lib) {
   const nokey = await batchCase(lib, [mail(null, 'Nameless'), mail('m9', 'Nine')]);
   out.Bnokey = { rows: nokey.b.rows.map((r) => r.key), misses: nokey.b.misses.map((m) => [m.reason, m.at, m.index, m.cells.subject]) };
 
+  const unasked = fakeMail(lib, [mail('m1', 'One'), mail('m2', 'Two')]);
+  const u = await lib.batch.readBatch(T, unasked, { room: Infinity, existing: null });
+  out.Bunasked = { rows: u.rows.map((r) => r.key), skipped: u.skipped, unchecked: [u.unchecked, known.b.unchecked], opened: unasked.opened };
+
   const after = { ...T, keys: ['subject'] };
   const late = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], ['Two'], after);
   out.Bafter = { rows: late.b.rows.map((r) => r.key), skipped: late.b.skipped, opened: late.opened };
@@ -180,6 +185,8 @@ eq('B a key the table has is skipped unopened', real.Bknown, { rows: [['m1', 'On
 eq('B an item that does not open is kept «not_opened» - never the previous item\'s content; «unread» read before opening',
   real.Bstale, { rows: [['m1', 'One', null], ['m3', 'Three', 'unread']], misses: [['not_opened', 'content did not change in 0 s', 1, 'm2']] });
 eq('B no key is kept «no_key» with where it was and its cells', real.Bnokey, { rows: ['m9'], misses: [['no_key', 'bench://mail/list/1', 0, 'Nameless']] });
+eq('B no existing - the table not asked, every item read and opened, said unchecked (asked: not)', real.Bunasked,
+  { rows: ['m1', 'm2'], skipped: 0, unchecked: [true, false], opened: ['One', 'Two'] });
 eq('B a key read after opening: every item opened, the one the table has skipped after', real.Bafter, { rows: ['One'], skipped: 1, opened: ['One', 'Two'] });
 eq('R written, a key seen twice skipped, one write per batch, ended at the last page', real.Rplain,
   { written: 3, skipped: 1, pages: 2, ended: 'last page', writes: [['a', 'b'], ['c']] });
@@ -203,6 +210,7 @@ const MUTANTS = [
   ['M6 the next page asked while the page still has items', 'Rpaged', 'run.js', 'if ((b.seen ?? b.read) === room) continue;', ''],
   ['M7 the pause not held', 'Rpause', 'run.js', 'if (paused() && !stopped()) {', 'if (false) {'],
   ['M8 a retry reading every item', 'Bonly', 'batch.js', 'const listed = t.only ? taken.filter((x) => t.only.some((c) => same(c, x.cells))) : taken;', 'const listed = taken;'],
+  ['M9 a preview that did not ask the table said checked', 'Bunasked', 'batch.js', 'unchecked: !existing', 'unchecked: false'],
   ['M5 no key written as a row', 'Bnokey', 'batch.js', "if (key === null) { out.misses.push({ reason: MISS.NO_KEY, detail: `${t.keys.join(', ')} has no value`, at, index: x.index, cells }); continue; }", ''],
 ];
 for (const [name, which, file, from, to] of MUTANTS) {

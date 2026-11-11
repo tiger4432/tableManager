@@ -20,6 +20,13 @@ export function shown(el, win = globalThis) {
   return !outside({ left: 0, top: 0, right: win.innerWidth, bottom: win.innerHeight });
 }
 
+/** Of the elements `selector` names under `root`, the ones shown - a hidden copy (a tab not open) is passed by. `scroll`:
+ *  each brought into view first, for a button below the fold. */
+export function shownAll(root, selector, win = globalThis, { scroll = false } = {}) {
+  if (!selector) return [];
+  return [...root.querySelectorAll(selector)].filter((el) => { if (scroll) el.scrollIntoView({ block: 'nearest' }); return shown(el, win); });
+}
+
 /** One look at the content area -> null when it is open, else why not. */
 export function notOpenYet({ before, after, isShown, pair }) {
   if (!isShown) return 'content not shown';

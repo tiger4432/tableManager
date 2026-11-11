@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- The frame of host.html (bench_run.mjs F): PAGES pages of PER mails, ?page=N; Next loads the frame anew on the next
+     page. A mail opens in place 150 ms after its click. Its title and its body sit under two parents whose only common
+     one also holds the list; two mails in a row share a title (Thread ceil(id / 2)) - only the body changes.
+     Hidden copies, as tabs not open (owner 11-09): the list and Next each have a hidden copy before them under the same
+     selector; the body is one of three tabs (id % 3) - the other two hidden, holding older bodies - and on id % 4 == 0
+     the tab shown before stays shown too, its old body unchanged. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Frame mail</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; }
+  #shell { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+  #reader-head { min-height: 32px; border-bottom: 1px solid #ccc; }
+  #reader-head h2 { margin: 0; font-size: 18px; }
+  #middle { display: flex; gap: 14px; }
+  .mail-list { list-style: none; margin: 0; padding: 0; width: 320px; }
+  .mail-item { padding: 6px 8px; border-bottom: 1px solid #eee; cursor: pointer; }
+  #reader-tabs { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .tab { min-height: 60px; border: 1px solid #eee; padding: 6px; }
+  .tab.off { display: none; }
+</style>
+</head>
+<body>
+<div id="shell">
+  <div id="reader-head"></div>
+  <div id="middle">
+    <ul class="mail-list" style="display:none"><li class="mail-item" data-id="999">A hidden copy</li></ul>
+    <ul id="mail-list" class="mail-list"></ul>
+    <div id="reader-tabs">
+      <div class="tab off"><div class="reader-body-pane"></div></div>
+      <div class="tab off"><div class="reader-body-pane"></div></div>
+      <div class="tab off"><div class="reader-body-pane"></div></div>
+    </div>
+  </div>
+  <div><button class="next-page" style="display:none">Next</button><button id="next-page" class="next-page">Next</button></div>
+</div>
+<script>
+  const PAGES = 3;
+  const PER = 12;
+  const page = Number(new URLSearchParams(location.search).get('page') || 1);
+  const list = document.getElementById('mail-list');
+  const tabs = [...document.querySelectorAll('.tab')];
+  const title = (id) => `Thread ${Math.ceil(id / 2)}`;
+  let shownTab = null;
+  for (let i = 1; i <= PER; i += 1) {
+    const id = (page - 1) * PER + i;
+    const li = document.createElement('li');
+    li.className = 'mail-item';
+    li.dataset.id = String(id);
+    li.innerHTML = `<span class="mail-subject">${title(id)}</span> · <span class="mail-no">#${id}</span>`;
+    li.addEventListener('click', () => setTimeout(() => {
+      document.getElementById('reader-head').innerHTML = `<h2 class="reader-title">${title(id)}</h2>`;
+      const tab = tabs[id % 3];
+      const keep = id % 4 === 0 ? shownTab : null;
+      tabs.forEach((x) => x.classList.toggle('off', x !== tab && x !== keep));
+      tab.querySelector('.reader-body-pane').innerHTML = `<span class="reader-id">${id}</span><p class="reader-text">Body of mail ${id}</p>`;
+      shownTab = tab;
+    }, 150));
+    list.appendChild(li);
+  }
+  const next = document.getElementById('next-page');
+  if (page >= PAGES) next.disabled = true;
+  next.addEventListener('click', () => { location.href = `?page=${page + 1}`; });
+</script>
+</body>
+</html>
