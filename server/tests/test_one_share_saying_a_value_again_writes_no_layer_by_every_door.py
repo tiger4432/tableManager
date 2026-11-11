@@ -100,6 +100,33 @@ def test_two_chain_row_layers_in_one_batch_judge_in_turn(db):
     assert (out["lines"], out["left_out"]) == (2, 0), out
 
 
+def test_a_persons_write_takes_the_pin_off_for_the_items_after_it(db):
+    """QA 11-11 P2: f1 pinned over g, a batch [person z, chain p] - the person takes the pin off, so the chain item
+    reads z shown and writes p (the old write's `ow` after the person's item); on the batch's first pin it read p
+    shown and was left out."""
+    g = _ext("b", "g.csv")
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "p"}, "source_name": "f1"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "q"}, "source_name": g}, tx="tx2")
+    crud.bulk_upsert_cell_overwrites(db, [{"table_name": TABLE, "row_id": r, "column_name": "a", "is_overwrite": True,
+                                           "updated_by": "kim", "updated_at": None, "manual_priority_source": "f1"}])
+    _write(db, {"row_id": r, "line_kind": "mark", "columns": ["a"], "source_name": "f1"}, kind="mark", tx="tx3")
+    assert _now(db)[r]["a"] == "p"
+    out = _write(db, {"row_id": r, "values": {"a": "z"}, "source_name": "user", "written_by": "kim"},
+                 {"row_id": r, "values": {"a": "p"}, "source_name": crud.CHAIN_SOURCE, "written_by": "chain"}, tx="tx4")
+    assert (out["lines"], out["left_out"], _now(db)[r]["a"]) == (2, 0, "z"), out
+    assert crud.CHAIN_SOURCE in _layers(db, r)
+
+
+def test_a_row_an_earlier_item_of_the_batch_made_is_there_for_the_items_after_it(db):
+    """QA 11-11 P3: a new key written [file x, chain x] in one batch - the chain item meets the row the file item made
+    and says what it shows, so it is left out (the old write's is_new False on the second item)."""
+    out = _write(db, {"key": {"k": "K9"}, "values": {"k": "K9", "a": "x"}, "source_name": "f1"},
+                 {"key": {"k": "K9"}, "values": {"k": "K9", "a": "x"}, "source_name": crud.CHAIN_SOURCE,
+                  "written_by": "chain"})
+    [r] = list(_now(db))
+    assert (out["lines"], out["left_out"], sorted(_layers(db, r))) == (1, 1, ["f1"]), out
+
+
 def test_a_new_chain_layer_saying_what_the_cell_shows_writes_no_line(db):
     """Owner 11-08: a chain layer the cell has none of, saying what the cell shows, writes nothing; another value is
     written."""

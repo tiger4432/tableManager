@@ -376,7 +376,8 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
 
 def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
     """Step 2 - the items that change something, judged in their order on the head lines as the batch's earlier
-    items left them (the last word of a batch wins - lead 11-11). A write's column is left out when its source's head
+    items left them (one source's last word in a batch wins - lead 11-11; two sources' lines of one batch share its
+    instant and the rank's name decides - QA 11-11, to the lead). A write's column is left out when its source's head
     there says the same text (`_head_text`), from the same hand and input row (ruling 434), or when another source
     says it already (`_others`); the write when no column is left. A withdraw keeps the columns its source still
     speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL would speak
@@ -393,7 +394,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
                                                                  in (WRITE, WITHDRAW)}, columns).items():
         heads.setdefault(row_id, {})[source] = said
-    asking = [i for i in writes if _asks_others(items[i], targets[i] in old)]
+    asking, there = [], set(old)                   # a row an earlier item of the batch made is there (the old is_new)
+    for i in sorted(targets):
+        if items[i]["line_kind"] == WRITE and _asks_others(items[i], targets[i] in there):
+            asking.append(i)
+        there.add(targets[i])
     pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
                                                        {c for i in asking for c in items[i]["values"]}).items()}
             if asking else {})
@@ -408,6 +413,9 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
                 own.pop(c)
         elif it["line_kind"] == WRITE:
             hand = (_text_or_none(it.get("written_by")), _text_or_none(it.get("input_row")))
+            if it.get("source_name") == "user":     # a person's write takes the pin off (`_marks`) - for the items after
+                for c in it["values"]:
+                    pins.pop((row_id, c), None)
             same = {c for c, value in it["values"].items() if c in own and own[c][:2] == hand
                     and _head_text(own[c][2], held.get(c, "string")) == value}
             folds, moves = (_others(table, it, row_id, row, held, pins, same, ranks) if i in asking else ({}, {}))
@@ -588,7 +596,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
     was taken off - their merge moves though no line did."""
     from datetime import datetime
 
-    cells = {}                                     # (row_id, column) -> (item, its line moved)
+    cells, freed = {}, set()                       # (row_id, column) -> (item, its line moved); a person's cells
     for i in sorted(targets):
         it = items[i]
         if it["line_kind"] != WRITE or it.get("respelled"):
@@ -596,6 +604,8 @@ def _marks(db, table, shape, items, kept, targets, asked):
         moved = set(it.get("values") or ()) if i in kept else set()
         for c in (asked.get(i) or set()) if it.get("source_name") == "user" else moved:
             cells[(targets[i], c)] = (it, c in moved)
+            if it.get("source_name") == "user":
+                freed.add((targets[i], c))         # its pin stays off whatever item of the batch comes after
     if not cells:
         return set()
     row_ids = sorted({r for r, _c in cells})
@@ -614,7 +624,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
     upserts, deletes, unpinned = [], [], set()
     for (r, c), (it, moved) in sorted(cells.items()):
         was = held.get((r, c))
-        pin = None if it.get("source_name") == "user" else (was[2] if was else None)
+        pin = None if (r, c) in freed else (was[2] if was else None)
         if was and was[2] is not None and pin is None:
             unpinned.add(r)
         who = it.get("written_by") or "system"
