@@ -2269,7 +2269,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
 
     import notation_norm
     from database import crud, lines, models
-    from database.write_lines import merge_rows, write_lines
+    from database.write_lines import key_owners, merge_rows, write_lines
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name)
@@ -2342,17 +2342,14 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     def twins_of(rows):
         """{row_id: the key's first row} - rows whose stored key a row with a smaller row_id stores too: a
         same-spelling duplicate (owner 10-20 - two «1» rows, and the table could not take its uq_bk_ index)."""
-        keys = sorted({row.business_key_val for row in rows if row.business_key_val})
-        if not keys:
-            return {}
-        firsts = dict(db.query(model.business_key_val, func.min(model.row_id))
-                      .filter(model.business_key_val.in_(keys))
-                      .group_by(model.business_key_val).having(func.count() > 1).all())
+        keys = {row.business_key_val for row in rows if row.business_key_val}
+        firsts = {key: row["row_id"] for key, row in key_owners(db, now_table, keys).items()} if keys else {}
         return {row.row_id: firsts[row.business_key_val] for row in rows
                 if row.business_key_val in firsts and firsts[row.business_key_val] != row.row_id}
 
     same_groups, split_groups = set(), set()
     keeps_lines = lines.has_lines(db, table_name)
+    now_table = lines.current_table(db, table_name, config)
 
     def plan_rows(page, again):
         """Each row of `page`: its shown cells that fold (`cells`), its head lines that fold (`lines`, one a line
@@ -2437,10 +2434,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 plan["key"] = after
         wanted = {plan["key"] for plan in plans.values() if plan["key"]}
         # the key's first row holds it - one answer when the key is held twice
-        holders = dict(db.query(model.business_key_val, func.min(model.row_id))
-                       .filter(model.business_key_val.in_(list(wanted)))
-                       .group_by(model.business_key_val).all()) \
-            if wanted else {}
+        holders = {key: row["row_id"] for key, row in key_owners(db, now_table, wanted).items()} if wanted else {}
         for row_id, plan in list(plans.items()):
             key = plan["key"]
             if "not_rebuilt" in plan:

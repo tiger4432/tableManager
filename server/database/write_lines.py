@@ -77,6 +77,23 @@ def _pages(seq, width: int, most=None):
         yield seq[at:at + size]
 
 
+def key_owners(db, now, keys, *, but=(), lock=False, read=None) -> dict:
+    """{key: the row that holds it} - THE answer to «which row is key K's»: of the rows storing K, but those in `but`,
+    the one with the smallest row_id. A key held twice is a table without its unique index; the claim, step 5½ and
+    the notation backfill ask here, so they answer alike (lead 11-11 - the old funnel's .first() had no order to
+    keep). `read`: the columns read (row_id and the key are always among them); `lock`: FOR UPDATE on every row
+    read. -> {key: {column: value}}."""
+    cols = [now.c.row_id, now.c.business_key_val] + [c for c in (read or ()) if c.name not in
+                                                      ("row_id", "business_key_val")]
+    but, out = set(but), {}
+    for page in _pages(sorted(set(keys)), 1):
+        statement = select(*cols).where(now.c.business_key_val.in_(page)).order_by(now.c.row_id)
+        for row in db.execute(statement.with_for_update() if lock else statement).mappings():
+            if row["row_id"] not in but:
+                out.setdefault(row["business_key_val"], dict(row))
+    return out
+
+
 def write_lines(db, table: str, items, *, kind: str, transaction_id):
     """Write `items` into `table` as lines - see the module. Returns
     {"changed": {row_id: {"old": {col: value}|None, "new": {col: value}|None, "work": work kind}},
@@ -302,12 +319,7 @@ def _claim(db, table, cfg, now, items):
         for page in _pages(sorted(set(wanted) - held), 2):
             db.execute(insert(now), [{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
     if wanted or looked:
-        ordered = sorted(set(wanted) | set(looked.values()))
-        holder = {}
-        for page in _pages(ordered, 1):
-            for row in db.execute(select(now).where(now.c.business_key_val.in_(page)).order_by(now.c.row_id)
-                                  .with_for_update()).mappings():
-                holder[row["business_key_val"]] = dict(row)
+        holder = key_owners(db, now, set(wanted) | set(looked.values()), lock=True, read=list(now.c))
         for bk, row in holder.items():
             keys[row["row_id"]] = bk
             if row["row_id"] != wanted.get(bk):
@@ -594,12 +606,8 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
                 continue
         if key != keys.get(row_id, was.get("business_key_val")):
             moving[row_id] = key
-    held = {}                                      # key -> the row outside the moves that holds it
-    for page in _pages(sorted({k for k in moving.values() if k is not None}), 1):
-        for row_id, key in db.execute(select(now.c.row_id, now.c.business_key_val)
-                                      .where(now.c.business_key_val.in_(page)).with_for_update()):
-            if row_id not in moving and (key not in held or row_id < held[key]):
-                held[key] = row_id                 # a key held twice: its first row holds it
+    held = {key: row["row_id"] for key, row in key_owners(           # key -> the row outside the moves holding it
+        db, now, {k for k in moving.values() if k is not None}, but=moving, lock=True).items()}
     taken, moves, into = {}, {}, {}
     for row_id, key in sorted(moving.items()):
         holder = None if key is None else taken.get(key) or held.get(key)

@@ -22,7 +22,7 @@ moved is an EDIT event like any write (lead 11-11 ㄱ).
 import json
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from database import crud, lines, models, schemas
 from database.database import Base
@@ -338,3 +338,42 @@ def test_a_write_or_withdraw_line_naming_no_source_is_refused(db):
             write_lines(db, TABLE, [{"row_id": holder, "line_kind": kind, "source_name": None, **said}],
                         kind="funnel", transaction_id="tx-none")
         db.rollback()
+
+
+def test_a_key_held_twice_is_its_first_rows_for_a_write_by_key_and_for_a_key_moved_onto_it(db_session, monkeypatch):
+    """Lead 11-11: «which row is key K's» has one answer - write_lines.key_owners, the smallest row_id - for the
+    claim (a write naming K) and for step 5½ (a row moved onto K); a key held twice is a table without its unique
+    index. The old funnel's .first() had no order."""
+    db = _fixture(db_session, monkeypatch, with_lines=False)
+    first, second = _two(db)
+    model = models.DYNAMIC_TABLES[TABLE]
+    db.query(model).filter_by(row_id=second).update({"business_key_val": "K1", "k": "K1"})   # K1 held twice
+    db.commit()
+    assert sorted(r.row_id for r in db.query(model).filter_by(business_key_val="K1")) == sorted([first, second])
+    _write(db, "f4.csv", {"k": "K1", "a": "by key"})
+    db.expire_all()
+    assert (db.query(model).filter_by(row_id=first).one().a, db.query(model).filter_by(row_id=second).one().a) == \
+        ("by key", "two"), "the write naming K1 took its first row"
+    _write(db, "f5.csv", {"k": "K3", "a": "moved"})
+    third = db.query(model).filter_by(business_key_val="K3").one().row_id
+    _results, _cells, _logs, deleted = _write(db, "f6.csv", {"k": "K1"}, row_id=third)
+    db.expire_all()
+    assert (deleted, db.query(model).filter_by(row_id=first).one().a) == ([third], "moved"), \
+        "a row moved onto K1 merged into its first row"
+
+
+def test_a_table_with_lines_and_no_key_index_claims_the_old_way_and_writes_a_line(db_session, monkeypatch):
+    """Lead 11-11: «how a row is claimed» (lines.key_index_standing - ON CONFLICT or the old read-then-insert) and
+    «whether lines are written» (lines.has_lines) are two questions. A table keeping lines without its key index
+    (C: ensure no longer refuses one) claims a new key the old way and still writes its line."""
+    import migrations.add_business_key_unique_index as bk
+
+    db = _fixture(db_session, monkeypatch)
+    db.execute(text('DROP INDEX "%s"' % bk.unique_index_name(TABLE)))
+    db.commit()
+    assert (lines.key_index_standing(db.connection(), TABLE), lines.has_lines(db, TABLE)) == (False, True), "canary"
+    _write(db, "f1.csv", {"k": "K1", "a": "one"})
+    rows = _rows(db)
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    said = [tuple(r) for r in db.execute(select(ln.c.row_id, ln.c.source_name).where(ln.c.line_kind == "write"))]
+    assert (set(rows), said) == ({"K1"}, [(rows["K1"][0], "f1.csv")])
