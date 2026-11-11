@@ -16,7 +16,10 @@ DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 #: who may still name cell_sources after the landing: the copy (database/line_migration) and the rollback (B's
 #: write_back, wherever it lands - by name). Their callers are not counted through them.
 CELL_SOURCES_ALLOWED = {"database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
-                        "database/line_migration.py:copied_through", "*:write_back"}
+                        "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
+                        "*:write_back",
+                        # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)
+                        "scripts/snapshot.py:_facts", "scripts/restore.py:counts"}
 
 
 def _server_files():
@@ -84,7 +87,7 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
     None. `via`: filled with {caller: a callee it was counted through}. `asks_call(call)`: a call that asks too
     (`cell_line_to_audit`). THE census the questions ask."""
     sql = re.compile(r"(?i)\b(from|into|update|join|table|on|analyze|vacuum|truncate)\s+[\"`]?" + re.escape(table) + r"\b")
-    seats, calls, defs = {}, {}, {}                            # seat -> asks? · seat -> {(module, name)}
+    seats, calls, defs, uses, consts = {}, {}, {}, {}, set()    # seat -> asks? · seat -> {(module, name)}
     for rel, source in (files if files is not None else _server_files()):
         tree = ast.parse(source)
         docs = {id(body[0].value) for node in ast.walk(tree)
@@ -107,12 +110,26 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
                     imported[a.asname or a.name] = base
                     alias[a.asname or a.name] = f"{base}.{a.name}" if base else a.name
 
+        # a module-level constant holding the table's name (a string, or items of one) - its users ask (lead 11-11 ㄱ)
+        for stmt in tree.body:
+            targets = (stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+                       if isinstance(stmt, ast.AnnAssign) and stmt.value is not None else [])
+            if targets and any(isinstance(v, ast.Constant) and isinstance(v.value, str)
+                               and (v.value.strip() == table or sql.search(v.value)) for v in ast.walk(stmt.value)):
+                consts.update((own, t.id) for t in targets if isinstance(t, ast.Name))
+
         def read(nodes, inside=()):
-            asks, called = False, set()
+            asks, called, refs = False, set(), set()
             for top in nodes:
                 for sub in ast.walk(top):
                     if id(sub) in inside or id(sub) in docs:
                         continue
+                    if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                        refs.add((imported.get(sub.id, own), sub.id))
+                    elif isinstance(sub, ast.Attribute) and (path := _dotted(sub.value)):
+                        head, _, rest = path.partition(".")
+                        if head in alias:
+                            refs.add((".".join([alias[head], *([rest] if rest else [])]), sub.attr))
                     if ((isinstance(sub, ast.Name) and sub.id in names)
                             or (isinstance(sub, ast.Attribute) and sub.attr in names)
                             or (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
@@ -135,19 +152,19 @@ def askers(names, table, files=None, allowed=(), via=None, asks_call=None) -> se
                         head, _, rest = path.partition(".")
                         if head in alias:
                             called.add((".".join([alias[head], *([rest] if rest else [])]), sub.func.attr))
-            return asks, called
+            return asks, called, refs
 
         for node in ast.walk(tree):
             if isinstance(node, DEFS):
                 nested = {id(x) for sub in ast.walk(node) if sub is not node and isinstance(sub, DEFS)
                           for x in ast.walk(sub)}
                 seat = f"{rel}:{node.name}"
-                seats[seat], calls[seat] = read([node], nested)
+                seats[seat], calls[seat], uses[seat] = read([node], nested)
                 defs.setdefault((own, node.name), set()).add(seat)
         seat = f"{rel}:<module>"
         bodies = {id(x) for node in ast.walk(tree) if isinstance(node, (ast.ClassDef, *DEFS)) for x in ast.walk(node)}
-        seats[seat], calls[seat] = read(tree.body, bodies)            # a def under a top-level if/try is its own
-    found = {s for s, asks in seats.items() if asks}
+        seats[seat], calls[seat], uses[seat] = read(tree.body, bodies)            # a def under a top-level if/try is its own
+    found = {s for s, asks in seats.items() if asks or uses[s] & consts}
     while True:
         reach = {s for s in found if s not in allowed and "*:" + s.split(":", 1)[1] not in allowed}
         more = {}
@@ -191,6 +208,11 @@ def test_the_census_counts_sql_and_callers_not_words():
              ("t.py", 'TABLES = ("cell_sources", "cell_overwrites")\ndef tune():\n    run("ANALYZE cell_sources")\n')]
     assert askers({"CellSource"}, "cell_sources", named) == {"s.py:probe", "s.py:inner", "t.py:<module>",
                                                              "t.py:tune"}
+    # a module constant holding the name: every function using it asks, here or through an import
+    held = [("k/m.py", 'OLD = "cell_sources"\nOTHER = "lines"\ndef reads():\n    return insp.has_table(OLD)\n'
+                       'def quiet():\n    return OTHER\n'),
+            ("k/n.py", "from k import m\nfrom k.m import OLD\ndef a():\n    return m.OLD\ndef b():\n    return OLD\n")]
+    assert askers({"CellSource"}, "cell_sources", held) == {"k/m.py:reads", "k/n.py:a", "k/n.py:b"}
 
 
 def test_cell_sources_is_asked_only_by_the_copy_and_the_rollback():
