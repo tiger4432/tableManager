@@ -512,7 +512,7 @@ def declaration_of(rule: dict) -> str:
 
 def companion_rules(internal: dict) -> list:
     """The EXTRA chain rules one unified declaration implies. Today: a join's target side, and the memory half of
-    an ask or a report (when it declares `memory`).
+    every ask or report (`ask_rule.memory_of` - sys_ai_memory unless its `memory` names a table).
 
     🔴 ONE DECLARATION, TWO TRIGGERS (S-237 ㉢). A join has to be recomputed when the source
     row moves (the declaration's own rule, on `on.table`) AND when a row it writes into
@@ -529,14 +529,15 @@ def companion_rules(internal: dict) -> list:
     into = internal.get("into") or {}
     name = internal.get("name")
     spec = derive.get(str(derive.get("kind") or ""))
-    memory = (spec.get("memory") if isinstance(spec, dict) else None) or {}
-    if isinstance(memory, dict) and memory.get("table") and "table" in into and name:
+    from chain import ask_rule
+
+    rule = as_chain_rule(internal) if "table" in into and name else {}
+    if rule.get("mapper") in (ask_rule.ASK_MAPPER, report_shape.REPORT_MAPPER):
         # an AI rule's second half (lead 10-28 A-3, a report's too): a person's edit on its output table wakes it - the
         # chain's own writes do not (no allow_chain_trigger) - and `ask_rule.remember` writes the correction into the
-        # memory table
-        from chain import ask_rule
-
-        companion = dict(as_chain_rule(internal))
+        # memory table, `sys_ai_memory` unless its `memory` names one (owner 11-10)
+        memory = ask_rule.memory_of(spec)
+        companion = dict(rule)
         companion["name"] = str(name) + COMPANION_SUFFIX
         companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
         companion[COMPANION_MAPPER], companion["mapper"] = companion.get("mapper"), ask_rule.ASK_MAPPER
@@ -925,6 +926,15 @@ def expand_declaration(declaration, table_config=None,
                                        (internal.get("on") or {}).get("table"), (internal.get("into") or {}).get("table"))
         if refused:
             return ([], "%s: %s" % (name, refused), unread)
+    if str(name).endswith(COMPANION_SUFFIX):
+        return ([], "%s: a rule name may not end in %r - the product names a rule's second half so" % (
+            name, COMPANION_SUFFIX), unread)
+    from chain import ask_rule
+
+    derive = internal.get("derive") or {}
+    refused = ask_rule.memory_refusal(derive.get(str(derive.get("kind") or "")))
+    if refused:
+        return ([], "%s: %s" % (name, refused), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,

@@ -58,6 +58,12 @@ def _declaration(report=None, table="wafer_report", into=None):
             "into": {"table": into or table}}
 
 
+def _stood(rules):
+    """One declaration stands as its rule and that rule's memory half (owner 11-10: every report remembers)."""
+    return (len(rules) == 2 and rules[1]["name"] == rules[0]["name"] + rule_shape.COMPANION_SUFFIX
+            and rules[1][rule_shape.COMPANION_CELL] == rules[0]["name"])
+
+
 @pytest.fixture(autouse=True)
 def tables(monkeypatch):
     for name, entry in TABLES.items():
@@ -67,7 +73,8 @@ def tables(monkeypatch):
 def test_a_report_stands_as_one_rule_naming_its_mapper_with_its_settings():
     rules, refusal, notes = rule_shape.expand_declaration(_declaration())
     assert refusal is None and notes == [], (refusal, notes)
-    [rule] = rules
+    assert _stood(rules), rules
+    rule = rules[0]
     assert (rule["trigger_table"], rule["target_table"], rule["mapper"]) == (
         "wafer_report", "wafer_report", report_shape.REPORT_MAPPER)
     assert rule["params"] == REPORT
@@ -151,7 +158,7 @@ def test_a_summary_says_f_and_n_or_a_rate_read_over_its_scale(summary, said):
     report = copy.deepcopy(REPORT)
     report["summary"] = dict({"table": "defect_summary", "wafer": "wafer_id", "item": "defect_item"}, **summary)
     rules, refusal, _notes = rule_shape.expand_declaration(_declaration(report))
-    assert (refusal is None and len(rules) == 1) if said is None else (rules == [] and said in refusal), refusal
+    assert (refusal is None and _stood(rules)) if said is None else (rules == [] and said in refusal), refusal
 
 
 def test_a_wafer_of_two_columns_stands_when_every_role_names_two():
@@ -160,7 +167,7 @@ def test_a_wafer_of_two_columns_stands_when_every_role_names_two():
     for role in ("summary", "images"):
         report[role]["wafer"] = ["wafer_id", "slot"]
     rules, refusal, _notes = rule_shape.expand_declaration(_declaration(report))
-    assert refusal is None and len(rules) == 1, refusal
+    assert refusal is None and _stood(rules), refusal
     assert report_shape.wafer_columns("wafer_id") == ["wafer_id"] and report_shape.wafer_columns(["a", "b"]) == ["a", "b"]
 
 
@@ -186,13 +193,13 @@ def test_a_state_or_reason_column_named_is_said_and_the_rule_stands():
     state and reason are not written, and the save says so."""
     rules, refusal, notes = rule_shape.expand_declaration(_declaration(dict(REPORT, results={
         "file": "report_file", "state": "report_state", "reason": "report_reason"})))
-    assert refusal is None and len(rules) == 1, refusal
+    assert refusal is None and _stood(rules), refusal
     assert any("derive.report.results.state · reason is not written" in note for note in notes), notes
 
 
 def test_a_cell_the_product_does_not_read_is_named_and_the_rule_stands():
     rules, refusal, notes = rule_shape.expand_declaration(_declaration(dict(REPORT, colour="blue")))
-    assert refusal is None and len(rules) == 1
+    assert refusal is None and _stood(rules)
     assert any("derive.report cell this product does not read — colour" in note for note in notes), notes
 
 

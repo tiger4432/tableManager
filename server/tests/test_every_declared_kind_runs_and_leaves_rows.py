@@ -323,7 +323,7 @@ def test_a_report_declaration_writes_a_report_a_wafer_into_its_report_table(db, 
         return {"call": "yield_by", "args": {}} if "This is step 1 of" in prompt else {"done": {}}
 
     monkeypatch.setattr(llm, "ask_json", model)
-    [rule] = reported
+    rule, _memory_half = reported                   # the report and its memory half (owner 11-10)
 
     assert rule["mapper"] == "declared:report"
     assert _door(rule) == "chain.dynamic_mappers._report"
@@ -413,7 +413,7 @@ def test_a_report_without_a_model_writes_its_file_and_says_why_in_it(db, reporte
 
 
 def _texts_declared(reported):
-    [rule] = reported
+    rule, _memory_half = reported                   # the report and its memory half (owner 11-10)
     rule["params"]["layout"] = [{"kind": "text", "slot": "summary"}, {"kind": "text", "slot": "conclusion"},
                                 {"kind": "table", "fill": "yield_by"}]
     rule["params"]["results"] = {"file": "fl", "summary": "sm", "conclusion": "cn"}
@@ -466,7 +466,7 @@ def _sent_reports(db, reported, monkeypatch, answers):
     from chain import report_loop
 
     _done_model(monkeypatch)
-    [rule] = reported
+    rule, _memory_half = reported                   # the report and its memory half (owner 11-10)
     rule["params"]["send_to"] = "http://relay.test/reports"
     _run(db, "report-send", reported, "kinds_rep")
     posted, after = [], [_marks(db)]
@@ -518,7 +518,7 @@ def test_a_stopped_report_is_not_sent(db, reported, monkeypatch):
         raise llm.LlmRefused("no gateway in this test")
 
     monkeypatch.setattr(llm, "ask_json", refused)
-    [rule] = reported
+    rule, _memory_half = reported                   # the report and its memory half (owner 11-10)
     rule["params"]["send_to"] = "http://relay.test/reports"
     _run(db, "report-stopped", reported, "kinds_rep")
     posted = []
@@ -547,7 +547,7 @@ def test_a_switched_off_report_makes_nothing_by_itself_and_one_report_a_wafer_by
     declaration = _report_declaration(enabled=False)
     declaration["derive"]["report"] = reported[0]["params"]
     stood, refusal, notes = rule_shape.expand_declaration(declaration, crud.TABLE_CONFIG)
-    assert refusal is None and [r["enabled"] for r in stood] == [False], (refusal, notes)
+    assert refusal is None and [r["enabled"] for r in stood] == [False, False], (refusal, notes)   # its memory half too
     assert "nothing wakes it" in notes[0]
 
     _run(db, "report-off", stood, "kinds_rep")

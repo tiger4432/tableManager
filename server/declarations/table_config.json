@@ -150,7 +150,7 @@
   },
   "sys_ai_actions": {
     "__comment": "One row per thing an AI proposes to do: kind (a sys_ai_action_kinds row), target_table, payload (JSON), why, evidence, status, by_model, result; feedback is a person's one line, read back as memory. A row is an edit of target_table - blank, the table's own access.",
-    "group": "System",
+    "group": "AI",
     "business_key": "action_id",
     "column_types": {"action_id": "string", "kind": "string", "target_table": "string", "payload": "string",
                      "why": "string", "evidence": "string", "status": "string", "by_model": "string",
@@ -161,7 +161,7 @@
   },
   "sys_ai_action_kinds": {
     "__comment": "One row per kind of AI action on a table, written by the operator: autonomy (blank = a person confirms), what, judge (what checks its result), step_cap (steps before it asks a person). Every key part is filled: a blank one makes no business key. A row is an edit of target_table.",
-    "group": "System",
+    "group": "AI",
     "composite_key_source": ["kind", "target_table"],
     "composite_key_separator": "|",
     "column_types": {"kind": "string", "target_table": "string", "autonomy": "string", "what": "string",
@@ -171,7 +171,7 @@
   },
   "sys_ai_judge_tests": {
     "__comment": "One row per example a kind's judge must answer: expected pass | fail. A judge that passes a fail example keeps its kind under a person's confirm. A row is an edit of target_table.",
-    "group": "System",
+    "group": "AI",
     "composite_key_source": ["kind", "target_table", "example"],
     "composite_key_separator": "|",
     "column_types": {"kind": "string", "target_table": "string", "example": "string", "expected": "string",
@@ -181,7 +181,7 @@
   },
   "sys_ai_memory": {
     "__comment": "An AI rule's memory table, the columns its memory.columns name (purpose, key -> situation, cell, ai, right, memo, who, when -> at): one row per place a person corrected, the latest correction its cells, the earlier ones its history.",
-    "group": "System",
+    "group": "AI",
     "composite_key_source": ["purpose", "situation", "cell"],
     "composite_key_separator": "|",
     "column_types": {"purpose": "string", "situation": "string", "cell": "string", "ai": "string", "right": "string",

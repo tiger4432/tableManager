@@ -1,40 +1,6 @@
 # 🔁 소급 적용 가이드 — 규칙을 「이미 쌓인 데이터」에 적용하는 길들
 
 > **Status:** 🟢 Living | **작성:** 2026-07-31 · doc-keeper | **Last-verified:** 2026-09-16 (§2.1 「이 행들만」 — `--row-ids`/`row_ids` 가 `business_keys` «옆»에 생겼고 둘 다 주면 거절 — S-254 `fe2d0c6c` · 그리드 배너는 «row_id 로» 보내고 없는 행을 이름 대며 큰 선택은 크기를 말한다 — C-112·C-113·C-114) · 직전 2026-09-15 «후속» (§1.1 — 빈 칸은 서열에 안 낀다, 판정 405 · 쌓인 NULL 층 세기 S-243-b) · 직전 2026-09-15 (§0·§2.1 — 선언된 join 은 «왼쪽 규칙»에 ⓐ R1, 보고는 «행», 오른쪽 이름은 거절 — S-242 `bd0a3db7`) · 직전 2026-09-02 (§7.6 페이싱 — `pace` 를 든 연산이 **하나에서 둘로**(`chain_replay` 합류), 읽는 쪽은 **둘에서 셋으로**, 모르는 이름의 갈림은 「둘이 다르다」가 아니라 **2 대 1**) · 직전 2026-08-31
->
-> **이번 라운드 (2026-08-31 · 정비 사이클 — 🔴 «화면이 생겼습니다». 그리고 등록부에 원장 연산 둘이 들어왔습니다)**
-> - 🔴 **§7 제목의 「화면은 아직 없습니다」가 «거짓이 됐습니다».** 어드민에 소급 화면이 있고(09-25 부터 **Retroactive** 탭), **도는 실행 목록 + 취소 버튼**까지 있습니다. §7.4 의 「아직 없는 것」 둘 중 **둘 다** 착지했습니다.
-> - 🔴 **등록부가 넷에서 «여섯»이 됐습니다** — 원장 쪽 둘이 들어왔습니다: **ⓖ `ledger_backfill`**(선언된 소스에서 아직 원장에 없는 행을 번역한다)과 **ⓗ `ledger_rescope`**(**범위를 정해 회수 + 재생성** — 해석을 고친 뒤 «일부만» 다시 만드는 길). §0 결정표에 행 둘이 늘었습니다.
-> - 🔴 **취소가 생겼고 «협조적»입니다** — 프로세스를 죽이지 않고 실행 행에 값을 세우며, 도는 쪽이 **배치 사이에서** 그것을 묻습니다. **연산마다 「멈출 수 있나」가 선언되고, 09-25 `3bf01b96` 부터 일곱 다 `true` 입니다**(종전 `false` 둘의 사유는 §7.5 의 기록). 화면은 그 값이 거짓이면 **버튼을 안 그립니다.**
-> - 🆕 **`pace` 파라미터를 든 연산이 «둘»** — ⓐ `chain_replay`(R1, 2026-09-02 합류) · ⓖ `ledger_backfill`. 값이 닫혀 있어 화면이 텍스트칸이 아니라 **선택지**를 그립니다(`fast`/`slow`/`trickle`, 각 「언제 쓰나」와 함께). 목적은 **긴 작업이 도는 동안 옆 질의를 굶기지 않는 것**입니다(§7.6). CLI 는 양쪽 다 `--pace`.
-> - ⚰️ ~~ⓕ(R3 `resolve`)는 «여전히» 이 표면에 없습니다~~ — 09-25 `3321158b2` 로 거짓이 됐습니다. `resolve` 는 등록부 연산입니다(§0 · §7).
-> - ⚰️ **§7.1 의 `--allow-production`·격리 관문 문단은 «없어진 파일»을 서술합니다**(§7.1 안의 배너 참조).
->
-> **직전 라운드 (2026-08-14 · `2ec78b9` · R-2026-08-14-H — ⓔ가 «없어졌습니다»)**
-> - ⚰️ **ⓔ 그래프 고아 스윕 은퇴** — 지울 대상(`graph_nodes`/`graph_edges`/`graph_sync_state`)이 **DROP**됐습니다(약 841 MB). `server/admin/retroactive.py`의 `OPERATIONS`가 다섯에서 **넷**(`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`)이 되어 어드민 API에서도 **등록 해제**됐고, 스케줄러의 자동 호출도 제거됐습니다.
-> - 🔴 **이 문서에서 「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오** — §5 · §6.2 · §6.3 · §7의 ⓔ 관련 서술은 접혀 있습니다. **ⓐ~ⓓ와 ⓕ는 한 줄도 영향받지 않았습니다.**
->
-> **직전 라운드 (2026-08-11 2차 · `ffb23d6`+`53f9187` — ⓕ와 ⓑ가 더 이상 하류 체인을 깨우지 않습니다)**
-> - 🔴 **§2.3에 ⓑ(철회)의 같은 수리를 실었습니다**(`53f9187`). **이쪽이 더 급했습니다 — 철회는 어드민 화면의 버튼에서도 돌아갑니다.** 지워지는 층은 한 줄도 달라지지 않았고(살아남은 층 집합이 바이트 단위로 동일), `user` 거절과 사람 핀 건너뛰기는 **CLI·버튼 양쪽에서** 그대로입니다.
-> - 🔴 **화면 알림 4건 → 0건은 잃은 것이 아닙니다** — 그 4건은 아무도 철회하지 않은 다른 테이블의 알림이었고, **값이 바뀐 칸은 전에도 지금도 알림이 안 갑니다.** 확인하는 자리는 셀 이력 타임라인이고 변하지 않았습니다.
-> - ✅ **ⓐ(재적용)도 실행당 tx 하나입니다**(d62f40730). 소급 잡 하나가 낸 이벤트는 모두 `run_id` 를 실어 체인 대기열에 한 줄로 뜹니다(총괄 b3a4334db).
-> - 🔴 **§2.5에 운영자용 사실 셋 추가.** ⓕ가 내는 내부 이벤트가 **사람이 그리드에서 친 것과 똑같은 라벨**을 달고 있어서, 칸 하나를 고치면 그 테이블에 걸린 파생 규칙이 전부 돌았습니다. 지금은 **명시적으로 선언한 규칙만** 반응하고, 대량 실행이 실행당 그룹 하나로 접혀 훨씬 빨라졌습니다(종전에는 수리 행마다 직렬 그룹 — 1만 행이 한 시간을 넘겼고 그동안 정상 인제션이 뒤에 줄을 섰습니다).
-> - ⚠️ **`ffb23d6`(ⓕ) / `53f9187`(ⓑ) 이전에 그 명령을 `--apply`로 돌린 적이 있으면 딸려 들어간 파생 쓰기가 있을 수 있습니다** — 그 시각의 체인 워커 로그로 확인하십시오.
->
-> **직전 라운드 (2026-08-11 · 해결 순서 수리 + R3 착지)**
-> - **신규 경로 ⓕ — R3 `chain_replay_cli.py resolve`**(§2.5). 같은 CLI의 **세 번째 연산**이라 **스크립트 수는 그대로 넷**이고, 결정표·§1의 공통 규율에 행이 하나 늘었습니다.
-> - 🔴 **제목의 「다섯 가지 길」을 여섯으로 고치지 않고 기수를 지웠습니다** — 목록 옆의 수는 목록의 두 번째 사본이고, 이 문서에서 그 수는 **§0 결정표·§1 서두·§7 서두** 세 자리에 사본이 있었습니다. 목록이 정본입니다.
-> - ⚰️ **ⓕ만 어드민 API에 없습니다** (09-25 `3321158b2` 로 거짓 — `resolve` 가 등록부 연산이 됐습니다) — `server/admin/retroactive.py`의 `OPERATIONS`는 ~~`chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm`·`graph_orphans` **다섯**~~이고 R3는 등재돼 있지 않습니다(실측). §0과 §7의 「전부 어드민 API로도 됩니다」는 **ⓐ~ⓔ에 대해서만** 참입니다. → ⚠️ **[2026-08-18 정정] 지금은 `graph_orphans`가 빠져 «넷»입니다**(§5 참조). 이 줄의 「다섯」은 2026-08-11 시점의 실측이고, **현재 수는 §5가 정본**입니다.
-> - **§1.1 레이어링 표 갱신** — 표시값 결정이 **등재 우선순위 → `ingested_at` 내림차순 → `source_name` 오름차순**의 전순서가 됐습니다. 종전에는 미등재 이름이 전부 99로 **동점**이었고 승자가 삽입 순서로 떨어졌습니다(ⓒ·ⓓ가 둘 다 99인 것은 그대로이며, 이제 그 둘 사이도 결정적으로 갈립니다).
-> - **§6.1 갱신** — `--limit`의 뜻 표에 ⓕ 행 추가(**훑는 행 수** 상한).
->
-> **직전 라운드 (2026-07-31 · `fbc1053`·`1948338`·`9c6a1c9`)**
-> - **§7 재작성 — 어드민 API가 착지했습니다**(라우트 3개). 🔴 **화면(버튼)은 아직 없습니다** — 「어드민 화면에는 자리가 없다」는 종전 문장은 절반만 참이 됐습니다. 지금 쓰려면 `curl`입니다.
-> - **§7.2 신설 — 카운트는 「어떤 종류의 수인지」를 함께 답합니다**(`exact`/`sample`/`upper_bound`). 다섯 중 넷은 요청 경로에서 정확할 수 없고, **어느 것도 정확하다고 주장하지 않습니다.**
-> - **§3에 각주 — ⓒ의 구현이 `server/chain/enrichment/backfill.py`로 옮겨졌습니다**(`9c6a1c9`). **CLI 경로·진입점·플래그는 그대로**라 이 문서가 찍는 명령은 전부 그대로 동작합니다.
-> - **§6.5·§6.6 신설** — ⓒ의 「이미 있는 정체성」 읽기가 **두 갈래**가 됐고(CLI는 전량 스냅샷, 미리보기는 표본 키만 되물음), **ⓑ R2의 카운트가 인덱스를 얻었습니다**(`1948338`). 새 DB에 반영하는 경로는 `ops_setup_db_performance.py` 하나입니다.
->
-> (신설 근거: 진입점 전부의 argparse를 **소스 대조 + `--help` 실행**으로 전수 확인 — `server/scripts/chain_replay_cli.py` · `backfill_enrichment.py` · `enrichment_insights.py` · `graph_orphan_sweep.py`, 그리고 의미론은 `server/chain/replay.py` · `server/chain/enrichment/analysis.py` · `server/chain/enrichment/candidates.py` · `server/graph_orphans.py` · `server/keyset_scan.py` · `crud.SOURCE_PRIORITY`/`apply_batch_updates`)
 > **대상:** 규칙을 바꿔 놓고 **「과거 데이터는 왜 그대로지?」**를 만난 운영자.
 > **먼저 알아야 할 것:** 이 시스템의 규칙은 **증분(outbox) 구동**이다. 규칙은 **자기가 선언된 이후에 바뀐 행만** 본다. 규칙을 고쳐도 과거는 옛 규칙이 남긴 상태 그대로 있고, 그것을 움직이는 유일한 방법이 이 문서의 경로들이다. ⓕ가 그 원리의 가장 순수한 사례다 — **해결 규칙 자체를 고쳐도** 이미 확정된 표시값은 그대로 남는다.
 > **관련:** 개발자 계약은 [chain_ingestion_guide §5](./chain_ingestion_guide.md) · 인리치먼트 선언은 [config/enrichment_rules §7](./config/enrichment_rules.md). 제거된 그래프 고아 스윕의 배경은 [archive](../_archive/retired_graph_sync/README.md)에만 남깁니다.
@@ -65,7 +31,6 @@
 | 🆕 선언한 칸 타입과 **DB 칸 타입이 다르다** — 부팅 로그 `[Schema]` 타입 줄 밑 «N of them can be converted on the retroactive tab» | **`retype_declared_columns`**(10-31 `23106c060`) — 소급 탭 «Convert the columns already declared another type». Preview 가 칸마다 행 수 · 바뀌는지(아니면 거절 문장 — 못 읽는 값 · 키 칸) · 예상 잠금을 보이고, Run 이 바뀌는 칸만 표 하나씩, 칸마다 한 트랜잭션(그동안 그 표가 잠김). 멈춤은 칸 사이. 칸 하나만은 «Convert a column's type»(`retype_column`) |
 | 🆕 **원장이 못 본 수정**이 있는지, 몇 행인지 알고 싶다 — 표 값이 바뀌었는데 원자가 옛 값 그대로 | `python -m ledger census --source <소스>` → 「… · 차이 X · 새 행 N · 수정 누락 D · 지워진 행 G · 지문 없음 U」(10-03 `6b698fe2d` · 🆕 10-04 `5e41fa599` 새 행 · 지워진 행 · 차이 — 차이 = 표 행 − 색인 행이라 새 행과 지워진 행이 상쇄된다, 차이 0 은 «남은 0» 이 아니다). 행 색인 줄마다 번역할 때의 행 지문(그 소스가 읽는 칸만, 빈 값은 NULL 로 접은 md5)이 있고 census 가 지금 값으로 다시 내어 견준다 — «지문 없음»은 그 전에 번역된 줄이라 따로 센다(섞으면 누락이 부풀어 보임). 고치기: 🆕 셋을 한 번에 `python -m ledger.backfill --world <세상> --catch-up`(그 세상이 읽는 소스 전부 — 새 행 · 수정 누락 · 지워진 행 차례로) · 수정 누락만 `python -m ledger.backfill --source <소스> --drifted`(미리보기) → `--drifted --apply`. 주기 census(엔진 안)는 이 수를 안 센다 — 표를 훑기 때문. 🆕 화면: 대시보드 원장 소스 패널이 소스마다 `New, not translated N · Edited, not followed N · Gone, atoms remain N · Not yet printed N · Measured <시각>`(🆕 10-04 `f36723a70` — 넷, 서버 이름표대로) 을 보이고, 새 행 · 수정 누락 · 지워진 행 중 0 보다 큰 칸이 눈에 띄고(🆕 10-04 `4b2cbc9a5` — 전엔 누락 하나, 지문 없음은 표시 없음), 그 아래에 기록이 싣는 다음 명령 한 줄(10-03 `c965f6206` · `cb9082b79` — 서버 글자 그대로). 셋째 수 칸은 `Table less indexed`(`difference` — 부호 있는 차이, «남은 수»가 아니다 · 10-04 `f36723a70`, 옛 기록의 `not_yet` 도 같은 이름 `Table less indexed` 로 — 10-06 `9ea93f6fd`, 다음 주기가 다시 찍을 때까지). 🆕 `66570d724` 주기 census 는 세지 않고, 사람이 센 수(🆕 10-04 넷 — 새 행 · 수정 누락 · 지워진 행 · 지문 없음)를 «그때 잰 시각 그대로» 잇는다(~~다음 주기가 지움~~). 기록은 다음 명령도 싣는다(`next_step`: ~~누락 > 0 → `--drifted`~~ 🆕 10-04 `5e41fa599` 새 행 · 수정 누락 · 지워진 행 중 하나라도 > 0 → `python -m ledger.backfill --world <세상> --catch-up`, 센 적 없음 → `python -m ledger census --source <소스>` — 🆕 `279d04475` 둘 다 늘 `--world <잰 세상>` 을 단다 — 🆕 10-04 `ec6874b28` 세상 하나, 이름 없으면 운영 세상). ⚠️ `--catch-up`(또는 `--drifted --apply`) 로 고친 뒤에도 기록의 수와 다음 명령은 «고치기 전» 그대로다(주기 census 는 그 넷을 잇기만 한다) — 사람이 census 를 다시 돌려야 0 이 된다 |
 | 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 🆕 11-04 `36acdd577` 한 날이 실패하면(스크립트 예외 · 파일 실패 · 잠겨서 err/ 로 간 파일) **멈추지 않고** 그 날과 까닭을 `failed_days` 에 남기고 다음 날로 간다(전: 그 날 이름을 대고 멈춤, 소유자 11-04 가 뒤집음). 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) · 🆕 `failed_days`(「failed days」 — 수와 «날 (까닭)» 목록) · 🆕 `done_until`(「collected up to (KST)」 — 지나간 마지막 날의 끝, 실패한 날 포함) — 화면에서는 낱말로(`f6d64682`). 🆕 **다음 번 `start` 는 소급 목록의 그 줄 `next_start`**(09-29 `efa60fd9c`) — 끝까지 · 취소 → `done_until`, 실행이 터짐 → 거기까지 간 날의 끝(`start` + 지난 날 수), 도는 중 → null. 그대로 다시 넣으면 틈도 겹침도 없다(`start` 는 `YYYY-MM-DD HH:MM:SS` 도 읽는다). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
-
 | 🆕 칸마다 **파일 층이 여러 겹** 쌓여 있다(같은 행을 매시간 다시 가져오는 수집기) · 헤비 레인 청크 줄의 `prefetch` 가 크다 | **`fold_file_layers`**(09-26, 총괄 225b2c658) — 파라미터 `table` · `pace`. 칸마다 같은 부류 · 같은 값의 파일 층은 **가장 새 것 하나**만 남긴다(§2.6). 쓰기 쪽은 같은 날부터 **안 쌓는다**(§1.1) |
 | 🆕 사고 중 체인 대기열에 **지금 돌면 안 되는** 일이 쌓였다 / 그것을 나중에 돌린다 | **`set_aside`** · **`rerun_set_aside`**(09-26 · 09-27) — 치워 두기는 지우지 않음, 다시 돌리기는 규칙마다 한 번 · 연쇄 없음(§2.8) |
 | 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 · 문자 칸에 **숫자로 저장된 층**이 있다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf · 10-01 ㉡) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7). 끝나면 `fold_file_layers` → VACUUM |
@@ -92,14 +57,15 @@
 
 이 넷은 위 결정표의 경로 **모두**에 해당합니다. 개별 절에서 반복하지 않습니다.
 
-1. **기본은 dry-run입니다.** 아무 플래그 없이 돌리면 **읽기만** 합니다. 먼저 돌려서 보고서를 읽는 것이 정상 절차입니다.
-2. **`--apply`만이 씁니다.** 쓰기를 시작하는 스위치는 이것 하나뿐이고, 다른 이름의 우회로는 없습니다.
+1. **`--apply` 를 가진 CLI 는 기본이 dry-run입니다** — `chain_replay_cli` · `backfill_enrichment` · `ledger.backfill` 의 `--scope-*` · `--whole-source` · `--drifted`. 아무 플래그 없이 돌리면 **읽기만** 합니다. 먼저 돌려서 보고서를 읽는 것이 정상 절차입니다.
+   🔴 **바로 쓰는 명령이 있습니다** — `python -m ledger.backfill --source <소스>` 와 `--catch-up` 은 `--apply` 없이 **돌리는 즉시 씁니다**. 이 문서의 `python -c "… retroactive.run_here(…)"` 줄도 **즉시 씁니다**. 미리 보려면 소급 탭의 count(`GET /admin/retroactive/<op>/count`)를 먼저 봅니다.
+2. **`--apply` 를 가진 CLI 에서는 그것이 쓰기 스위치입니다.** 다른 이름의 우회로는 없습니다.
    🆕 **CLI 의 `--apply` 는 어드민 실행과 «같은 문»을 지납니다**(09-25 `9ca3633f1`) — 어드민 실행 목록에 `running` 줄이 서고(runner `retroactive/<호스트>/<pid>`), 관문이 닫혀 있으면 그 관문의 문장으로 거절되고, 화면 취소는 페이지 사이에서 멈추며, Ctrl-C 는 `cancelled` 로 끝납니다. 드라이런(`--apply` 없음)은 이 문 밖입니다.
 3. **진짜 매퍼와 진짜 쓰기 경로를 씁니다.** 소급 전용 구현이 따로 없습니다 — 매퍼 산출물은 그대로 쓰고 provenance만 찍으며, 쓰기는 라이브와 같은 `crud.apply_batch_updates`를 지납니다. **그래서 소급 결과와 라이브 결과가 갈리지 않습니다.**
    ⚠️ **ⓕ는 매퍼를 부르지 않습니다** — 그 경로가 다시 돌리는 것은 매퍼가 아니라 **해결 함수**(`crud.compute_priority_value`)이고, 그것 역시 **라이브와 같은 함수**라 이 규율의 취지는 그대로입니다.
 4. **페이지 단위로 커밋합니다.** 대량 실행을 중간에 끊어도 되고, 다시 돌리면 이미 처리된 것을 다시 진단해 이어서 갑니다.
    ⚠️ **ⓔ는 예외입니다** — §6.2를 보십시오.
-5. **어느 것도 새 이벤트 타입이나 새 화면을 만들지 않습니다.** 결과를 설명하는 자리는 **기존 셀 이력 타임라인** 하나이고(ⓑ·ⓕ가 감사 행을 남깁니다), 소급 전용 UI는 없습니다.
+5. **결과를 설명하는 자리는 기존 셀 이력 타임라인입니다**(ⓑ·ⓕ가 감사 행을 남깁니다). 실행 자체는 어드민 **Retroactive** 탭의 실행 목록(진행 · 취소)에 보입니다 — 실행 요청은 `RETROACTIVE_RUN` 사건입니다.
    ⚠️ **「돌렸는데 화면이 안 바뀐다」면 새로고침부터** 해 보십시오 — 붙어 있는 화면이 즉시 갱신된다고 **약속하지 않습니다.**
 
 ### 1.1 무엇이 어떤 이름으로 쓰이는가 (레이어링)
@@ -116,7 +82,7 @@
 | ⓔ 고아 스윕 | (셀이 아니라 **그래프 노드**를 지웁니다) | — |
 | ⓕ R3 | (셀 소스를 **쓰지도 지우지도 않습니다**. 감사 기록만 `resolution_recompute`) | — |
 
-`SOURCE_PRIORITY`의 실제 값은 `user: 0` · `collision_merge: 1` · `pipeline_parser: 2` · `custom_script: 3` · `chain_ingestion: 4`이고, **등재되지 않은 이름은 전부 99**입니다.
+`SOURCE_PRIORITY`의 실제 값은 `user: 0` · `collision_merge: 1` · `pipeline_parser: 2` · `custom_script: 3` · `chain_ingestion: 4` · `llm_draft: 5`이고, **등재되지 않은 이름은 전부 99**입니다.
 
 🔴 **빈 칸은 이 서열에 «끼지 않습니다» (2026-09-15 판정 405 `fac454af`).** 「비웠다」를 뜻할 수 있는 저자 — 사람(`user`)과 체인(`chain_ingestion`) — 의 빈 값만 NULL 층을 세우고, 파일·스크립트·미등재 소스의 빈 값은 층을 «안 만듭니다»(있던 층은 그대로 — 어제 값을 준 파일이 오늘 빈칸이면 어제 값이 섭니다. 거두는 것은 사람 · ⓑ R2 · `replace_map` 의 일입니다). 그전에 파일이 세워 둔 NULL 층은 «남아서» 조인 값을 아직 가릴 수 있습니다 — 그 수는 `python scripts/count_absent_null_layers.py`(읽기만, `--apply` 없음)가 「NULL 층의 수」와 「그중 아래 값을 가리는 수」로 «따로» 냅니다. 답의 뜻은 `RUN.md` §1-bis, 계약은 [data_model §2.1-quater](../architecture/data_model.md).
 
@@ -362,42 +328,10 @@ conda run -n assy_manager python server/scripts/enrichment_insights.py propose  
 
 🔴 **ⓔ는 더 이상 소급 경로가 아닙니다 — 돌리지 마십시오.** 지울 대상(`graph_nodes`/`graph_edges`)이 은퇴하고 **DROP**됐습니다(약 841 MB).
 
-- **어드민 API에서 «등록 해제»됐습니다.** `server/admin/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**입니다(그때 — 🆕 10-11 지금 18: §0 표와 CODE_MAP 의 retroactive 절). `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다. 이 문서에서 **「다섯」이라 적힌 자리는 전부 「넷」으로 읽으십시오.**
+- **어드민 API에서 «등록 해제»됐습니다.** `server/admin/retroactive.py`의 `OPERATIONS`는 이제 `chain_replay`·`withdraw`·`enrichment_backfill`·`enrichment_confirm` **넷**이었습니다(그때 — 지금 목록은 `GET /admin/retroactive/operations`). `GET /admin/retroactive/operations`에 ⓔ 행이 없고, `POST /admin/retroactive/graph_orphans/run`은 미등재 연산으로 거절됩니다.
 - **스케줄 호출도 제거됐습니다**([AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)) — 🔴 **그것은 정리가 아니라 필수였습니다**: `graph_orphans.run_scheduled`가 첫 동작으로 `ensure_graph_tables`를 불러 **DROP된 표를 되살렸을** 것입니다.
 - **CLI와 런타임 모듈은 2026-08-16 트리에서 제거됐습니다.** 옛 설명과 설정 예시는 [archive](../_archive/retired_graph_sync/README.md)에만 남습니다.
 - ⚠️ **§1의 「ⓔ만 페이지 커밋이 아니다」·§6.2·§6.3(종료 코드 3)·§7의 `--allow-production` 서술은 전부 이 연산에 대한 것이라 «함께 은퇴»합니다.** ⓐ~ⓓ에 대한 서술은 **한 줄도 영향받지 않았습니다.**
-
-<details>
-<summary>⚪ 이하 원문(역사 기록)</summary>
-
-### ~~ⓔ graph_orphan_sweep — 유일하게 「지우는」 소급~~
-
-```bash
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --label Wafer --label Core
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --limit-print 0
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --apply
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --apply --allow-production
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --max-fraction 1.0
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --min-population 10
-conda run -n assy_manager python server/scripts/graph_orphan_sweep.py --ignore-rejected
-```
-
-**언제**: 매핑을 바꾼 **전후**로 돌려 어떤 정체성이 남는지 이름으로 봅니다.
-
-**왜 필요한가**: 엣지 재교정은 **엣지만** 지우고 남은 노드를 지우는 코드가 없습니다. 그래서 라벨 폐기만의 문제가 아니라 **정체성을 바꾸는 셀 편집마다 노드가 하나씩 샙니다.**
-
-🔴 **고아 판정은 두 조건 AND입니다** — ① 엣지가 0개이고 ② **현재 어떤 매핑도 그 정체성을 생산할 수 없다**. 엣지 0개만으로 지우면 정상적으로 엣지가 없는 DOE 어휘가 통째로 날아갑니다.
-
-**이 도구의 요점은 삭제가 아니라 거절입니다.** 자세한 것은 [AUTO_UPDATE_GUIDE §4-ter](./AUTO_UPDATE_GUIDE.md)가 정본입니다(같은 모듈을 스케줄러가 하루 1회 자동으로도 돕니다). 운영자가 알아야 할 것만:
-
-* **예산 관문** — 한 라벨이 인구의 `--max-fraction`(기본 **0.5**)을 넘게 잃으면 삭제가 아니라 **`DECLINED`**입니다. **매핑 오타는 은퇴한 라벨과 겉모습이 똑같기 때문입니다.** 정말 은퇴시킨 라벨이라면 `--max-fraction 1.0`으로 다시 돌리십시오.
-* **작은 라벨 면제** — 인구가 `--min-population`(기본 **10**) 미만인 라벨은 비율 검사에서 빠집니다(3개짜리 라벨은 자기 자신의 100%입니다).
-* **깨끗한 선언 전제** — 온톨로지 매핑이 하나라도 깨끗하게 로드되지 않으면 **스윕 전체를 거절**합니다. 이유를 **먼저 읽고** 나서만 `--ignore-rejected`를 쓰십시오.
-* **격리 관문** — `--apply`를 격리 데이터 루트 밖에서 하려면 `--allow-production`이 필요합니다. dry-run은 읽기 전용이라 어디서나 됩니다.
-* `--limit-print`는 **출력 줄 수**만 자릅니다. **삭제 범위와 무관합니다**(`0`이면 전부 출력).
-
-</details>
 
 ---
 
@@ -446,7 +380,7 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 「이 소스가 이 테이블에서 주장하는 셀은 몇 개인가」는 `cell_sources`를 `(table_name, source_name)`으로 좁히는 질문입니다. ⚰️ (09-10 `532f08f66` 에 은퇴 — 전량 인덱스가 모든 셀 쓰기에 값을 치렀다. 사람 층만 받는 부분 인덱스 `idx_sources_human_claims` 로 바뀜, 까닭과 실측은 `models.py` 주석) ~~그 술어를 받는 인덱스는~~ **`idx_sources_by_source`(`table_name, source_name, column_name, row_id`) 하나**입니다 — 기존 `idx_sources_lookup_source`는 `source_name`이 **마지막 키**라 이 술어에 쓸 수 없습니다.
 
 - **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
-- 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`). ~~**반영 경로는 하나입니다**~~: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
+- 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 스케줄러 프로세스의 유지보수 줄(`runtime/maintenance_line.py`, 10-15 부터 — 체인 워커는 아무것도 안 짓습니다)이 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`). ~~**반영 경로는 하나입니다**~~: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
 - 스크립트가 만든 뒤 **플래너가 실제로 그것을 골랐는지까지 검사**합니다(Step 3.11). 표가 작으면(`WITHDRAW_PLAN_MIN_ROWS` 미만) **실패가 아니라 `NOT VERIFIED`**를 찍습니다 — 작은 표에서 Seq Scan은 옳은 계획이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만듭니다.
 - 운영 관점 전문은 [POSTGRES_OPERATIONS §3.1](./POSTGRES_OPERATIONS_GUIDE.md).
 
@@ -466,6 +400,7 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 | `POST /admin/retroactive/{op}/run` | 실행을 **큐에 넣고 즉시 반환**(실제 실행은 스케줄러가 집어 띄운 «자식 프로세스» — §7.3. `chain_replay` 만 체인 워커) |
 | **`GET /admin/retroactive/runs`** | **[신설]** 실행 목록과 진행 — `state`·`processed_rows`/`total_rows`·시각 |
 | **🔒 `POST /admin/retroactive/runs/{run_id}/cancel`** | **[신설]** 멈춤을 «부탁»한다. 죽이지 않는다(§7.5) |
+| `POST /admin/retroactive/runs/{run_id}/resume` | 끊긴 리플레이(R1)를 마지막 커밋한 쪽 다음부터 잇는 새 실행 — 끊기지 않은 실행은 사유와 함께 400 |
 
 ```bash
 curl -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" http://127.0.0.1:8080/admin/retroactive/operations
@@ -477,7 +412,7 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.1 CLI가 없어진 것이 아닙니다 — 버튼은 **흔한 형태**만 덮습니다
 
-라우트는 각 연산의 **파라미터 필수분**만 받습니다. 나머지는 CLI에 남아 있고, 그 목록을 `operations` 응답의 **`cli_only`**가 직접 들고 있습니다 — `replay-all` · `--limit` · `--chunk-size` · `--force-disabled` · `--ignore-knob` · `classify`/`propose`.
+라우트는 폼에 안 그리는 파라미터(`limit` · `chunk_size` · `force_disabled` 등)도 받습니다. CLI 에만 있는 것은 `operations` 응답의 **`cli_only`**가 듭니다 — `replay-all` · `--list-all` · `--ignore-knob` · `classify`/`propose` 등.
 
 > ⚰️ **[2026-08-31] 아래 문단은 «없어진 파일»을 서술합니다.** `scripts/graph_orphan_sweep.py`·`server/graph_orphans.py`는 2026-08-16에 제거됐고(그 부재를 시험이 못박고 있습니다), `--allow-production` 이라는 철자를 오늘 어느 CLI 도 들고 있지 않습니다. **기록으로만 읽으십시오.**
 > ✅ **살아남는 생각** — 「어드민 버튼이 CLI 와 «같은 함수»를 부르더라도, CLI 가 «묻는 확인»까지 재현하지는 않는다」. CLI 를 아는 운영자는 물어볼 것을 기대합니다. 오늘 그 자리를 지키는 것은 확인 대화가 아니라 **`cancellable`·`deletes`·`commit_granularity` 선언**(§7.5)입니다 — 화면이 무엇을 경고할지 «추측하지 않게» 합니다.
@@ -501,10 +436,10 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.3 실행은 **즉시 반환**이고, 결과는 그 응답에 없습니다
 
-`run`은 아웃박스에 한 줄 쓰고 `{"status": "queued", "run_id": …}`를 돌려줍니다. 🆕 스케줄러가 그 행을 집어 **자식 프로세스 하나**(`python -m admin.retroactive_run <run_id>`)에서 돌립니다(09-25 `bfbe8a525`). 🆕 10-13 `9351a3580` 원천 «통째» 재번역은 그 자식이 다시 조각 프로세스 N 개(`--slice k/N`, `ingestion_settings.json` 의 `ledger_translate_slices`)를 띄웁니다 — 실행 행은 하나. 스케줄러 로그(`auto_update.log`)에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남고, **진행과 결과는 `retroactive.log`** 에 있습니다(자식이 print 한 것은 `retroactive_stdout.log`). `POST /admin/auto-update/run-now`와 같은 형태입니다.
+`run`은 아웃박스에 한 줄 쓰고 `{"status": "queued", "run_id": …}`를 돌려줍니다. 🆕 스케줄러가 그 행을 집어 **자식 프로세스 하나**(`python -m admin.retroactive_run <run_id>`)에서 돌립니다(09-25 `bfbe8a525`). 🆕 10-13 `9351a3580` 원천 «통째» 재번역은 그 자식이 다시 조각 프로세스 N 개(`--slice k/N`, `ingestion_settings.json` 의 `ledger_translate_slices`)를 띄웁니다 — 실행 행은 하나. 스케줄러 로그(`auto_update.log`)에는 「[Retroactive] run_id=… runs in its own process pid=…」 한 줄만 남고, **진행과 결과는 `retroactive.log`** 에 있습니다(자식이 print 한 것은 `retroactive_stdout_<run_id>.log` — 실행이 끝나면 지워짐). `POST /admin/auto-update/run-now`와 같은 형태입니다.
 
-- **동시 1건입니다.** 실행 중에 또 요청하면 조용히 줄 세우지 않고 **거절 + 로그**하며, 아웃박스 행은 미처리로 남아 다음 틱이 집습니다.
-- **토큰이 설정돼 있지 않으면 이 라우트만 503입니다**(조회 라우트 둘은 열립니다). 코드 실행 라우트와 같은 취급인데, 코드 실행이라서가 아니라 **테이블 전체 재작성·소스 회수·노드 삭제**라는 피해 계급이 같기 때문입니다.
+- **같은 곳에 쓰는 실행끼리만 하나씩입니다**(11-10). 도는 실행과 쓰는 곳(`writes`)이 겹치면 조용히 줄 세우지 않고 **거절 + 로그**하며, 아웃박스 행은 미처리로 남아 다음 틱이 집습니다. 어디에 쓰는지 모르는 연산은 모든 실행과 겹칩니다.
+- **토큰이 설정돼 있지 않으면 이 라우트만 503입니다**(나머지 — `operations` · `count` · `runs` · `resume` · `cancel` — 는 이 관문이 아닙니다). 코드 실행 라우트와 같은 취급인데, 코드 실행이라서가 아니라 **테이블 전체 재작성·소스 회수·노드 삭제**라는 피해 계급이 같기 때문입니다.
 - **사람 값 보호는 라우트가 아니라 연산 안에 있습니다**(§2.4) — 어드민을 거쳐도 우회되지 않습니다.
 
 ### 7.4 ✅ 종전의 「아직 없는 것」 둘은 **둘 다 착지했습니다** (2026-08-31)
@@ -520,7 +455,7 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 - 🔴 **그래서 «즉시»가 아닙니다.** 지금 도는 배치는 끝까지 갑니다. 큰 청크를 쓰는 연산일수록 반응이 늦습니다.
 - 🔴 **`cancel_requested`와 `cancelled`는 다른 상태입니다** — 앞엣것은 「부탁했다」, 뒤엣것은 「멈췄다」입니다. 목록에서 그 둘을 같은 것으로 읽지 마십시오.
 - 🔴 **이미 끝난 실행은 «되돌리지» 않습니다** — 🆕 10-08 거절 대신 그 상태(`run: "done"`)로 답하고, 그 실행이 넣어 두고 아직 체인이 안 먹은 사건을 빼 둡니다(`skipped_events` — 대기열 줄 × 와 같은 함수). 이미 커밋된 일은 그대로입니다. 되돌리려면 이 문서의 다른 경로(ⓑ 철회 · ⓗ 범위 재번역)를, 빼 둔 사건을 다시 돌리려면 `rerun_set_aside` 를 쓰십시오.
-- 🔴 **취소를 받는지는 «선언»입니다**(`cancellable`). 화면은 거짓이면 **버튼을 아예 안 그립니다** — 눌러도 아무 일 없는 버튼보다 없는 버튼이 낫기 때문입니다. 🆕 **09-25 `3bf01b96` 부터 일곱 다 참입니다** — rescope 는 범위를 페이지로(그룹을 안 쪼갬, 페이지마다 한 커밋), confirm 은 큐를 쓰기 청크로 넘깁니다. 아래 표는 그 «전»의 사유(기록):
+- 🔴 **취소를 받는지는 «선언»입니다**(`cancellable`). 화면은 거짓이면 **버튼을 아예 안 그립니다** — 눌러도 아무 일 없는 버튼보다 없는 버튼이 낫기 때문입니다. 🆕 **11-11 지금 거짓은 `file_reread` 하나입니다** — rescope 는 범위를 페이지로(그룹을 안 쪼갬, 페이지마다 한 커밋), confirm 은 큐를 쓰기 청크로 넘깁니다. 아래 표는 그 «전»의 사유(기록):
 
 | 연산 | 왜 못 멈추나 |
 |---|---|
@@ -531,7 +466,7 @@ curl -X POST -H "X-Admin-Token: $ASSY_ADMIN_TOKEN" -H "Content-Type: application
 
 ### 7.6 페이싱 — **「도는 동안 화면이 느리다」의 노브** (2026-08-31 신설)
 
-**`pace`** 파라미터를 든 연산은 **둘**입니다 — ⓐ `chain_replay`(R1, 2026-09-02 합류)와 ⓖ `ledger_backfill`. 값이 닫혀 있어 화면은 텍스트칸이 아니라 **선택지**를 그립니다. ⚠️ **수를 여기 핀으로 박지 마십시오** — 정본은 `server/admin/retroactive.py`의 `OPERATIONS`이고 `GET /admin/retroactive/operations`가 그대로 답합니다.
+**`pace`** 파라미터를 든 연산은 여럿입니다(11-11 셈 아홉 — 맨 위 목록). 값이 닫혀 있어 화면은 텍스트칸이 아니라 **선택지**를 그립니다. ⚠️ **수를 여기 핀으로 박지 마십시오** — 정본은 `server/admin/retroactive.py`의 `OPERATIONS`이고 `GET /admin/retroactive/operations`가 그대로 답합니다.
 
 | 이름 | 언제 |
 |---|---|

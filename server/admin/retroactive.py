@@ -179,9 +179,10 @@ def _pace_param():
     return _p("pace", required=False, choices=_pace_choices,
               help="how hard to push. Slowing yields between units of work so the "
                    "database stays free for everything else; the paces and their names "
-                   "are declared in server/config/pacing.json. Retroactive runs go ONE AT A "
-                   "TIME, so a slower pace also makes whatever is queued behind this "
-                   "wait that much longer")
+                   "are declared in server/config/pacing.json. A retroactive run waits for "
+                   "a run in flight that writes the same places (one whose places are not "
+                   "known waits for every run), so a slower pace also makes a queued run "
+                   "that shares them wait that much longer")
 
 
 # ---------------------------------------------------------------------------

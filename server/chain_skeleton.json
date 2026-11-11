@@ -2205,7 +2205,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "number"
+                                "hint": "number",
+                                "default": 5
                               }
                             }
                           ]
@@ -2222,15 +2223,16 @@
                     "fields": [
                       {
                         "key": "table",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "leaf",
-                          "hint": "free"
+                          "hint": "free",
+                          "default": "sys_ai_memory"
                         }
                       },
                       {
                         "key": "columns",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "record",
                           "fields": [
@@ -2239,7 +2241,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "purpose"
                               }
                             },
                             {
@@ -2247,7 +2250,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "situation"
                               }
                             },
                             {
@@ -2255,7 +2259,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "cell"
                               }
                             },
                             {
@@ -2263,7 +2268,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "ai"
                               }
                             },
                             {
@@ -2271,7 +2277,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "right"
                               }
                             },
                             {
@@ -2279,7 +2286,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "memo"
                               }
                             },
                             {
@@ -2287,7 +2295,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "who"
                               }
                             },
                             {
@@ -2295,7 +2304,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "at"
                               }
                             }
                           ]
@@ -3482,7 +3492,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "number"
+                                "hint": "number",
+                                "default": 5
                               }
                             }
                           ]
@@ -3499,15 +3510,16 @@
                     "fields": [
                       {
                         "key": "table",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "leaf",
-                          "hint": "free"
+                          "hint": "free",
+                          "default": "sys_ai_memory"
                         }
                       },
                       {
                         "key": "columns",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "record",
                           "fields": [
@@ -3516,7 +3528,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "purpose"
                               }
                             },
                             {
@@ -3524,7 +3537,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "situation"
                               }
                             },
                             {
@@ -3532,7 +3546,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "cell"
                               }
                             },
                             {
@@ -3540,7 +3555,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "ai"
                               }
                             },
                             {
@@ -3548,7 +3564,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "right"
                               }
                             },
                             {
@@ -3556,7 +3573,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "memo"
                               }
                             },
                             {
@@ -3564,7 +3582,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "who"
                               }
                             },
                             {
@@ -3572,7 +3591,8 @@
                               "required": false,
                               "node": {
                                 "kind": "leaf",
-                                "hint": "free"
+                                "hint": "free",
+                                "default": "at"
                               }
                             }
                           ]
