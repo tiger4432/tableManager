@@ -726,8 +726,8 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
         shell_key = shell_key if shell_key is not None else s_now.get("business_key_val")
         tag = "%s_%s" % (shell_key, shell) if shell_key else shell
         user_cols = sorted(c for c in both if c in bits)
-        heads = lines.layers(db, table, [shell, holder], user_cols) if user_cols else {}
-        spoke = lines.spoken(db, table, [shell]).get(shell, set())
+        heads = lines.layers(db, table, [shell, holder], user_cols, s=shape) if user_cols else {}
+        spoke = lines.spoken(db, table, [shell], s=shape).get(shell, set())
         talking = (WRITE, WITHDRAW)
         renamed = {src: crud.merged_layer_name(src, tag) for src in db.execute(
             select(ln.c.source_name).distinct().where(ln.c.row_id == shell, ln.c.source_name.is_not(None),
