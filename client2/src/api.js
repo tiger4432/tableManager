@@ -231,6 +231,30 @@ export function seatTableFollower(follow) {
   tableFollower = follow;
 }
 
+/** The open tables' store (table_state.js), seated by the page: a table left is parked in it, a table opened taken. */
+let tableStates = null;
+export function seatTableStates(store) {
+  tableStates = store;
+}
+
+/** What the open table is left as (owner 11-05 ㄱ): its filters, sort, columns (hidden · widths · order), scroll and
+ *  picked row, and its read pages - not while a transaction or a pivot view holds the rows (those are read again). */
+function leftAs() {
+  const api = state.gridApi;
+  const viewport = document.querySelector('#myGrid .ag-body-viewport');
+  const keepPages = !state.currentTransactionId && !state.pivotView && state.viewMode !== 'infinite';
+  return {
+    filterModel: api ? api.getFilterModel() : null,
+    readFilters: state.readFilters,
+    serverSort: state.serverSort,
+    columnState: api && typeof api.getColumnState === 'function' ? api.getColumnState() : null,
+    scrollTop: viewport ? viewport.scrollTop : 0,
+    selectedRowId: state.selectedCell ? state.selectedCell.rowId : null,
+    pages: keepPages ? [...state.pageCache.entries()] : [],
+    currentSkip: state.currentSkip, hasMoreData: state.hasMoreData, allDataLoaded: state.allDataLoaded,
+  };
+}
+
 /** The open table switched: false and nothing moved while staged edits stand (the dropdown back on the open table),
  *  true once the table is drawn. Every way in - boot, the dropdown, the Flow strip, a history jump - comes here. */
 export async function switchTable(tableName) {
@@ -241,6 +265,8 @@ export async function switchTable(tableName) {
   // Every way in (the dropdown, a history jump) leaves the opened table in the list, search or not.
   drawTableMenu(tableName);
   const leaving = state.currentTable;
+  if (tableStates && leaving && leaving !== tableName) tableStates.park(leaving, leftAs());
+  if (tableStates) tableStates.opened(tableName);
   state.currentTable = tableName;
   window.currentTable = tableName; // Expose globally for Desktop Wrapper
   elements.performanceLog.textContent = `Switching to ${tableName}...`;
@@ -279,8 +305,15 @@ export async function switchTable(tableName) {
   if (tableFollower) tableFollower(tableName);
   // Re-create empty grid to bind new columns
   renderGrid([]);
-  // Fetch initial chunk of data (reset skip to 0)
-  await fetchData(true);
+  // The table as it was left (owner 11-05 ㄱ): its columns, sort and filters put back without a read, then its held
+  // pages drawn from the grid's page cache - or, none held, read from the top as before.
+  const back = tableStates && leaving !== tableName ? tableStates.take(tableName) : { settings: null, data: null };
+  if (await putBack(back)) {
+    await fetchData(false);
+  } else {
+    await fetchData(true);
+  }
+  scrollBack(back.settings);
 
   // Reset active history tab to global when switching tables to avoid empty screen. Global is not the table's: the
   // held list is drawn again, read only when it is old (timeline.js readHistory).
@@ -295,6 +328,33 @@ export async function switchTable(tableName) {
   // at that point. The pairing and its `.catch` live in `syncReferenceRule`.
   syncReferenceRule();
   return true;
+}
+
+/** Put a table back as it was left: its columns (hidden · widths · order), its sort and its filters (set without a read -
+ *  dropGridFilters takes the grid's own event), and its held pages into the page cache. -> true when pages are held. */
+async function putBack({ settings, data }) {
+  const api = state.gridApi;
+  if (!settings || !api) return false;
+  if (Array.isArray(settings.columnState) && typeof api.applyColumnState === 'function') {
+    api.applyColumnState({ state: settings.columnState, applyOrder: true });
+  }
+  state.serverSort = settings.serverSort ?? null;
+  updateGridSortState();
+  if (settings.filterModel && Object.keys(settings.filterModel).length) await dropGridFilters(settings.filterModel);
+  if (!data) return false;
+  state.readFilters = settings.readFilters;
+  state.pageCache = new Map(data.pages);
+  state.currentSkip = data.currentSkip;
+  state.hasMoreData = data.hasMoreData;
+  state.allDataLoaded = data.allDataLoaded;
+  return state.pageCache.has(state.currentSkip);
+}
+
+/** The scroll a table was left at, once its rows are drawn. */
+function scrollBack(settings) {
+  if (!settings || !settings.scrollTop) return;
+  const viewport = document.querySelector('#myGrid .ag-body-viewport');
+  if (viewport) requestAnimationFrame(() => { viewport.scrollTop = settings.scrollTop; });
 }
 
 /** «Edit» on the Flow strip: the table's sys_tables row in the grid, its description cell focused (owner 11-08). */

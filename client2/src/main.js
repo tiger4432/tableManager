@@ -1,6 +1,7 @@
 import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+import { TableStateStore } from './table_state.js';
 import './tokens.css';
 import './style.css';
 import './base.css';
@@ -38,6 +39,7 @@ import {
   seatWorldTabs,
   pickGridWorld,
   seatTableFollower,
+  seatTableStates,
   rereadGrid,
   discardPendingEdits,
   applyPendingEdits,
@@ -240,6 +242,8 @@ async function init() {
         redoBannerFollows(table);
         if (formulaPop) formulaPop.close();
       });
+      // the open tables and what each was left as (owner 11-05 ㄱ) - in this browser; a refused storage keeps it for the page
+      seatTableStates(new TableStateStore({ storage: (() => { try { return window.localStorage; } catch { return null; } })() }));
       // Seated before the table list loads, so the first table switch finds it.
       const tabsHost = document.getElementById('world-tabs-host');
       if (tabsHost) seatWorldTabs(new WorldTabs(tabsHost, { doc: document, onPick: (name) => void pickGridWorld(name) }));
