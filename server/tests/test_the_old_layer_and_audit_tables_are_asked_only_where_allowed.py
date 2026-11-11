@@ -26,34 +26,45 @@ def _server_files():
             yield rel, path.read_text(encoding="utf-8", errors="replace")
 
 
-def _stem(rel):
-    return rel.rsplit("/", 1)[-1][:-3]
+def _module(rel):
+    """(dotted module of a server/-relative file, its package) - server/ is the import root."""
+    parts = rel[:-3].split("/")
+    if parts[-1] == "__init__":
+        return ".".join(parts[:-1]), parts[:-1]
+    return ".".join(parts), parts[:-1]
 
 
-def askers(names, table, files=None, allowed=()) -> set:
+def askers(names, table, files=None, allowed=(), via=None) -> set:
     """{"file:function"} of every function whose own body names one of `names` (a Name or an attribute) or `table`
     in SQL - a nested function counted as itself - and {"file:<module>"} of a module whose top-level statements do;
-    then every function or module calling one of those, until nothing is added (a call reaches a def by its name in
-    the same file, by `from <its module> import name`, or as `<its module or alias>.name`). A seat in `allowed`
-    («file:function» or «*:function») is counted, its callers are not. Docstrings are words, not questions.
-    `files`: [(relative path, source)] - server/ without its tests when None. THE census the questions ask."""
+    then every function or module calling one of those, until nothing is added. A call reaches a def by its full
+    dotted module (server/ the root, relative imports resolved): its name in the same module, `from <module> import
+    name`, or `<alias of module>.name`. A seat in `allowed` («file:function» or «*:function») is counted, its callers
+    are not. Docstrings are words, not questions. `files`: [(relative path, source)] - server/ without its tests when
+    None. `via`: filled with {caller: a callee it was counted through}. THE census the questions ask."""
     sql = re.compile(r"(?i)\b(from|into|update|join|table|on)\s+[\"`]?" + re.escape(table) + r"\b")
-    seats, calls, defs = {}, {}, {}                            # seat -> asks? · seat -> {(module or None, name)}
+    seats, calls, defs = {}, {}, {}                            # seat -> asks? · seat -> {(module, name)}
     for rel, source in (files if files is not None else _server_files()):
         tree = ast.parse(source)
         docs = {id(body[0].value) for node in ast.walk(tree)
                 if isinstance(node, (ast.Module, ast.ClassDef, *DEFS)) and (body := node.body)
                 and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
                 and isinstance(body[0].value.value, str)}
-        alias, imported = {}, {}                               # alias -> module stem · name -> module stem
+        own, package = _module(rel)
+        alias, imported = {}, {}                               # alias -> dotted module · name -> dotted module
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for a in node.names:
-                    alias[a.asname or a.name.split(".")[0]] = a.name.rsplit(".", 1)[-1]
+                    full = a.name.removeprefix("server.")
+                    alias[a.asname or full.split(".")[0]] = full if a.asname else full.split(".")[0]
             elif isinstance(node, ast.ImportFrom):
+                base = (node.module or "").removeprefix("server.")
+                if node.level:
+                    up = package[:len(package) - (node.level - 1)] if node.level > 1 else package
+                    base = ".".join([*up, *([base] if base else [])])
                 for a in node.names:
-                    imported[a.asname or a.name] = (node.module or "").rsplit(".", 1)[-1]
-                    alias[a.asname or a.name] = a.name
+                    imported[a.asname or a.name] = base
+                    alias[a.asname or a.name] = f"{base}.{a.name}" if base else a.name
 
         def read(nodes, inside=()):
             asks, called = False, set()
@@ -67,10 +78,10 @@ def askers(names, table, files=None, allowed=()) -> set:
                                 and (sub.value.strip() == table or sql.search(sub.value)))):
                         asks = True
                     if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
-                        called.add((imported.get(sub.func.id, _stem(rel)), sub.func.id))
+                        called.add((imported.get(sub.func.id, own), sub.func.id))
                     elif (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
-                          and isinstance(sub.func.value, ast.Name)):
-                        called.add((alias.get(sub.func.value.id, sub.func.value.id), sub.func.attr))
+                          and isinstance(sub.func.value, ast.Name) and sub.func.value.id in alias):
+                        called.add((alias[sub.func.value.id], sub.func.attr))
             return asks, called
 
         for node in ast.walk(tree):
@@ -79,17 +90,22 @@ def askers(names, table, files=None, allowed=()) -> set:
                           for x in ast.walk(sub)}
                 seat = f"{rel}:{node.name}"
                 seats[seat], calls[seat] = read([node], nested)
-                defs.setdefault((_stem(rel), node.name), set()).add(seat)
+                defs.setdefault((own, node.name), set()).add(seat)
         seat = f"{rel}:<module>"
         seats[seat], calls[seat] = read([s for s in tree.body if not isinstance(s, (ast.ClassDef, *DEFS))])
     found = {s for s, asks in seats.items() if asks}
     while True:
         reach = {s for s in found if s not in allowed and "*:" + s.split(":", 1)[1] not in allowed}
-        more = {caller for caller, called in calls.items() if caller not in found
-                and any(defs.get(c, set()) & reach for c in called)}
+        more = {}
+        for caller, called in calls.items():
+            hit = caller not in found and next((t for c in called for t in defs.get(c, ()) if t in reach), None)
+            if hit:
+                more[caller] = hit
         if not more:
             return found
-        found |= more
+        if via is not None:
+            via.update(more)
+        found |= set(more)
 
 
 def _outside(found, allowed) -> list:
@@ -107,6 +123,12 @@ def test_the_census_counts_sql_and_callers_not_words():
         "probe.py:<module>", "w.py:write", "caller.py:by_module", "caller.py:by_name"}
     assert askers({"CellSource"}, "cell_sources", files, allowed={"w.py:write"}) == {"probe.py:<module>",
                                                                                      "w.py:write"}
+    # two modules of one stem: only a/util asks - b/util's callers are not caught (a stem would join them)
+    same = [("a/util.py", "def f():\n    return db.query(CellSource)\n"), ("b/util.py", "def f():\n    return 1\n"),
+            ("c/one.py", "from a import util\ndef g():\n    return util.f()\n"),
+            ("c/two.py", "from ..b import util\ndef h():\n    return util.f()\n"),
+            ("b/three.py", "from .util import f\ndef k():\n    return f()\n")]
+    assert askers({"CellSource"}, "cell_sources", same) == {"a/util.py:f", "c/one.py:g"}
 
 
 def test_cell_sources_is_asked_only_by_the_copy_and_the_rollback():
