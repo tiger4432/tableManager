@@ -269,7 +269,11 @@ async function crossCases(chrome, ext, cb) {
     const r = await runOn(chrome, ext, `${cb.url}/x/?delay=${delay}`, t);
     const tails = {};
     for (const m of r.misses) tails[m.detail] = (tails[m.detail] || 0) + 1;
-    const line = `${label}: written ${r.written} · kept ${r.misses.length} · ended ${r.ended}${r.detail ? ` (${r.detail})` : ''} · reasons ${JSON.stringify(tails)}`;
+    // a written row whose content is another mail's: the reader's id is not the item's
+    const rows = await tableRows(cb.product, t.table);
+    const wrong = rows.filter((x) => String(x.reader_id) !== String(x.mail_id)).map((x) => `${x.mail_id}<-${x.reader_id}`);
+    const line = `${label}: written ${r.written} · kept ${r.misses.length} · ended ${r.ended}${r.detail ? ` (${r.detail})` : ''} · reasons ${JSON.stringify(tails)}`
+      + ` · rows ${rows.length} · another mail's content ${wrong.length} ${JSON.stringify(wrong.slice(0, 12))}`;
     console.log(`cross: ${line}`);
     said.push(line);
   }
