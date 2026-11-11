@@ -246,7 +246,10 @@ def _count_withdraw(db, params, scan_limit):
     table = params["table"]
     source = params["source"]
     written_by, columns = replay.unwritten_scope(params.get("rule"), table, params.get("columns"))
-    c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
+    try:
+        c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
+    except replay.ReplayRefused as e:          # a table with no line table: the run's own sentence
+        raise RetroactiveRefused(str(e)) from None
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,

@@ -1223,12 +1223,10 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
     """
     from sqlalchemy import func, select
 
-    from chain.cell_layer import _claimed_cells, claimed_lines
-    from database import lines, models
+    from chain.cell_layer import _claimed_cells, claimed_lines, refuse_without_lines
+    from database import models
 
-    if not lines.has_lines(db, table_name):     # sys_* keep no lines (lead 11-11 ㄱ)
-        logger.info("[withdraw] %s: no lines table - nothing to withdraw", table_name)
-        return {"cells_claimed": 0, "pinned": 0}
+    refuse_without_lines(db, table_name)
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
     rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages

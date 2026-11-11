@@ -138,14 +138,18 @@ def _stack(db, key, col, layers, pin=None):
     db.commit()
 
 
-def test_withdrawing_the_newest_reveals_the_layer_beneath(env):
-    """R2's edge (225b2c658): f01 B · f03 A · f10 A - withdraw f10, f03's A shows."""
+def test_withdrawing_the_newest_reveals_the_layer_beneath(env, monkeypatch):
+    """R2's edge (225b2c658): f01 B · f03 A · f10 A, written as lines - withdraw f10, f03's A shows."""
     from chain import cell_layer
+    from database import lines
+    from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
-    _write(env, "seed", [{"k": "K1"}])
-    env.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
+    lines.ensure_line_table(env, TABLE, TABLES[TABLE])
     env.commit()
-    _stack(env, "K1", "v", [("f01.csv", "B"), ("f03.csv", "A"), ("f10.csv", "A")])
-    cell_layer.withdraw_source(env, TABLE, "f10.csv", apply=True)
+    ticking_clock(monkeypatch)
+    for source, value in (("f01.csv", "B"), ("f03.csv", "A"), ("f10.csv", "A")):
+        _write(env, source, [{"k": "K1", "v": value}])
+    run = cell_layer.withdraw_source(env, TABLE, "f10.csv", columns=["v"], apply=True)
     env.expire_all()
+    assert run["cells_withdrawn"] == 1, "canary: f10 wrote the line its withdrawal takes back"
     assert _row(env, "K1").v == "A"

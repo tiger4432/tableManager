@@ -1,8 +1,9 @@
 """A whole replay's sweep (`replay._gone_maps`) finds the maps its rule's layers sit on in the rule's own chain lines
 (t__lines, `cell_layer._claimed_filter`) - the chain's name or its per-source-row name, written by the rule's
 declaration. A line whose columns are all withdrawn owns nothing: the rule took that map back already.
-A table that keeps no lines (`lines.has_lines` - sys_* tables, lead 11-11 ㄱ) has nothing to sweep, preview or
-withdraw, and says so in one line; the sweep goes on to its other tables. sqlite."""
+A table that keeps no lines (`lines.has_lines` - sys_* tables, lead 11-11 ㄱ) has nothing to sweep, says so in one
+line, and the sweep goes on to its other tables; a withdrawal's count, preview and run refuse it with one reason
+(`cell_layer.refuse_without_lines`, lead 11-11 ㄴ). sqlite."""
 import json
 import logging
 
@@ -69,14 +70,24 @@ def test_a_table_without_lines_has_nothing_to_sweep_and_says_so(db, caplog):
     assert [r.getMessage() for r in caplog.records if "no lines table" in r.getMessage()] == ["[ReplaySweep] gm_bare: no lines table - nothing to sweep"]
 
 
-def test_a_table_without_lines_is_previewed_and_withdrawn_as_nothing(db, caplog):
-    with caplog.at_level(logging.INFO, logger=replay.logger.name):
-        assert replay.count_withdrawable(db, BARE, "f.csv") == {"cells_claimed": 0, "pinned": 0}
-    said = []
-    run = cell_layer.withdraw_source(db, BARE, "f.csv", apply=True, log=said.append)
-    assert (run["cells_matched"], run["cells_withdrawn"], run["pinned_skipped"], run["rows_deleted"]) == (0, 0, 0, 0)
-    assert [r.getMessage() for r in caplog.records if "no lines table" in r.getMessage()] == ["[withdraw] gm_bare: no lines table - nothing to withdraw"]
-    assert said[0] == "[withdraw] gm_bare: no lines table - nothing to withdraw"
+REASON = "gm_bare: has no line table - nothing written to it can be withdrawn here"
+
+
+def test_a_table_without_lines_gets_one_reason_from_the_count_the_preview_and_the_run(db):
+    from admin import retroactive
+
+    said = {}
+    with pytest.raises(cell_layer.ReplayRefused) as count:
+        replay.count_withdrawable(db, BARE, "f.csv")
+    said["count"] = str(count.value)
+    with pytest.raises(retroactive.RetroactiveRefused) as preview:
+        retroactive.count(db, "withdraw", {"table": BARE, "source": "f.csv"})
+    said["preview"] = str(preview.value)
+    for apply in (False, True):
+        with pytest.raises(cell_layer.ReplayRefused) as run:
+            cell_layer.withdraw_source(db, BARE, "f.csv", apply=apply, log=lambda m: None)
+        said["run" if apply else "dry run"] = str(run.value)
+    assert said == dict.fromkeys(("count", "preview", "dry run", "run"), REASON)
     assert db.query(models.DYNAMIC_TABLES[BARE]).count() == 1, "the run left the table's row alone"
 
 

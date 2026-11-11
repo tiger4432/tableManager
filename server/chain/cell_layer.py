@@ -433,6 +433,15 @@ def resolve_target(table_name: str, columns: list = None):
     return model, col_types
 
 
+def refuse_without_lines(db, table_name: str) -> None:
+    """THE reason a withdrawal - its count, its preview, its run - gives on a table whose line table is not built
+    (lead 11-11 ㄴ): one sentence, raised as `ReplayRefused`."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        raise ReplayRefused(f"{table_name}: has no line table - nothing written to it can be withdrawn here")
+
+
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
@@ -466,14 +475,9 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
     from sqlalchemy import select
 
-    from database import lines
-
-    q = None
-    if lines.has_lines(db, table_name):
-        lt, bits = claimed_lines(db, table_name)
-        q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
-    else:                                       # sys_* keep no lines (lead 11-11 ㄱ)
-        log(f"[withdraw] {table_name}: no lines table - nothing to withdraw")
+    refuse_without_lines(db, table_name)
+    lt, bits = claimed_lines(db, table_name)
+    q = select(lt).where(*_claimed_filter(lt, bits, source_name, columns, written_by))
     asked = [chunk_size]
 
     class _Asked:
@@ -486,7 +490,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     def read(size):
         """(the page's rows this source claims, their claims), None past the last row."""
         asked[0] = size
-        page = next(pages, None) if q is not None else None
+        page = next(pages, None)
         if page is None:
             return None
         ids = [row_id for (row_id,) in page]
