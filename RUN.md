@@ -8,6 +8,8 @@
 > 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds <값>, which the write refuses: <사유> is expected - nothing of this page was copied; tell the lead
 > 뜻        옛 층 값을 오늘의 쓰기가 받지 않는다(숫자 칸의 글자 · 무한대 숫자). 그 쪽은 한 줄도 안 옮겼다
 > 할 일      그 문장 그대로 총괄에게. 다시 돌리지 않는다
+> 진행 줄     12,400 / 380,000 cells · 2,100 cells/s · ~3 min left — 단위는 «칸(cells)» 이지 행이 아니다
+> 뜻        큰 표를 고르면 오래 걸린다. 남은 시간은 진행 줄의 cells/s 로 본다
 > ```
 
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
