@@ -30,6 +30,7 @@ from chain.enrichment import backfill, candidates                   # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.database import Base                                  # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 T = "ln_inv"
 TABLES = {T: {"business_key": "k", "composite_key_source": ["k"],
@@ -61,6 +62,7 @@ def fixture_db():
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    line_tables.build(engine, T)                   # a cell's layers are its lines' (A 11-11)
     mapper_sdk.register("ln_mapper", _body)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
@@ -103,8 +105,10 @@ def _drain(db):
 def _x(db, k="K1"):
     db.expire_all()
     row = db.query(models.DYNAMIC_TABLES[T]).filter_by(business_key_val=k).one()
-    layers = {s.source_name: s.value for s in db.query(models.CellSource).filter_by(
-        table_name=T, row_id=row.row_id, column_name="x")}
+    from database import lines
+
+    layers = {name: layer["value"] for name, layer in lines.layers(db, T, [row.row_id], columns=["x"]).get(
+        (row.row_id, "x"), {}).items()}
     return row.x, layers
 
 
