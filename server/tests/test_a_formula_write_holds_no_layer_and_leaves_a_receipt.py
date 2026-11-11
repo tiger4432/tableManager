@@ -135,8 +135,18 @@ def test_the_history_says_formula_and_the_rows_its_receipt_names(db, rules):
             ] == [(T, "formula %s.c" % T, "formula")]
     ids = _ids(db)
     assert audit_history.changed_rows(db, T, tx) == 2
-    assert [(e["row_id"], e["business_key"], e["updated_by"]) for e in audit_history.group_rows(db, T, tx, 10)] == [
+    entries = audit_history.group_rows(db, T, tx, 10)
+    assert [(e["row_id"], e["business_key"], e["updated_by"]) for e in entries] == [
         (ids["k1"], "k1", "formula %s.c" % T), (ids["k2"], "k2", "formula %s.c" % T)]
+    assert len({e["id"] for e in entries}) == 2                  # one entry, one id - one receipt line names both (D)
+
+
+def test_a_receipt_names_its_rows_as_text(db):
+    """A receipt's row_ids meet a text row_id column (PG: text = integer is an error) - read as text in the one seat."""
+    db.add(models.AuditLog(table_name=T, row_id="-", column_name=RECEIPT_COLUMN, transaction_id="tx-int",
+                           new_value={"row_ids": [7, "r8"]}, source_name="s", updated_by="s"))
+    db.commit()
+    assert list(crud.receipt_row_ids(db, T, "tx-int")) == ["7", "r8"]
 
 
 def test_the_grid_and_the_export_select_the_rows_a_receipt_names(db, rules):

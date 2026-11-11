@@ -461,7 +461,8 @@ def group_rows(db, table_name, group, limit) -> list:
                                                                                             sa.String))
         keys = dict(db.execute(sa.select(now.c.row_id, now.c.business_key_val).where(
             now.c.row_id.in_([row_id for row_id, _r in named]))).fetchall())
-        out += [dict(r, table_name=table_name, row_id=row_id, business_key=keys.get(row_id)) for row_id, r in named]
+        out += [dict(r, id="%s:%s" % (r["id"], row_id), table_name=table_name, row_id=row_id,  # one entry, one id (D)
+                     business_key=keys.get(row_id)) for row_id, r in named]
     return out
 
 

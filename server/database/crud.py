@@ -2364,7 +2364,8 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
 
 def receipt_row_ids(db, table_name, transaction_id) -> dict:
     """{row_id: its receipt line's "id" · "source_name" · "updated_by" · "timestamp" · "transaction_id"} - the rows a
-    transaction's receipts name in `table_name` (`receipt_log`'s row_ids), in the order named. A formula's write keeps
+    transaction's receipts name in `table_name` (`receipt_log`'s row_ids, as text - they meet a text row_id column),
+    in the order named. A formula's write keeps
     its receipt and no line a row (owner 11-12 ㄴ «영수증만»), so «the rows it changed» are these - THE reader: the grid's
     transaction filter and the history's row count and row list ask it. An event line read, not a cell's (the
     old-table gate allows this one seat)."""
@@ -2379,7 +2380,7 @@ def receipt_row_ids(db, table_name, transaction_id) -> dict:
         said = {"id": str(log.id), "source_name": log.source_name, "updated_by": log.updated_by,
                 "timestamp": log.timestamp, "transaction_id": log.transaction_id}
         for row_id in (((log.new_value or {}).get("row_ids") or ()) if isinstance(log.new_value, dict) else ()):
-            out.setdefault(row_id, said)
+            out.setdefault(str(row_id), said)
     return out
 
 
