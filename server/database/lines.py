@@ -672,7 +672,7 @@ def winners_sql(s: dict, table_name: str, exclude_source: str = None):
                      *([inner.c.source_name != exclude_source] if exclude_source is not None else []))
     lost = case((candidate, 0), else_=1)
     cols = SimpleNamespace(ranks_as=inner.c.ranks_as, owner_rule=inner.c.owner_rule, at=inner.c.at,
-                           source_name=inner.c.source_name)
+                           source_name=inner.c.source_name, line_id=inner.c.line_id)
     order = [lost] + [sql(cols, inner.c.unowned == 1) for _, sql in crud.rank_terms(table_name)]
     ranked = (select(inner.c.row_id, inner.c.col, inner.c.line_id, inner.c.value, lost.label("lost"), inner.c.pin,
                      func.row_number().over(partition_by=[inner.c.row_id, inner.c.col], order_by=order).label("rn"))
