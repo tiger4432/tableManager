@@ -28,7 +28,7 @@ import event_constants                                               # noqa: E40
 from admin import retroactive                                        # noqa: E402
 from chain import cell_layer, replay                                 # noqa: E402
 from chain import ingestion_worker as worker                         # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
 from database.context import channel, retroactive_run                # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
@@ -72,8 +72,8 @@ def _edit_note(world, row_id, value):
 
 
 def _person_layers(world, row_id):
-    return sorted((s.column_name, s.value or "") for s in world["db"].query(models.CellSource).filter_by(
-        table_name=hw.OFFICIAL, row_id=row_id, source_name="user"))
+    return sorted((column, said["user"]["value"] or "") for (_r, column), said
+                  in lines.layers(world["db"], hw.OFFICIAL, [row_id]).items() if "user" in said)
 
 
 def test_1_every_source_gone_the_official_row_goes(world, caplog):
@@ -88,9 +88,9 @@ def test_1_every_source_gone_the_official_row_goes(world, caplog):
     assert _official(world) == {}
     assert "[ChainShell] table=%s rows_deleted=1 - nothing but the chain's keys and values another chain attached was left" % hw.OFFICIAL in [
         r.getMessage() for r in caplog.records]
-    history = world["db"].query(models.AuditLog).filter_by(table_name=hw.OFFICIAL, row_id=row_id,
-                                                           column_name="DELETE").all()
-    assert [h.updated_by for h in history] == [cell_layer.SHELL_DELETER]
+    history = world["db"].execute(text('SELECT written_by FROM "%s" WHERE row_id = :r AND line_kind = \'deleted\''
+                                       % lines.lines_relation(hw.OFFICIAL)), {"r": row_id}).all()
+    assert [by for (by,) in history] == [cell_layer.SHELL_DELETER]
     assert hw.said(world) == []
     deletions = [e for e in world["db"].query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last)
                  if e.table_name == hw.OFFICIAL and e.event_type == "DELETE"]
