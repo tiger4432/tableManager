@@ -105,3 +105,30 @@ def test_a_key_the_backfill_folds_onto_a_persons_row_merges_as_the_backfills_act
     # one row now (its moved lines keep their own batch, one act): its two cells, and no new act on them
     assert (after["measured_cells"], after["recorrected_cells"]) == (2, before["recorrected_cells"] == 0 and 0), after
 
+
+def test_a_value_no_line_said_that_a_backfill_merge_keeps_is_the_backfills_not_a_persons(env, tmp_path, monkeypatch):
+    """A (11-11, after 4b5f7ac67): the merged-away row's value no line said becomes a line of the merge's writer -
+    named after the merge's actor, the backfill, not «user (<tag>)»: a person's layer name with the backfill as its
+    author and actor would count as a person's act."""
+    import sqlalchemy as sa
+
+    from database import crud, lines
+
+    _declare(tmp_path, monkeypatch, {})
+    _write(env, PLAIN, [{"k": "K-01", "v": "wafer-01"}, {"k": "K.1", "v": "wafer-02"}], source=crud.USER_SOURCE)
+    env.execute(sa.text("UPDATE \"%s\" SET note = 'n' WHERE k = 'K.1'" % PLAIN))   # a value no line said
+    env.commit()
+    _declare(tmp_path, monkeypatch, DECLARED)
+    before = crud.get_recorrection_stats(env, window_days=100000)
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    env.expire_all()
+    assert [(row.k, row.note) for row in _rows(env, PLAIN)] == [("K-01", "n")], "canary: merged, the value kept"
+    said = env.execute(sa.text('SELECT source_name, written_by, batch FROM "%s" WHERE batch LIKE :b ORDER BY line_id'
+                               % lines.lines_relation(PLAIN)), {"b": replay.NOTATION_BACKFILL_SOURCE + "%"}).all()
+    by_backfill = [source for source, who, _batch in said if who == replay.NOTATION_BACKFILL_SOURCE
+                   and source != crud.COLLISION_SOURCE]
+    assert by_backfill and all(source.startswith(replay.NOTATION_BACKFILL_SOURCE + " (") for source in by_backfill), said
+    # one row now: its key and value cells the person's (moved lines, one act each), the note no person's act
+    after = crud.get_recorrection_stats(env, window_days=100000)
+    assert (before["measured_cells"], after["measured_cells"], after["recorrected_cells"]) == (4, 2, 0), after
+

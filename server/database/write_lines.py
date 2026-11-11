@@ -636,7 +636,10 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
             elif it["line_kind"] == MARK:          # a pin: a person choosing a layer, its cells as they show now
                 explicit.update({c: new[row_id].get(c) for c in it.get("columns") or ()})
                 human.update(it.get("columns") or ())
-        source = next((items[i].get("source_name") for i in sorted(targets) if targets[i] == row_id), None)
+        # a value no line said is the merge's writer's: the actor's name when one acts for the author (a backfill
+        # re-spelling a person's key) - never «user (<tag>)», a person's layer the person did not write (A 11-11)
+        source = next((items[i].get("acted_by") or items[i].get("source_name")
+                       for i in sorted(targets) if targets[i] == row_id), None)
         _shell, holder_old, holder_new = _merge_into(
             db, table, cfg, shape, keeps, row_id, holder, explicit=explicit, human=human, source_name=source,
             written_by=who, at=at, transaction_id=transaction_id,
