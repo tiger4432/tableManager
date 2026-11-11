@@ -126,7 +126,7 @@ def test_on_postgresql_the_line_builds_them_and_the_rules_list_said_so_before(pg
                     if row["table"] == TABLE}
         assert {name: declared.get(name) for name in ("idx_%s_map_key" % TABLE, "idx_%s_decision_key" % TABLE)} == {
             "idx_%s_map_key" % TABLE: models.INDEX_MISSING, "idx_%s_decision_key" % TABLE: models.INDEX_MISSING}
-        assert synthesis.rules_without_key_index(pg_session, stood) == {RULE["name"]: ([TABLE], None)}
+        assert synthesis.rules_without_key_index(pg_session, stood) == {RULE["name"]: ([TABLE], None, [])}
         assert synthesis.no_key_index_line([TABLE]) == synthesis.NO_KEY_INDEX_LINE % TABLE
         factory = sessionmaker(bind=engine)
         db = factory()
