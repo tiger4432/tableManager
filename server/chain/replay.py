@@ -47,16 +47,15 @@ THE USER LAYER IS THE WHOLE SAFETY PROPERTY
       injection, not asserted.
 
 R3 - RE-MATERIALISE THE RESOLUTION OVER LAYERS THAT ARE ALREADY STORED
-    R1 and R2 both change WHAT IS STORED. R3 changes nothing stored: it re-runs
-    `crud.compute_priority_value` over the layers a cell already has and repairs
-    the materialised display column when the answer moved. It exists because
+    R1 and R2 both change WHAT IS STORED. R3 changes no line: it asks `lines.merge`
+    (the one «what shows» every write stamps) what each cell's lines show and
+    repairs t's column and its won_by when the answer moved. It exists because
     that answer DID move - `compute_priority_value` used to resolve a tie by dict
     insertion order, which handed every tie to the incumbent, so a corrected
     re-delivery was stored and silently discarded (measured 2026-08-11: 200 of
     200 tied cells on `assy_qa` displayed the older value). Fixing the resolver
     repairs only future writes; the already-materialised wrong values need this
-    pass. It shares `_load_cell_state` and `_resolve_cell` with R2 - R2 is
-    exactly R3 with one layer excluded - and it refuses to touch a cell with
+    pass. It reads the layers by `_load_cell_state` as R2 does, and it refuses to touch a cell with
     fewer than two layers, because such a cell has no tie and a cell with zero
     layers would resolve to a blank.
 
@@ -90,7 +89,7 @@ import event_constants
 #    그 한 줄이 네 모듈짜리 고리의 마지막 이음매였다. 연산이 둘보다 «아래»로 내려갔다.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
-from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, key_columns, resolve_target, withdraw_source
+from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, key_columns, resolve_target, withdraw_source
 from error_said import told
 
 # ⚰️ `WRITE_CHUNK = 1000` stood here - how many proposals this module wrote at once.
@@ -2500,12 +2499,16 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     `max_report`, and `truncated["changes"]` says whether the list ran out of budget.
     The AuditLog rows are the unbounded record.
     """
-    from database import crud
+    from sqlalchemy import bindparam, select, update
+
+    from database import crud, lines
 
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name, columns)
     wanted_cols = set(columns) if columns else None
+    cfg, s = crud.TABLE_CONFIG.get(table_name) or {}, None
+    keeps = lines.has_lines(db, table_name)
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "rows_scanned": 0, "pages": 0, "cells_examined": 0,
@@ -2583,7 +2586,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 for row_id in page_ids:
                     cell_sources.setdefault((row_id, column), {})
 
-            page_changed = False
+            gated = []
             for cell, srcs in cell_sources.items():
                 row_id, col = cell
                 if wanted_cols is not None and col not in wanted_cols:
@@ -2597,19 +2600,34 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 # would blank the column.
                 if len(srcs) < 2 and col not in (formula_removed or ()):
                     continue
+                gated.append((cell, srcs, row))
+            # «what shows» is the lines' one answer, the one every write stamps into t with its won_by (lead 11-11:
+            # judged here again by compute_priority_value, a tie went by source name and won_by kept the old line)
+            if gated and keeps and s is None:
+                s = lines.shape(db, table_name, cfg)
+            shown = lines.merge(db, table_name, cfg, sorted({c[0] for c, _, _ in gated}), s=s) \
+                if gated and keeps else {}
 
+            page_changed, won = False, {}
+            for cell, srcs, row in gated:
+                row_id, col = cell
                 stats["cells_examined"] += 1
                 pin = pins.get(cell)
                 if pin is not None:
                     stats["pinned_examined"] += 1
-                decision = _resolve_cell(table_name, col_types, row, col, srcs, pin)
-                if not decision["changed"]:
+                said = shown.get(row_id, {}).get(col)
+                if said is None and col not in (formula_removed or ()):
+                    continue                   # the merge leaves it to t: no line spoke, or its pinned source has none
+                new_value, line_id = said or (None, None)
+                old_value = getattr(row, col, None)
+                if not crud.values_differ(old_value, new_value, col_types.get(col, "string")):
                     continue
+                decision = {"old_value": old_value, "new_value": new_value, "line_id": line_id,
+                            "top_source": next((n for n, d in srcs.items() if d.get("line_id") == line_id), None)}
 
                 # WHY the change happened, so the report separates "this repair did it"
                 # from "this cell was already out of step with its own layers". A tie is
-                # the defect's signature: two or more layers sharing the winning rank,
-                # which is where the old code fell through to dict order.
+                # the defect's signature: two or more layers sharing the winning rank.
                 top_rank = crud.get_source_priority(decision["top_source"], table_name)
                 tied = sum(1 for s in srcs if crud.get_source_priority(s, table_name) == top_rank)
                 reason = "tiebreak" if tied > 1 else "stale_materialisation"
@@ -2620,8 +2638,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 else:
                     stats["changed_by_stale_materialisation"] += 1
                 # A PINNED cell that still moves is worth its own counter and it is not a
-                # contradiction: the pin decides WHICH LAYER wins (`compute_priority_value`
-                # short-circuits on it), it does not freeze the materialised column. So this
+                # contradiction: the pin decides WHICH LAYER wins (`lines.merge` takes only
+                # the pinned source), it does not freeze the materialised column. So this
                 # counts cells where the display had drifted away from the layer a human
                 # explicitly chose - the pin is being honoured here, not overridden. It was
                 # previously called `pinned_unchanged` while being incremented on exactly the
@@ -2646,8 +2664,18 @@ def recompute_display_values(db, table_name: str, columns: list = None,
 
                 if apply:
                     _write_resolved(db, table_name, row, col, decision, tx_id)
+                    won.setdefault(row_id, {})[col] = line_id
                     page_changed = True
 
+            if apply and won and keeps:        # the value and the line it is, together - as write_lines._merge_now
+                now = s["table"]
+                held = dict(db.execute(select(now.c.row_id, now.c[lines.WON_BY])
+                                       .where(now.c.row_id.in_(sorted(won)))).all())
+                db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
+                    {lines.WON_BY: bindparam("__won")}), [
+                    {"__row": r, "__won": {**{c: l for c, l in (held.get(r) or {}).items() if c not in cols},
+                                           **{c: l for c, l in cols.items() if l is not None}}}
+                    for r, cols in won.items()])
             if apply and page_changed:
                 db.commit()
 
