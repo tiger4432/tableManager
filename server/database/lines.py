@@ -289,6 +289,37 @@ def index_name(table_name: str, suffix: str) -> str:
     return _checked(f"{lines_relation(table_name)}_{suffix}")
 
 
+def head_index_name(table_name: str, chunks: int) -> str:
+    """The head index's name for `chunks` head chunks - its WHERE names every one, so a new chunk is a new index
+    (`head_index`); one chunk keeps the first name, `t__lines_h`."""
+    return index_name(table_name, "h" if chunks <= 1 else f"h{chunks}")
+
+
+def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
+    """PostgreSQL: t__lines' head index for its chunks as they stand, built outside any transaction by the one
+    CONCURRENTLY builder (`models._ensure_one_index_once` - its INVALID repair, its waits, its cut) with the earlier
+    chunks' head indexes as its leftovers, taken away first: writes are never held, and head reads go by _ra while it
+    builds (lead 11-11 - a 65th column on a table of many lines). ensure_declared asks it for a table of more than
+    one chunk; sqlite builds it in alter_columns. -> the builder's answer."""
+    import logging
+
+    from sqlalchemy.orm import Session
+    from sqlalchemy.schema import CreateIndex
+
+    from . import models
+
+    with Session(engine) as db:
+        s = shape(db, table_name, table_cfg)
+        db.rollback()
+    name = head_index_name(table_name, s["chunks"])
+    head = next(i for i in s["lines"].indexes if i.name == name)
+    ddl = str(CreateIndex(head).compile(dialect=engine.dialect))
+    return models._ensure_one_index_once(
+        engine, name, ddl.replace("CREATE INDEX", "CREATE INDEX CONCURRENTLY IF NOT EXISTS", 1), "line head",
+        say=say or logging.getLogger(__name__).info, table=lines_relation(table_name),
+        leftovers=[head_index_name(table_name, n) for n in range(1, s["chunks"])])
+
+
 def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's line table as a Core Table on a private MetaData, with the bit map it was built from. A column t already
     holds is typed as STORED (the stored kind is what line_text reads). Assigns slots to new declared columns (the
@@ -319,7 +350,7 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     Index(index_name(table_name, "b"), lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
     Index(index_name(table_name, "p"), lines.c.at, postgresql_include=["row_id", "batch"],
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
-    Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
+    Index(head_index_name(table_name, chunks), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
     # «the cells these source rows fed» (cells_stamped_by) - only a line that carries its source row is in it
     Index(index_name(table_name, "i"), lines.c.input_row,
@@ -495,13 +526,14 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     for family in BIT_FAMILIES:
         for name in bit_columns(family, after)[before:]:
             statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
-    if after > before:                           # the head index's WHERE names every head chunk
-        statements.append(f'DROP INDEX IF EXISTS "{index_name(table_name, "h")}"')
+    rebuild = after > before and dialect != "postgresql"     # PostgreSQL: head_index, outside this transaction
+    if rebuild:                                  # the head index's WHERE names every head chunk
+        statements += [f'DROP INDEX IF EXISTS "{head_index_name(table_name, n)}"' for n in range(1, after)]
     for stmt in statements:
         conn.exec_driver_sql(stmt)
     s = shape(db, table_name, table_cfg)
-    if after > before:
-        head = next(i for i in s["lines"].indexes if i.name == index_name(table_name, "h"))
+    if rebuild:
+        head = next(i for i in s["lines"].indexes if i.name == head_index_name(table_name, after))
         from sqlalchemy.schema import CreateIndex
 
         ddl = str(CreateIndex(head).compile(dialect=conn.dialect))
@@ -698,6 +730,8 @@ def ensure_declared(engine, tables=None) -> dict:
             have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
             missing = [c for c in (cfg.get("column_types") or {}) if value_column(c) not in have] if built else []
         if built and not missing:
+            if sum(1 for c in have if c.startswith("head_")) > 1 and engine.dialect.name == "postgresql":
+                head_index(engine, name, cfg, say=log.info)
             continue
 
         def work(conn, name=name, cfg=cfg, built=built, missing=missing):
@@ -710,6 +744,11 @@ def ensure_declared(engine, tables=None) -> dict:
 
         try:
             db_safety.short_ddl(engine, name, work, "lines")
+            if built and engine.dialect.name == "postgresql":
+                with Session(engine) as db:
+                    wide = chunk_count(db, name) > 1
+                if wide:
+                    head_index(engine, name, cfg, say=log.info)
         except ValueError as err:
             refused[name] = str(err)
             log.error("[Lines] %s", err)

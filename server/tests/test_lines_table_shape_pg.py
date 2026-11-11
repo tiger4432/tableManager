@@ -106,8 +106,11 @@ def test_retype_changes_t_only(db):
     assert kinds == {"lt": "double precision", "lt__lines": "character varying"}
 
 
-def test_a_65th_column_rebuilds_the_head_index_on_pg(db):
-    """A fresh name: slots outlive drop_line_table, so «lt» already holds slots from the tests above."""
+def test_a_65th_column_builds_the_head_index_concurrently_on_pg(db, pg_engine):
+    """A fresh name: slots outlive drop_line_table, so «lt» already holds slots from the tests above. The column DDL
+    leaves the head index alone; head_index builds the new chunk's one CONCURRENTLY and takes the old away."""
+    from database import models
+
     cfg = {"column_types": {f"c{i}": "string" for i in range(64)}}
     make_table(db, "lt65", cfg)
     lines.ensure_line_table(db, "lt65", cfg)
@@ -115,10 +118,12 @@ def test_a_65th_column_rebuilds_the_head_index_on_pg(db):
     wider = {"column_types": {**cfg["column_types"], "c64": "string"}}
     said = lines.alter_columns(db, "lt65", wider, add=["c64"])
     db.commit()
-    assert any(x.startswith("CREATE INDEX") and "head_1" in x for x in said), said
-    where = db.execute(text("SELECT indexdef FROM pg_indexes WHERE indexname = 'lt65__lines_h' "
-                            "AND schemaname = current_schema()")).scalar()
-    assert "head_1" in where
+    assert not any("INDEX" in x for x in said), said                     # nothing in the column DDL's transaction
+    assert lines.head_index(pg_engine, "lt65", wider) == models.INDEX_BUILT
+    names = dict(db.execute(text("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'lt65__lines' "
+                                 "AND schemaname = current_schema()")).all())
+    assert "head_1" in names["lt65__lines_h2"] and "lt65__lines_h" not in names
+    assert lines.head_index(pg_engine, "lt65", wider) == models.INDEX_PRESENT
 
 
 def test_two_writers_noting_one_new_source_leave_one_row(pg_engine):
