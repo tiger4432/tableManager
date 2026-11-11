@@ -310,7 +310,7 @@ def cells_stamped_by(db, table_name, origin_row_ids) -> list:
 
     tables = [table_name] if table_name else [t for t, cfg in (crud.TABLE_CONFIG or {}).items()
                                                if isinstance(cfg, dict) and lines.keeps_lines(t, cfg)]
-    return [(t, *cell) for t in tables for cell in lines.stamped_by(db, t, origin_row_ids)]
+    return lines.stamped_by(db, tables, origin_row_ids)
 
 
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE,

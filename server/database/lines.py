@@ -193,23 +193,51 @@ def physical_kinds(db, relation: str) -> dict:
 
 def bit_map(db, table_name: str) -> dict:
     """{column: bit} of t's live columns."""
-    rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(
-        LineColumn.table_name == table_name, LineColumn.retired_at.is_(None))).all()
-    return {name: bit for name, bit in rows}
+    return bit_maps(db, [table_name]).get(table_name, {})
+
+
+def bit_maps(db, table_names) -> dict:
+    """{table: {column: bit}} of these tables' live columns - one read for any number of tables."""
+    out = {}
+    for name, column, bit in db.execute(select(LineColumn.table_name, LineColumn.column_name, LineColumn.bit).where(
+            LineColumn.table_name.in_(list(table_names)), LineColumn.retired_at.is_(None))).all():
+        out.setdefault(name, {})[column] = bit
+    return out
 
 
 def has_lines(db, table_name: str) -> bool:
     """Whether t's lines are BUILT - t__lines exists AND t carries won_by - THE answer every read of won_by or
-    t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
-    unique business key index, an orphaned t__lines). Not the slots: those are assigned before building and outlive
+    t__lines asks (`_catalogue`). keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses
+    a table (an orphaned t__lines, a lock not had). Not the slots: those are assigned before building and outlive
     drop_line_table."""
+    return table_name in _catalogue(db, [table_name])
+
+
+def _catalogue(db, table_names) -> dict:
+    """{table: its t__lines' head chunks} of the tables whose lines are BUILT - THE predicate has_lines asks, read
+    for any number of tables at once: a walk over every declared table (cells_stamped_by None, 1,183 on the box)
+    paid three catalogue reads a table (C board 11-11: 24 ms a table, 28.5 s a lap)."""
     from sqlalchemy import inspect
 
-    if table_name_refusal(table_name):
-        return False
-    insp = inspect(db.connection())
-    return (insp.has_table(lines_relation(table_name)) and insp.has_table(table_name)
-            and WON_BY in {c["name"] for c in insp.get_columns(table_name)})
+    names = [n for n in dict.fromkeys(table_names) if not table_name_refusal(n)]
+    if not names:
+        return {}
+    rels = names + [lines_relation(n) for n in names]
+    conn = db.connection()
+    if conn.dialect.name == "postgresql":
+        rows = conn.execute(text(
+            "SELECT c.relname, a.attname FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid "
+            "WHERE c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema()) "
+            "AND c.relkind IN ('r', 'p') AND c.relname = ANY(:rels) AND a.attnum > 0 AND NOT a.attisdropped "
+            "AND (a.attname = :won OR a.attname LIKE 'head\\_%')"), {"rels": rels, "won": WON_BY}).all()
+    else:
+        insp = inspect(conn)
+        rows = [(rel, c["name"]) for rel in rels if insp.has_table(rel) for c in insp.get_columns(rel)]
+    held = {}
+    for rel, column in rows:
+        held.setdefault(rel, set()).add(column)
+    return {n: sum(1 for i in range(len(held[lines_relation(n)])) if f"head_{i}" in held[lines_relation(n)])
+            for n in names if WON_BY in held.get(n, ()) and lines_relation(n) in held}
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -694,36 +722,41 @@ def ensure_declared(engine, tables=None) -> dict:
     return refused
 
 
-def stamped_by(db, table_name: str, origin_row_ids) -> list:
-    """[(row_id, column, source_name, input_row)] - the cells of t these source rows feed now: each line carrying one
-    of them as its input_row, its head columns it did not withdraw (the index t__lines_i). Reads only."""
+def stamped_by(db, table_names, origin_row_ids) -> list:
+    """[(table, row_id, column, source_name, input_row)] - the cells of these tables these source rows feed now: each
+    line carrying one of them as its input_row, its head columns it did not withdraw (the index t__lines_i). The
+    catalogue and the slots are read once for all the tables (`_catalogue`, `bit_maps`); a table, one data query.
+    Reads only."""
     from sqlalchemy import or_
 
     ids = list(dict.fromkeys(str(i) for i in origin_row_ids or () if i))
-    if not ids or not has_lines(db, table_name):
+    if not ids:
         return []
-    chunks = _built_chunks(db.connection(), table_name)
-    heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
-    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
-    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
-               Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+    built = _catalogue(db, table_names)
+    maps = bit_maps(db, list(built))
     postgres = db.get_bind().dialect.name == "postgresql"
     out = []
-    for i in range(0, len(ids), 1000):
-        if postgres:
-            # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
-            #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
-            picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
-            rows = db.execute(text(
-                f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
-                f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
-                f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
-        else:
-            rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
-                                               or_(*[lt.c[h] != 0 for h in heads]))).mappings()
-        for r in rows:
-            cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
-            out.extend((r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
+    for table_name in [t for t in dict.fromkeys(table_names) if t in built]:
+        chunks = built[table_name]
+        heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
+        by_bit = {bit: col for col, bit in maps.get(table_name, {}).items()}
+        lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
+                   Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+        for i in range(0, len(ids), 1000):
+            if postgres:
+                # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
+                #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
+                picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
+                rows = db.execute(text(
+                    f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
+                    f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
+                    f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
+            else:
+                rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
+                                                   or_(*[lt.c[h] != 0 for h in heads]))).mappings()
+            for r in rows:
+                cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
+                out.extend((table_name, r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
     return out
 
 

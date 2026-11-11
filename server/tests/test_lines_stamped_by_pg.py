@@ -39,7 +39,7 @@ def test_each_origin_is_asked_through_the_input_row_index(db):
     listener = lambda conn, cursor, statement, *a: sent.append(statement)       # noqa: E731
     event.listen(db.get_bind(), "before_cursor_execute", listener)
     try:
-        got = lines.stamped_by(db, NAME, ["o1", "o2", "o1"])
+        got = [cell[1:] for cell in lines.stamped_by(db, [NAME], ["o1", "o2", "o1"])]
     finally:
         event.remove(db.get_bind(), "before_cursor_execute", listener)
     assert sorted(got) == [("r1", "lot", "chain_ingestion", "o1"), ("r1", "qty", "chain_ingestion", "o1"),
