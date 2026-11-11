@@ -31,7 +31,7 @@ from admin import auth
 from chain import replay
 import event_constants
 from admin import retroactive
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from tests.support.enrich_decl import write_rules  # noqa: E402
 
 TOKEN = "correct-horse-battery-staple"
@@ -165,8 +165,16 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="retro_seed"):
         updates=items, transaction_id=tx_id, silent=True))
 
 
+def _said(db, table, column=None):
+    """The standing layers of `table` - lines.layers over all its rows, one a (row, column, source)."""
+    ids = [r for (r,) in db.query(models.DYNAMIC_TABLES[table].row_id)]
+    return [types.SimpleNamespace(row_id=r, column_name=c, source_name=s, value=d["value"], updated_by=d["updated_by"])
+            for (r, c), said in lines.layers(db, table, ids, [column] if column else None).items()
+            for s, d in said.items()]
+
+
 def _layer_rows(db, source_name="chain_ingestion"):
-    """`cell_sources` rows a given source holds on the target table.
+    """The layers a given source holds on the target table (`_said`).
 
     THE WITNESS FOR "did R1 write?", and the materialised column is NOT.
     `chain_ingestion` is priority 4 and `pipeline_parser` (what the fixtures seed
@@ -175,9 +183,7 @@ def _layer_rows(db, source_name="chain_ingestion"):
     that watched the column would therefore pass against a count route that wrote
     on every request - which is exactly what injection caught it doing.
     """
-    return db.query(models.CellSource).filter(
-        models.CellSource.table_name == "retro_test_target",
-        models.CellSource.source_name == source_name).all()
+    return [layer for layer in _said(db, "retro_test_target") if layer.source_name == source_name]
 
 
 def _target_row(db, bk):
@@ -612,7 +618,7 @@ def _derived_rows(db):
 
 
 def _backfill_layer_rows(db):
-    """`cell_sources` rows the backfill holds. The witness for "did it write?".
+    """The layers the backfill holds (`_said`). The witness for "did it write?".
 
     Not the materialised column, and not even the derived row count on its own -
     the file's closing note generalises it: the displayed value is not a witness
@@ -621,10 +627,9 @@ def _backfill_layer_rows(db):
     from chain import enrichment
 
     # the chain's layer the decide's rule owns (owner 11-06 step 2)
-    return [s for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == "retro_enrich_derived",
-        models.CellSource.updated_by == enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]).all()
-        if crud.layer_ranks_as(s.source_name) == crud.CHAIN_SOURCE]
+    rule = enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]
+    return [s for s in _said(db, "retro_enrich_derived")
+            if s.updated_by == rule and crud.layer_ranks_as(s.source_name) == crud.CHAIN_SOURCE]
 
 
 class TestTheEnrichmentBackfillRouteIsReachable:
@@ -1075,11 +1080,8 @@ class TestAdminCannotRemoveAHumansValue:
         db.expire_all()
         assert crud.clean_str_value(_target_row(db, "P1").reserved) == \
             crud.clean_str_value(99), "a human's value was removed"
-        assert "user" in {
-            s.source_name for s in db.query(models.CellSource).filter(
-                models.CellSource.table_name == "retro_test_target",
-                models.CellSource.column_name == "reserved").all()}, \
-            "the user's cell_sources row was deleted"
+        assert "user" in {s.source_name for s in _said(db, "retro_test_target", "reserved")}, \
+            "the user's layer was withdrawn"
 
     def test_a_human_pinned_source_survives_a_run_through_admin(self, retro_env):
         """The second refusal, end to end on the worker path.
@@ -1103,10 +1105,7 @@ class TestAdminCannotRemoveAHumansValue:
         assert out["status"] == "ok"
         assert out["result"]["pinned_skipped"] == 1
         assert out["result"]["cells_withdrawn"] == 0
-        assert "chain_ingestion" in {
-            s.source_name for s in db.query(models.CellSource).filter(
-                models.CellSource.table_name == "retro_test_target",
-                models.CellSource.column_name == "reserved").all()}, \
+        assert "chain_ingestion" in {s.source_name for s in _said(db, "retro_test_target", "reserved")}, \
             "a source a human pinned was withdrawn anyway"
 
     def test_an_unpinned_source_IS_withdrawn(self, retro_env):

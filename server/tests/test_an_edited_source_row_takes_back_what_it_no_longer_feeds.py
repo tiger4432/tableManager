@@ -26,7 +26,7 @@ import event_constants                                              # noqa: E402
 import mapper_sdk                                                   # noqa: E402
 from chain import cell_layer                                        # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 from database.database import Base                                  # noqa: E402
 from support import hold_world as hw                                # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
@@ -140,8 +140,10 @@ def _row(db, k):
 
 
 def _layers(db, k):
-    return sorted((s.column_name, s.source_name, s.origin_row_id) for s in db.query(models.CellSource)
-                  .filter_by(table_name=T, row_id=_row(db, k).row_id))
+    """(column, source, source row) of the row's standing layers - its head lines that say a cell (lines.layers)."""
+    row_id = _row(db, k).row_id
+    return sorted((c, s, d["origin_row_id"]) for (_r, c), said in lines.layers(db, T, [row_id]).items()
+                  for s, d in said.items())
 
 
 def test_one_of_two_rules_filling_their_own_row_reruns_and_the_other_column_stays(db):

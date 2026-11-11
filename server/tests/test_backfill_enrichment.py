@@ -39,7 +39,7 @@ import pytest
 
 from chain.enrichment import backfill as bf
 from chain import enrichment
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from tests.support.enrich_decl import write_rules  # noqa: E402
 from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
 
@@ -139,9 +139,17 @@ def bkfl_env(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(BKFL_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
 
     rules_path = write_rules(tmp_path, monkeypatch, RULES_FILE)
     return db_session
+
+
+def _layer_list(db, row_id):
+    """The row's standing layers - its head lines that say a cell (lines.layers), one a (column, source)."""
+    import types
+    return [types.SimpleNamespace(column_name=c, source_name=s, value=d["value"], updated_by=d["updated_by"])
+            for (_r, c), said in lines.layers(db, "bkfl_test_derived", [row_id]).items() for s, d in said.items()]
 
 
 def _seed_source(db, rows, tx_id=None, silent=True):
@@ -280,13 +288,7 @@ def test_apply_creates_exactly_new_combinations(bkfl_env):
     assert set(pre) == {"EQP0_T0"}
     pre_row = pre["EQP0_T0"]
     pre_snapshot = {c.name: getattr(pre_row, c.name) for c in pre_row.__table__.columns}
-    pre_sources = sorted(
-        (s.column_name, s.source_name, str(s.value))
-        for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == "bkfl_test_derived",
-            models.CellSource.row_id == pre_row.row_id,
-        ).all()
-    )
+    pre_sources = sorted((s.column_name, s.source_name, str(s.value)) for s in _layer_list(db, pre_row.row_id))
 
     stats = bf.run_backfill(db, _rule(), apply=True, log=lambda *_: None)
     assert stats["created_rows"] == 3
@@ -327,13 +329,7 @@ def test_apply_creates_exactly_new_combinations(bkfl_env):
     post_snapshot = {c.name: getattr(post_row, c.name) for c in post_row.__table__.columns}
     assert post_snapshot == pre_snapshot
     assert post_snapshot["chip_count"] == 2
-    post_sources = sorted(
-        (s.column_name, s.source_name, str(s.value))
-        for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == "bkfl_test_derived",
-            models.CellSource.row_id == post_row.row_id,
-        ).all()
-    )
+    post_sources = sorted((s.column_name, s.source_name, str(s.value)) for s in _layer_list(db, post_row.row_id))
     assert post_sources == pre_sources
 
 
@@ -347,10 +343,7 @@ def test_apply_provenance_and_priority(bkfl_env):
 
     # Every cell layer written by the backfill is the chain's layer, signed by the decide's dedup rule - the layer a
     # live recount writes, so it overwrites them and a blank recount takes them back (lead bc9710454 가).
-    srcs = db.query(models.CellSource).filter(
-        models.CellSource.table_name == "bkfl_test_derived",
-        models.CellSource.row_id == new_row.row_id,
-    ).all()
+    srcs = _layer_list(db, new_row.row_id)
     assert srcs, "backfilled cells must be recorded in the layering system"
     assert {crud.layer_ranks_as(s.source_name) for s in srcs} == {crud.CHAIN_SOURCE}
     assert {crud.layer_owner(s.source_name)[0] for s in srcs} == {enrichment.config.synthesized_rule_names("bkfl_rule")[0]}

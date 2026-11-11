@@ -20,7 +20,9 @@ if SERVER_DIR not in sys.path:
 from chain import cell_layer, replay                                       # noqa: E402
 from chain import ingestion_worker as worker                               # noqa: E402
 from database.database import Base                                         # noqa: E402
-from database import crud, models, schemas                                 # noqa: E402
+from sqlalchemy import text                                                # noqa: E402
+
+from database import crud, lines, models, schemas                          # noqa: E402
 
 SRC, TGT = "wd_src", "wd_tgt"
 TABLES = {
@@ -55,6 +57,17 @@ def _copy(db, key, origin, source=crud.CHAIN_SOURCE):
     return db.query(models.DYNAMIC_TABLES[TGT]).filter_by(business_key_val=key).one().row_id
 
 
+def _said(db, row_id):
+    """{(column, source)} of the row's standing layers - its head lines that say a cell (lines.layers)."""
+    return {(c, s) for (_r, c), said in lines.layers(db, TGT, [row_id]).items() for s in said}
+
+
+def _deleted_by(db, row_id):
+    """Who wrote the row's «deleted» lines - its deletion in the row's history."""
+    return [by for (by,) in db.execute(text('SELECT written_by FROM "%s" WHERE row_id = :r AND line_kind = :k'
+                                            % lines.lines_relation(TGT)), {"r": row_id, "k": "deleted"})]
+
+
 def _rows(db):
     return sorted((r.business_key_val, r.k, r.v) for r in db.query(models.DYNAMIC_TABLES[TGT]))
 
@@ -78,8 +91,7 @@ def test_a_withdrawal_that_empties_a_row_deletes_it(db, why):
 
     assert stats["rows_deleted"] == 1
     assert _rows(db) == [("b", "b", "x")], "the row src-a fed stands with its key blank"
-    history = db.query(models.AuditLog).filter_by(table_name=TGT, row_id=gone, column_name="DELETE").all()
-    assert [h.updated_by for h in history] == [cell_layer.SHELL_DELETER]
+    assert _deleted_by(db, gone) == [cell_layer.SHELL_DELETER]
     deletions = [e.payload for e in db.query(models.DatabaseOutbox).filter_by(table_name=TGT, event_type="DELETE")
                  if e.id > mark]
     assert [(d["updated_by"], d["row_ids"]) for d in deletions] == [(cell_layer.SHELL_DELETER, [gone])]
@@ -107,7 +119,7 @@ def test_a_blank_recount_leaves_the_row_to_its_write(db):
 def test_r2_deletes_the_row_it_empties_and_its_dry_run_said_that_many(db):
     _copy(db, "a", "src-a")
     _copy(db, "b", None, source="file_b.csv")
-    [layer] = {s.source_name for s in db.query(models.CellSource).filter_by(table_name=TGT, row_id=_copy(db, "a", "src-a"))}
+    [layer] = {s for _c, s in _said(db, _copy(db, "a", "src-a"))}
     db.rollback()
 
     dry = replay.withdraw_source(db, TGT, layer, apply=False)
@@ -122,8 +134,8 @@ def test_r2_withdraws_a_page_and_deletes_its_shells_in_one_commit(db, monkeypatc
     """총괄 g33 · g85: R2 committed its withdrawal page by page and the shells it left once at the end - a death
     between left the rows standing with their keys blank. Now a page's shells go in that page's commit."""
     row_id = _copy(db, "a", "src-a")
-    [layer] = {s.source_name for s in db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id)}
-    layers = db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id, source_name=layer).count()
+    [layer] = {s for _c, s in _said(db, row_id)}
+    layers = sum(1 for _c, s in _said(db, row_id) if s == layer)
     db.rollback()
 
     def dies(*_args):
@@ -134,4 +146,4 @@ def test_r2_withdraws_a_page_and_deletes_its_shells_in_one_commit(db, monkeypatc
     db.rollback()
 
     assert _rows(db) == [("a", "a", "x")], "the page's withdrawal outlived its shells' death"
-    assert db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id, source_name=layer).count() == layers == 2
+    assert sum(1 for _c, s in _said(db, row_id) if s == layer) == layers == 2
