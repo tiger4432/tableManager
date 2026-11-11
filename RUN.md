@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11b] **감사 로그 패널이 오래 «Updating» 이면 — 인덱스가 있는지 읽고, 없으면 짓는다** — git pull · 재기동 필요 없음
+>
+> ```
+> 무엇     감사 패널의 첫 걷기가 쓰는 인덱스 idx_audit_recent_groups 가 옛 DB 에는 없다 (create_all 은 있는 표에
+>          인덱스를 더하지 않는다). 없으면 걷기가 audit_logs 전체를 정렬하다 5 s 에 끊기고 처음부터 다시 걷는다
+>          같은 문이 행 · 셀 이력 인덱스 둘(idx_audit_row_history · idx_audit_cell_history)도 같이 보고 짓는다
+> 명령     cd server
+>          python migrations/add_audit_recent_groups_index.py            <- 먼저. 읽기만 한다
+>          python migrations/add_audit_recent_groups_index.py --apply    <- missing 이 있을 때만
+> 답의 뜻  present  있다. 할 일 없음 — 그래도 패널이 오래 «Updating» 이면 api 로그의 «[Audit] recent walk cut» 줄을 보낸다
+>          missing  없다 -> --apply. 몇 분 걸릴 수 있다 (CONCURRENTLY — 그동안 쓰기는 안 막힌다)
+>          invalid  지어지다 끊긴 인덱스다. 읽기에 안 쓰이고 쓰기만 무겁게 한다. 문은 아무것도 지우지 않는다 ->
+>                   «!! ... is INVALID» 줄을 총괄에게 보낸다 (DROP INDEX CONCURRENTLY <이름> 뒤 --apply 다시. 끝 코드 1)
+>          Not PostgreSQL  SQLite 다. 할 일 없음
+> 볼 것    --apply 뒤 «=== after ===» 아래 셋이 present. 그 뒤 패널 첫 열기가 얼마나 빨라지는지는 운영에서 안 쟀다
+> 끄기     없음 — 인자 없이는 읽기만 한다. 지은 인덱스를 없애려면 DROP INDEX CONCURRENTLY <이름>
+> 다리     셀소스 갈아엎기 뒤에는 감사 패널이 audit_batches 를 읽는다. 이 문은 그때까지의 다리다
+> ```
+>
+> ---
+>
 > ## [11-11] **필수 한정어 칸이 빈 행도 그 문장만 빠진다 — 행째 거절 아님** — git pull · API 재기동
 >
 > ```
