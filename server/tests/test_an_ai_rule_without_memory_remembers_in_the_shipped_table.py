@@ -206,3 +206,19 @@ def test_a_blank_memory_column_is_its_roles_default_at_save_and_load(world, tmp_
     monkeypatch.setattr(worker, "RULES_PATH", str(path))
     half = {r.get("name"): r for r in worker.load_chain_rules()}["eval_blank" + rule_shape.COMPANION_SUFFIX]
     assert ask_rule.written_columns(half) == ["purpose", "situation", "cell", "ai", "right", "who", "at"]
+
+@pytest.mark.parametrize("columns", ["   ", [None], float("nan")], ids=["spaces", "a list of null", "nan"])
+def test_a_blank_shaped_columns_is_the_defaults_and_drops_nothing(world, tmp_path, monkeypatch, columns):
+    """QA 11-11 recheck: a blank-shaped `columns` passed the shape check, then `.items()` on it raised into the
+    loader's «unified grammar unreadable» - every unified rule of the file fell."""
+    from chain import ingestion_worker as worker
+
+    memory = {"table": "am_memory", "columns": columns}
+    path = tmp_path / "chain_rules.json"
+    path.write_text(json.dumps({"rules": [_ask("eval_a", None), _ask("eval_blank", memory),
+                                          _ask("eval_b", WRITTEN)]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(path))
+    stood = {r.get("name") for r in worker.load_chain_rules()}
+    assert {"eval_a", "eval_blank", "eval_b"} <= stood, sorted(stood)
+    rules, refusal, _notes = rule_shape.expand_declaration(_ask("eval_blank", memory))
+    assert rules and not refusal, refusal
