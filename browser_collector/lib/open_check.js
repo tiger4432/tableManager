@@ -35,6 +35,21 @@ export function notOpenYet({ before, after, isShown, pair }) {
   return null;
 }
 
+/** After an item not opened: its content may still come and would read as the next item's (lead 11-11, X2). Look for
+ *  `limitMs` -> true when the print changed and then stood `quietMs`, or never changed; false while it still moves. */
+export async function waitStill(print, { limitMs, quietMs = 1000, everyMs = 100, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  const end = now() + limitMs;
+  let last = print();
+  let movedAt = null;
+  for (;;) {
+    if (movedAt !== null && now() - movedAt >= quietMs) return true;
+    if (now() >= end) return movedAt === null;
+    await sleep(everyMs);
+    const p = print();
+    if (p !== last) { last = p; movedAt = now(); }
+  }
+}
+
 /** Look until the item is open or `limitMs` passes -> {opened: true} | {opened: false, detail}. */
 export async function waitOpened(look, { before, limitMs, everyMs = 100, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const end = now() + limitMs;

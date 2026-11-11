@@ -59,6 +59,7 @@ const EXT_MUTANTS = {
   frame: ['background.js', "  if (frame === '') return [0];", '  return [0];'],
   delete: ['background.js', '[[TABLES.fields, () => fieldRowsOf(p, t.name)], [TABLES.templates,', '[[TABLES.templates,'],
   shown: ['lib/open_check.js', 'return shown(el, win); });', 'return true; });'],
+  settle: ['lib/page_dom.js', 'if (this.late && !(await waitStill(', 'if (false && !(await waitStill('],
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -259,25 +260,33 @@ async function crossCases(chrome, ext, cb) {
   const cases = [
     ['X1 two areas, opens in 0.15 s', 150, {}],
     ['X2 two areas, opens in 4 s (wait 3 s)', 4000, {}],
+    ['X6 two areas, opens in 5 s (wait 3 s)', 5000, {}],
     ['X3 one area that two mails in a row share (the title)', 150, { content: '#reader-head' }],
     ['X4 frame pattern of the same port as the page', 150, { frame: `${cb.url.replace('http://', '')}/api/v2/mail*` }],
     ['X5 no frame pattern (the top page)', 150, { frame: '' }],
   ];
   const said = [];
+  const got = {};
   for (const [label, delay, over] of cases) {
     const t = { ...base, ...over, table: `bench_cross_${said.length + 1}` };
+    const began = Date.now();
     const r = await runOn(chrome, ext, `${cb.url}/x/?delay=${delay}`, t);
+    const seconds = Math.round((Date.now() - began) / 1000);
     const tails = {};
     for (const m of r.misses) tails[m.detail] = (tails[m.detail] || 0) + 1;
     // a written row whose content is another mail's: the reader's id is not the item's
     const rows = await tableRows(cb.product, t.table);
     const wrong = rows.filter((x) => String(x.reader_id) !== String(x.mail_id)).map((x) => `${x.mail_id}<-${x.reader_id}`);
     const line = `${label}: written ${r.written} · kept ${r.misses.length} · ended ${r.ended}${r.detail ? ` (${r.detail})` : ''} · reasons ${JSON.stringify(tails)}`
-      + ` · rows ${rows.length} · another mail's content ${wrong.length} ${JSON.stringify(wrong.slice(0, 12))}`;
+      + ` · rows ${rows.length} · another mail's content ${wrong.length} ${JSON.stringify(wrong.slice(0, 12))} · ${seconds} s`;
+    got[label.slice(0, 2)] = { rows: rows.length, wrong: wrong.length, kept: r.misses.length, seconds };
     console.log(`cross: ${line}`);
     said.push(line);
   }
   eq('X every case measured', said.length, cases.length);
+  eq('X1 opens in time - 36 rows, each its own mail', [got.X1.rows, got.X1.wrong], [36, 0]);
+  eq('X2 X6 opens later than the wait - no row holds the mail before it; every mail kept or its own',
+    [got.X2.wrong, got.X2.rows + got.X2.kept, got.X6.wrong, got.X6.rows + got.X6.kept], [0, 36, 0, 36]);
 }
 
 async function frameCases(chrome, ext, ask, fb) {

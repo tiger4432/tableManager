@@ -112,6 +112,9 @@ async function cases(lib) {
   let looks = 0;
   out.Owait = [await lib.open.waitOpened(() => ({ isShown: true, after: ++looks > 2 ? 'new' : 'old' }), { before: 'old', limitMs: 1000, everyMs: 5 }),
     await lib.open.waitOpened(() => ({ isShown: true, after: 'old' }), { before: 'old', limitMs: 60, everyMs: 5 })];
+  // the item before's late content: a clock of our own, 100 ms a look, 3 s to wait
+  const still = (printAt) => { let ms = 0; return lib.open.waitStill(() => printAt(ms), { limitMs: 3000, now: () => ms, sleep: async (d) => { ms += d; } }); };
+  out.Ostill = [await still((ms) => (ms < 1000 ? 'item 1' : 'item 2')), await still(() => 'item 1'), await still((ms) => `tick ${Math.floor(ms / 500)}`)];
 
   const known = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two'), mail('m3', 'Three')], ['m2']);
   out.Bknown = { rows: known.b.rows.map((r) => [r.key, r.cells.subject, r.cells.unread]), skipped: known.b.skipped, opened: known.opened };
@@ -181,6 +184,7 @@ const real = await cases(await load(LIB));
 eq('V text, a regex group, no match, blank, none, a group of digits', real.V, ['a', 'unread', null, null, null, '42']);
 eq('O not shown · unchanged · another item (the pair) · open', real.O, ['content not shown', 'content did not change', 'content is another item', null]);
 eq('O waiting - opens on the third look; never changes -> the reason in its seconds', real.Owait, [{ opened: true }, { opened: false, detail: 'content did not change in 0 s' }]);
+eq('O after a miss - the late content came and stood 1 s: still; never came: still; still moving at the wait: not', real.Ostill, [true, true, false]);
 eq('B a key the table has is skipped unopened', real.Bknown, { rows: [['m1', 'One', null], ['m3', 'Three', null]], skipped: 1, opened: ['One', 'Three'] });
 eq('B an item that does not open is kept «not_opened» - never the previous item\'s content; «unread» read before opening',
   real.Bstale, { rows: [['m1', 'One', null], ['m3', 'Three', 'unread']], misses: [['not_opened', 'content did not change in 0 s', 1, 'm2']] });
