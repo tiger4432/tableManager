@@ -47,17 +47,17 @@ THE USER LAYER IS THE WHOLE SAFETY PROPERTY
       injection, not asserted.
 
 R3 - RE-MATERIALISE THE RESOLUTION OVER LAYERS THAT ARE ALREADY STORED
-    R1 and R2 both change WHAT IS STORED. R3 changes no line: it asks `lines.merge`
-    (the one «what shows» every write stamps) what each cell's lines show and
-    repairs t's column and its won_by when the answer moved. It exists because
+    R1 and R2 both change WHAT IS STORED. R3 changes no line: it merges rows again
+    through write_lines' door (`_merges_again` - the one «what shows» every write
+    stamps, won_by with it) and writes each cell it moved a history line. It exists because
     that answer DID move - `compute_priority_value` used to resolve a tie by dict
     insertion order, which handed every tie to the incumbent, so a corrected
     re-delivery was stored and silently discarded (measured 2026-08-11: 200 of
     200 tied cells on `assy_qa` displayed the older value). Fixing the resolver
     repairs only future writes; the already-materialised wrong values need this
-    pass. It reads the layers by `_load_cell_state` as R2 does, and it refuses to touch a cell with
-    fewer than two layers, because such a cell has no tie and a cell with zero
-    layers would resolve to a blank.
+    pass. It reads the layers by `_load_cell_state` as R2 does and asks only the rows
+    holding a cell of two layers or more (or a removed formula's column); such a row is
+    merged whole - the row is the unit (lead 11-11).
 
 HOW A WITHDRAWAL BECOMES VISIBLE (not silent)
     Every cell R2 changes gets an `AuditLog` entry with the WITHDRAWN source in
@@ -1257,15 +1257,14 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
 
-def _write_resolved(db, table_name, row, col, decision, tx_id):
-    """R3's write of a cell whose stored layers answer another value: the column and one history line
-    (`R3_AUDIT_SOURCE`, `resolved:<winner>`)."""
+def _write_resolved(db, table_name, row_id, col, decision, tx_id, business_key=None):
+    """R3's history line of a cell its merge moved (`R3_AUDIT_SOURCE`, `resolved:<winner>`, old -> new) - the value
+    itself is written by write_lines (the allowed exception: a cell's old -> new, lead 11-11)."""
     from database import crud
 
-    setattr(row, col, decision["new_value"])
-    crud.create_audit_log(db, table_name, row.row_id, col, decision["old_value"], decision["new_value"],
+    crud.create_audit_log(db, table_name, row_id, col, decision["old_value"], decision["new_value"],
                           R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}", transaction_id=tx_id,
-                          business_key=getattr(row, "business_key_val", None))
+                          business_key=business_key)
 
 
 #: Who deleted, in the history of each row `fold_duplicate_rows` takes.
@@ -2499,15 +2498,19 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     `max_report`, and `truncated["changes"]` says whether the list ran out of budget.
     The AuditLog rows are the unbounded record.
     """
-    from sqlalchemy import bindparam, select, update
+    import contextlib
 
+    from sqlalchemy import select
+
+    import session_contract
     from database import crud, lines
+    from database.write_lines import write_lines
 
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name, columns)
     wanted_cols = set(columns) if columns else None
-    cfg, s = crud.TABLE_CONFIG.get(table_name) or {}, None
+    declared = (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     keeps = lines.has_lines(db, table_name)
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
@@ -2601,28 +2604,33 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 if len(srcs) < 2 and col not in (formula_removed or ()):
                     continue
                 gated.append((cell, srcs, row))
-            # «what shows» is the lines' one answer, the one every write stamps into t with its won_by (lead 11-11:
-            # judged here again by compute_priority_value, a tie went by source name and won_by kept the old line)
-            if gated and keeps and s is None:
-                s = lines.shape(db, table_name, cfg)
-            shown = lines.merge(db, table_name, cfg, sorted({c[0] for c, _, _ in gated}), s=s) \
-                if gated and keeps else {}
-
-            page_changed, won = False, {}
-            for cell, srcs, row in gated:
-                row_id, col = cell
                 stats["cells_examined"] += 1
-                pin = pins.get(cell)
-                if pin is not None:
+                if pins.get(cell) is not None:
                     stats["pinned_examined"] += 1
-                said = shown.get(row_id, {}).get(col)
-                if said is None and col not in (formula_removed or ()):
-                    continue                   # the merge leaves it to t: no line spoke, or its pinned source has none
-                new_value, line_id = said or (None, None)
-                old_value = getattr(row, col, None)
-                if not crud.values_differ(old_value, new_value, col_types.get(col, "string")):
-                    continue
-                decision = {"old_value": old_value, "new_value": new_value, "line_id": line_id,
+            # «what shows» is the one merge: the rows asked about are merged again through write_lines' own door
+            # (`_merges_again` - a mark of no column; `blank` the removed formula's columns, owner 11-11 ㄱ), so the
+            # merge, a declared formula, won_by, the claim's row lock and the batch audit go the way every write's go
+            # (lead 11-11 ㄱ). The row is the unit (lead 11-11): every cell of it the merge moves is a change here.
+            items = [{"row_id": r, "line_kind": "mark", "columns": [], "blank": list(formula_removed or ()),
+                      "written_by": R3_AUDIT_SOURCE} for r in sorted({c[0] for c, _, _ in gated})]
+            changed = {}
+            if items:
+                with contextlib.nullcontext() if apply else session_contract.held(db):
+                    changed = write_lines(db, table_name, items, kind="recompute", transaction_id=tx_id)["changed"]
+            won = {}
+            if changed and keeps:
+                now = lines.current_table(db, table_name, crud.TABLE_CONFIG.get(table_name) or {})
+                won = {r: dict(w or {}) for r, w in db.execute(
+                    select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(sorted(changed))))}
+
+            for row_id, col in sorted((r, c) for r, change in changed.items() for c in declared
+                                      if crud.values_differ((change.get("old") or {}).get(c),
+                                                            (change.get("new") or {}).get(c), declared[c])):
+                change, row = changed[row_id], by_id.get(row_id)
+                srcs, pin = cell_sources.get((row_id, col), {}), pins.get((row_id, col))
+                line_id = won.get(row_id, {}).get(col)
+                decision = {"old_value": (change.get("old") or {}).get(col),
+                            "new_value": (change.get("new") or {}).get(col), "line_id": line_id,
                             "top_source": next((n for n, d in srcs.items() if d.get("line_id") == line_id), None)}
 
                 # WHY the change happened, so the report separates "this repair did it"
@@ -2663,21 +2671,13 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                         True, None, "report budget (max_report) reached")
 
                 if apply:
-                    _write_resolved(db, table_name, row, col, decision, tx_id)
-                    won.setdefault(row_id, {})[col] = line_id
-                    page_changed = True
+                    _write_resolved(db, table_name, row_id, col, decision, tx_id,
+                                    getattr(row, "business_key_val", None))
 
-            if apply and won and keeps:        # the value and the line it is, together - as write_lines._merge_now
-                now = s["table"]
-                held = dict(db.execute(select(now.c.row_id, now.c[lines.WON_BY])
-                                       .where(now.c.row_id.in_(sorted(won)))).all())
-                db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
-                    {lines.WON_BY: bindparam("__won")}), [
-                    {"__row": r, "__won": {**{c: l for c, l in (held.get(r) or {}).items() if c not in cols},
-                                           **{c: l for c, l in cols.items() if l is not None}}}
-                    for r, cols in won.items()])
-            if apply and page_changed:
+            if apply and items:                # a merge that moved only won_by is written too
                 db.commit()
+            elif not apply and items:
+                db.rollback()                  # the preview's page, unwritten - its row locks let go
 
     if not apply:
         db.rollback()
