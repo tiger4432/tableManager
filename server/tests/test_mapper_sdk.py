@@ -84,7 +84,7 @@ def test_a_composite_target_gets_no_business_key_val_so_the_declaration_assemble
 
 
 def test_a_plain_target_gets_one_because_nothing_else_will_lift_it():
-    """And here the opposite: `_get_or_create_row` reads `row_id`/`business_key_val` only,
+    """And here the opposite: the old row lookup reads `row_id`/`business_key_val` only,
     so a key sitting in `updates` gives the write no identity at all."""
     out = _emit(PLAIN, pd.DataFrame([{"part_no": "P1", "qty": 5}]))
 

@@ -207,7 +207,7 @@ class GeneralUpdateItem(BaseModel):
     # from JSON or reach a response. `crud.assemble_composite_business_key` is its only
     # writer and it fills it only when the two keys DIFFER - which happens on exactly one
     # shape, a caller renaming a row by naming its OLD key while sending new key parts.
-    # `crud._get_or_create_row` reads the assembled key first and this one only when that
+    # The row claim (`write_lines._claim`) reads the assembled key first and this one only when that
     # named no row, so the identity ruling (188/190) stands and the rename keeps its
     # address (S-90).
     _supplied_business_key_val: Optional[Any] = PrivateAttr(default=None)

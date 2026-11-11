@@ -42,7 +42,7 @@ guarding a WRITE, and there is no longer a write:
   - `key_column` refused a derived column that was the business key or a member of
     `composite_key_source`, because a derived value must never move a row's
     identity. Nothing is written now, so no identity can move. `business_key_val`
-    is computed by `crud._update_row_business_key` from the STORED values and this
+    is computed by the key rebuild (`write_lines._rekey`) from the STORED values and this
     module never touches storage.
 Both refusals were therefore vacuous, not relaxed, and this paragraph said: if a future
 round ever writes a folded value anywhere, both must come back.

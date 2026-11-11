@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """총괄 1495534c9: a write's layer dict always carries `origin_row_id` (09-16, e1318d28d) and a
-merge's did not, so a batch holding both sent `bulk_upsert_cell_sources` a ragged list - a
+merge's did not, so a batch holding both sent the old layer upsert a ragged list - a
 CompileError when the first mapping in sort order had the key, the whole chunk's origin NULL
 without a word when it had not. A merge carries it now (the shell's layer keeps its own; a
-person's backup none), and the one upsert seat gives every mapping the same keys."""
+person's backup none). The upsert seat retired with the lines (11-11)."""
 import os
 import sys
 
@@ -63,24 +63,6 @@ def _gate(db, table, holder_first):
 @pytest.mark.parametrize("holder_first", [True, False], ids=["holder-sorts-first", "write-sorts-first"])
 def test_a_merge_and_a_write_in_one_batch_keep_every_origin_sqlite(db_session, holder_first):
     _gate(db_session, SAFE, holder_first)
-
-
-@pytest.mark.parametrize("first_has_it", [True, False], ids=["first-has-origin", "first-lacks-origin"])
-def test_the_upsert_seat_gives_a_ragged_list_one_key_set(db_session, first_has_it):
-    """The seat itself, with a list a future site might send ragged again: no error, and the
-    mapping that carries an origin keeps it."""
-    def layer(row_id, **more):
-        return {"table_name": SAFE, "row_id": row_id, "column_name": "bn", "source_name": "x",
-                "value": "v", "updated_by": "t", "ingested_at": None, **more}
-
-    with_origin, without = layer(LOW, origin_row_id="SRC-1"), layer(HIGH)
-    if not first_has_it:
-        with_origin, without = layer(HIGH, origin_row_id="SRC-1"), layer(LOW)
-    crud.bulk_upsert_cell_sources(db_session, [with_origin, without])
-    db_session.commit()
-    origins = dict(db_session.execute(text(
-        "SELECT row_id, origin_row_id FROM cell_sources WHERE table_name = :t"), {"t": SAFE}).all())
-    assert origins == {with_origin["row_id"]: "SRC-1", without["row_id"]: None}, origins
 
 
 @pytest.fixture(name="pg_db")

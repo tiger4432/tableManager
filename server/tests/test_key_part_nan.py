@@ -104,7 +104,7 @@ def test_values_that_are_not_missing_still_key_the_row(composite_table, value):
 
 
 # 🔴 TWO MORE KEY-COMPOSING SITES WERE FOUND AFTER THIS FIX WAS FIRST REPORTED, by
-# the consumer survey rather than by a test: `apply_row_update_internal` and
+# the consumer survey rather than by a test: the old write door and
 # `set_cell_manual_priority_batch` each build a business key from source columns and each
 # still asked `is_blank_value`, so a NaN composed `A_nan_C` there even while the GATE
 # refused it - a gate and an assembler disagreeing, which is the failure the gate's own

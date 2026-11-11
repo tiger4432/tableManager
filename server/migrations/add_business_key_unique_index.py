@@ -11,7 +11,7 @@ before it inserted.
 
 That "happened to" is the whole problem. `apply_batch_updates` resolves identity with a
 prefetch whose proof of absence is valid against *this session's* loop and nothing else
-(`crud.ProbedIdentity`, `crud._absence_is_proven`). A second OS process committing the
+(the old write door's prefetch proof). A second OS process committing the
 same key inside the window produces **two rows with one business key, silently, with no
 error** - reproduced with two real processes at the production chunk size of 1,000 items,
 window 2.4 s (`agent_workspace/reports/Server_M2_race_reachability.md`). There is no
@@ -53,7 +53,7 @@ path wrote `''` (true of the dev census: zero such rows) and that if one appeare
 collision is the correct answer". Both halves were wrong.
 
 A path did write it: any payload whose key column arrived blank went through
-`crud._update_row_business_key`, which stored the stripped value however empty it was.
+the old write door's key write, which stored the stripped value however empty it was.
 And the collision was NOT the correct answer, because `''` is the shared identity of
 every KEYLESS row rather than a duplicate of one real identity. Measured on this
 workstation against real PostgreSQL with this index installed: five such rows in one
@@ -63,7 +63,7 @@ the identical collision - and after `BK_CONFLICT_MAX_RETRIES` the whole batch is
 refused. **0 rows written, on each of three pushes.** One source file with a blank key
 column would stop that table's ingestion outright: loud, but stopped.
 
-`crud._update_row_business_key` now stores **NULL** for a blank key column, which the
+A blank key column is stored as **NULL** now (`write_lines._rekey` writes nothing for it), which the
 paragraph above already establishes is safe here - a plain UNIQUE index treats NULLs as
 distinct, so any number of keyless rows may coexist. That is deliberately the whole fix.
 No synthetic identity is minted for such rows: they arise only from manual grid work,

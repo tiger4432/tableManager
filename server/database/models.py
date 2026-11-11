@@ -1639,9 +1639,8 @@ def init_dynamic_models(config_dict: dict, engine=None):
         # [F6] `idx_<table>_bk` ("business_key_val, row_id") is GONE. Measured
         # 2026-08-14: zero scans on all 18 registered tables on BOTH dev copies,
         # because the single-column `ix_<table>_business_key_val` beside it wins every
-        # identity lookup (`crud.get_row_by_business_key`, `_get_or_create_row`,
-        # `_find_business_key_conflict` all filter `business_key_val == ?` and select
-        # the row, not just its id, so the `row_id` suffix buys no index-only scan).
+        # identity lookup (the row claim filters `business_key_val` and selects the row,
+        # not just its id, so the `row_id` suffix buys no index-only scan).
         # The drop for existing databases is structurally gated - see
         # `retire_unread_framework_indexes.py`, which refuses unless another index
         # leading with `business_key_val` survives on that table.

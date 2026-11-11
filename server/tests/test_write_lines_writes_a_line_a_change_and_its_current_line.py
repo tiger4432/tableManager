@@ -191,7 +191,7 @@ def test_a_created_line_makes_a_row_with_no_value_and_an_existing_row_is_not_mad
 
 def test_a_created_item_with_a_key_makes_that_keys_row_or_names_the_row_holding_it(db):
     """Lead 11-11 (an item sent with updates={} - the funnel's «created»): a key nobody holds makes its row, keyed; a key
-    a row holds names that row and makes nothing - no second row, no «created» line (the old _get_or_create_row)."""
+    a row holds names that row and makes nothing - no second row, no «created» line (the old door's row lookup)."""
     out = _write(db, {"business_key_val": "K9", "line_kind": "created", "written_by": "kim"}, kind="funnel")
     [said] = out["items"]
     assert (_now(db)[said["row_id"]]["business_key_val"], said["work"], [l["line_kind"] for l in _lines(db)]) == (

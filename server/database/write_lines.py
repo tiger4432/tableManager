@@ -302,7 +302,7 @@ def _claim(db, table, cfg, now, items):
     sorted, ON CONFLICT DO NOTHING) and read back under the same lock, so two writers of one new key end on one row_id
     and no line is orphaned. Returns ({item index: row_id}, {row_id: its current line before}, {row_id: its business
     key}). An item naming no current line is left out unless it writes a value - a write to a gone row_id makes it
-    again, as today's `_get_or_create_row` does."""
+    again, as the old write door did."""
     targets, old = {}, {}
     named = sorted({it["row_id"] for it in items if it.get("row_id")})
     for page in _pages(named, 1):
@@ -657,7 +657,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
     this landing - design «셀소스 · 감사 이력 · 고정이 어디로»; lead 11-11), before step 5's merge reads the pins: a
     person's write ("user") takes its cells' pin off, the cells it repeats included; a cell a person's head line or a
     pin sits on is marked (is_overwrite, by the writer), any other cell's mark goes. A mark already saying exactly that
-    on a cell whose line did not move is left - `apply_row_update_internal`'s rule, cell for cell. -> the rows a pin
+    on a cell whose line did not move is left - the old write door's rule, cell for cell. -> the rows a pin
     was taken off - their merge moves though no line did."""
     from datetime import datetime
 
@@ -794,7 +794,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
     """Step 5½ - a row that was there before whose key part's value step 5 moved gets its key rebuilt
     (`crud.rebuilt_business_key` on the merged values, `crud.put_business_key`'s two columns - design «업무 키가 바뀔
     때»); on a table keyed by one column, that column's value composed (`crud.compose_business_key`) - a blank one
-    writes nothing, and a row an item named by its key keeps that key: the old `_update_row_business_key`'s rules.
+    writes nothing, and a row an item named by its key keeps that key: the old write door's rules.
     NEW for that shape: a key another row holds merges the row into it (design «업무 키가 바뀔 때», owner 11-10) -
     the old seat wrote the key and met the unique index. Every new key of the batch is known first: a key is held by a row outside the batch's moves, or by a row of
     the batch that took it before (row_id order) - so rows swapping or passing keys along in one batch move, not
@@ -892,7 +892,7 @@ def _put_keys(db, now, key_column, moving, moves, new, keys, at) -> None:
 def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human, source_name, written_by, at,
                 transaction_id, shell_key=None):
     """`shell` merged into `holder`, the row holding its key (design «업무 키가 바뀔 때»; the old
-    `crud._merge_into_key_holder`, cell for cell). Which value wins is today's: the shell's - `explicit`'s where this
+    merge body's rules, cell for cell). Which value wins is today's: the shell's - `explicit`'s where this
     write named it - unless the holder's cell is a person's or pinned and neither this write's nor the shell's is; a
     blank never wins. The layers left are today's, as head lines: the shell's lines move to the holder under
     `merged_layer_name(source, key_rowid)`; where both rows' cells are a person's the holder's «user» value stays as

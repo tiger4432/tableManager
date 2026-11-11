@@ -35,7 +35,7 @@ INFO = {"business_key": "part_no",
         "column_types": {"part_no": "string", "category": "string", "stock_qty": "string"},
         "display_columns": ["part_no", "category", "stock_qty"]}
 #: The four side-table writers - each is wrapped to count the rows it was handed.
-WRITERS = {"audit logs": "bulk_insert_audit_logs", "cell sources": "bulk_upsert_cell_sources",
+WRITERS = {"audit logs": "bulk_insert_audit_logs",
            "cell overwrites": "bulk_upsert_cell_overwrites",
            "overwrite deletes": "bulk_delete_cell_overwrites"}
 #: One source for the seed and the file: the 8-hex tail is not part of the source name.

@@ -1,6 +1,6 @@
 """A column its table keeps no history for (`no_history_columns`, owner 11-09 ㄴ) leaves no history line, whoever
 writes it (lead 11-09 ㅁ''') - not stored, not in the lines the write hands back. The two seats ask one judgement, `crud.keeps_history`: `create_audit_log` (a cell's line) and
-`crud.row_update_line` (the columns a row's line names). A plain column beside it is the control: every writer leaves
+`crud._said_logs` (the columns a row's line names). A plain column beside it is the control: every writer leaves
 its line there.
 
     writer × column        stored · handed back

@@ -588,7 +588,7 @@ def test_a_partial_key_row_with_no_business_key_is_FILLED_not_DUPLICATED(an_env,
     most likely to be missing it are exactly the partial-key ones - and they were
     unreachable before, because the queue predicate kept them out of the writer.
     A write addressed only by a business key that is NULL does not fail: it falls
-    through to `_get_or_create_row`, matches nothing, and INSERTS. The row count
+    through to the old row lookup, matches nothing, and INSERTS. The row count
     is therefore the assertion, not the value: a phantom row would carry the
     right value and still be wrong.
     """

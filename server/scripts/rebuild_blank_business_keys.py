@@ -178,7 +178,7 @@ def apply_rekeys(db, table: str, pending: list, by: str = REKEY_BY) -> int:
 
 def merge_rekeys(db, table: str, collisions: list, by: str = REKEY_BY) -> list:
     """Each (row, holder) - a row whose rebuilt key the holder already carries - merged into the
-    holder through the ONE merge body, `crud._merge_into_key_holder` (소유자 10-03 「ㄴ」, 총괄
+    holder through the ONE merge body, `write_lines.merge_rows` (소유자 10-03 「ㄴ」, 총괄
     ab1b9a98c). Nothing is written here, so no cell counts as a person's (`human_columns` empty):
     both rows' overwrite marks keep a person's value. Run after `apply_rekeys`, so a holder that
     was itself rekeyed already carries the key. Returns the merged rows' ids. Not undone."""

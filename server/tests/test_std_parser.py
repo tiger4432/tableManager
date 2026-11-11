@@ -518,7 +518,7 @@ def test_process_with_retry_skip_count_in_completion_detail(tmp_path, fake_table
 
 def test_redrop_idempotent_no_orphan_key_items(tmp_path, fake_table_config, monkeypatch):
     """[F1] 같은 파일을 재드롭해도 키 없는 항목(business_key_val=None)이 crud로 전달되지 않는다
-    — _get_or_create_row가 매번 신규 행을 만드는 고아 행 누적 경로 원천 차단."""
+    — 옛 쓰기 문이 매번 신규 행을 만드는 고아 행 누적 경로 원천 차단."""
     applied = []
     _install_fake_crud(monkeypatch, applied)
 

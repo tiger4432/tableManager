@@ -313,7 +313,7 @@ def test_a_superseded_confirmation_alone_does_not_confirm_the_unit(env):
 def _seed_unnamed_unit(db, product="P1", cells=1):
     """A derived-table row that cannot name itself: a decision-key column is NULL.
 
-    This is the shape production holds. `crud._get_or_create_row` INSERTs a row carrying
+    This is the shape production holds. the old row lookup INSERTs a row carrying
     `row_id` + `business_key_val` and `apply_batch_updates` drops a decision column the box
     spells differently, so the row exists with its key column never set. No source rows and
     no metadata: the unit is unbuildable before anything asks how many maps it has.

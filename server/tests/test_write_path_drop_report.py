@@ -154,7 +154,7 @@ def test_a_supplied_business_key_does_not_rescue_the_row(db):
     """The production shape, and the reason this is data corruption rather than waste.
 
     MEASURED BEFORE THE GUARD: the item carried `business_key_val='U3'`, and the stored
-    row still had `business_key_val` NULL - `_update_row_business_key` reads
+    row still had `business_key_val` NULL - the old key write reads
     `updates[key_col]`, and the key column was the one being dropped. So the next push of
     the SAME key created ANOTHER identity-less row, without limit.
     """
