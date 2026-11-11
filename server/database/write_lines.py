@@ -23,6 +23,8 @@ An item is a dict:
                   pin, and a key merge reads it as neither named nor a person's
     rekey         true: step 5½ rebuilds the row's key though no key part moved (a key in an old spelling; a mark
                   item with no columns carries it)
+    A mark naming no column and asking no re-key merges its row again and writes no line (`_merges_again` -
+    lead 11-11: a formula saved, R3, the notation backfill's re-merge, a formula column offered alone).
     old_key       the key the item was sent with when it is not its assembled key (a raw spelling, a rename by
                   the old key): asked when the assembled key is nobody's - ruling 191, S-90 - and the row it
                   names is re-keyed
@@ -144,11 +146,13 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at) if keeps
                       else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
                             sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
+    again = {i for i in kept if _merges_again(items[i])}   # its row merged again, no line
+    kept -= again
     split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
     moved = [i for i in sorted(plain) if i not in kept and i not in split]  # changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
-        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
+        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved + sorted(again)}
     unpinned, line_ids = set(), {}
     if keeps:
         lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
@@ -166,14 +170,22 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     rows_plain = {}
     for i in sorted(plain):
         rows_plain.setdefault(targets[i], {}).update(plain[i])
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, old,
-                     rows_plain, keeps)
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
+                     at, old, rows_plain, keeps)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
     changed = {}
     for i in sorted(list(kept) + moved):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
+    types = cfg.get("column_types") or {}
+    for i in sorted(again):                        # a row merged again changed when a shown value moved
+        row_id = targets[i]
+        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], shape["columns"], types):
+            changed.setdefault(row_id, {"old": old.get(row_id), "new": new[row_id], "work": work[i]})
     said_rows = {}
+    for i in sorted(again):                        # its audit row only when a shown value moved (lead 11-11)
+        if targets[i] in changed:
+            said_rows.setdefault((work[i], items[i].get("acted_by") or items[i].get("written_by")), set()).add(targets[i])
     for i in kept:
         said_rows.setdefault((work[i], items[i].get("acted_by") or items[i].get("written_by")), set()).add(targets[i])
     for shell, (holder, holder_old, holder_new, who) in merged.items():
@@ -716,6 +728,8 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
                 merged[row_id][key_column] = key
                 won_by[row_id].pop(key_column, None)
     types = cfg.get("column_types") or {}
+    if keeps:
+        _formulas_won(db, table, shape, row_ids, data, merged, won_by)
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
         {**{c: bindparam("__%d" % n) for n, c in enumerate(data)}, **({"won_by": bindparam("__won")} if keeps else {}),
@@ -725,6 +739,40 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
           else old[row_id].get("updated_at")}
          for row_id in row_ids])
     return merged
+
+
+def _formulas_won(db, table, shape, row_ids, data, merged, won_by) -> None:
+    """A formula column's candidate (lead 10-28 ㄴ: a formula holds no line, its value is the merge's; A 11-11 안 1):
+    each row's formula column ranked with its layers and pin by `crud.compute_priority_value(cell=)` - the rank the
+    old write asked - over the row as merged; where the formula wins its answer is the value and won_by says
+    `lines.FORMULA_WON`. A pin whose source has no head line leaves the merge's answer (t's value, lead 11-11)."""
+    from types import SimpleNamespace
+
+    from chain import formula
+
+    said = {c: name for (t, c), (name, *_rest) in formula.columns().items() if t == table and c in data}
+    if not said:
+        return
+    cells = lines.layers(db, table, row_ids, sorted(said), s=shape)
+    pins = _overwrites(db, table, row_ids, sorted(said))
+    ranks = {}
+    for row_id in row_ids:
+        row = SimpleNamespace(**merged[row_id])
+        for c, name in sorted(said.items()):
+            layers = cells.get((row_id, c)) or {}
+            pin = (pins.get((row_id, c)) or (None, None, None))[2]
+            if pin is not None and pin != name and pin not in layers:
+                continue
+            value, top = crud.compute_priority_value(dict(layers), pin, table, ranks=ranks, cell=(table, c, row))
+            if top == name:
+                merged[row_id][c] = value
+                setattr(row, c, value)
+                won_by[row_id][c] = lines.FORMULA_WON
+
+
+def _merges_again(item) -> bool:
+    """A mark naming no column and asking no re-key: its row merged again, no line written (lead 11-11 (가))."""
+    return item["line_kind"] == MARK and not item.get("columns") and not item.get("rekey")
 
 
 def _moved(old, new, columns, types) -> list:

@@ -4611,7 +4611,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             continue
         col_type = types.get(col_name, "string")
         formula = formula_written(table_name, col_name, update_item.source_name)
-        tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0,
+        tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0, "column": col_name,
                                                        "who": update_item.updated_by}) if formula else None)
         try:
             if col_name in plan["refused_times"] and str(val).strip() in plan["refused_times"][col_name]:
@@ -4638,6 +4638,10 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
                                  clean_val)
             continue
         values[col_name] = val
+    if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
+        return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
+                 "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
+                 "written_by": update_item.updated_by}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "source_name": update_item.source_name, "written_by": update_item.updated_by,
@@ -6220,8 +6224,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             for reason, n in answer["gated"].items():
                 counts[reason] = counts.get(reason, 0) + n
         for (_it, formulas), got in zip(said, resolved):
-            for label in formulas:
-                if got["row_id"] is not None:
+            change = answer["changed"].get(got["row_id"]) or {}
+            for label in formulas:                 # the rows the write moved its column in (the merge's - A 11-11)
+                column = plan["receipts"][label]["column"]
+                if values_differ((change.get("old") or {}).get(column), (change.get("new") or {}).get(column),
+                                 (TABLE_CONFIG.get(table_name, {}).get("column_types") or {}).get(column, "string")):
                     plan["receipts"][label]["row_ids"].append(got["row_id"])
 
         # [phantom row] An item whose every cell was dropped makes no row (write_lines claims none for a write of

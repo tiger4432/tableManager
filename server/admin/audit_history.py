@@ -448,7 +448,8 @@ def group_rows(db, table_name, group, limit) -> list:
 
 def winners(db, table_name, row_ids) -> dict:
     """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of t
-    (the merge at write time, pins included), each line by its id: what a grid cell's colour and writer ask, no
+    (the merge at write time, pins included), each line by its id - the formula's layer name where won_by says
+    `lines.FORMULA_WON`: what a grid cell's colour and writer ask, no
     ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10). A table whose lines
     are not built (`lines.has_lines` - a shipped table, a view, a table ensure refused) has no won_by: none."""
     from database import lines
@@ -470,4 +471,11 @@ def winners(db, table_name, row_ids) -> dict:
         for line_id, source, written_by, at in db.execute(sa.select(
                 t.c.line_id, t.c.source_name, t.c.written_by, t.c.at).where(t.c.line_id.in_(named[i:i + 1000]))):
             line[line_id] = {"source": source, "written_by": written_by, "at": at}
-    return {cell: line[line_id] for cell, line_id in won.items() if line_id in line}
+    out = {cell: line[line_id] for cell, line_id in won.items() if line_id in line}
+    if lines.FORMULA_WON in won.values():          # the column's formula shows - it holds no line (A 11-11)
+        from chain import formula
+
+        names = {c: said[0] for (t, c), said in formula.columns().items() if t == table_name}
+        out.update({cell: {"source": names[cell[1]], "written_by": None, "at": None} for cell, line_id in won.items()
+                    if line_id == lines.FORMULA_WON and cell[1] in names})
+    return out

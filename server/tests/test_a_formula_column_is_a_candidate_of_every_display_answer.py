@@ -97,13 +97,13 @@ def test_a_pinned_layer_shows_and_unpinned_the_formula(db, fx):
 
 
 def test_withdrawing_the_chain_layer_shows_the_formula(db, fx):
-    from datetime import datetime
+    from database.write_lines import write_lines
 
-    # a layer the write path no longer makes on a formula column - one an older rule left
-    db.add(models.CellSource(table_name=T, row_id=fx.row_id, column_name="c", source_name="chain_ingestion",
-                             value=99, updated_by="old rule", ingested_at=datetime.now()))
-    _row(db).c = 99
+    # a line the funnel no longer makes on a formula column - one an older rule left
+    write_lines(db, T, [{"row_id": fx.row_id, "values": {"c": 99}, "source_name": "chain_ingestion",
+                         "written_by": "old rule"}], kind="chain", transaction_id="old")
     db.commit()
+    assert _row(db).c == 99
     cell_layer.withdraw_layers(db, [(T, fx.row_id, "c", "chain_ingestion", None)], apply=True, log=lambda _l: None)
     db.commit()
     assert _row(db).c == 7

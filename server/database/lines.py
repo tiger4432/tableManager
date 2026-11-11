@@ -21,6 +21,8 @@ LINES_SUFFIX = "__lines"
 #: head_0 ...) are the line table's names, and an operator's column may carry any of them (A 11-11, rq_memory.at)
 VALUE_PREFIX = "v_"
 WON_BY = "won_by"
+#: won_by's word for «the column's formula shows» - a formula holds no line (lead 10-28 ㄴ, A 11-11)
+FORMULA_WON = 0
 LINE_KINDS = ("write", "withdraw", "deleted", "mark")
 BIT_FAMILIES = ("written", "head", "withdrawn")
 BITS_PER_CHUNK = 64
