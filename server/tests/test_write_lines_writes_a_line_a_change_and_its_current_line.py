@@ -369,3 +369,30 @@ def test_a_write_reads_t_s_shape_once_a_key_merge_too(db, monkeypatch):
     merged = _write(db, {"row_id": k2, "values": {"k": "K1"}, "source_name": "f3", "written_by": "loader"})["merged"]
     once = {"shape": 1, "value_types": 0, "physical_kinds": 1, "bit_maps": 1}
     assert (plain, dict(seen), len(merged)) == (once, once, 1)
+
+
+SAME_HAND = ("loader", "r1")
+
+
+@pytest.mark.parametrize("column, first, again, hand, left_out", [
+    ("a", None, None, SAME_HAND, True),
+    ("a", "", None, SAME_HAND, True),                    # a blank is absence
+    ("a", "   ", "", SAME_HAND, True),
+    ("a", " x ", "x", SAME_HAND, True),                  # the ends trimmed
+    ("n", "1", 1.0, SAME_HAND, True),                    # one number, one text on a number column
+    ("a", "가나", "가나", SAME_HAND, True),
+    ("a", "가나", "가나다", SAME_HAND, False),
+    ("a", "Ab", "ab", SAME_HAND, False),                 # case is a value
+    ("a", "x", "y", SAME_HAND, False),
+    ("a", "x", "x", ("kim", "r1"), False),               # the same value from another hand is a new statement
+    ("a", "x", "x", ("loader", "r2"), False),            # ... from another input row too (ruling 434)
+])
+def test_a_write_saying_its_head_lines_text_again_is_left_out_cell_by_cell(db, column, first, again, hand, left_out):
+    """Step 2's «the same text, hand and input row» per cell - the answer the SQL comparison gave before 11-11 and
+    the head-line read gives now (both texts through crud.line_text): this table is green on both trees."""
+    _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", column: first}, "source_name": "f1",
+                "written_by": SAME_HAND[0], "input_row": SAME_HAND[1]})
+    before = len(_lines(db))
+    _write(db, {"key": {"k": "K1"}, "values": {column: again}, "source_name": "f1", "written_by": hand[0],
+                "input_row": hand[1]}, tx="tx2")
+    assert (len(_lines(db)) == before) is left_out

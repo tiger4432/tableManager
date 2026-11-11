@@ -33,8 +33,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import Integer, String, bindparam, case, delete, exists, insert, literal, or_, select
-from sqlalchemy import union_all, update
+from sqlalchemy import bindparam, delete, insert, or_, select, update
 
 from database import crud, lines
 
@@ -42,9 +41,8 @@ logger = logging.getLogger(__name__)
 
 WRITE, WITHDRAW, DELETED, CREATED, MARK = "write", "withdraw", "deleted", "created", "mark"
 LINE_KINDS = (WRITE, WITHDRAW, DELETED, CREATED, MARK)
-#: bound parameters one statement carries at most - under sqlite's 32,766; and the rows one UNION ALL joins, under
-#: sqlite's 500 compound SELECTs
-PARAMS_MOST, UNION_MOST = 30000, 500
+#: bound parameters one statement carries at most - under sqlite's 32,766
+PARAMS_MOST = 30000
 BITS_A_CHUNK = 64
 
 
@@ -364,45 +362,31 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
 
 def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
     """Step 2 - the items that change something. A write's column is left out when its source's head line there says
-    the same text, from the same hand and input row (ruling 434) - IS NOT DISTINCT FROM in SQL, blank = NULL - and the
-    write when no column is left. A
-    withdraw keeps the columns its source still speaks in and is left out when none - never by comparing values (a NULL
-    head withdrawn by NULL = NULL would speak on). Deletes and marks are kept. Returns (kept indexes, how many left)."""
+    the same text, from the same hand and input row (ruling 434) - both texts through `crud.line_text` on t's stored
+    kind, the one fold a line's value takes (a blank is None, «1» and 1.0 one text on a number column) - and the
+    write when no column is left. A withdraw keeps the columns its source still speaks in and is left out when none -
+    never by comparing values (a NULL head withdrawn by NULL = NULL would speak on). Both ask one read of the head
+    lines (`_spoken`). Deletes and marks are kept. Returns (kept indexes, how many left)."""
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
         items[i]["values"] = {c: crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
                                                 held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
-    same = {}
     columns = sorted({c for i in writes for c in items[i]["values"]})
-    if writes and columns:
-        # the incoming rows as a UNION ALL of SELECTs - sqlite takes no VALUES with column names
-        named = [("i", Integer), ("row_id", String), ("src", String), ("who", String), ("inrow", String)] \
-            + [(lines.value_column(c), ln.c[lines.value_column(c)].type) for c in columns]
-        for page in _pages(writes, len(named), UNION_MOST):
-            rows = [(i, targets[i], items[i].get("source_name"), items[i].get("written_by"), items[i].get("input_row"),
-                     *[items[i]["values"].get(c) for c in columns]) for i in page]
-            v = union_all(*[select(*[literal(value, kind).label(name) for value, (name, kind) in zip(row, named)])
-                            for row in rows]).subquery("incoming")
-            flags = []
-            for c in columns:
-                k, m = _bit(bits, c)
-                h = ln.alias("h")
-                flags.append(case((exists().where(
-                    h.c.row_id == v.c.row_id, h.c.source_name == v.c.src, h.c.line_kind == WRITE,
-                    h.c["head_%d" % k].op("&")(m) != 0, h.c["withdrawn_%d" % k].op("&")(m) == 0,
-                    h.c.written_by.is_not_distinct_from(v.c.who), h.c.input_row.is_not_distinct_from(v.c.inrow),
-                    h.c[lines.value_column(c)].is_not_distinct_from(v.c[lines.value_column(c)])), 1), else_=0))
-            for row in db.execute(select(v.c.i, *flags)):
-                same[row[0]] = {c for c, flag in zip(columns, row[1:]) if flag and c in items[row[0]]["values"]}
-    spoken = _spoken(db, ln, bits, chunks, {(targets[i], items[i].get("source_name")) for i in targets
-                                            if items[i]["line_kind"] == WITHDRAW})
+    heads = _spoken(db, ln, bits, chunks, {(targets[i], items[i].get("source_name")) for i in targets
+                                          if items[i]["line_kind"] in (WRITE, WITHDRAW)}, columns)
+    same = {}
+    for i in writes:                               # its source's head line there: the same text, hand and input row
+        said = heads.get((targets[i], items[i].get("source_name")), {})
+        hand = (_text_or_none(items[i].get("written_by")), _text_or_none(items[i].get("input_row")))
+        same[i] = {c for c, value in items[i]["values"].items() if c in said and said[c][:2] == hand
+                   and crud.line_text(said[c][2], held.get(c, "string")) == value}
     kept, left_out = set(), 0
     for i in sorted(targets):
         it = items[i]
         if it["line_kind"] == WITHDRAW:
-            it["columns"] = [c for c in it.get("columns") or () if c in spoken.get((targets[i], it.get("source_name")), ())]
+            it["columns"] = [c for c in it.get("columns") or () if c in heads.get((targets[i], it.get("source_name")), {})]
         if it["line_kind"] == WRITE and same.get(i):
             it["values"] = {c: value for c, value in it["values"].items() if c not in same[i]}
         if (it["line_kind"] == WRITE and not it["values"]) or (it["line_kind"] == WITHDRAW and not it["columns"]):
@@ -412,22 +396,31 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
     return kept, left_out
 
 
-def _spoken(db, ln, bits, chunks, pairs) -> dict:
-    """{(row_id, source): the columns that source heads on the row and has not withdrawn} - what it can take back.
-    One read of the pairs' rows' head lines."""
+def _spoken(db, ln, bits, chunks, pairs, columns) -> dict:
+    """{(row_id, source): {column: (written_by, input_row, value text)}} - the columns that source heads on the row and
+    has not withdrawn (what a withdraw can take back), each with its head line's hand, input row and - for `columns` -
+    its value. One read of the pairs' rows' head lines, a statement the cache keeps (no literal per item, 11-11)."""
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
+    withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
+    values = [ln.c[lines.value_column(c)] for c in columns]
     out = {}
     for page in _pages(sorted({row_id for row_id, _s in pairs}), 1):
-        for row in db.execute(select(ln.c.row_id, ln.c.source_name, *heads,
-                                     *[ln.c["withdrawn_%d" % k] for k in range(chunks)])
+        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, *heads,
+                                     *withdrawn, *values)
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
             if (row[0], row[1]) not in pairs:
                 continue
+            said = dict(zip(columns, row[4 + 2 * chunks:]))
             for c in bits:
                 k, m = _bit(bits, c)
-                if row[2 + k] & m and not row[2 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), set()).add(c)
+                if row[4 + k] & m and not row[4 + chunks + k] & m:
+                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c))
     return out
+
+
+def _text_or_none(value):
+    """A hand or an input row as its line cell holds it (text, None absent)."""
+    return None if value is None else str(value)
 
 
 def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id):
