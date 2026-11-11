@@ -3014,10 +3014,11 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 /* the last stall's line goes down under its label and time: its longest word (a table name) whole in the panel */
 .status-panel .stall-line { flex-wrap: wrap; }
 .status-panel .status-indicators { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
-.status-panel__last { display: flex; align-items: baseline; gap: var(--space-2); }
+/* the last action's line in the head bar: one line, cut with … (its whole text in the title, followTitle) */
+.status-panel__last { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; }
 .status-panel__key { flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-muted); }
-.status-panel #performance-log { flex: 1 1 auto; pointer-events: auto; white-space: normal; text-align: left;
-  padding: var(--space-1) var(--space-2); }
+.status-panel__last #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; text-align: left;
+  padding: 0 var(--space-3); line-height: calc(var(--control-h) - 2px); }
 .more-panel { width: 260px; gap: 0; }
 .more-panel__head { padding: var(--space-3) var(--space-4) var(--space-1); font-size: var(--fs-tag); color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.08em; }

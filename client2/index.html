@@ -182,12 +182,13 @@
                 <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
                 <span class="status-badge" id="chain-status">CHAIN: Loading</span>
               </div>
-              <div class="status-panel__last">
-                <span class="status-panel__key">Last</span>
-                <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
-              </div>
               <div id="account-badge" class="acct-host"></div>
             </div>
+          </div>
+          <!-- The last action's line beside the status button, always shown (owner 11-11, out of the panel again). -->
+          <div class="status-panel__last">
+            <span class="status-panel__key">Last</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
           </div>
 
           <!-- ⋯ (lead 11-05 ③, mockup v3): Data · Options · Go to in one panel. Each section keeps the id it had as
