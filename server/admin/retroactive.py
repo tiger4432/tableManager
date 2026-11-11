@@ -267,7 +267,7 @@ def _count_withdraw(db, params, scan_limit):
             f"are in scope for withdrawal - the number of cells whose VISIBLE value "
             f"actually changes can be smaller (where the source underneath holds the "
             f"same value, the display stays as it is). Rows left with nothing that keeps "
-            f"them are deleted too - counted when it runs (rows_deleted on its DONE log line)."
+            f"them are deleted too - counted when it runs (shown on the run's line)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
@@ -4856,7 +4856,7 @@ RESULT_NAMES = {
     "rows_staged": "rows staged", "events_staged": "events staged",
     "rows_scanned": "rows scanned", "rows_read": "rows read",
     "cells_withdrawn": "cells withdrawn", "revealed": "values revealed",
-    "emptied": "cells emptied", "pinned_skipped": "pinned, skipped",
+    "emptied": "cells emptied", "pinned_skipped": "pinned, skipped", "rows_deleted": "rows deleted",
     "cells_changed": "cells changed", "cells_examined": "cells examined",
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",

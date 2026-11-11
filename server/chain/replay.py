@@ -1201,26 +1201,19 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Two reads of the lines the source claims, grouped by a line's head/withdrawn bits - no row materialisation, no
-    per-cell recompute. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    Two reads of the lines the source claims on rows t holds, grouped by a line's head/withdrawn bits - no row
+    materialisation, no per-cell recompute. A line whose row is gone is left out by the join on t: the run never
+    reaches it, since it pages t's own rows (`resolve_target`'s model) and asks their lines by id. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
     group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
     this source on a cell its lines claim.
 
     Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
     judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
 
-    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
-    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
-    gaps are worth naming because a surface that reported it as exact would
-    overstate the operation:
-
-      * a line whose dynamic row no longer exists is counted here and skipped there
-        (`withdraw_source` pages the table's own rows),
-      * and `cells_withdrawn` is itself larger than the number of cells whose
-        DISPLAYED value changes, because the revealed source may carry the same
-        value (`value_unchanged`).
-
-    Closing either gap requires the per-cell recompute that is the run itself.
+    Returns ``{cells_claimed, pinned}`` - the run's `cells_matched` and `pinned_skipped`, so ``cells_claimed - pinned``
+    is its `cells_withdrawn` (the gate test holds them equal). That is still more than the cells whose DISPLAYED value
+    changes, because the revealed source may carry the same value (`value_unchanged`); closing that gap is the
+    per-cell recompute that is the run itself.
     """
     from sqlalchemy import func, select
 
@@ -1229,16 +1222,18 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
+    rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
+    held = lt.join(rows, rows.c.row_id == lt.c.row_id)
     said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
     n = func.count().label("n")
     claimed = sum(g["n"] * len(_claimed_cells(g, bits, columns))
-                  for g in db.execute(select(*said, n).where(*claims).group_by(*said)).mappings())
+                  for g in db.execute(select(*said, n).select_from(held).where(*claims).group_by(*said)).mappings())
 
     # Cells this source claims AND a human pinned TO this source - the pin's column among the line's claimed cells:
     # a pin naming this source on a cell it does not claim changes nothing, and counting it would overstate.
     co = models.CellOverwrite
     pinned = sum(g["n"] for g in db.execute(
-        select(co.column_name, *said, n).select_from(lt)
+        select(co.column_name, *said, n).select_from(held)
         .join(co, and_(co.table_name == table_name, co.row_id == lt.c.row_id,
                        co.manual_priority_source == lt.c.source_name))
         .where(*claims).group_by(co.column_name, *said)).mappings()
