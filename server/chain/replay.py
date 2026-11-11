@@ -2387,7 +2387,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                         # its source and «when» stay (its rank), and its author: a spelling is no new value
                         line = said.setdefault(head["line_id"], {
                             "row_id": row.row_id, "values": {}, "source_name": source,
-                            "written_by": head["updated_by"], "input_row": head["origin_row_id"],
+                            "written_by": head["updated_by"], "acted_by": NOTATION_BACKFILL_SOURCE,
+                            "input_row": head["origin_row_id"],
                             "owner_rule": head["owner_rule"], "owner_key": head["owner_key"],
                             "at": head["ingested_at"], "respelled": True})
                         line["values"][column] = value

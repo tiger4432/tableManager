@@ -2540,8 +2540,11 @@ RECORRECTION_WINDOW_DAYS = 7
 
 def human_lines(db: Session, since) -> list:
     """[(table, row_id, history group, {columns it wrote})] - every line a person wrote at or after `since`, in each
-    declared table that keeps lines (`human_source_clause`; the t__lines partial index on it). What the two Overview
-    figures count (cell-source overhaul: audit_logs retires)."""
+    declared table that keeps lines (`human_source_clause`; the t__lines partial index on it), and wrote as the act
+    of that write: its batch's audit row names the line's author as the write's actor. A line a retroactive op
+    re-spelled (its author the person, its actor the op) or a migration copied is no act of the person's (lead 11-11:
+    actor = author - no list of machine names). What the two Overview figures count (cell-source overhaul: audit_logs
+    retires)."""
     import sqlalchemy as sa
 
     from admin import audit_history
@@ -2555,10 +2558,16 @@ def human_lines(db: Session, since) -> list:
         bits = audit_history.line_bits(db, table_name)
         t = audit_history.line_table(table_name, bits)
         written = [t.c[name] for name in t.c.keys() if name.startswith("written_")]
-        for row in db.execute(sa.select(t.c.row_id, t.c.batch, *written).where(
-                human_source_clause(), t.c.at >= since)):
-            found.append((table_name, row.row_id, group_of(row.batch),
-                          {name for name, bit in bits.items() if audit_history.bit_said(row, bit)}))
+        said = db.execute(sa.select(t.c.row_id, t.c.batch, t.c.written_by, *written).where(
+            human_source_clause(), t.c.at >= since)).fetchall()
+        acted, batches = set(), sorted({row.batch for row in said if row.batch is not None})
+        ab = lines.AuditBatch
+        for i in range(0, len(batches), 1000):
+            acted.update(db.execute(sa.select(ab.transaction_id, ab.written_by).where(
+                ab.table_name == table_name, ab.transaction_id.in_(batches[i:i + 1000]))).all())
+        found.extend((table_name, row.row_id, group_of(row.batch),
+                      {name for name, bit in bits.items() if audit_history.bit_said(row, bit)})
+                     for row in said if (row.batch, row.written_by) in acted)
     return found
 
 

@@ -42,10 +42,13 @@ def line_tables_of_both(db_session, monkeypatch):
         retire_dynamic_model(name)
 
 
-def _log(db, *, row, col, tx, source=crud.USER_SOURCE, days_ago=1, new="after", table=T):
-    """One line `source` wrote in transaction `tx` - the cell `col` said `new` (None: emptied)."""
-    line_tables.line(db.connection(), table, _BITS[table], row, source=source, batch=tx, written_by="tester",
-                     at=datetime.now(timezone.utc) - timedelta(days=days_ago), values={col: new})
+def _log(db, *, row, col, tx, source=crud.USER_SOURCE, days_ago=1, new="after", table=T, by="tester", acted_by=None):
+    """One line `source` wrote in transaction `tx` - the cell `col` said `new` (None: emptied) - and the write's audit
+    row, its actor `acted_by` (the author `by` when not given), as `write_lines` leaves them."""
+    at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    line_tables.line(db.connection(), table, _BITS[table], row, source=source, batch=tx, written_by=by, at=at,
+                     values={col: new})
+    line_tables.audit_batch(db.connection(), tx, table, written_by=acted_by or by, at=at)
 
 
 def _stats(db, window_days=7):
@@ -335,3 +338,47 @@ def test_the_sql_says_of_each_name_what_layer_writer_says(db_session, name):
     picked = db_session.execute(sa.select(sa.func.count()).select_from(one).where(crud.human_source_clause())).scalar()
     assert bool(picked) == (crud.layer_writer(name) == crud.USER_SOURCE), name
 
+
+# ── 10. Who acted (lead 11-11: a line's written_by is its value's author, its audit row the write's actor) ────────
+
+def test_a_line_a_retroactive_op_re_spelled_is_no_new_act(db_session):
+    """The notation backfill re-spells a person's line: the person stays its author, the op is the write's actor -
+    one act of the person's, no re-correction."""
+    from chain.replay import NOTATION_BACKFILL_SOURCE
+
+    _log(db_session, row="r1", col="a", tx="tx-1")
+    _log(db_session, row="r1", col="a", tx="nb-1", acted_by=NOTATION_BACKFILL_SOURCE)
+    s = _stats(db_session)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (1, 0)
+
+
+def test_another_person_correcting_a_persons_value_is_a_re_correction(db_session):
+    """Person B fixes the cell person A wrote: the new line's author is its actor, B - counted."""
+    _log(db_session, row="r1", col="a", tx="tx-1", by="kim")
+    _log(db_session, row="r1", col="a", tx="tx-2", by="lee")
+    s = _stats(db_session)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (1, 1)
+
+
+def test_write_lines_names_the_actor_on_the_audit_row_and_the_author_on_the_line(db_session):
+    """`acted_by` reaches the audit row; the line keeps `written_by` - through the write seat, not a hand-made seed."""
+    import sqlalchemy as sa
+
+    from chain.replay import NOTATION_BACKFILL_SOURCE
+    from database import lines
+    from database.write_lines import write_lines
+
+    db = db_session
+    write_lines(db, T, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": crud.USER_SOURCE,
+                         "written_by": "kim"}], kind="funnel", transaction_id="tx-a")
+    [row_id] = [r for (r,) in db.execute(sa.text('SELECT row_id FROM "%s"' % T))]
+    write_lines(db, T, [{"row_id": row_id, "values": {"a": "X"}, "source_name": crud.USER_SOURCE, "written_by": "kim",
+                         "acted_by": NOTATION_BACKFILL_SOURCE}], kind="notation", transaction_id="nb-a")
+    db.commit()
+    ab = lines.AuditBatch
+    assert dict(db.execute(sa.select(ab.transaction_id, ab.written_by).where(ab.table_name == T)).all()) == {
+        "tx-a": "kim", "nb-a": NOTATION_BACKFILL_SOURCE}
+    said = db.execute(sa.text('SELECT batch, written_by FROM "%s" ORDER BY line_id' % lines.lines_relation(T))).all()
+    assert [tuple(r) for r in said] == [("tx-a", "kim"), ("nb-a", "kim")], "the line keeps its value's author"
+    s = crud.get_recorrection_stats(db)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (2, 0)

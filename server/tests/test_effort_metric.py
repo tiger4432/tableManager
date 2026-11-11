@@ -52,10 +52,12 @@ def effort_lines(db_session, monkeypatch):
 
 
 def _user_tx(db, tx, *, days_ago=1, source=None):
-    """A person's line in transaction `tx`, so the tx exists in the measured_ratio denominator."""
+    """A person's line in transaction `tx` and its audit row (the person its actor), so the tx exists in the
+    measured_ratio denominator."""
+    at = datetime.now(timezone.utc) - timedelta(days=days_ago)
     line_tables.line(db.connection(), EFFORT_TABLE, line_tables.bits_of(EFFORT_TABLE), "r1",
-                     source=source or crud.USER_SOURCE, batch=tx, written_by="tester",
-                     at=datetime.now(timezone.utc) - timedelta(days=days_ago), values={"a": "after"})
+                     source=source or crud.USER_SOURCE, batch=tx, written_by="tester", at=at, values={"a": "after"})
+    line_tables.audit_batch(db.connection(), tx, EFFORT_TABLE, written_by="tester", at=at)
 
 
 DEFAULT_W = {"key": 1, "mouse": 3, "nav": 5, "nav_preserved": 0}

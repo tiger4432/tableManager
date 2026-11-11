@@ -14,6 +14,9 @@ An item is a dict:
     values        {column: value} for a write - cast here by `crud.cast_value_by_type`
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
+    acted_by      who did this write when it is not the value's author (written_by) - a retroactive op re-spelling a
+                  person's line keeps the person as its author and names itself here; the audit row says it (lead
+                  11-11: a line's written_by is its value's author, an audit row's the write's actor)
     at            a line's «when» kept from the line it re-spells (design «쓰기» 53: a fold writes a new line whose
                   rank does not move); else the write's instant - the batch keeps when it was done
     respelled     true: the line re-spells what is stored (the notation backfill) - no new hand: it moves no mark or
@@ -167,7 +170,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
     said_rows = {}
     for i in kept:
-        said_rows.setdefault((work[i], items[i].get("written_by")), set()).add(targets[i])
+        said_rows.setdefault((work[i], items[i].get("acted_by") or items[i].get("written_by")), set()).add(targets[i])
     for shell, (holder, holder_old, holder_new, who) in merged.items():
         changed[shell] = {"old": old.get(shell), "new": None, "work": "merge"}
         changed.setdefault(holder, {"old": holder_old, "work": "merge"})["new"] = holder_new

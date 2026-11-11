@@ -61,3 +61,29 @@ def test_a_pick_not_sent_is_the_whole_table_and_a_draft_keeps_a_blank_field(env)
     assert retroactive.validate("fold_written_notation", {"table": PLAIN}) == {"table": PLAIN}
     # a draft (the admin help) keeps the blank field for the operator to fill
     assert retroactive.validate("fold_written_notation", {"table": PLAIN, "row_ids": ""}, partial=True) ==         {"table": PLAIN}
+
+
+def test_a_persons_line_the_backfill_re_spells_stays_theirs_and_is_no_new_act(env, tmp_path, monkeypatch):
+    """Lead 11-11: the re-spelled line keeps its value's author (the person); the backfill's audit row names the
+    backfill as the write's actor - so the re-correction figure is what it was before the fold."""
+    import sqlalchemy as sa
+
+    from database import crud, lines
+
+    _declare(tmp_path, monkeypatch, {})
+    _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source=crud.USER_SOURCE)
+    _declare(tmp_path, monkeypatch, DECLARED)
+    before = crud.get_recorrection_stats(env, window_days=100000)
+    assert before["measured_cells"], "canary: the person's write is measured"
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    assert _shown(env) == [("K-01", "wafer-01")], "canary: the fold re-spelled the person's value"
+    ab = lines.AuditBatch
+    folded = sa.literal(replay.NOTATION_BACKFILL_SOURCE + "%")
+    assert {who for (who,) in env.execute(sa.select(ab.written_by).where(
+        ab.table_name == PLAIN, ab.transaction_id.like(folded)))} == {replay.NOTATION_BACKFILL_SOURCE}
+    said = env.execute(sa.text('SELECT written_by FROM "%s" WHERE batch LIKE :b AND source_name = :s'
+                               % lines.lines_relation(PLAIN)),
+                       {"b": replay.NOTATION_BACKFILL_SOURCE + "%", "s": crud.USER_SOURCE}).scalars().all()
+    assert said and set(said) == {"t"}, "the re-spelled line keeps its value's author"
+    assert crud.get_recorrection_stats(env, window_days=100000) == before
+
