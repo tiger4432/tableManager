@@ -109,8 +109,13 @@ def test_the_virtual_walk_draws_the_walk_the_ledger_draws(board, asked):
     assert all(re.fullmatch(r"(wafer_process|lot_slot_wafer):[0-9a-f-]{36}", e["basis"]) for e in virtual["edges"])
     assert len(stored["edges"]) >= (1 if asked.get("since") else 3), "canary: the walk crosses both sources"
     assert "engine" not in stored, "the stored answer is today's - no new cell"
-    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"]}
-    assert {scan["table"] for scan in virtual["engine"]["scans"]} <= {"wafer_process", "lot_slot_wafer"}
+    said = virtual["engine"]
+    assert said == {"name": "virtual", "left_out": [], "scans": said["scans"], "served": said["served"], "legs": said["legs"]}
+    assert {end["table"] for end in said["scans"] + said["served"]} <= {"wafer_process", "lot_slot_wafer"}
+    # each leg read timed (lead 11-11): the walk's own tables, a statement at least each, the rows it read
+    assert said["legs"] and {leg["table"] for leg in said["legs"]} <= {"wafer_process", "lot_slot_wafer"}
+    assert all(leg["statements"] >= 1 and leg["seconds"] >= 0 for leg in said["legs"])
+    assert sum(leg["rows"] for leg in said["legs"]) >= len(virtual["edges"]) > 0 or asked.get("since")
 
 
 def test_the_three_questions_are_three_answers(board):

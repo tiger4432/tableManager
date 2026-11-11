@@ -1459,6 +1459,7 @@ class VirtualEvidenceLookup:
             for source, world, predicate in sorted({(leg.source, leg.world_name, leg.predicate) for leg in legs
                                                     if said_by.get((leg.world_name, leg.predicate), 0) > 1}))
         self._census_of = {}
+        self._took = {}
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -1576,8 +1577,17 @@ class VirtualEvidenceLookup:
         return "(" + (" OR " if outside else " AND ").join(said) + ")"
 
     def _select(self, leg, where, params, *, current=None, tail=""):
-        """The rows of `leg` `where` keeps (`_statement`)."""
-        return self._execute(self._statement(leg, where, params, current=current, tail=tail), params)
+        """The rows of `leg` `where` keeps (`_statement`) - its time and rows added up by leg on the answer's `engine`
+        cell, slowest first (`said["legs"]`, lead 11-11: which leg a slow walk waited on)."""
+        started = time.perf_counter()
+        rows = self._execute(self._statement(leg, where, params, current=current, tail=tail), params)
+        took = self._took.setdefault((leg.relation, leg.source, leg.sentence), {
+            "table": leg.relation, "leg": f"{leg.source}.{leg.sentence}", "seconds": 0.0, "rows": 0, "statements": 0})
+        took["seconds"] += time.perf_counter() - started
+        took["rows"] += len(rows)
+        took["statements"] += 1
+        self.said["legs"] = sorted(self._took.values(), key=lambda each: -each["seconds"])
+        return rows
 
     def _statement(self, leg, where, params, *, current=None, tail=""):
         """THE ONE STATEMENT a leg is read by: the rows `where` keeps as (row id, each end's column keys, the qualifier

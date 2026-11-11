@@ -823,7 +823,7 @@ _COMPILED = {}
 #: it does not drop them, so a served key column is not asked of the catalogue again; cleared when a declaration
 #: compiles again (lead 11-09: the catalogue was 4 of a 2-hop walk's 10 statements, 7 of its 34 ms). An index dropped
 #: by hand reads as served until then.
-_SERVED = set()
+_SERVED = {}
 
 
 def _compiled(connection, names):
@@ -853,8 +853,11 @@ def _engine_reading(connection, engine, names, leave_out=None):
     """THE one seat that asks `engine` (lead 11-06): (legs, the answer's `engine` cell) of the worlds `names` -
     (None, None) for the stored ledger. A scan is a leg's end none of whose text key columns leads an index the
     database holds (`models.auto_index_serves`, the ask's own judgment - declared, automatic or by hand); each scan's
-    first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자동», `index_wants.want`, once a
-    process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`)."""
+    first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자动», `index_wants.want`, once a
+    process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`: column ->
+    the index). Each end says what came of its first key column (lead 11-11, owner «인덱스 없어»): a scan its ask's
+    last word (`index_wants.last_word`, None while the ask waits), a served one its index, one keyed by no text column
+    that none is asked - the last two on the log once a word (`index_wants.tell`)."""
     if engine_for(engine) != "virtual":
         return None, None
     from database import models
@@ -862,19 +865,29 @@ def _engine_reading(connection, engine, names, leave_out=None):
 
     legs, left_out = _compiled(connection, names)
     legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world_name, ())]
-    ends = [(leg.relation, columns) for leg in legs for columns in leg.columns.values()]
-    served = lambda table, columns: any((table, column) in _SERVED for column in columns)       # noqa: E731
+    # (table, its text key columns, its first key column of any kind) of each end
+    ends = [(leg.relation, columns, next((spec["column"] for _key, spec in leg.columns_of(arm)), None))
+            for leg in legs for arm, columns in leg.columns.items()]
+    served = lambda table, columns: next((_SERVED[(table, c)] for c in columns if (table, c) in _SERVED), None)  # noqa: E731
     raw = connection.connection.dbapi_connection
-    for table in {table for table, columns in ends if columns and not served(table, columns)}:
+    for table in {table for table, columns, _first in ends if columns and not served(table, columns)}:
         held = models.catalogue_indexes(raw, table)
-        _SERVED.update((table, column) for each, columns in ends if each == table for column in columns
-                       if any(models.auto_index_serves(index, [column], models.AUTO_WALK_KEY) for index in held))
-    scans = sorted({(table, (columns or [None])[0]) for table, columns in ends if not served(table, columns)}, key=str)
-    for table, column in scans:
-        if column is not None:                          # an end keyed by no text column has none to index
+        _SERVED.update(((table, column), index["name"]) for each, columns, _first in ends if each == table
+                       for column in columns for index in held
+                       if models.auto_index_serves(index, [column], models.AUTO_WALK_KEY))
+    texts, said = {(table, columns[0]) for table, columns, _first in ends if columns}, {"scans": [], "served": []}
+    for table, column, index in sorted({(table, (columns or [first])[0], served(table, columns))
+                                        for table, columns, first in ends}, key=str):
+        # an end keyed by no text column has none to index
+        word = ("%s (%s) - served by %s" % (table, column, index) if index is not None else None
+                if (table, column) in texts else "%s (%s) - not a text key, no index asked" % (table, column))
+        if word is None:
             index_wants.want(table, [column], models.AUTO_WALK_KEY, None, connection.engine)
-    return legs, {"name": "virtual", "left_out": left_out,
-                  "scans": [{"table": table, "column": column} for table, column in scans]}
+        elif index_wants.last_word(table, column) != word:
+            index_wants.tell(table, [column], word)
+        said["served" if index is not None else "scans"].append(
+            {"table": table, "column": column, "said": index_wants.last_word(table, column)})
+    return legs, {"name": "virtual", "left_out": left_out, **said}
 
 
 def _hidden_here(names, hidden, leave_out=None):

@@ -559,11 +559,37 @@ function intervalExcluded(raw) {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
+/** One line of what the walk's virtual read said - «<label>: <part> — <part>» (`notReadOf`, `scannedOf`). */
+function engineLine(label, ...parts) {
+  return `${label}: ${parts.join(' — ')}`;
+}
+
+/** How many of the slowest legs the walk shows (lead 11-11). */
+const SLOWEST_SHOWN = 3;
+
 /** The sources the walk's virtual read could not read, each with the server's why (`engine.left_out`; owner 11-10
  *  «아무것도 안 나옴» - a walk that read nothing said nothing) - one line each, [] when every source was read. */
 export function notReadOf(body) {
   const out = body && body.engine && Array.isArray(body.engine.left_out) ? body.engine.left_out : [];
-  return out.map((item) => `Not read: ${String((item && item.source) ?? '?')} — ${String((item && item.why) ?? '')}`);
+  return out.map((item) => engineLine('Not read', String((item && item.source) ?? '?'), String((item && item.why) ?? '')));
+}
+
+/** What the walk's virtual read said of its key ends and its legs (lead 11-11, owner «인덱스 없어»): `scanned` a line
+ *  each end no index serves - the server's sentence, or its name while the ask waits (`engine.scans`); `served` the
+ *  ends an index serves folded under one head (`engine.served`), null when none; `slowest` the SLOWEST_SHOWN legs the
+ *  read waited on longest (`engine.legs`, slowest first). All empty for a stored read. */
+export function scannedOf(body) {
+  const engine = (body && body.engine) || {};
+  const list = (each) => (Array.isArray(each) ? each : []);
+  const said = (end) => (end.said == null
+    ? [`${String(end.table)}.${String(end.column ?? '?')}`, 'index asked - no answer yet'] : [String(end.said)]);
+  const served = list(engine.served).map((end) => said(end).join(' — '));
+  return {
+    scanned: list(engine.scans).map((end) => engineLine('Scanned', ...said(end))),
+    served: served.length ? { head: engineLine('Served', `${served.length} end${served.length === 1 ? '' : 's'}`), lines: served } : null,
+    slowest: list(engine.legs).slice(0, SLOWEST_SHOWN).map((leg) => engineLine('Slowest',
+      `${String(leg.table)} (${String(leg.leg)})`, `${Number(leg.seconds).toFixed(2)} s · ${Number(leg.rows)} rows`)),
+  };
 }
 
 export function subgraphModel(result) {
@@ -2062,7 +2088,7 @@ export function createWalkBoxWalk(deps) {
       const truncated = body.truncated || null;
       const cutAxes = truncationAxes(truncated, { hopsChosen: hops !== undefined && hops !== null });
       return {
-        ok: true, nodes, edges, truncated, notRead: notReadOf(body),
+        ok: true, nodes, edges, truncated, notRead: notReadOf(body), scanned: scannedOf(body),
         // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,

@@ -222,6 +222,8 @@ export function boot(doc, host, deps) {
   // puts the caret back (lead 10-11 W addendum 7).
   const fields = new Map();
   let typing = null;
+  // The folded «Served» ends, open or not, as last left: a redraw keeps it.
+  let servedOpen = false;
   // Made once and kept across renders (`render` empties the host); it walks through the same wire.
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
@@ -2003,8 +2005,19 @@ export function boot(doc, host, deps) {
       }
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
       //    A source the read could not read says so, and says why - with no node, it stands where «No node reached» would.
+      //    Then each key end no index serves, the served ones folded, and the slowest legs (lead 11-11) - lines of the
+      //    same shape, not «read nothing».
       const notRead = r.notRead || [];
-      for (const line of notRead) box.append(el(doc, 'div', 'wk-note', line));
+      const said = r.scanned || {};
+      for (const line of [...notRead, ...(said.scanned || [])]) box.append(el(doc, 'div', 'wk-note', line));
+      if (said.served) {
+        const fold = el(doc, 'details', 'wk-note');
+        fold.open = servedOpen;
+        fold.addEventListener('toggle', () => { servedOpen = fold.open; });
+        fold.append(el(doc, 'summary', '', said.served.head), ...said.served.lines.map((line) => el(doc, 'div', '', line)));
+        box.append(fold);
+      }
+      for (const line of said.slowest || []) box.append(el(doc, 'div', 'wk-note', line));
       if (!r.nodes.length && !r.message && !notRead.length) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
       renderTable(box, r, askedStarts(askedOf), shown.resultB);

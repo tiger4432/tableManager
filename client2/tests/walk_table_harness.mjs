@@ -576,14 +576,27 @@ async function suite(mod) {
       const { host, handle } = await render(mod, result);
       handle.state.asked = { type: 'die@1', keys: {} };
       handle.render();
-      return byClass(host, 'wk-note').map((e) => e.textContent)
-        .filter((t) => t.startsWith('Not read: ') || t === 'No node reached');
+      return byClass(host, 'wk-note').map((e) => (e.tagName === 'details' ? `${e.children[0].textContent} [${e.children.length - 1}]` : e.textContent))
+        .filter((t) => /^(Not read|Scanned|Served|Slowest): /.test(t) || t === 'No node reached');
     };
     const leftOut = await notes({ nodes: [], edges: [], notRead: ['Not read: dt_log — no time column'] });
     const bare = await notes({ nodes: [], edges: [] });
     ok('H2 a walk that read nothing says which source it did not read and why, in place of «No node reached»',
       JSON.stringify([leftOut, bare]) === JSON.stringify([['Not read: dt_log — no time column'], ['No node reached']]),
       JSON.stringify([leftOut, bare]));
+    // the scanned ends and the slowest leg (lead 11-11) stand under the Not read lines, the same note; they are not
+    // «read nothing» - a walk that reached no node still says «No node reached»
+    const scanned = { scanned: ['Scanned: wafer_process.wafer_id — index asked - no answer yet'],
+      served: { head: 'Served: 2 ends', lines: ['t (a) - served by ix_a', 't (b) - served by ix_b'] },
+      slowest: ['Slowest: wafer_process (s.p) — 1.20 s · 4 rows'] };
+    const drawn = ['Scanned: wafer_process.wafer_id — index asked - no answer yet', 'Served: 2 ends [2]',
+      'Slowest: wafer_process (s.p) — 1.20 s · 4 rows'];
+    const both = await notes({ nodes: [], edges: [], notRead: ['Not read: dt_log — no time column'], scanned });
+    const onlyScanned = await notes({ nodes: [], edges: [], scanned });
+    ok('H3 the scanned ends, the served ones folded under one head and the slowest legs are notes under the Not read '
+      + 'lines; with none not read, «No node reached» stays',
+      JSON.stringify([both, onlyScanned]) === JSON.stringify([['Not read: dt_log — no time column', ...drawn],
+        [...drawn, 'No node reached']]), JSON.stringify([both, onlyScanned]));
   }
 
   console.log(`${LF}-- E1: one basket walked = a Next from that row (owner 10-10) --`);
