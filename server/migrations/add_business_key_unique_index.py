@@ -251,6 +251,48 @@ def existing_unique_index(conn, table: str):
     return (row[0], bool(row[1])) if row else None
 
 
+def key_catalogue(conn, table: str) -> dict:
+    """What the catalogue alone says about finding a row by its key - no table read (owner 11-11: the census reads
+    70M rows on an HDD before the first line): the row estimate (reltuples) and every index whose columns include
+    business_key_val or a declared key part - name, unique, valid, partial, its columns in order.
+    -> {"rows": int or None, "indexes": [{"name", "unique", "valid", "partial", "columns"}]}."""
+    try:
+        from database import crud
+
+        cfg = crud.TABLE_CONFIG.get(table) or {}
+    except Exception:                                   # noqa: BLE001 - the catalogue answers without the config
+        cfg = {}
+    keys = {BK_COLUMN, *([cfg["business_key"]] if cfg.get("business_key") else []),
+            *(cfg.get("composite_key_source") or [])}
+    rows = conn.execute(text("""
+        SELECT c.reltuples::bigint, i.relname, x.indisunique, x.indisvalid, x.indpred IS NOT NULL,
+               array(SELECT coalesce(a.attname, '(expression)')
+                       FROM unnest(x.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+                       LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
+                      ORDER BY k.ord)
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_index x ON x.indrelid = c.oid
+        LEFT JOIN pg_class i ON i.oid = x.indexrelid
+        WHERE n.nspname = current_schema() AND c.relname = :t AND c.relkind IN ('r', 'p')
+        ORDER BY i.relname
+    """), {"t": table}).fetchall()
+    found = [{"name": r[1], "unique": bool(r[2]), "valid": bool(r[3]), "partial": bool(r[4]), "columns": list(r[5])}
+             for r in rows if r[1] is not None and keys & set(r[5] or ())]
+    return {"rows": int(rows[0][0]) if rows and rows[0][0] is not None and rows[0][0] >= 0 else None,
+            "indexes": found}
+
+
+def key_catalogue_line(table: str, found: dict) -> str:
+    """One line a table: its rows and its key indexes, or that a lookup by key reads the whole table."""
+    said = "; ".join(f"{i['name']} ({'unique' if i['unique'] else 'not unique'}"
+                     f"{'' if i['valid'] else ', INVALID - serves nothing'}{', partial' if i['partial'] else ''}: "
+                     f"{', '.join(i['columns'])})" for i in found["indexes"])
+    rows = f"~{found['rows']:,} rows" if found["rows"] is not None else "rows never counted (no ANALYZE yet)"
+    return (f"{table}: {rows} - key indexes: {said}" if said else
+            f"{table}: {rows} - no index on {BK_COLUMN} or the declared key: a lookup by key reads the whole table")
+
+
 def index_exists(conn, name: str):
     """`(exists, is_valid)` for an index by NAME - the `IF NOT EXISTS` blind spot.
 
@@ -602,6 +644,13 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
             tables = [t for t in tables if t in only]
 
         print(f"Tables carrying `{BK_COLUMN}`: {len(tables)}\n")
+        # the catalogue first, a line a table as soon as it is known - the census below reads every row of every
+        # table (owner 11-11: 70M rows, HDD); stopping after these lines still answers «does a key index stand»
+        print("Key indexes (the catalogue only - the duplicate count below reads every row; Ctrl+C keeps these):",
+              flush=True)
+        for t in tables:
+            print("  " + key_catalogue_line(t, key_catalogue(conn, t)), flush=True)
+        print("", flush=True)
         header = (f"{'table':38s} {'rows':>10s} {'nullbk':>8s} {'dupkeys':>8s} "
                   f"{'surplus':>8s}  verdict")
         print(header)
@@ -617,7 +666,7 @@ def run(apply: bool, only: list = None, engine=None, drop_redundant: bool = Fals
                 else:
                     r["verdict"] = "buildable"
             print(f"{t:38s} {r['rows']:10d} {r['null_keys']:8d} {r['dup_keys']:8d} "
-                  f"{r['surplus']:8d}  {r['verdict']}")
+                  f"{r['surplus']:8d}  {r['verdict']}", flush=True)
             results.append(r)
 
         section1 = _report_section1(results, apply)

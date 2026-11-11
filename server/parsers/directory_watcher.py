@@ -693,9 +693,6 @@ LOCK_WAITED_OUT_PREFIX = "waited past the lock timeout"
 class LockWaitedOut(RuntimeError):
     """A file's write waited past the lock timeout. Not the file's fault: it is left where it
     lies, unsealed, for the next sweep (총괄 10-07 ③ ㄴ), and the message names who held it."""
-#: Above this many seconds a chunk's prefetch explains itself, ONCE per file.
-SLOW_PREFETCH_EXPLAIN_S = "slow_prefetch_explain_seconds"
-SLOW_PREFETCH_EXPLAIN_DEFAULT = 1.0
 WAIT_SAMPLE_INTERVAL_S = 0.25
 
 
@@ -967,91 +964,6 @@ def _naive_time_suffix() -> str:
 
     note = naive_time_note()
     return " | " + note if note else ""
-
-
-def _plan_digest(db, sql, params, cap):
-    """The PLAN only: node names, index names, row estimates. No rows, no ANALYZE."""
-    from sqlalchemy import text as _t
-    try:
-        lines = [r[0] for r in db.execute(_t("EXPLAIN " + sql), params).fetchall()]
-    except Exception as exc:
-        db.rollback()
-        return "EXPLAIN refused (%s: %s)" % (type(exc).__name__, told(exc))
-    keep = [" ".join(l.split()) for l in lines
-            if any(w in l for w in ("Scan", "Index", "Join", "rows="))]
-    return (" | ".join(keep) or " ".join(" ".join(lines).split()))[:cap]
-
-
-def _row_id_without_a_refresh(row):
-    """The row id an object ALREADY carries. Never a database round trip.
-
-    🔴 `getattr(row, "row_id")` LOOKS FREE AND IS NOT (production 2026-09-16, three days).
-    `apply_batch_updates` commits, and a commit EXPIRES every object it touched
-    (`expire_on_commit` is SQLAlchemy's default and this project never turns it off), so
-    that attribute read issues a REFRESH SELECT per object — fifty of them, on the path
-    this diagnostic exists for precisely because it is already slow — and raises
-    `Instance <...> is not bound to a Session` the moment the object is detached instead.
-    The owner saw that sentence and an ingestion that stopped, with no name on it.
-
-    `row_id` is the dynamic tables' PRIMARY KEY (`models.py` :988), so the identity key on
-    the InstanceState holds it — and that key survives both expiry and detachment because
-    it is what the session used to file the object in the first place.
-    """
-    from sqlalchemy import inspect as sa_inspect
-    try:
-        state = sa_inspect(row)
-    except Exception:                                    # not an ORM object at all
-        return None
-    identity = getattr(state, "identity", None)
-    if identity:
-        return identity[0]
-    #: Not persisted yet — whatever is still loaded, without asking the database for more.
-    return (getattr(state, "dict", None) or {}).get("row_id")
-
-
-def _maybe_explain_slow_prefetch(db, table_name, summary, results, already):
-    """When a chunk's prefetch is slow, make the PRODUCT print the plan (S-169 ④).
-
-    🔴 THE OWNER CANNOT RUN `EXPLAIN` (판정 276). Production spends 10 s of a chunk in
-    prefetch where this box spends 0.03 s, and the difference between "the index is there
-    and chosen" and "Seq Scan on cell_sources" IS the diagnosis. Nobody can type it, so
-    the product types it for itself - but only when the number says something is wrong.
-
-    ⚠️ ONCE PER FILE, NOT PER CHUNK. A thousand-chunk file would print a thousand plans
-    of one shape and bury the line somebody has to read.
-
-    ⚠️ PLAN ONLY, NEVER `ANALYZE`. `EXPLAIN ANALYZE` RUNS the statement again - on the
-    path that is already slow, for a diagnostic. The plan alone names the scan and the
-    index, which is what splits the two cases.
-    """
-    if already:
-        return already
-    steps = (summary or {}).get("write_steps") or {}
-    try:
-        threshold = float(load_ingestion_settings().get(
-            SLOW_PREFETCH_EXPLAIN_S, SLOW_PREFETCH_EXPLAIN_DEFAULT))
-    except (TypeError, ValueError):
-        threshold = SLOW_PREFETCH_EXPLAIN_DEFAULT
-    if steps.get("prefetch", 0.0) <= threshold:
-        return already
-    row_ids = []
-    for item in (results or [])[:50]:
-        row = item[0] if isinstance(item, tuple) else item
-        rid = _row_id_without_a_refresh(row)
-        if rid:
-            row_ids.append(str(rid))
-    if not row_ids:
-        return already
-    target = _plan_digest(db, 'SELECT row_id FROM "%s" WHERE row_id = ANY(:ids)' % table_name,
-                          {"ids": row_ids}, 200)
-    sources = _plan_digest(db, "SELECT row_id FROM cell_sources WHERE table_name = :t"
-                               " AND row_id = ANY(:ids)",
-                           {"t": table_name, "ids": row_ids}, 200)
-    logger.warning(
-        "[Ingest] %s prefetch %.3f s over %.1f s - PLAN (once per file) | target: %s"
-        " | cell_sources: %s", table_name, steps.get("prefetch", 0.0), threshold,
-        target, sources)
-    return True
 
 
 # ── External read-only source registration ─────────────────────────────────
@@ -4166,11 +4078,6 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             while True:
                 chunk = next(row_iter, []) if map_columns else list(islice(row_iter, batch_size))
-                # once-per-FILE latch for the slow-prefetch plan (S-169 ④)
-                try:
-                    _explained
-                except NameError:
-                    _explained = False
                 if not chunk:
                     break
                 chunk_index += 1
@@ -4333,21 +4240,6 @@ class IngestionHandler(FileSystemEventHandler):
                     if _sampler is not None:
                         _sampler.stop()
                     _summary = chunk_counts()
-                    # 🔴 A DIAGNOSTIC MAY NOT KILL WHAT IT DIAGNOSES (production
-                    # 2026-09-16). This one reads objects a commit has expired and
-                    # runs two EXPLAINs on the chunk session; either can raise, and
-                    # for three days one did — taking the file with it, under a
-                    # sentence about sessions that named neither the file nor this
-                    # seat. The plan is worth having and never worth a lost file.
-                    try:
-                        _explained = _maybe_explain_slow_prefetch(
-                            db, t_name, _summary, results, _explained)
-                    except Exception as _plan_err:                  # noqa: BLE001
-                        logger.warning(
-                            "[Ingest] %s slow-prefetch PLAN skipped (%s: %s) - the "
-                            "chunk is unaffected", t_name,
-                            type(_plan_err).__name__, told(_plan_err))
-                        _explained = True
                     _stages = _summary.get("stages") or {}
                     _wall = time.monotonic() - chunk_started
                     logger.info(

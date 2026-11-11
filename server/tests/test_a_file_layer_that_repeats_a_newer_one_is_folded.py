@@ -2,9 +2,7 @@
 
 Write path: a file layer equal to the newest layer of its priority class writes nothing; one whose value an older
 file layer of its share holds moves that layer to the front, no new layer (소유자 11-08 «층을 새로하지 말고 순서를
-바꿔»); one that differs from all is written. Stacked layers:
-`replay.fold_file_layers` keeps, per class and value, the newest (and a pinned one). In every case
-the shown value is the one `compute_priority_value` picked before - asserted cell by cell.
+바꿔»); one that differs from all is written. Stacked layers: withdrawing the newest shows the one beneath.
 """
 from datetime import datetime, timedelta
 
@@ -140,77 +138,24 @@ def _stack(db, key, col, layers, pin=None):
     db.commit()
 
 
-def _shown(db, key, col):
-    row = _row(db, key)
-    layers = {s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
-              for s in db.query(models.CellSource).filter(
-                  models.CellSource.table_name == TABLE,
-                  models.CellSource.row_id == row.row_id, models.CellSource.column_name == col)}
-    pin = db.query(models.CellOverwrite.manual_priority_source).filter(
-        models.CellOverwrite.table_name == TABLE, models.CellOverwrite.row_id == row.row_id,
-        models.CellOverwrite.column_name == col).scalar()
-    return crud.compute_priority_value(layers, pin, TABLE)
+def test_withdrawing_the_newest_reveals_the_layer_beneath(env, monkeypatch):
+    """R2's edge (225b2c658): f01 B · f03 A · f10 A, written as lines - withdraw f10, f03's A shows. Three
+    shares: a file of one share saying its share's value again folds into that line (A's share fold, f2629199c)."""
+    from chain import cell_layer
+    from database import lines
+    from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
+    def share_file(n):
+        root = "c:\\share_%s" % n
+        return crud.external_layer_name("workspace", "%s@%s" % (TABLE, root), "%s\\f%s.csv" % (root, n))
 
-CELLS = {
-    # key: (column, stack oldest first, pin, what stays)
-    "NINE": ("v", [("f%02d.csv" % i, v) for i, v in enumerate("AABABAABA", 1)], None,
-             {"f08.csv": "B", "f09.csv": "A"}),
-    "PERSON": ("v", [("user", "A"), ("f01.csv", "A"), ("f02.csv", "A")], None,
-               {"user": "A", "f02.csv": "A"}),
-    "CHAIN": ("v", [(crud.CHAIN_SOURCE, "A"), ("f01.csv", "A"), ("f02.csv", "A")], None,
-              {crud.CHAIN_SOURCE: "A", "f02.csv": "A"}),
-    "AUTO": ("v", [("f01.csv", "A"), (AUTO, "A"), ("f02.csv", "A")], None,
-             {AUTO: "A", "f02.csv": "A"}),
-    "PINNED": ("v", [("f01.csv", "A"), ("f02.csv", "A"), ("f03.csv", "A")], "f01.csv",
-               {"f01.csv": "A", "f03.csv": "A"}),
-    "MERGED": ("v", [(crud.merged_layer_name("user", "old_exist_abc123"), "A"),
-                     (crud.merged_layer_name(crud.CHAIN_SOURCE, "K9_abc123"), "A"),
-                     ("f01.csv", "A"), ("f02.csv", "A")], None,
-               {"user (old_exist_abc123)": "A", "chain_ingestion (K9_abc123)": "A",
-                "f02.csv": "A"}),
-    "NUMBER": ("n", [("f01.csv", 1.0), ("f02.csv", "01"), ("f03.csv", 2.0)], None,
-               {"f02.csv": "01", "f03.csv": 2.0}),
-}
-
-
-def test_the_fold_over_stacked_layers_keeps_every_winner_and_one_layer_per_value(env):
-    from chain import replay
-
-    _write(env, "seed", [{"k": key} for key in CELLS])
-    env.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
+    f01, f03, f10 = share_file("01"), share_file("03"), share_file("10")
+    lines.ensure_line_table(env, TABLE, TABLES[TABLE])
     env.commit()
-    for key, (col, stack, pin, _stays) in CELLS.items():
-        _stack(env, key, col, stack, pin)
-    shown_before = {key: _shown(env, key, col) for key, (col, *_rest) in CELLS.items()}
-
-    dry = replay.fold_file_layers(env, TABLE, apply=False)
-    assert (dry["layers_before"], dry["layers_after"], dry["deepest_before"],
-            dry["deepest_after"]) == (28, 15, 9, 3)
-    assert dry["layers_deleted"] == 13 and dry["cells_folded"] == 7
-    assert len(_layers(env, "NINE")) == 9, "a dry run deletes nothing"
-
-    applied = replay.fold_file_layers(env, TABLE, apply=True)
-    assert applied["layers_deleted"] == 13
-    for key, (col, _stack_, _pin, stays) in CELLS.items():
-        assert _layers(env, key, col) == stays, key
-        assert _shown(env, key, col) == shown_before[key], "the winner moved in " + key
-    assert replay.fold_file_layers(env, TABLE, apply=True)["layers_deleted"] == 0
-
-
-@pytest.mark.parametrize("folded, revealed", [(False, "A"), (True, "B")])
-def test_withdrawing_the_newest_reveals_a_different_layer_once_folded(env, folded, revealed):
-    """R2's edge (225b2c658): f01 B · f03 A · f10 A - withdraw f10. Unfolded, f03's A shows;
-    folded, f03 is gone and the layer under it (f01's B) shows. The same holds when f10 was
-    never written because it repeated f03 (f224477c1): the file named is then f03."""
-    from chain import cell_layer, replay
-
-    _write(env, "seed", [{"k": "K1"}])
-    env.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
-    env.commit()
-    _stack(env, "K1", "v", [("f01.csv", "B"), ("f03.csv", "A"), ("f10.csv", "A")])
-    if folded:
-        replay.fold_file_layers(env, TABLE, apply=True)
-    cell_layer.withdraw_source(env, TABLE, "f10.csv", apply=True)
+    ticking_clock(monkeypatch)
+    for source, value in ((f01, "B"), (f03, "A"), (f10, "A")):
+        _write(env, source, [{"k": "K1", "v": value}])
+    run = cell_layer.withdraw_source(env, TABLE, f10, columns=["v"], apply=True)
     env.expire_all()
-    assert _row(env, "K1").v == revealed
+    assert run["cells_withdrawn"] == 1, "canary: f10 wrote the line its withdrawal takes back"
+    assert _row(env, "K1").v == "A"

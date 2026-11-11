@@ -779,16 +779,22 @@ def _gone_maps(db, rule, run_id):
     """`(columns, [key tuple])` - the maps or jobs the rule's layers sit on in its target that this run's batches never
     named, by the target's own values; or `(None, why)` when it cannot be told."""
     import json
-    from sqlalchemy import or_, tuple_
+    from sqlalchemy import select, tuple_
     import mapper_sdk
     from chain import rule_shape
-    from database import crud, models
+    from chain.cell_layer import _claimed_cells, claimed_lines
+    from database import crud, lines, models
 
     table = rule.get("target_table")
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
         return None, "the target %s has no model in this process" % table
     came_as, keys = mapper_sdk.removal_columns(rule, table)
+    if not lines.has_lines(db, table):
+        if lines.keeps_lines(table, crud.TABLE_CONFIG.get(table)):     # declared, its line table not built
+            return None, "%s: line table not built - the sweep cannot tell" % table
+        logger.info("[ReplaySweep] %s: no lines table - nothing to sweep", table)    # sys_* keep none (lead 11-11 ㄱ)
+        return came_as, []
     named = [spelled for (spelled,) in db.query(models.ReplayNamedMap.scope).filter(
         models.ReplayNamedMap.run_id == run_id, models.ReplayNamedMap.rule == rule.get("name"),
         models.ReplayNamedMap.scope != TALLY)]
@@ -807,10 +813,13 @@ def _gone_maps(db, rule, run_id):
             target = tuple_(*columns)
         for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
             covered.update(r for (r,) in db.query(model.row_id).filter(target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
-    S = models.CellSource
-    owned = {r for (r,) in db.query(S.row_id).filter(
-        S.table_name == table, S.updated_by == rule_shape.declaration_of(rule),
-        or_(S.source_name == crud.CHAIN_SOURCE, S.source_name.like(crud.CHAIN_SOURCE + " (%"))).distinct()}
+    # the rule's chain lines that still say a column - a line whose columns are all withdrawn owns nothing
+    lt, bits = claimed_lines(db, table)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    owned = {line["row_id"] for line in db.execute(select(lt.c.row_id, *said).where(*_claimed_filter(
+        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)]),
+        lt.c.row_id.in_(select(model.__table__.c.row_id))).distinct()).mappings()
+        if _claimed_cells(line, bits)}
     gone_rows = sorted(owned - covered)
     found = set()
     key_columns = [getattr(model, column) for column in keys]
@@ -1201,56 +1210,46 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Two aggregate queries, no row materialisation, no per-cell recompute - so this
-    is the half of `withdraw_source` that can sit on a request path. The first
-    counts the source's claims among the table's layers - the source is the lookup
-    index's last column (`idx_sources_by_source` is retired, S-118; `withdraw_source`
-    step 1); the second is driven from `cell_overwrites` and is therefore
-    bounded by the number of manual pins, not by `cell_sources`.
+    Two reads of the lines the source claims on rows t holds, grouped by a line's head/withdrawn bits - no row
+    materialisation, no per-cell recompute. A line whose row is gone is left out by the join on t: the run never
+    reaches it, since it pages t's own rows (`resolve_target`'s model) and asks their lines by id. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
+    this source on a cell its lines claim.
 
-    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
-    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
-    gaps are worth naming because a surface that reported it as exact would
-    overstate the operation:
+    Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
+    judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
 
-      * a `cell_sources` row whose dynamic row no longer exists is counted here and
-        skipped there (`withdraw_source` looks the row up and `continue`s on None),
-      * and `cells_withdrawn` is itself larger than the number of cells whose
-        DISPLAYED value changes, because the revealed source may carry the same
-        value (`value_unchanged`).
-
-    Closing either gap requires the per-cell recompute that is the run itself.
+    Returns ``{cells_claimed, pinned}`` - the run's `cells_matched` and `pinned_skipped`, so ``cells_claimed - pinned``
+    is its `cells_withdrawn` (the gate test holds them equal). That is still more than the cells whose DISPLAYED value
+    changes, because the revealed source may carry the same value (`value_unchanged`); closing that gap is the
+    per-cell recompute that is the run itself.
     """
-    from sqlalchemy import and_, case, func
+    from sqlalchemy import func, select
 
-    from chain.cell_layer import claimed_lines
+    from chain.cell_layer import _claimed_cells, claimed_lines, refuse_without_lines
     from database import models
 
-    # lines now: a claimed line may say several columns - B rewrites this body to cells (C 11-11 handover)
+    refuse_without_lines(db, table_name)
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
-    claimed = db.query(func.count()).select_from(lt).filter(*claims).scalar() or 0
+    rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
+    held = lt.join(rows, rows.c.row_id == lt.c.row_id)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    n = func.count().label("n")
+    claimed = sum(g["n"] * len(_claimed_cells(g, bits, columns))
+                  for g in db.execute(select(*said, n).select_from(held).where(*claims).group_by(*said)).mappings())
 
-    # Cells this source claims AND a human pinned TO this source. Joined rather
-    # than counted separately: a pin naming this source on a cell it does not
-    # claim changes nothing, and counting it would understate the result.
-    pinned = db.query(func.count()).select_from(lt).join(
-        models.CellOverwrite,
-        and_(models.CellOverwrite.table_name == table_name,
-             models.CellOverwrite.row_id == lt.c.row_id,
-             models.CellOverwrite.column_name.in_(list(columns or bits))),
-    ).filter(
-        *claims,
-        models.CellOverwrite.manual_priority_source == lt.c.source_name,
-    ).scalar() or 0
+    # Cells this source claims AND a human pinned TO this source - the pin's column among the line's claimed cells:
+    # a pin naming this source on a cell it does not claim changes nothing, and counting it would overstate.
+    co = models.CellOverwrite
+    pinned = sum(g["n"] for g in db.execute(
+        select(co.column_name, *said, n).select_from(held)
+        .join(co, and_(co.table_name == table_name, co.row_id == lt.c.row_id,
+                       co.manual_priority_source == lt.c.source_name))
+        .where(*claims).group_by(co.column_name, *said)).mappings()
+        if g["column_name"] in _claimed_cells(g, bits, columns))
 
-    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
-    # a pinned cell, or a value no layer carries, keeps one.
-    whole = (db.query(lt.c.row_id).filter(lt.c.head_0 != 0).group_by(lt.c.row_id)
-             .having(func.min(case((and_(*claims), 1), else_=0)) == 1).subquery())
-    emptied = db.query(func.count()).select_from(whole).scalar() or 0
-
-    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
 
 
 
@@ -1261,145 +1260,13 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
 def _write_resolved(db, table_name, row, col, decision, tx_id):
     """R3's write of a cell whose stored layers answer another value: the column and one history line
-    (`R3_AUDIT_SOURCE`, `resolved:<winner>`). The layer fold writes the cells it moves the same way."""
+    (`R3_AUDIT_SOURCE`, `resolved:<winner>`)."""
     from database import crud
 
     setattr(row, col, decision["new_value"])
     crud.create_audit_log(db, table_name, row.row_id, col, decision["old_value"], decision["new_value"],
                           R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}", transaction_id=tx_id,
                           business_key=getattr(row, "business_key_val", None))
-
-
-#: Cells each of the fold's lists names, for the dry run (총괄 4dd303f01 「앞 다섯」).
-FOLD_SAMPLE = 5
-
-
-def fold_file_layers(db, table_name: str, apply: bool = False,
-                     chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None, pace: str = None,
-                     log=logger.info, checkpoint=None) -> dict:
-    """The layer fold over what one table has already stacked (총괄 225b2c658 · 8ec008914 · 4dd303f01) -
-    the write path stops the stacking, this removes what stacked before it. The name is the first
-    fold's: old run records and the CLI name it.
-
-    Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
-    with a source row becomes that row's (`chain_ingestion (<row>)`), or goes when that row's layer is
-    there; one with no source row stays (총괄 10-11 «다»), and so does a key column's. A cell of two layers and more holding a chain row layer,
-    whose layers now answer another value (a row layer ranks as the chain's), gets R3's write - the
-    value and one history line. One commit per page; a stop lands between pages and a re-run finds
-    only what is left.
-    """
-    from sqlalchemy import literal, update
-
-    from database import crud, models
-
-    from chain import keyset_scan
-
-    model, col_types = resolve_target(table_name)
-    keys = key_columns(table_name)
-    pages_per_cycle, rest_seconds = resolve_pace(pace)
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
-             "layers_before": 0, "layers_after": 0, "deepest_before": 0, "deepest_after": 0,
-             "chain_renamed": 0, "chain_deleted": 0, "chain_unstamped": 0, "chain_differs": 0,
-             "chain_copies": 0, "shown_changed": 0,
-             "first": {"chain_differs": [], "chain_copies": [], "shown_changed": []}, "stopped": False}
-    cells = models.CellSource.__table__.c
-    # 🔴 ONE STATEMENT PER PAGE AND COLUMN, the row's layer spelled from its own origin_row_id - one UPDATE per
-    #    layer took 1,196 s for 53,520 on the box's dt_log copy (the dry run, 83 s). The two halves around the
-    #    origin are `merged_layer_name`'s, so the name has one spelling.
-    before, after_tag = crud.merged_layer_name(crud.CHAIN_SOURCE, "\x00").split("\x00")
-
-    def rename(column, row_ids):
-        db.execute(update(models.CellSource.__table__)
-                   .where(cells.table_name == table_name, cells.column_name == column,
-                          cells.source_name == crud.CHAIN_SOURCE, cells.row_id.in_(row_ids))
-                   .values(source_name=literal(before) + cells.origin_row_id + literal(after_tag)))
-
-    def first(key, entry):
-        if len(stats["first"][key]) < FOLD_SAMPLE:
-            stats["first"][key].append(entry)
-
-    tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
-    with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):   # the label R3's writes carry
-        size = keyset_scan.PageSize(chunk_size)
-        for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
-                                           limit=limit, size=size):
-            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
-                stats["stopped"] = True
-                log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
-                break
-            stats["pages"] += 1
-            stats["rows_scanned"] += len(page)
-            cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
-            gone, renames, asked = [], [], []
-            for (row_id, col), layers in cell_sources.items():
-                if col not in col_types:
-                    continue
-                pin = pins.get((row_id, col))
-                fold = crud.stacked_layers(layers, col_types[col], table_name, pin, key=col in keys)
-                drop = fold["file"] + fold["chain"]
-                after = {name: entry for name, entry in layers.items() if name not in drop}
-                for was, now in fold["renamed"].items():
-                    after[now] = after.pop(was)
-                stats["layers_before"] += len(layers)
-                stats["layers_after"] += len(after)
-                stats["deepest_before"] = max(stats["deepest_before"], len(layers))
-                stats["deepest_after"] = max(stats["deepest_after"], len(after))
-                stats["cells_folded"] += bool(fold["file"])
-                stats["layers_deleted"] += len(fold["file"])
-                stats["chain_deleted"] += len(fold["chain"])
-                stats["chain_renamed"] += len(fold["renamed"])
-                plain = layers.get(crud.CHAIN_SOURCE)
-                stats["chain_unstamped"] += bool(col not in keys and plain is not None
-                                                 and not plain.get("origin_row_id"))
-                if fold["differs"]:
-                    stats["chain_differs"] += 1
-                    first("chain_differs", {"row_id": row_id, "column": col})
-                if fold["copies"]:
-                    stats["chain_copies"] += fold["copies"]
-                    first("chain_copies", {"row_id": row_id, "column": col})
-                gone.extend((table_name, row_id, col, name) for name in drop)
-                renames.extend((col, row_id) for _was in fold["renamed"])
-                if len(layers) > 1 and any(name != crud.CHAIN_SOURCE and crud.layer_ranks_as(name)
-                                           == crud.CHAIN_SOURCE for name in after):
-                    asked.append((row_id, col, after, pin))
-            rows = {}
-            if asked:
-                rows = {row.row_id: row for row in db.query(model).filter(
-                    model.row_id.in_(sorted({row_id for row_id, *_rest in asked}))).all()}
-            moved = []
-            for row_id, col, after, pin in asked:
-                row = rows.get(row_id)
-                if row is None:
-                    continue
-                decision = _resolve_cell(table_name, col_types, row, col, after, pin)
-                if decision["changed"]:
-                    stats["shown_changed"] += 1
-                    first("shown_changed", {"row_id": row_id, "column": col, "old_value": decision["old_value"],
-                                            "new_value": decision["new_value"], "top_source": decision["top_source"]})
-                    moved.append((row, col, decision))
-            if apply and (gone or renames or moved):
-                crud.bulk_delete_cell_sources(db, gone)
-                by_column = {}
-                for col, row_id in renames:
-                    by_column.setdefault(col, []).append(row_id)
-                for col, row_ids in sorted(by_column.items()):
-                    rename(col, row_ids)
-                for row, col, decision in moved:
-                    _write_resolved(db, table_name, row, col, decision, tx_id)
-                db.commit()
-            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                size.rest(rest_seconds)
-    if not apply:
-        db.rollback()
-    log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
-        f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
-        f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
-        f"{stats['deepest_after']}; chain plain layers off the keys {stats['chain_renamed']} renamed to their row's, "
-        f"{stats['chain_deleted']} whose row layer is there deleted, {stats['chain_differs']} kept differing "
-        f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
-        f"{stats['shown_changed']} shown value(s) move")
-    return stats
 
 
 #: Who deleted, in the history of each row `fold_duplicate_rows` takes.
@@ -1415,14 +1282,25 @@ FOLD_ROWS_DIFFERING_KEYS = 5
 FOLD_KEEP_MOST_LAYERS = "most_layers"
 
 
-def _layer_count(model, table_name):
-    """How many cell layers the row holds - `keep` most_layers ranks by it."""
-    from sqlalchemy import func, select
+def _layer_count(db, model, table_name):
+    """How many cells the row's head lines still claim (head, not withdrawn - a line says many cells) - `keep`
+    most_layers ranks by it. `cell_layer._claimed_cells`' answer, spelled in SQL (it sits in the ranking's ORDER BY)
+    with `lines._mask` a column, as `lines.winners_sql` reads a cell."""
+    from sqlalchemy import and_, case, func, literal, select
 
-    from database import models
+    from chain.cell_layer import claimed_lines
+    from database import lines
 
-    cs = models.CellSource
-    return select(func.count()).where(cs.table_name == table_name, cs.row_id == model.row_id).scalar_subquery()
+    if not lines.has_lines(db, table_name):
+        return literal(0)
+    lt, bits = claimed_lines(db, table_name)
+
+    def has(family, bit):
+        return lt.c["%s_%d" % (family, bit // lines.BITS_PER_CHUNK)].op("&")(lines._mask(bit))
+    cells = sum((case((and_(has("head", bit) != 0, has("withdrawn", bit) == 0), 1), else_=0)
+                 for bit in bits.values()), literal(0))
+    return select(func.coalesce(func.sum(cells), 0)).where(
+        lt.c.row_id == model.row_id, or_(*[c != 0 for c in lt.c if c.name.startswith("head_")])).scalar_subquery()
 
 
 def _blank_key(model, keys):
@@ -1564,7 +1442,7 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     compared = [column for column in config.get("column_types") or {} if column in model.__table__.columns
                 and column not in keys and column != mark and column not in identity]
     ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged, compared=compared,
-                                by=_layer_count(model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
+                                by=_layer_count(db, model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
     said_as = order or "layers"
     woken = _excluding_by(table_name, mark) if mark else []
     found = _key_index(db, table_name, keys)
@@ -1773,13 +1651,18 @@ FULL_RESET_SOURCE = "full_reset"
 def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = False, by: str = EVERY_ROW_DELETER,
                setup=None, rules=None, log=logger.info) -> dict:
     """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
-    총괄 35b76ba92): the rows, the table's cell layers and pins in ONE transaction with one summary history line, then
+    총괄 35b76ba92): the rows and pins in ONE transaction with one summary history line - the table's lines stay, its
+    history with no head (a271f5726, lead ruling ㄴ 11-11 - a row made again on an old id starts from nothing):
+    `layers` counts the cells no one sees after it - then
     every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
     grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
     person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
     and refuses a table that moved since."""
+    from sqlalchemy import func, select, update
+
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from chain.ingestion_worker import loaded_chain_rules, watches_table
-    from database import crud, models
+    from database import crud, lines, models
     from ledger import backfill, followup, schema
     from ledger.setup import load_setup
 
@@ -1791,9 +1674,17 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' is not a declared table (table_config)" % table_name)
     setup = load_setup() if setup is None else setup
     rules = loaded_chain_rules() if rules is None else rules
-    layers = dict(db.execute(text(
-        "SELECT source_name, count(*) FROM cell_sources WHERE table_name = :t GROUP BY source_name"),
-        {"t": table_name}).fetchall())
+    layers = {}            # {source: the cells its head lines on t's rows still claim} - count_withdrawable's count
+    lined = lines.has_lines(db, table_name)
+    if lined:
+        lt, bits = claimed_lines(db, table_name)
+        said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+        rows = models.DYNAMIC_TABLES[table_name].__table__
+        for g in db.execute(select(lt.c.source_name, *said, func.count().label("n"))
+                            .where(lt.c.row_id.in_(select(rows.c.row_id)),
+                                   or_(*[c != 0 for c in said if c.name.startswith("head_")]))
+                            .group_by(lt.c.source_name, *said)).mappings():
+            layers[g["source_name"]] = layers.get(g["source_name"], 0) + g["n"] * len(_claimed_cells(g, bits))
     found = {
         "mode": "apply" if apply else "dry-run", "table": table_name,
         "rows": db.execute(text('SELECT count(*) FROM "%s"' % table_name)).scalar(),
@@ -1812,9 +1703,11 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' has %d row(s) now, not %s - read the preview again and give its count"
                             % (table_name, found["rows"], confirm_rows))
     tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
+    if lined:              # the leaving rows' lines stay as history with no head - no event (lead 11-11)
+        heads = [c for c in said if c.name.startswith("head_")]
+        db.execute(update(lt).where(lt.c.row_id.in_(select(rows.c.row_id)), or_(*[c != 0 for c in heads]))
+                   .values({c.name: 0 for c in heads}))
     found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
-    found["layers_deleted"] = db.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
-                                         {"t": table_name}).rowcount
     found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
                                              {"t": table_name}).rowcount
     crud.create_audit_log(db, table_name, "*", "*", found["rows"], 0, FULL_RESET_SOURCE, by, transaction_id=tx)
@@ -1824,8 +1717,8 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         source: backfill.rescope(db.get_bind(), setup, source, None, (), apply=True, whole_source=True,
                                  world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
         for source in found["ledger_atoms"]}
-    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['layers_deleted']} layer(s), "
-        f"{found['overwrites_deleted']} pin(s) deleted in {tx}; ledger atoms withdrawn {found['ledger_withdrawn']}")
+    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['overwrites_deleted']} pin(s) deleted "
+        f"in {tx}, its lines kept as history with no head; ledger atoms withdrawn {found['ledger_withdrawn']}")
     return found
 
 

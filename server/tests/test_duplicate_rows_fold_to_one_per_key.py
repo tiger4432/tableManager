@@ -460,19 +460,38 @@ def _layer(db, log_id, source, **cells):
     db.commit()
 
 
-def _layers(db, log_id):
-    return db.query(models.CellSource).filter_by(table_name=TABLE, row_id=_row_id(db, log_id)).count()
+def _cells(db, log_id):
+    """(lines, cells) the row's head lines hold - cells as `lines.layers` reads them (head, not withdrawn)."""
+    from sqlalchemy import func, select
+
+    from database import lines
+
+    row_id = _row_id(db, log_id)
+    lt = lines.built_lines(db, TABLE)[0]
+    held = db.execute(select(func.count()).where(lt.c.row_id == row_id, lt.c.head_0 != 0)).scalar()
+    return held, sum(len(named) for named in lines.layers(db, TABLE, [row_id]).values())
 
 
-def test_keep_most_layers_keeps_the_row_holding_the_most_and_a_tie_the_smaller_row_id(db):
+@pytest.mark.parametrize("withdrawn", [False, True], ids=["cells-not-lines", "withdrawn-cells-leave"])
+def test_keep_most_layers_keeps_the_row_holding_the_most_and_a_tie_the_smaller_row_id(db, withdrawn):
+    from database import lines
+
+    lines.ensure_line_table(db, TABLE, TABLES[TABLE])                    # the cells are the lines' (overhaul)
+    db.commit()
     _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "1"}, {"log_id": "a2", "wafer": "W1", "ts": "1"},
                {"log_id": "b1", "wafer": "W2", "ts": "1"}, {"log_id": "b2", "wafer": "W2", "ts": "1"}])
-    _layer(db, "a2", "f02.csv", job="x")
-    assert _layers(db, "a2") > _layers(db, "a1")                                  # canary: a2 holds more
+    _layer(db, "a1", "f01.csv", job="x")                                 # a1: two more lines, a cell each
+    _layer(db, "a1", "f02.csv", lot="y")
+    _layer(db, "a2", "f03.csv", job="j", lot="l", v=1, mark="m")         # a2: one more line, four cells
+    if withdrawn:
+        replay.withdraw_source(db, TABLE, "f03.csv", columns=["job", "lot", "v"], apply=True, log=lambda m: None)
+    want = "a1" if withdrawn else "a2"
+    assert (_cells(db, "a1"), _cells(db, "a2")) == (
+        ((3, 5), (3, 4)) if withdrawn else ((3, 5), (2, 7))), "canary: (lines, cells) each"
     tie = "b1" if _row_id(db, "b1") < _row_id(db, "b2") else "b2"
     done = replay.fold_duplicate_rows(db, TABLE, ["wafer"], None, keep=replay.FOLD_KEEP_MOST_LAYERS, apply=True,
                                       log=lambda m: None)
-    assert done["rows_deleted"] == 2 and _left(db) == sorted(["a2", tie])
+    assert done["rows_deleted"] == 2 and _left(db) == sorted([want, tie])
 
 
 @pytest.mark.parametrize("order, keep", [("ts", replay.FOLD_KEEP_MOST_LAYERS), (None, "min"), ("", "max")])

@@ -104,16 +104,16 @@ def test_a_blank_recount_leaves_the_row_to_its_write(db):
     assert _rows(db) == [("a", None, None)], "canary: the withdrawal emptied the row"
 
 
-def test_r2_deletes_the_row_it_empties_and_its_preview_said_at_most_that_many(db):
+def test_r2_deletes_the_row_it_empties_and_its_dry_run_said_that_many(db):
     _copy(db, "a", "src-a")
     _copy(db, "b", None, source="file_b.csv")
     [layer] = {s.source_name for s in db.query(models.CellSource).filter_by(table_name=TGT, row_id=_copy(db, "a", "src-a"))}
     db.rollback()
 
-    preview = replay.count_withdrawable(db, TGT, layer)
+    dry = replay.withdraw_source(db, TGT, layer, apply=False)
     stats = replay.withdraw_source(db, TGT, layer, apply=True)
 
-    assert preview["rows_emptied"] == 1
+    assert dry["rows_deleted"] == 1
     assert stats["rows_deleted"] == 1
     assert _rows(db) == [("b", "b", "x")]
 

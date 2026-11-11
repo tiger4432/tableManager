@@ -9,12 +9,9 @@
   ② a row layer ranks as the chain's: it beats a newer file layer
   ③ a row layer's blank means emptied · `withdraw_source(chain_ingestion)` takes the row layers · an old
     envelope that names a row layer is the chain's
-  ④ the layer fold: the preview counts what the run does, a re-run does nothing, and a plain layer with no
-    source row is not folded - a row taken back shows it, as before the landing (총괄 10-11 «다»)
 """
 import os
 import sys
-from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -26,7 +23,6 @@ if SERVER_DIR not in sys.path:
 
 import event_constants                                              # noqa: E402
 import mapper_sdk                                                   # noqa: E402
-from admin import retroactive                                       # noqa: E402
 from chain import cell_layer, replay                                # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
@@ -205,86 +201,3 @@ def test_an_old_envelope_naming_a_row_layer_is_the_chains(db):
     event = models.DatabaseOutbox(table_name=SRC, event_type="EDIT",
                                   payload={"table_name": SRC, "source_name": "chain_ingestion (r1)"})
     assert worker._rule_accepts_event(dict(RULE), event) is False, "a rule that did not opt in woke"
-
-
-# --- ④ the fold -------------------------------------------------------------------------------
-
-T0 = datetime(2026, 10, 1, 1, 0, 0)
-
-
-def _stack(db, key, layers, shown):
-    """`[(name, value, origin)]` oldest first, an hour apart, and the value the column shows today."""
-    row = db.query(models.DYNAMIC_TABLES[TGT]).filter_by(business_key_val=key).one()
-    for hour, (name, value, origin) in enumerate(layers):
-        db.add(models.CellSource(table_name=TGT, row_id=row.row_id, column_name="x", source_name=name,
-                                 value=value, updated_by="cl", origin_row_id=origin,
-                                 ingested_at=T0 + timedelta(hours=hour)))
-    row.x = shown
-    db.commit()
-
-
-def _stacked(db):
-    """The cells as a table stood before the landing - every chain write under the plain name."""
-    plain, row = crud.CHAIN_SOURCE, lambda r: crud.merged_layer_name(crud.CHAIN_SOURCE, r)
-    copy = crud.merged_layer_name(crud.CHAIN_SOURCE, "K9_abc123")
-    cells = {
-        "A": ([(plain, "a", "r1")], "a"),                                   # renamed
-        "B": ([(plain, "b", "r1"), (row("r1"), "b2", "r1")], "b"),          # its row's layer is there: goes
-        "C": ([("f.csv", "F", None), (plain, "c", None), (row("r2"), "c", "r2")], "c"),   # no source row: stays
-        "D": ([(row("r2"), "d", "r2"), (plain, "Z", None)], "Z"),           # differs, newer: stays and shows
-        "E": ([(plain, "e", None)], "e"),                                   # alone: stays
-        "F": ([(copy, "M", None), ("f.csv", "F1", None)], "F1"),            # a merge copy now ranks as the chain
-        "G": ([(plain, "P", None), (row("r3"), "R", "r3")], "P"),           # differs, older: stays, R shows
-        "H": ([(row("r3"), "R", "r3"), ("f.csv", "FH", None)], "FH"),       # the row layer beats the file
-    }
-    _write(db, TGT, "seed", key="seed")
-    for key in cells:
-        _write(db, TGT, "seed", key=key)
-    db.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
-    db.commit()
-    for key, (layers, shown) in cells.items():
-        _stack(db, key, layers, shown)
-
-
-ACTIONS = ("layers_deleted", "chain_renamed", "chain_deleted", "shown_changed")
-
-
-def test_the_fold_previews_what_it_does_and_a_rerun_does_nothing(db):
-    _stacked(db)
-    dry = replay.fold_file_layers(db, TGT, apply=False)
-    assert {key: dry[key] for key in ACTIONS + ("chain_differs", "chain_unstamped", "chain_copies")} == {
-        "layers_deleted": 0, "chain_renamed": 1, "chain_deleted": 1, "shown_changed": 4,
-        "chain_differs": 2, "chain_unstamped": 4, "chain_copies": 1}
-    assert _cell(db, "A")[1] == {crud.CHAIN_SOURCE: "a"}, "a dry run changes nothing"
-    counted = retroactive._count_fold_file_layers(db, {"table": TGT}, 100000)
-    assert counted["affected"] == sum(dry[key] for key in ACTIONS)
-
-    applied = replay.fold_file_layers(db, TGT, apply=True)
-    assert {key: applied[key] for key in ACTIONS} == {key: dry[key] for key in ACTIONS}
-    row = lambda r: crud.merged_layer_name(crud.CHAIN_SOURCE, r)              # noqa: E731
-    assert {key: _cell(db, key) for key in "ABCDEFGH"} == {
-        "A": ("a", {row("r1"): "a"}),
-        "B": ("b2", {row("r1"): "b2"}),
-        "C": ("c", {"f.csv": "F", crud.CHAIN_SOURCE: "c", row("r2"): "c"}),
-        "D": ("Z", {row("r2"): "d", crud.CHAIN_SOURCE: "Z"}),
-        "E": ("e", {crud.CHAIN_SOURCE: "e"}),
-        "F": ("M", {crud.merged_layer_name(crud.CHAIN_SOURCE, "K9_abc123"): "M", "f.csv": "F1"}),
-        "G": ("R", {crud.CHAIN_SOURCE: "P", row("r3"): "R"}),
-        "H": ("R", {row("r3"): "R", "f.csv": "FH"}),
-    }
-    said = {(a.row_id, a.old_value, a.new_value) for a in db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == TGT, models.AuditLog.source_name == replay.R3_AUDIT_SOURCE)}
-    assert {(old, new) for _row_id, old, new in said} == {("b", "b2"), ("F1", "M"), ("P", "R"), ("FH", "R")}
-
-    again = replay.fold_file_layers(db, TGT, apply=True)
-    assert {key: again[key] for key in ACTIONS} == dict.fromkeys(ACTIONS, 0)
-
-
-def test_a_row_taken_back_after_the_fold_shows_what_is_left_beneath(db):
-    """총괄 10-11 «다» (4dd303f01 withdrawn): C's plain layer has no source row and stays - taking r2 back shows it."""
-    _stacked(db)
-    replay.fold_file_layers(db, TGT, apply=True)
-    stats = cell_layer.withdraw_by_origin(db, ["r2"], apply=True, table=TGT)
-    assert stats["cells_withdrawn"] == 2
-    assert (_cell(db, "C"), _cell(db, "D")) == (("c", {"f.csv": "F", crud.CHAIN_SOURCE: "c"}),
-                                                ("Z", {crud.CHAIN_SOURCE: "Z"}))

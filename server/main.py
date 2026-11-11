@@ -7061,7 +7061,7 @@ def get_enrichment_auto_confirm_dry_run(
 #
 #   카운트가 값싸지 않다는 사실을 숨기지 않는다: 일부는 「몇 건인가」가 곧
 #   드라이런 자체(테이블 전수 + 매퍼)라서 요청 경로에 앉을 수 없다. 그래서 모든 카운트는
-#   `count_kind`(exact / sample / upper_bound)를 **함께** 반환하고, 표본이면 `truncated`와
+#   `count_kind`(exact / sample)를 **함께** 반환하고, 표본이면 `truncated`와
 #   `scanned`를 실어 「테이블에 대한 수」가 아니라 「표본에 대한 수」임을 서버가 문장으로
 #   말한다(`detail`). 클라이언트는 그 문장을 그대로 렌더하고 스스로 판정하지 않는다 —
 #   `/admin/config/resolve`·auto-confirm 드라이런과 같은 규율.
