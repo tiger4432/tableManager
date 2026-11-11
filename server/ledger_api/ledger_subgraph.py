@@ -1648,13 +1648,22 @@ class VirtualEvidenceLookup:
         return ("entity_ref", {"type": object_type, "keys": object_keys}) if object_type is not None else (None, {})
 
     @staticmethod
-    def _cell(value):
+    def _cell(value, spec):
         """A read cell as a virtual atom holds it - `roleframe._plain`, and a Decimal (a numeric column) as the number
-        JSON reads back, the shape every stored atom value comes back from jsonb in (7 · 1.25)."""
+        JSON reads back, the shape every stored atom value comes back from jsonb in (7 · 1.25); a time (`spec["time"]`)
+        read by the translator's time read (`roleframe.aware_time`) and spelled as the walk spells an instant
+        (`_instant`), None when it does not read."""
         from decimal import Decimal
 
         from ledger import roleframe
+        from ledger.sql_translate import moment
 
+        if spec.get("time") is not None:
+            try:
+                return _instant(roleframe.aware_time(moment(value), spec["time"]["zone"], spec["column"],
+                                                     fmt=spec["time"]["format"]))
+            except (roleframe.RoleFrameError, ValueError):
+                return None
         value = roleframe._plain(value)
         return json.loads(str(value)) if isinstance(value, Decimal) else value
 
@@ -1666,14 +1675,14 @@ class VirtualEvidenceLookup:
         values = iter(row[1 + sum(len(leg.columns_of(arm)) for arm in ("outgoing", "incoming")):])
         qualifiers = {}
         for name, spec in sorted(leg.qualifiers.items()):
-            value = spec["constant"] if "constant" in spec else self._cell(next(values))
+            value = spec["constant"] if "constant" in spec else self._cell(next(values), spec)
             # a blank cell says nothing, as the translator leaves an optional qualifier out (`roleframe._attribute_value`)
             if not roleframe._is_missing(value):
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
         object_kind, payload = self._object(object_type, object_keys)
         if leg.value is not None:               # a value object: the value is the object (`roleframe`)
-            said = leg.value["constant"] if "constant" in leg.value else self._cell(next(values))
+            said = leg.value["constant"] if "constant" in leg.value else self._cell(next(values), leg.value)
             object_kind, payload = "value", {"value": said}
         if qualifiers:
             payload = dict(payload, qualifiers=qualifiers)

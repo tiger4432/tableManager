@@ -52,34 +52,6 @@ def fixture_board(world, config, monkeypatch):
         conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{PG_TEST_SCHEMA}"."{gate.TABLE}"')
 
 
-def _aware(kind, value):
-    from zoneinfo import ZoneInfo
-    from datetime import datetime
-
-    if kind == "timestamp_zone":
-        return value.replace(tzinfo=ZoneInfo(gate.ZONE))
-    if kind == "date":
-        return datetime(value.year, value.month, value.day, tzinfo=ZoneInfo(gate.ZONE))
-    if kind == "text_format":
-        return datetime.strptime(value, gate.TYPES[kind][3]["format"]).replace(tzinfo=ZoneInfo(gate.ZONE))
-    return value
-
-
-def expected(seat, kind):
-    """The S1 cell as the walk says it: a key in the ledger's one spelling, a time by the walk's own (`_instant`),
-    anything else as the cell holds it."""
-    import map_overlay
-
-    value = gate.TYPES[kind][2]
-    if seat == "key_constant":
-        return map_overlay.canonical_key_value(roleframe._plain(value), None)
-    if seat in ("key_one", "key_several"):
-        return map_overlay.canonical_key_value(value, gate.TYPES[kind][1])
-    if kind in gate.TIMES:
-        return ledger_subgraph._instant(_aware(kind, value))
-    return roleframe._plain(value)
-
-
 def _walk(board, seat, kind):
     """One cell's walk - its own seeds, its own predicate, so a cell that breaks the read breaks only itself."""
     cell = gate.name(seat, kind)
@@ -98,8 +70,11 @@ def census(board):
     for seat, kind in gate.CELLS:
         cell = gate.name(seat, kind)
         plan = snapshot.source_plans.get(cell)
-        if plan is None or not plan.runs:
-            out[cell] = ["not planned: %s" % ((plan.refusal or {}).get("message") if plan else "absent")]
+        refused = None if plan is None or plan.runs else (plan.refusal or {}).get("message")
+        if (seat, kind) in gate.REFUSED or refused is not None or plan is None:
+            # a cell whose answer is the save-time refusal holds that sentence; any other is red not planned
+            sentence = gate.REFUSED.get((seat, kind))
+            out[cell] = [] if plan is not None and refused == sentence else [f"refused {refused!r}, not {sentence!r}"]
             continue
         try:
             answer = _walk(board, seat, kind)
@@ -109,7 +84,7 @@ def census(board):
         dumped[cell] = answer
         red = [item["why"] for item in answer["engine"]["left_out"] if item["source"] == cell]
         nodes = {node["id"]: node for node in answer["nodes"]}
-        want = expected(seat, kind)
+        want = gate.expected(seat, kind, ledger_subgraph._instant)
         for row in gate.ROWS:
             said = not roleframe._is_missing(gate.cell_of_row(kind, row)) or seat == "key_constant"
             subject = explorer.entity_id("subj", {"sid": row})
@@ -156,7 +131,7 @@ def test_every_cell_walks(board):
     """Every cell is walked and its reds collected; the ENABLED cells are held (none red), every other one carries
     the reason it is not held yet (`gate.not_yet`)."""
     assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 74
-    assert len(gate.ENABLED) == 3 and gate.ENABLED <= set(gate.CELLS)
+    assert len(gate.ENABLED) == 64 and gate.ENABLED <= set(gate.CELLS)      # 74 - the value-object row (pending owner)
     assert all(gate.not_yet(*cell) for cell in gate.CELLS if cell not in gate.ENABLED)
     reds = census(board)
     assert len(reds) == len(gate.CELLS), "canary: every cell walked"
