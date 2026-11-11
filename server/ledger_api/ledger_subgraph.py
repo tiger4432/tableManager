@@ -1470,22 +1470,17 @@ class VirtualEvidenceLookup:
         where the key speller spells it back to `texts`' own), so the column's index serves it; a column with notation
         rules, or a time key held as text, as the join spells it (`Leg.key`) - its expression index. One tuple, one set."""
         import map_overlay
-        import notation_norm
-        from ledger.sql_translate import _FLOAT, _INTEGER, _TEXT, _TIME, _held, _quoted
+        from ledger.sql_translate import _held
         from utils.time_format import _zone
-
-        held_as = {_FLOAT: "float8", _INTEGER: "bigint", "numeric": "numeric", _TIME: "timestamptz",
-                   "timestamp without time zone": "timestamp"}
 
         columns, texts = leg.columns_of(arm), sorted(set(texts))
         if not texts or not columns:
             return "true" if texts else "false"
         cells, types, rows = [], [], []
         for _key, spec in columns:
-            spelled = notation_norm.rules_for_column(leg.relation, spec["column"]) or (
-                spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone"))
-            cells.append(leg.key(spec) if spelled else f"w.{_quoted(spec['column'])}")
-            types.append("text" if spelled or spec["kind"] == _TEXT else held_as[spec["kind"]])
+            cell, kind = leg.compared(spec)
+            cells.append(cell)
+            types.append(kind)
         for each in texts:
             row = []
             for text, (_key, spec), kind in zip(each, columns, types):
@@ -1612,8 +1607,13 @@ class VirtualEvidenceLookup:
         for other in self.legs:
             if (other.world_name, other.source, other.predicate, other.ends["outgoing"][0]) != (leg.world_name, leg.source, leg.predicate, bare)                     or set(other.ends["outgoing"][1]) != set(specs):
                 continue
-            subject = [_literal(spec["constant"]) if "constant" in spec else other.key(spec)
-                       for _key, spec in sorted(other.ends["outgoing"][1].items())]
+            # the subject compared as the frontier is (`Leg.compared`) where that is text - `c` holds the key's
+            # spelling, the column itself on every row `said` keeps (no blank key) - so the column's index serves it;
+            # a number or time key held as its own type stays spelled (lead 11-11 ①: a scan of the table a step)
+            subject = []
+            for _key, spec in sorted(other.ends["outgoing"][1].items()):
+                cell, kind = other.compared(spec) if "constant" not in spec else (_literal(spec["constant"]), "text")
+                subject.append(cell if kind == "text" else other.key(spec))
             said.append(f"SELECT {', '.join(f'{cell} AS s{index}' for index, cell in enumerate(subject))}{', ' if subject else ''}"
                         f"{other.at()} AS at FROM {other.relation} w WHERE {' AND '.join(other.said())}{bound}"
                         + (f" AND ({', '.join(subject)}) IN (SELECT {', '.join(mine)} FROM c)" if subject else ""))
