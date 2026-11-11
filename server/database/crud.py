@@ -4223,8 +4223,12 @@ def batch_write_instant(db):
     Falls back to `None` - the caller then keeps the expression - rather than reaching for
     the app server's clock, which would be a SECOND clock source on a column whose INSERT
     path takes the database's through `server_default`.
+
+    SQLite's `now()` is CURRENT_TIMESTAMP - whole seconds: two writes in one second took one
+    instant, and a line's `at` could not tell them apart (lead 11-11 안 1). Its clock is read
+    to the millisecond there; PostgreSQL's `now()` already carries microseconds.
     """
-    from sqlalchemy import select
+    from sqlalchemy import select, text
     from sqlalchemy.sql import func
 
     try:
@@ -4232,6 +4236,8 @@ def batch_write_instant(db):
         # pending work first by default -- so asking the time would push half-built rows at
         # the database ahead of the batch that is still assembling them.
         with db.no_autoflush:
+            if db.get_bind().dialect.name == "sqlite":
+                return datetime.fromisoformat(db.scalar(text("SELECT strftime('%Y-%m-%d %H:%M:%f', 'now')")))
             return db.scalar(select(func.now()))
     except Exception:  # pragma: no cover - a session that cannot answer keeps today's path
         return None
