@@ -135,7 +135,10 @@ const DOORS = {
   'template.save': async ({ t }) => save(t),
   'template.delete': async ({ t }) => remove(t),
   'keys.existing': async ({ t, cellsList }) => {
-    try { return { keys: [...await (await product()).existing(t.table, t.keys, cellsList)] }; } catch (e) { return { error: e.message }; }
+    try {
+      const { have, tooLong } = await (await product()).existing(t.table, t.keys, cellsList);
+      return { keys: [...have], tooLong: [...tooLong] };
+    } catch (e) { return { error: e.message }; }
   },
   'tab.read': readInTab,
   'tab.pick': async ({ tabId, kind, t }) => toTab(tabId, { type: 'pick.start', kind, t }, null),

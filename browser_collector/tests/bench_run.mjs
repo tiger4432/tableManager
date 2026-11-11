@@ -52,12 +52,15 @@ const REFUSED = process.argv.includes('--refused');
 const WEBMAIL_ONLY = process.argv.includes('--webmail-only') || REFUSED;
 const SHOTS = arg('--shots');
 const FRAME_ONLY = process.argv.includes('--frame-only');
+const CROSS_ONLY = process.argv.includes('--cross-only');
 const EXT_MUTANT = arg('--ext-mutant');
 // --ext-mutant: one change to the extension copy - its anchor, its replacement
 const EXT_MUTANTS = {
   frame: ['background.js', "  if (frame === '') return [0];", '  return [0];'],
   delete: ['background.js', '[[TABLES.fields, () => fieldRowsOf(p, t.name)], [TABLES.templates,', '[[TABLES.templates,'],
   shown: ['lib/open_check.js', 'return shown(el, win); });', 'return true; });'],
+  settle: ['lib/page_dom.js', 'if (this.late && !(await waitStill(', 'if (false && !(await waitStill('],
+  sticky: ['lib/page_dom.js', "this.late = o.opened ? null : 'clicked';", "this.late = o.opened ? this.late : 'clicked';"],
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -232,6 +235,69 @@ function frameBench() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}` })));
 }
 
+/** The frame on another port (another origin): /x/?delay=MS is host.html whose frame is the other server's mail page. */
+async function crossBench() {
+  const other = await frameBench();
+  const server = createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    if (u.pathname !== '/x/') { res.writeHead(404); res.end(); return; }
+    const src = `${other.url}/api/v2/mail?${new URLSearchParams({ page: '1', delay: '150', ...Object.fromEntries(u.searchParams) })}`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(readFileSync(path.join(HERE, 'frame_bench', 'host.html'), 'utf8').replace('src="/api/v2/mail?page=1"', `src="${src}"`));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { server, other, url: `http://127.0.0.1:${server.address().port}`, close: () => { server.close(); other.server.close(); } };
+}
+
+/** X - list and content in one frame of another origin, two content areas; each case's kept reasons as the panel says them. */
+async function crossCases(chrome, ext, cb) {
+  const frameHost = cb.other.url.replace('http://', '');
+  const base = {
+    name: 'Bench cross mail', address: `${cb.url.replace('http://', '')}/x/*`, frame: `${frameHost}/api/v2/mail*`, listArea: '.mail-list', item: 'li.mail-item',
+    clickTarget: '', opens: 'in_place', content: '#reader-head, div.reader-body-pane', waitSeconds: 3, close: '', next: { how: 'button', selector: '.next-page' },
+    endSeconds: 3, max: 0, pair: null, pairText: '', keys: ['mail_id'], table: '',
+    fields: [field('mail_id', 'item', '', '@data-id'), field('title', 'content', '.reader-title'), field('reader_id', 'content', '.reader-id')],
+  };
+  const cases = [
+    ['X1 two areas, opens in 0.15 s', 150, {}],
+    ['X2 two areas, opens in 4 s (wait 3 s)', 4000, {}],
+    ['X6 two areas, opens in 5 s (wait 3 s)', 5000, {}],
+    ['X7 two areas, opens in 7 s (wait 3 s) - past twice the wait', 7000, {}],
+    ['X8 one mail (#1) opens in 6 s among ones in 0.15 s (wait 5 s)', '150&slow=1&slowMs=6000', { waitSeconds: 5 }],
+    ['X3 one area that two mails in a row share (the title)', 150, { content: '#reader-head' }],
+    ['X4 frame pattern of the same port as the page', 150, { frame: `${cb.url.replace('http://', '')}/api/v2/mail*` }],
+    ['X5 no frame pattern (the top page)', 150, { frame: '' }],
+  ];
+  const said = [];
+  const got = {};
+  for (const [label, delay, over] of cases) {
+    const t = { ...base, ...over, table: `bench_cross_${said.length + 1}` };
+    const began = Date.now();
+    const r = await runOn(chrome, ext, `${cb.url}/x/?delay=${delay}`, t);
+    const seconds = Math.round((Date.now() - began) / 1000);
+    const tails = {};
+    for (const m of r.misses) tails[m.detail] = (tails[m.detail] || 0) + 1;
+    // a written row whose content is another mail's: the reader's id is not the item's
+    const rows = await tableRows(cb.product, t.table);
+    const wrong = rows.filter((x) => String(x.reader_id) !== String(x.mail_id)).map((x) => `${x.mail_id}<-${x.reader_id}`);
+    const line = `${label}: written ${r.written} · kept ${r.misses.length} · ended ${r.ended}${r.detail ? ` (${r.detail})` : ''} · reasons ${JSON.stringify(tails)}`
+      + ` · rows ${rows.length} · another mail's content ${wrong.length} ${JSON.stringify(wrong.slice(0, 12))} · ${seconds} s`;
+    got[label.slice(0, 2)] = { rows: rows.length, wrong: wrong.length, kept: r.misses.length, seconds };
+    console.log(`cross: ${line}`);
+    said.push(line);
+  }
+  eq('X every case measured', said.length, cases.length);
+  eq('X1 opens in time - 36 rows, each its own mail', [got.X1.rows, got.X1.wrong], [36, 0]);
+  eq('X2 X6 opens later than the wait - no row holds the mail before it; every mail kept or its own',
+    [got.X2.wrong, got.X2.rows + got.X2.kept, got.X6.wrong, got.X6.rows + got.X6.kept], [0, 36, 0, 36]);
+  // the time X8 adds to X1: the fix pays the slow one's wait and settle (about 5 + 2 s); a wait held after every item past
+  // it pays its page's rest, 11 × 5 s (the frame's next page starts clean). Cut at 20 s (lead: fix <= 10, mutant >= 30)
+  const added = got.X8.seconds - got.X1.seconds;
+  console.log(`cross: X8 added ${added} s to X1 (cut 20 s)`);
+  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (under 20 s added to X1)',
+    [got.X8.kept, got.X8.rows, got.X8.wrong, added < 20], [1, 35, 0, true]);
+}
+
 async function frameCases(chrome, ext, ask, fb) {
   const host = fb.url.replace('http://', '');
   const FRAME = {
@@ -360,7 +426,10 @@ try {
   await ext.evaluate(`chrome.storage.local.set(${JSON.stringify({ server: arg('--server') || product.url, key: arg('--key') || 'bench-key' })})`);
 
   const ask = (msg) => ext.evaluate(`chrome.runtime.sendMessage(${JSON.stringify(msg)}).then((a) => a.ok ? a.value : { error: a.error })`);
-  if (FRAME_ONLY) {
+  if (CROSS_ONLY) {
+    const cb = await crossBench();
+    try { await crossCases(chrome, ext, { ...cb, product }); } finally { cb.close(); }
+  } else if (FRAME_ONLY) {
     const fb = await frameBench();
     try { await frameCases(chrome, ext, ask, { ...fb, product }); } finally { fb.server.close(); }
   } else {

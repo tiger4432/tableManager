@@ -1,6 +1,6 @@
 // The page a template runs on, as the batch reads it (lib/batch.js): the list's items not read yet, opening one and
 // looking at the content area (lib/open_check.js), the content area, closing, and the next page.
-import { shownAll, visibleText, waitOpened } from './open_check.js';
+import { shownAll, visibleText, waitOpened, waitStill } from './open_check.js';
 import { readColumn } from './extract.js';
 import { areasOf } from './selectors.js';
 
@@ -75,11 +75,23 @@ export class DomPage {
       if (!address) return { opened: false, detail: 'no link to open' };
       return this.openTab(address, fields, this.t.pair ? readColumn(h, this.t.pair.item) : null);
     }
+    const limitMs = this.t.waitSeconds * 1000;
+    // the item before did not open: its late content first, or this item is kept unopened. Content later than twice the
+    // wait is not caught - the pane stood still and this item opens (QA 11-11, bench X7)
+    // `late`: 'clicked' - the item before was clicked and did not open; 'kept' - it was kept unclicked, the area still moving
+    if (this.late && !(await waitStill(() => this.print(), { limitMs }))) {
+      const s = Math.round(limitMs / 1000);
+      const detail = this.late === 'clicked' ? `the item before did not settle in ${s} s - raise Wait` : `the content area did not settle in ${s} s - raise Wait`;
+      this.late = 'kept';
+      return { opened: false, detail };
+    }
     target.scrollIntoView({ block: 'nearest' });
     const before = this.print();
     this.was = new Map([...this.doc.querySelectorAll(this.t.content || ':not(*)')].map((el) => [el, visibleText(el)]));
     target.click();
-    return waitOpened(() => this.look(h), { before, limitMs: this.t.waitSeconds * 1000 });
+    const o = await waitOpened(() => this.look(h), { before, limitMs });
+    this.late = o.opened ? null : 'clicked';
+    return o;
   }
 
   async close() {
