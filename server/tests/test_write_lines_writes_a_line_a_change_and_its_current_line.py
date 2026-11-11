@@ -200,6 +200,16 @@ def test_a_created_item_with_a_key_makes_that_keys_row_or_names_the_row_holding_
     assert (again["items"][0]["row_id"], again["lines"], len(_now(db)), len(_lines(db))) == (said["row_id"], 0, 1, 1), again
 
 
+def test_a_column_of_no_history_shows_the_batch_s_last_word(db, monkeypatch):
+    """QA 11-11: [n=3, n=5] on a row at 5 - each item meets the row its earlier items left (`_version_gate`'s
+    `before`), so 5 shows; on the batch's first state both items «moved» and 3 was the merge's."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(CFG, no_history_columns=["n"]))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x", "n": "5"}, "source_name": "f1"})["changed"]
+    _write(db, {"row_id": r, "values": {"n": "3"}, "source_name": "f1"},
+           {"row_id": r, "values": {"n": "5"}, "source_name": "f1"}, tx="tx2")
+    assert _now(db)[r]["n"] == 5.0
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})

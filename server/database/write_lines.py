@@ -361,12 +361,16 @@ def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
     """Ruling 191 (S-90, lead 3eb161a9c ②): an item's assembled key first; when that is nobody's, the key it was
     sent with (`old_key`) - a row stored under a raw spelling, a rename naming the row by its old key. Both read
     under the claim's lock before a new key is put; the row found is the item's target, re-keyed in step 5½ (a key
-    another row took meanwhile merges it there). `wanted` and `by_key` lose what it took."""
+    another row took meanwhile merges it there). The batch's other items of a key an old key gave a row go to that
+    row too - the entity keeps its row_id whichever spelling came first (QA 11-11). Every key the claim asks is
+    read in this one sorted, locked read, so the claim takes its rows in one order. `wanted` and `by_key` lose what
+    it took."""
     asks = {i: items[i]["old_key"] for i in by_key if not crud.is_blank_value(items[i].get("old_key"))
             and items[i]["old_key"] != by_key[i]}
     if not asks:
         return
-    held = key_owners(db, now, set(asks.values()) | {by_key[i] for i in asks}, lock=True, read=list(now.c))
+    held = key_owners(db, now, set(asks.values()) | set(by_key.values()), lock=True, read=list(now.c))
+    took = {}                                      # assembled key -> the row an old key gave it
     for i, old_key in sorted(asks.items()):
         if by_key[i] in held or old_key not in held:
             continue
@@ -374,7 +378,14 @@ def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
         targets[i] = row["row_id"]
         old.setdefault(row["row_id"], row)
         items[i]["rekey"] = True
+        took.setdefault(by_key[i], row["row_id"])
         del by_key[i]
+    for j, bk in list(by_key.items()):
+        if bk in took:
+            targets[j] = took[bk]
+            if items[j]["line_kind"] == CREATED:
+                items[j]["line_kind"] = WRITE  # the row is there: named, not made again
+            del by_key[j]
     for bk in set(wanted) - set(by_key.values()):
         del wanted[bk]
 
@@ -572,7 +583,7 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     (with its withdrawn bits); a deleted or mark line's three are 0. Returns [(line_id, row_id, sources, masks)] of
     the write and withdraw lines in line_id order - [(source, masks)]: its own with the line's columns, a fold's with
     its columns - for step 4 - and {item index: line_id} of every line."""
-    order = sorted(kept)
+    order = sorted(kept, key=lambda i: (items[i].get("of", i), i))   # a split item's lines at its parent's place
     rows = []
     for i in order:
         it = items[i]

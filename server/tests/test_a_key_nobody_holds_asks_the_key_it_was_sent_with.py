@@ -9,6 +9,8 @@ is put; the row found is re-keyed in step 5½.
     nobody's         nobody's    a new row
     taken meanwhile  a row's     the re-key meets the key another write put after the claim read: the row merges there
 """
+import pytest
+
 from database import write_lines as wl
 from test_write_lines_writes_a_line_a_change_and_its_current_line import (TABLE, _now, _write, fixture_db,  # noqa: F401
                                                                          keep_lines)
@@ -39,6 +41,19 @@ def test_an_assembled_key_a_row_holds_wins_over_the_old_key(db):
            tx="tx2")
     said = _by_key(db)
     assert (said["K1"]["a"], said["K2"]["a"]) == ("x", "y")
+
+
+@pytest.mark.parametrize("old_key_first", [True, False])
+def test_another_item_of_the_key_an_old_key_took_goes_to_the_same_row(db, old_key_first):
+    """QA 11-11: [K2 sent as K1, K2] in one batch, either order - one row, the entity's row_id kept, the batch's
+    last word shown; before, the plain K2 item minted a row and the found row merged into it."""
+    _seed(db, ("K1", "x"))
+    [row_id] = _now(db)
+    renamed = {"business_key_val": "K2", "old_key": "K1", "values": {"k": "K2", "a": "y"}, "source_name": "f1"}
+    plain = {"business_key_val": "K2", "values": {"k": "K2", "a": "z"}, "source_name": "f1"}
+    out = _write(db, *([renamed, plain] if old_key_first else [plain, renamed]), tx="tx2")
+    assert out["merged"] == {} and list(_by_key(db)) == ["K2"], out["merged"]
+    assert (_by_key(db)["K2"]["row_id"], _by_key(db)["K2"]["a"]) == (row_id, "z" if old_key_first else "y")
 
 
 def test_neither_key_held_makes_a_new_row(db):
