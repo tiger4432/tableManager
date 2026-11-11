@@ -1,5 +1,41 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11] **줄 표가 다 지어져야 뜬다 — 거절된 표가 있으면 런처가 아무것도 안 띄운다 · 선언 저장은 400** — git pull · 런처로 전체 재기동
+>
+> ```
+> 무엇     런처가 자식을 띄우기 «전»에 선언된 표와 그 줄 표(<표>__lines)를 전부 짓는다
+>          하나라도 거절되면 거절된 표 «전부»를 한 줄씩 찍고 아무것도 안 띄운다(exit 1)
+>          자식(웹 · 워처 · 체인 워커)도 시작 때 같은 동기화를 돌린다 — 다 지어져 있으면 줄 표 DDL 은 0
+>          런처 없이 자식 하나를 띄워도(uvicorn main:app · run_watcher.py · run_chain_worker.py) 거절이면 그 프로세스가 안 뜬다
+>          줄 표만 멈춘다. 스키마 드리프트 배너(다른 종류)는 전처럼 «찍고 뜬다»
+> 런처 줄   <표>: line table not built - <사유> - <할 일>
+>          Nothing started: the tables above keep no history until their line tables are built.
+>
+> 사유와 할 일
+>   이름이 김  its name is 54 bytes; line tables need 53 or fewer - declare it under a shorter name (a non-ASCII character takes 3 bytes)
+>            할 일: 더 짧은 이름으로 선언한다. 옛 표의 데이터를 옮기는 일은 총괄에게
+>            따옴표 · $ 가 든 이름: its name carries a quote or a dollar sign - declare it under a plain name
+>   옛 줄 표   <표>__lines still holds the history of an earlier <표>, which was dropped and made again - rename <표>__lines or drop it (its history goes with it), then start or save again
+>            뜻: 제품 밖에서 <표>를 지우고 다시 만들었다. 옛 이력을 새 표에 붙이지 않는다
+>            할 일: ALTER TABLE "<표>__lines" RENAME TO "<표>__lines_old" (이력 보존) 또는 DROP TABLE "<표>__lines" — 그 뒤 런처 재기동
+>   잠금      its lock was not had (held by pid N <문장 머리>) - end that session or wait for it, then start or save again
+>            뜻: 다른 세션이 그 표를 잡고 있어 잠금 대기 시한 안에 못 얻었다
+>            할 일: 그 pid 의 세션을 끝내거나 끝나기를 기다린 뒤 런처 재기동
+>   표 없음    it is declared but the database has no such table - start the server or save the declaration again; both make it
+>   그 밖      <오류 문장> - fix what it names, then start or save again
+>
+> 선언 저장  그 표의 줄 표가 거절될 것이면(이름 · 옛 줄 표) 저장이 400 이고 파일은 그대로다
+>          {"code": "line_table_refused", "path": "tables.<표>", "message": "<표>: line table not built - <사유> - <할 일>"}
+> 리로드    [Reload] declaration refused - <표>: line table not built - <사유> - <할 일>
+>          뜻: 파일은 이미 저장됐다. 새 칸 추가가 거절됐으면 <표>와 <표>__lines 둘 다 그 칸이 없다
+>          이 프로세스의 모델은 그 칸을 가진 채라 그 표 읽기가 «no such column <칸>» 으로 실패한다 — 다시 저장해 지어지거나 재기동할 때까지 (sqlite 에서 잼)
+>          할 일: 사유의 할 일을 한 뒤 다시 저장하거나 런처 재기동(다음 시작이 다시 짓는다 — 같은 사유면 다시 멈춘다)
+> 볼 것    launcher.log 의 위 줄. 다 지어졌으면 아무 줄 없이 자식이 뜬다
+> 끄기     없음 — 줄 표 없이 띄우는 스위치는 없다
+> ```
+>
+> ---
+>
 > ## [11-11] **셀소스 복사 — 객체 값 · 쓰기가 거절하는 값을 만나면 그 쪽을 거절한다** — 착지(11-14) 뒤 복사를 돌릴 때
 >
 > ```

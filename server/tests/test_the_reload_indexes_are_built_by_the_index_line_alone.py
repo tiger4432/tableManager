@@ -33,7 +33,8 @@ def fixture_spied(monkeypatch):
     monkeypatch.setattr(crud, "TABLE_CONFIG", {})
     monkeypatch.setattr(crud, "load_table_config", lambda *a, **k: {TABLE: ENTRY})
     monkeypatch.setattr(enrich_declarations, "declarations", lambda *a, **k: [RULE])
-    for name in ("init_dynamic_models", "create_missing_dynamic_tables", "ensure_ingestion_checkpoint_table"):
+    for name in ("init_dynamic_models", "create_missing_dynamic_tables", "ensure_ingestion_checkpoint_table",
+                 "sync_dynamic_tables_schema"):
         monkeypatch.setattr(models, name, lambda *a, **k: [])
     return called
 

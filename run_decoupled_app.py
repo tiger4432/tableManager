@@ -198,6 +198,25 @@ def refuse_if_arguments_are_unknown(argv):
     sys.exit(args.exit_code)
 
 
+def build_line_tables_first():
+    """Every declared table's line table, built HERE before any child starts (lead 11-11 ㄷ', owner «다 지어야 가동»).
+    The children sync too and find them built - no line-table DDL, so none races another to build one. A table refused:
+    its sentence, and nothing starts. LINE TABLES ONLY - every other drift stays «print and start» (f6406b1c5).
+    --preflight-only never reaches this: it builds nothing."""
+    try:
+        from database import models
+        from database.database import engine as _engine
+        built = models.build_before_start(_engine, lambda line: log_launcher(line, level="ERROR"))
+    except Exception as e:
+        log_launcher(f"Line tables not built before the children ({type(e).__name__}: {e}); starting anyway - "
+                     f"each process syncs at its start.", level="WARNING")
+        return
+    if not built:
+        log_launcher("Nothing started: the tables above keep no history until their line tables are built.",
+                     level="ERROR")
+        sys.exit(1)
+
+
 def main():
     root_dir = _ROOT_DIR
     server_dir = os.path.join(root_dir, "server")
@@ -280,6 +299,7 @@ def main():
         sys.exit(0 if ports_clear else 1)
     if not ports_clear:
         sys.exit(1)
+    build_line_tables_first()
 
     print("=" * 60)
     print(" Starting AssyManager Enterprise in Decoupled Process Mode...")

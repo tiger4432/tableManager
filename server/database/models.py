@@ -1795,6 +1795,16 @@ def sync_dynamic_tables_schema(engine):
         # pretending nothing is a view.
         logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", told(err), exc_info=err)
 
+    # 🔴 t's ADD AND t__lines' ADD IN ONE TRANSACTION (lead 11-11): a declared column of a table whose lines are
+    #    built is added below by ensure_declared (alter_columns - both tables, one short_ddl), not here, so a refused
+    #    add leaves neither table with it
+    from sqlalchemy.orm import Session
+
+    from database import crud, lines
+
+    with Session(engine) as db:
+        lined = set(lines._catalogue(db, [t for t in DYNAMIC_TABLES if lines.keeps_lines(t, crud.TABLE_CONFIG.get(t))]))
+
     for table_name, model_class in schema_synced_tables().items():
         if not inspector.has_table(table_name):
             continue
@@ -1824,6 +1834,8 @@ def sync_dynamic_tables_schema(engine):
         for column in table_obj.columns:
             col_name = column.name
             if col_name.lower() not in db_cols:
+                if table_name in lined and col_name in (crud.TABLE_CONFIG[table_name].get("column_types") or {}):
+                    continue                                    # with its line column, in ensure_declared below
                 col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
                 alter_query = f'ALTER TABLE "{table_name}" ADD COLUMN {col_ddl}'
                 print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
@@ -1865,10 +1877,13 @@ def sync_dynamic_tables_schema(engine):
                         col_name, table_name, told(err))
 
     # the declared tables' lines (t__lines + won_by) after their columns - the same door, so a new column reaches
-    # t__lines too (C 11-11)
-    from database import lines
-
-    lines.ensure_declared(engine)
+    # t__lines too (C 11-11). Any refused: every one, raised at once (lead 11-11 ㄴ). The lines' own tables first -
+    # the launcher builds before any process's create_all has made them
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource):
+        model.__table__.create(bind=engine, checkfirst=True)
+    refused = lines.ensure_declared(engine)
+    if refused:
+        raise lines.LineTablesRefused(refused)
 
 
 # [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
@@ -3145,7 +3160,9 @@ def refresh_dynamic_models(engine=None):
 
     호출처: 웹서버 reload_local_process_cache(/admin/reload-configs),
             워커 SYSTEM_RELOAD 핸들러(run_watcher 폴러, chain_ingestion_worker 루프).
-    기존 테이블 ALTER는 수행하지 않는다(부팅 경로 sync_dynamic_tables_schema 전용).
+    만든 뒤에는 `sync_dynamic_tables_schema` - 선언된 표를 짓는 한 자리(열 · 줄 표, lead 11-11): 다시 읽은 표가 줄 표
+    없이 쓰기를 받지 않게. 거절은 `lines.LineTablesRefused` 로 호출자에게 - 리로드 호출자는 로그로 그 선언을 거절하고,
+    `build_before_start` 는 아무것도 띄우지 않는다.
 
     반환: 새로 CREATE된 테이블명 리스트 (engine 미지정 또는 config 로드 실패 시 []).
     """
@@ -3167,10 +3184,26 @@ def refresh_dynamic_models(engine=None):
         # 사라져서 이제는 되살릴 수단이 없다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
+        sync_dynamic_tables_schema(engine)
         # the map-key and decision-key indexes are the scheduler's index line's (`runtime.maintenance_line`, 소유자 10-15:
         # the chain worker builds nothing) - built at its start and at a Reload, not in every process that reloads
         return created
     return []
+
+
+def build_before_start(engine, say) -> bool:
+    """The launcher's and devenv up's one build before any child starts (lead 11-11 ㄷ', owner «다 지어야 가동»): every
+    declared table and its line table, so the children's own syncs find them built and issue no line-table DDL - no
+    two processes race to build one. -> False when a table is refused; each refusal said in one `say` line."""
+    from database import lines
+
+    try:
+        refresh_dynamic_models(engine)
+    except lines.LineTablesRefused as refused:
+        for line in str(refused).splitlines():
+            say(line)
+        return False
+    return True
 
 
 # the overhaul's system tables (line_columns, audit_batches, line_sources) live in database.lines - imported here so

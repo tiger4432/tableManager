@@ -142,15 +142,14 @@ MAX_TABLE_NAME_BYTES = MAX_NAME_BYTES - len(LINES_SUFFIX + "_ra")
 
 
 def table_name_refusal(table_name: str):
-    """None when t can carry line tables; else the operator sentence (which table, how many bytes, what to do) -
-    the migration's pre-check says it before any DDL."""
+    """None when t's name can carry line tables; else «reason - action» - the name half of `build_refusal`."""
     if '"' in table_name or "$" in table_name:
-        return f"table {table_name!r} carries a quote or a dollar sign - declare it under a plain name and migrate again"
+        return "its name carries a quote or a dollar sign - declare it under a plain name"
     size = len(table_name.encode("utf-8"))
     if size <= MAX_TABLE_NAME_BYTES:
         return None
-    return (f"table {table_name!r} is {size} bytes long; line tables need {MAX_TABLE_NAME_BYTES} or fewer - "
-            f"declare it under a shorter name (a non-ASCII character takes 3 bytes) and migrate again")
+    return (f"its name is {size} bytes; line tables need {MAX_TABLE_NAME_BYTES} or fewer - declare it under a "
+            f"shorter name (a non-ASCII character takes 3 bytes)")
 
 
 def lines_relation(table_name: str) -> str:
@@ -409,9 +408,9 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
         conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
                              f'ON "{_checked(table_name)}" (business_key_val)')
-    if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)} and \
-            inspect(conn).has_table(lines_relation(table_name)):
-        raise ValueError(ORPHAN_REFUSAL % {"t": table_name, "lines": lines_relation(table_name)})
+    said = build_refusal(conn, table_name)
+    if said:
+        raise ValueError(said)
     s = shape(db, table_name, table_cfg)
     if WON_BY not in {c["name"] for c in inspect(conn).get_columns(table_name)}:
         conn.exec_driver_sql(f'ALTER TABLE "{_checked(table_name)}" ADD COLUMN "{WON_BY}" '
@@ -422,9 +421,32 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
 
 #: t was dropped and built again while its t__lines stayed: attaching it would show the old table's history as
 #: the new one's (lead 11-11) - refused, the operator decides
-ORPHAN_REFUSAL = ("Cannot keep lines: %(t)s was built again while %(lines)s still holds the earlier %(t)s's "
-                  "history - %(t)s keeps no history until that %(lines)s is dropped (no screen does this; it arises "
-                  "only outside the product)")
+ORPHAN_REFUSAL = ("%(lines)s still holds the history of an earlier %(t)s, which was dropped and made again - "
+                  "rename %(lines)s or drop it (its history goes with it), then start or save again")
+
+
+class LineTablesRefused(Exception):
+    """Every declared table whose lines were not built, at once (lead 11-11 ㄴ): the schema sync raises it - a boot
+    stops on it, a reload refuses the declaration. .refused: {table: «reason - action»}."""
+
+    def __init__(self, refused: dict):
+        self.refused = dict(refused)
+        super().__init__("\n".join(f"{t}: line table not built - {why}" for t, why in self.refused.items()))
+
+
+def build_refusal(conn, table_name: str):
+    """«reason - action» when t's lines would be refused, else None - THE judge the build (`ensure_declared`,
+    `ensure_line_table`) and the declaration save ask (lead 11-11). A lock is not judged here: only trying tells."""
+    from sqlalchemy import inspect
+
+    said = table_name_refusal(table_name)
+    if said:
+        return said
+    insp = inspect(conn)
+    if insp.has_table(table_name) and insp.has_table(lines_relation(table_name)) and \
+            WON_BY not in {c["name"] for c in insp.get_columns(table_name)}:
+        return ORPHAN_REFUSAL % {"t": table_name, "lines": lines_relation(table_name)}
+    return None
 
 
 def drop_every_line_table(engine) -> list:
@@ -710,14 +732,16 @@ def ensure_declared(engine, tables=None) -> dict:
     copied, «끊음»), and t__lines catches up with columns t was given. ONE function: the schema sync calls it for all
     declared tables, the index line for a table whose business key index it just built (lead 11-11 ㄱ), the test
     fixtures after building tables. A built table costs reads only, no DDL. The DDL waits for its lock as every
-    runtime DDL does (db_safety.short_ddl - lock_timeout, then the holder named); not had, the table is refused and
-    the next sync or index build tries again. -> {table: refusal sentence}."""
+    runtime DDL does (db_safety.short_ddl - lock_timeout, then the holder named). Every table is tried; ->
+    {table: «reason - action»} of every one refused - its name, an old t__lines (`build_refusal`), t not in the
+    database, a lock not had, any other error - which the schema sync raises as one LineTablesRefused."""
     import logging
 
     from sqlalchemy import inspect
     from sqlalchemy.orm import Session
 
     import db_safety
+    from error_said import told
 
     from . import crud, models
 
@@ -725,18 +749,20 @@ def ensure_declared(engine, tables=None) -> dict:
     refused = {}
     for name in list(tables if tables is not None else models.DYNAMIC_TABLES):
         cfg = crud.TABLE_CONFIG.get(name)
-        if not isinstance(cfg, dict) or not keeps_lines(name, cfg) or table_name_refusal(name):
+        if not isinstance(cfg, dict) or not keeps_lines(name, cfg):
             continue
         with Session(engine) as db:
             insp = inspect(db.connection())
-            if not insp.has_table(name):
-                continue
-            built = has_lines(db, name)
+            said = build_refusal(db.connection(), name) or (
+                None if insp.has_table(name) else "it is declared but the database has no such table - start the "
+                                                  "server or save the declaration again; both make it")
+            built = not said and has_lines(db, name)
             have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
-            missing = [c for c in (cfg.get("column_types") or {}) if value_column(c) not in have] if built else []
-        if built and not missing:
-            if sum(1 for c in have if c.startswith("head_")) > 1 and engine.dialect.name == "postgresql":
-                head_index(engine, name, cfg, say=log.info)
+            missing = [c for c in (cfg.get("column_types") or {})          # a framework name is t__lines' own column
+                       if c not in {n for n, _ in FRAMEWORK} and value_column(c) not in have] if built else []
+        if said:
+            refused[name] = said
+            log.error("[Lines] %s: %s", name, said)
             continue
 
         def work(conn, name=name, cfg=cfg, built=built, missing=missing):
@@ -748,6 +774,10 @@ def ensure_declared(engine, tables=None) -> dict:
             db.flush()
 
         try:
+            if built and not missing:
+                if sum(1 for c in have if c.startswith("head_")) > 1 and engine.dialect.name == "postgresql":
+                    head_index(engine, name, cfg, say=log.info)
+                continue
             db_safety.short_ddl(engine, name, work, "lines")
             if built and engine.dialect.name == "postgresql":
                 with Session(engine) as db:
@@ -756,13 +786,12 @@ def ensure_declared(engine, tables=None) -> dict:
                     head_index(engine, name, cfg, say=log.info)
         except ValueError as err:
             refused[name] = str(err)
-            log.error("[Lines] %s", err)
-        except Exception as err:                             # noqa: BLE001 - said; the next sync tries again
+            log.error("[Lines] %s: %s", name, err)
+        except Exception as err:                             # noqa: BLE001 - said; the sync raises it with the rest
             held = getattr(err, "ddl_holders", None)
-            refused[name] = (f"Cannot keep lines: {name} (held by {held}) - the next schema sync or index build "
-                             f"tries again" if held else f"Cannot keep lines: {name} ({err}) - the next schema sync "
-                             f"tries again")
-            log.error("[Lines] %s", refused[name], exc_info=None if held else err)
+            refused[name] = (f"its lock was not had (held by {held}) - end that session or wait for it, then start "
+                             f"or save again" if held else f"{told(err)} - fix what it names, then start or save again")
+            log.error("[Lines] %s: %s", name, refused[name], exc_info=None if held else err)
     return refused
 
 

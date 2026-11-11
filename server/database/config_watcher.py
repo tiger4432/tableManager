@@ -496,7 +496,7 @@ class ConfigChangeHandler:
 
     def _reload(self, path):
         try:
-            from database import crud, models
+            from database import crud, lines, models
             # 1. crud.TABLE_CONFIG 재구성
             new_config = crud.load_table_config()
             if not new_config:
@@ -548,7 +548,11 @@ class ConfigChangeHandler:
                 created = models.create_missing_dynamic_tables(self.engine)
                 if created:
                     logger.info(f"Created missing physical tables at runtime: {created}")
-                models.sync_dynamic_tables_schema(self.engine)
+                try:
+                    models.sync_dynamic_tables_schema(self.engine)
+                except lines.LineTablesRefused as refused:          # the declaration refused; the process runs on
+                    logger.error("[Reload] declaration refused - %s", refused)
+                    return
                 logger.info("Physical database schema synced successfully.")
 
             logger.info("Dynamic models reloaded and hot-swapped successfully.")
