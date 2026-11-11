@@ -1,12 +1,16 @@
-"""The in-memory projection behind `GET /audit_logs/recent` - the newest transaction groups of `audit_batches`
-(cell-source overhaul «감사 로그», owner 11-10 ㄱ: every audit record is a batch; audit_logs retires).
+"""The in-memory projection behind `GET /audit_logs/recent` - the newest transaction groups of `audit_batches` (a
+cell's lines) and of the `audit_logs` rows that are no cell's change (`is_event`: a ledger or formula receipt, a
+table-wide record - owner 11-11 ㄱ «audit_logs 는 셀 아닌 사건의 표로 남고, 이력 화면에 보인다»).
 
 A group is a transaction (`group_of` - a replay's pages are one group). Per table it shows the kinds and the writers
 as written, the newest time, the batches' count, and the rows it changed - counted from the table's lines
-(`audit_history.changed_rows`), None for a relation without lines (`lines.has_lines`).
+(`audit_history.changed_rows`), None for a relation without lines (`lines.has_lines`); and its events - how many,
+their columns, the newest one (`_event_facts`).
 
     walk     newest first by (at, id) - the (at, id) index - in chunks, until `limit_groups` groups; a page after a
-             cursor resumes below it and drops the groups with a batch at or above it (an earlier page named them)
+             cursor resumes below it and drops the groups with a batch at or above it (an earlier page named them);
+             the batches and the events each walked so, the groups of both kept by their newest
+             ⚠️ a cursor's (at, id) is one table's id: two records of two tables at the same instant tie by id
     behind   the walk and the merge of later batches run behind the reads, one at a time (`behind`, owner 11-09
              «읽기는 쓰기에 영향 안 받음»); a notification's `changed` reaches the list at once (`add_changed`) and
              the next merge reads its groups again whole, so a count is never added twice
@@ -47,6 +51,31 @@ LIVE_GROUPS = 100
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
+def is_event(column):
+    """SQL: an `audit_logs` row is no cell's change - its column is a receipt's (`crud.receipt_log`: a ledger or formula
+    batch) or "*" (a table-wide record: set_aside's skips, replay's full reset). The one seat that asks it.
+
+    ⚠️ A row's table would say it alone once audit_logs holds no cell's line. Five writers still write one there -
+    replay._write_resolved · _fold_units_page · crud.row_update_line, apply_row_update_internal · _merge_into_key_holder
+    (the 11-14 count gate asks 0 of them, A · B). When they are gone, every audit_logs row is an event: this function
+    goes and the walk reads the table (lead 11-11 ㄱ)."""
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    return column.in_((RECEIPT_COLUMN, "*"))
+
+
+def _batches():
+    """The cell lines' walk: (group label, time, id, which)."""
+    b = lines.AuditBatch
+    return b.transaction_id, b.at, b.id, b.at.isnot(None)
+
+
+def _events():
+    """The events' walk (`is_event`): (group label, time, id, which)."""
+    e = models.AuditLog
+    return e.transaction_id, e.timestamp, e.id, is_event(e.column_name)
+
+
 def resolve_recent_settings(config: dict = None) -> dict:
     """Every knob, usable: a malformed one falls back to its default with a warning."""
     declared = config if isinstance(config, dict) else audit_history.load_config()
@@ -74,6 +103,7 @@ class AuditLogCache:
         # One rebuild at a time, and not under `_lock` (총괄 10-22: a rebuild under it held every notification).
         self._build_lock = threading.Lock()
         self._batch_max_id = None           # every audit batch at or below this id is in the projection
+        self._event_max_id = None           # every audit_logs row at or below this id is (`is_event`)
         self.truncated = False
         self.next_cursor: Optional[str] = None
         self.scanned_rows = 0
@@ -83,16 +113,15 @@ class AuditLogCache:
     def _discover(self, db: Session, limit_groups: int, settings: dict, start: Optional[str] = None):
         """The groups of a page. -> (groups, truncated, next_cursor, scanned, cut)"""
         floor = audit_history.decode_cursor(start) if start else None
-        keys, more, scanned, cut = _batch_walk(db, floor, limit_groups, settings)
-        facts = _batch_facts(db, keys)
-        changed = _changed(db, facts)
-        groups = [{"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})}
-                  for key in keys]
+        keys, more, scanned, cut = _walk(db, _batches(), floor, limit_groups, settings)
+        named, more_events, read, cut_events = _walk(db, _events(), floor, limit_groups, settings)
+        groups = sorted(_groups(db, list(dict.fromkeys(keys + named))), key=_group_newest, reverse=True)
+        more = more or more_events or len(groups) > limit_groups
+        groups = groups[:limit_groups]
         cursor = None
-        if more and keys:
-            at, batch_id = _newest(facts.get(keys[-1], {}))
-            cursor = audit_history.encode_cursor(at, batch_id)
-        return groups, more, cursor, scanned, cut
+        if more and groups:
+            cursor = audit_history.encode_cursor(*_group_newest(groups[-1]))
+        return groups, more, cursor, scanned + read, cut or cut_events
 
     def page_from_cursor(self, db: Session, cursor: str, limit_groups: int = 100):
         """The groups AFTER `cursor`, as `(groups, truncated, next_cursor, scanned)` - the same walk, a one-shot answer
@@ -123,7 +152,7 @@ class AuditLogCache:
             with _bounded(db, settings):
                 try:
                     # 🔴 Read BEFORE the walk: a batch committed during it stays above the watermark for the merge.
-                    watermark = db.query(func.max(lines.AuditBatch.id)).scalar() or 0
+                    watermark, events_mark = _newest_ids(db)
                     groups, truncated, cursor, scanned, cut = self._discover(db, limit_groups, settings)
                 except OperationalError as exc:
                     if not _cut(exc):
@@ -137,7 +166,7 @@ class AuditLogCache:
             with self._lock:
                 self.groups = groups
                 self.is_loaded = True
-                self._batch_max_id = watermark
+                self._batch_max_id, self._event_max_id = watermark, events_mark
                 self.truncated = truncated
                 self.next_cursor = cursor
                 self.scanned_rows = scanned
@@ -188,18 +217,18 @@ class AuditLogCache:
         merged, started, step, latest = False, time.monotonic(), "the newest id", None
         with _bounded(db, settings):
             try:
-                latest = db.query(func.max(lines.AuditBatch.id)).scalar() or 0
+                latest = _newest_ids(db)
                 while True:
                     with self._lock:
-                        if not self.is_loaded or latest <= (self._batch_max_id or 0):
+                        previous = (self._batch_max_id or 0, self._event_max_id or 0)
+                        if not self.is_loaded or all(new <= old for new, old in zip(latest, previous)):
                             return merged
-                        previous = self._batch_max_id or 0
                     if time.monotonic() - started > settings["recent_walk_seconds"]:
                         step = "past recent_walk_seconds %d" % settings["recent_walk_seconds"]
                         break
                     step = "a slice"
-                    one = self._merge(db, previous, min(latest, previous + settings["recent_scan_chunk_rows"]),
-                                      limit_groups)
+                    one = self._merge(db, previous, tuple(min(new, old + settings["recent_scan_chunk_rows"])
+                                                          for new, old in zip(latest, previous)), limit_groups)
                     if one is None:
                         return merged
                     merged = merged or one
@@ -208,26 +237,27 @@ class AuditLogCache:
                     raise
                 step = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
         with self._lock:
-            left = "?" if latest is None else latest - (self._batch_max_id or 0)
-        logger.warning("[Audit] recent merge cut at %d s - %s; %s id(s) left for the next read",
+            left = "?" if latest is None else "%d · %d" % (latest[0] - (self._batch_max_id or 0),
+                                                         latest[1] - (self._event_max_id or 0))
+        logger.warning("[Audit] recent merge cut at %d s - %s; %s batch · audit_logs id(s) left for the next read",
                        time.monotonic() - started, step, left)
         return merged
 
-    def _merge(self, db: Session, previous: int, latest: int, limit_groups: int):
-        """One slice `(previous, latest]`: its groups read again whole, each to the top, the watermark to `latest`.
-        -> whether it held batches, or None when another merge or a rebuild moved the watermark meanwhile."""
-        b = lines.AuditBatch
-        keys = list({group_of(tid) for (tid,) in db.query(b.transaction_id).filter(b.id > previous, b.id <= latest)})
-        facts = _batch_facts(db, keys)
-        changed = _changed(db, facts)
-        touched = sorted(keys, key=lambda key: _newest(facts.get(key, {})), reverse=True)[:limit_groups]
+    def _merge(self, db: Session, previous: tuple, latest: tuple, limit_groups: int):
+        """One slice `(previous, latest]` of the batches' ids and of audit_logs' (`_newest_ids`): its groups read again
+        whole, each to the top, the watermarks to `latest`. -> whether it held batches or events, or None when another
+        merge or a rebuild moved a watermark meanwhile."""
+        keys = []
+        for (label, _at, row_id, which), old, new in zip((_batches(), _events()), previous, latest):
+            keys += [tid for (tid,) in db.query(label).filter(row_id > old, row_id <= new, which)]
+        keys = list(dict.fromkeys(group_of(tid) for tid in keys))
+        touched = sorted(_groups(db, keys), key=_group_newest, reverse=True)[:limit_groups]
         with self._lock:
-            if (self._batch_max_id or 0) != previous:
+            if (self._batch_max_id or 0, self._event_max_id or 0) != previous:
                 return None
-            for key in reversed(touched):           # the newest ends on top
-                self._to_top({"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})},
-                             limit_groups)
-            self._batch_max_id = latest
+            for group in reversed(touched):           # the newest ends on top
+                self._to_top(group, limit_groups)
+            self._batch_max_id, self._event_max_id = latest
         return bool(keys)
 
     def add_changed(self, items):
@@ -307,6 +337,27 @@ def _newest(tables: dict):
     return max(((_aware(one["at"] or _EPOCH), one["id"]) for one in tables.values()), default=(_EPOCH, 0))
 
 
+def _group_newest(group: dict):
+    """A group's newest position `(at, id)` - its batches' or its newest event's."""
+    events = group.get("events")
+    return max(_newest(group["tables"]), (_aware(events["at"]), events["id"]) if events else (_EPOCH, 0))
+
+
+def _groups(db: Session, keys) -> List[dict]:
+    """The groups `keys` as the projection holds them: their batches' facts, rows changed and events."""
+    facts = _batch_facts(db, keys)
+    changed = _changed(db, facts)
+    events = _event_facts(db, keys)
+    return [{"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {}),
+             "events": events.get(key)} for key in keys]
+
+
+def _newest_ids(db: Session) -> tuple:
+    """(the newest audit batch id, the newest audit_logs id) - the watermarks a merge reads above."""
+    return (db.query(func.max(lines.AuditBatch.id)).scalar() or 0,
+            db.query(func.max(models.AuditLog.id)).scalar() or 0)
+
+
 def _fresh_table() -> dict:
     return {"kinds": [], "written_by": [], "at": None, "id": 0, "records": 0}
 
@@ -320,10 +371,10 @@ def _said(one: dict, kind, who, at, batch_id):
     one["at"], one["id"] = at, batch_id
 
 
-def _batch_walk(db: Session, floor, limit_groups: int, settings: dict):
-    """The newest `limit_groups` groups the batches name, newest first by (at, id), below `floor` (a page's cursor)
-    and without the groups seen at or above it. -> (keys, there are more, batches read, cut or None)"""
-    b = lines.AuditBatch
+def _walk(db: Session, source, floor, limit_groups: int, settings: dict):
+    """The newest `limit_groups` groups `source` (`_batches` | `_events`) names, newest first by (at, id), below `floor`
+    (a page's cursor) and without the groups seen at or above it. -> (keys, there are more, records read, cut or None)"""
+    label, at, row_id, which = source
     keys, skipped, position, scanned, started = [], set(), floor, 0, time.monotonic()
     step = "a chunk"
     try:
@@ -331,11 +382,11 @@ def _batch_walk(db: Session, floor, limit_groups: int, settings: dict):
             if time.monotonic() - started > settings["recent_walk_seconds"]:
                 return _said_cut(keys, scanned, started, "past recent_walk_seconds %d" % settings["recent_walk_seconds"])
             want = min(settings["recent_scan_chunk_rows"], settings["recent_max_scan_rows"] - scanned)
-            q = db.query(b.transaction_id, b.at, b.id).filter(b.at.isnot(None))
+            q = db.query(label, at, row_id).filter(which)
             if position is not None:
-                q = q.filter(sa.tuple_(b.at, b.id) < sa.tuple_(*position))
+                q = q.filter(sa.tuple_(at, row_id) < sa.tuple_(*position))
             step = "a chunk"
-            rows = q.order_by(b.at.desc(), b.id.desc()).limit(want).all()
+            rows = q.order_by(at.desc(), row_id.desc()).limit(want).all()
             met = [key for key in dict.fromkeys(group_of(tid) for tid, _at, _id in rows)
                    if key not in keys and key not in skipped]
             if floor is not None and met:
@@ -367,11 +418,14 @@ def _said_cut(keys, scanned, started, why):
 
 
 def _seen_at_or_above(db: Session, floor, keys) -> set:
-    """Of the groups `keys`, those with a batch at or above `floor` - named by an earlier page. One statement."""
-    b = lines.AuditBatch
-    return {group_of(tid) for (tid,) in db.query(b.transaction_id).filter(
-        sa.tuple_(b.at, b.id) >= sa.tuple_(*floor), sa.or_(*[in_group(b.transaction_id, key) for key in keys]))
-        .distinct()}
+    """Of the groups `keys`, those with a batch or an event at or above `floor` - named by an earlier page. One
+    statement each."""
+    seen = set()
+    for label, at, row_id, which in (_batches(), _events()):
+        seen |= {group_of(tid) for (tid,) in db.query(label).filter(
+            which, sa.tuple_(at, row_id) >= sa.tuple_(*floor), sa.or_(*[in_group(label, key) for key in keys]))
+            .distinct()}
+    return seen
 
 
 def _batch_facts(db: Session, keys) -> Dict[str, dict]:
@@ -386,6 +440,30 @@ def _batch_facts(db: Session, keys) -> Dict[str, dict]:
             sa.or_(*[in_group(b.transaction_id, key) for key in keys])).order_by(b.at.asc(), b.id.asc()):
         _said(facts.setdefault(group_of(tid), {}).setdefault(name, _fresh_table()), kind, who, at, batch_id)
     return facts
+
+
+def _event_facts(db: Session, keys) -> Dict[str, dict]:
+    """{group: {"count", "columns", "log", "at", "id"}} - the events of the groups `keys` (`is_event`): how many, their
+    columns in the order first written, the newest as a log row. One statement."""
+    if not keys:
+        return {}
+    e = models.AuditLog
+    facts = {}
+    for log in db.query(e).filter(is_event(e.column_name), sa.or_(*[in_group(e.transaction_id, key) for key in keys])
+                                  ).order_by(e.timestamp.asc(), e.id.asc()):
+        one = facts.setdefault(group_of(log.transaction_id), {"count": 0, "columns": []})
+        one["count"] += 1
+        if log.column_name not in one["columns"]:
+            one["columns"].append(log.column_name)
+        one.update(log=log_row(log), at=log.timestamp, id=log.id)
+    return facts
+
+
+def log_row(log) -> dict:
+    """An audit_logs row as the panel's `logs` carry it (`schemas.AuditLogResponse`)."""
+    return {name: getattr(log, name) for name in ("id", "table_name", "row_id", "column_name", "new_value",
+                                                  "source_name", "updated_by", "transaction_id", "business_key",
+                                                  "timestamp")}
 
 
 def _changed(db: Session, facts) -> Dict[str, dict]:

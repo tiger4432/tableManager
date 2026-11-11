@@ -126,6 +126,8 @@ class AuditLogGroupResponse(BaseModel):
     logs: list[AuditLogResponse]
     #: the recent list: the tables its audit batches name, the newest first
     changed: Optional[list[ChangedTable]] = None
+    #: the recent list: its events' columns in the order first written - `logs` is the newest of them (owner 11-11 ㄱ)
+    summary_columns: Optional[list[str]] = None
 
 class AuditLogGroupPage(BaseModel):
     """One page of the recent-transactions projection behind `/audit_logs/recent`.

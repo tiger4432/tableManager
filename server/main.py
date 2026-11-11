@@ -1588,17 +1588,23 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                          limit_groups: int, user=None):
     """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope - one author for both pages (판정 473).
     A group's `changed` is its tables the reader may read, the newest first (owner 11-10 «트랜잭션, 테이블별, 누가,
-    바뀐 행수, 작업 타입»); a group with none of them is not shown."""
+    바뀐 행수, 작업 타입»); its `logs` the newest of its events (`audit_cache.is_event` - a receipt, a table-wide
+    record, owner 11-11 ㄱ), `total_count` and `summary_columns` theirs - none when its table is not the reader's. A
+    group with neither is not shown."""
     groups = []
     for g in cache_groups:
         tables = sorted(((name, one) for name, one in g["tables"].items() if access.may(user, name, access.READ)),
                         key=lambda kv: kv[1]["id"], reverse=True)
-        if not tables:
+        events = g.get("events")
+        if events and not access.may(user, events["log"]["table_name"], access.READ):
+            events = None
+        if not tables and not events:
             continue
         groups.append({
             "transaction_id": g["transaction_id"],
-            "total_count": sum(one["records"] for _name, one in tables),
-            "logs": [],
+            "total_count": events["count"] if events else 0,
+            "logs": [events["log"]] if events else [],
+            "summary_columns": events["columns"] if events else [],
             "changed": [{"table_name": name, "changed_rows": g["changed"].get(name), "kinds": one["kinds"],
                          "written_by": one["written_by"], "at": one["at"]} for name, one in tables],
         })
@@ -1614,16 +1620,23 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
 def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000,
                          table: str = None):
     """The rows a transaction changed (owner 11-10 «바뀐 행 네비») - one entry a row, in each table its audit batches
-    name that keeps lines, the first written first (`audit_history.group_rows`). `table` narrows it to one table:
-    `?table=<t>&limit=1` is the row a panel line jumps to. A transaction with no batch is a 404."""
+    name that keeps lines, the first written first (`audit_history.group_rows`); then its events (`audit_cache.is_event`,
+    owner 11-11 ㄱ). `table` narrows it to one table: `?table=<t>&limit=1` is the row a panel line jumps to. A
+    transaction with neither is a 404."""
+    from admin import audit_cache as recent
     from database import lines
 
     person = access.person(request)
     named = db.query(lines.AuditBatch.table_name).filter(in_group(lines.AuditBatch.transaction_id, tx_id))
+    said = db.query(models.AuditLog).filter(recent.is_event(models.AuditLog.column_name),
+                                            in_group(models.AuditLog.transaction_id, tx_id))
     if table is not None:
         named = named.filter(lines.AuditBatch.table_name == table)
+        said = said.filter(models.AuditLog.table_name == table)
     named = sorted({name for (name,) in named.distinct()})
-    if not named:
+    events = [log for log in said.order_by(models.AuditLog.timestamp, models.AuditLog.id).limit(limit)
+              if access.may(person, log.table_name, access.READ)]
+    if not named and not events:
         raise HTTPException(status_code=404, detail="Transaction not found")
     lined = [name for name in named if access.may(person, name, access.READ) and lines.has_lines(db, name)]
     logs = []
@@ -1634,9 +1647,10 @@ def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get
         gone = crud.deleted_rows(db, name, [entry["row_id"] for entry in rows])
         logs += [schemas.AuditLogResponse.model_validate(dict(entry, is_row_deleted=entry["row_id"] in gone))
                  for entry in rows]
+    logs += [schemas.AuditLogResponse.model_validate(recent.log_row(log)) for log in events[:max(0, limit - len(logs))]]
     return {
         "transaction_id": tx_id,
-        "total_count": sum(audit_history.changed_rows(db, name, tx_id) for name in lined),
+        "total_count": sum(audit_history.changed_rows(db, name, tx_id) for name in lined) + len(events),
         "logs": logs,
     }
 

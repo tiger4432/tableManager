@@ -13,6 +13,8 @@ CELL_SOURCE_OVERHAUL.md «감사 로그», owner 11-10 «트랜잭션, 테이블
              replaced by the merge's exact count
     behind   the read answers the projection it holds at once, `updating` while the walk runs
     jump     ?table=&limit=1 is the first row written; every row of the table without it; 404 without a batch
+    events   a receipt or a table-wide record in audit_logs is its transaction's line beside its tables (owner 11-11 ㄱ):
+             alone or with cell lines, after a merge, on the transaction route; a cell's line there is not one
     grid     the transaction filter is the rows of its lines; none in a relation without lines
 """
 import threading
@@ -43,12 +45,14 @@ def panel(dialect_client, monkeypatch):
     monkeypatch.setattr(audit_history, "load_config", lambda *a, **k: {})
     with engine.begin() as conn:
         conn.execute(lines.AuditBatch.__table__.delete())
+        conn.execute(models.AuditLog.__table__.delete())
     audit_cache.audit_cache.__init__()
     try:
         yield client, engine, bits
     finally:
         with engine.begin() as conn:
             conn.execute(lines.AuditBatch.__table__.delete())
+            conn.execute(models.AuditLog.__table__.delete())
         line_tables.drop(engine, TABLE)
         retire_dynamic_model(TABLE)
         audit_cache.audit_cache.__init__()
@@ -109,9 +113,9 @@ def test_the_list_names_each_transaction_by_its_batches_newest_first(panel, monk
     _load(engine)
     body = client.get(URL).json()
     assert [_said(g) for g in body["groups"]] == [
-        ("ab-c", 1, [], [(TABLE, 1, ["edit"], ["chain"])]),
-        ("ab-a", 2, [], [(TABLE, 2, ["new", "edit"], ["parser", "person"])]),
-        ("ab-b", 1, [], [(LEDGER, None, ["receipt"], ["ledger"])])], body
+        ("ab-c", 0, [], [(TABLE, 1, ["edit"], ["chain"])]),
+        ("ab-a", 0, [], [(TABLE, 2, ["new", "edit"], ["parser", "person"])]),
+        ("ab-b", 0, [], [(LEDGER, None, ["receipt"], ["ledger"])])], body
     at = body["groups"][1]["changed"][0]["at"]
     assert datetime.fromisoformat(at) == T0 + timedelta(minutes=3), at
     assert (body["truncated"], body["next_cursor"], body["returned"]) == (False, None, 3)
@@ -161,7 +165,7 @@ def test_the_walk_past_its_seconds_answers_what_it_named_and_a_cut_before_any_is
         cache = _load(engine, cache=AuditLogCache())
     assert cache.is_loaded and cache.truncated and _keys(cache.groups) == ["ab-c"], _keys(cache.groups)
     assert "past recent_walk_seconds 1" in caplog.text
-    monkeypatch.setattr(audit_cache, "_batch_walk", lambda *a: ([], True, 0, "a chunk past recent_statement_seconds 5"))
+    monkeypatch.setattr(audit_cache, "_walk", lambda *a: ([], True, 0, "a chunk past recent_statement_seconds 5"))
     cache = AuditLogCache()
     cache.load_initial(_session(engine))
     assert not cache.is_loaded, "nothing named: the next read walks again rather than show none"
@@ -175,7 +179,7 @@ def test_a_later_batch_reaches_the_top_in_slices_and_a_notification_at_once(pane
                                           "kind": "withdraw", "written_by": "chain"},
                                          {"transaction_id": "ab-d", "table_name": TABLE, "changed_rows": 1,
                                           "kind": "withdraw", "written_by": "chain"}])
-    assert _said(client.get(URL).json()["groups"][0]) == ("ab-d", 2, [], [(TABLE, 2, ["withdraw"], ["chain"])]), \
+    assert _said(client.get(URL).json()["groups"][0]) == ("ab-d", 0, [], [(TABLE, 2, ["withdraw"], ["chain"])]), \
         "two shares added at once - over the distinct count until the merge"
     with engine.begin() as conn:
         for minute in (9, 10):
@@ -192,8 +196,8 @@ def test_a_later_batch_reaches_the_top_in_slices_and_a_notification_at_once(pane
     finally:
         session.close()
     groups = client.get(URL).json()["groups"]
-    assert [_said(g) for g in groups[:2]] == [("ab-e", 1, [], [(LEDGER, None, ["receipt"], ["ledger"])]),
-                                              ("ab-d", 2, [], [(TABLE, 1, ["withdraw"], ["chain"])])], groups[:2]
+    assert [_said(g) for g in groups[:2]] == [("ab-e", 0, [], [(LEDGER, None, ["receipt"], ["ledger"])]),
+                                              ("ab-d", 0, [], [(TABLE, 1, ["withdraw"], ["chain"])])], groups[:2]
     assert _keys(groups) == ["ab-e", "ab-d", "ab-c", "ab-a", "ab-b"], "three slices, every batch once"
 
 
@@ -272,3 +276,101 @@ def test_a_statement_past_its_limit_answers_what_the_walk_named_truncated(pg_eng
         session.close()
         with pg_engine.begin() as conn:
             conn.execute(lines.AuditBatch.__table__.delete())
+
+
+def _events(engine, *written):
+    """audit_logs rows as their writers build them - `crud.receipt_log` (a ledger batch's receipt, `runtime_v2`) or
+    `crud.create_audit_log` (a table-wide «*» record, set_aside; a cell's line) - inserted as the ledger store does."""
+    from database import crud
+
+    session = _session(engine)
+    try:
+        for each in written:
+            crud.bulk_insert_audit_logs(session, each)
+        session.commit()
+    finally:
+        session.close()
+
+
+def _receipt(tx, rows=("r1", "r2")):
+    from database import crud
+    from ledger.runtime_v2 import RECEIPT_LABEL
+
+    return crud.receipt_log(None, LEDGER, "batch-" + str(tx), RECEIPT_LABEL, {"rows": len(rows), "status": "ok"},
+                            "ledger", "ledger", tx, row_ids=list(rows))
+
+
+def _line(tx, column, row_id="r1", new="v"):
+    from database import crud
+
+    return [crud.create_audit_log(None, TABLE, row_id, column, None, new, "chain", "chain", transaction_id=tx,
+                                  add_to_cache=False)]
+
+
+def _event_said(group):
+    return (group["transaction_id"], group["total_count"], group["summary_columns"],
+            [(log["table_name"], log["column_name"], (log["new_value"] or {}).get("receipt_label")
+              if isinstance(log["new_value"], dict) else log["new_value"]) for log in group["logs"]],
+            [c["table_name"] for c in group["changed"]])
+
+
+def test_a_receipt_is_its_transactions_line_beside_its_tables_and_a_cells_line_is_not(panel, monkeypatch):
+    """A ledger batch's receipt alone (ab-r), one in a transaction that also wrote cells (ab-c), a table-wide record
+    (ab-s), and a cell's line still written to audit_logs (ab-x) - not an event, so no line of its own."""
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    client, engine, bits = panel
+    _seed(engine, bits)
+    _events(engine, _line("ab-x", "a"), _receipt("ab-c"), _line("ab-s", "*", row_id="*", new=3), _receipt("ab-r"))
+    _load(engine)
+    body = client.get(URL).json()
+    said = {g["transaction_id"]: _event_said(g) for g in body["groups"]}
+    assert _keys(body["groups"])[:3] == ["ab-r", "ab-s", "ab-c"], _keys(body["groups"])
+    assert said["ab-r"] == ("ab-r", 1, [RECEIPT_COLUMN], [(LEDGER, RECEIPT_COLUMN, "Ledger batch")], []), said
+    assert said["ab-c"] == ("ab-c", 1, [RECEIPT_COLUMN], [(LEDGER, RECEIPT_COLUMN, "Ledger batch")], [TABLE]), said
+    assert said["ab-s"] == ("ab-s", 1, ["*"], [(TABLE, "*", 3)], []), said
+    assert "ab-x" not in said, "a cell's line in audit_logs is not an event"
+    monkeypatch.setattr(access, "may", lambda user, name, what: name != LEDGER)
+    said = {g["transaction_id"]: _event_said(g) for g in client.get(URL).json()["groups"]}
+    assert "ab-r" not in said and said["ab-c"][3] == [], "a receipt of a table the reader may not read"
+
+
+def test_a_later_receipt_reaches_the_top_and_its_transaction_route_lists_it(panel):
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    client, engine, bits = panel
+    _seed(engine, bits)
+    _load(engine)
+    _events(engine, _receipt("ab-r"), _line("ab-x", "a"))
+    session = _session(engine)
+    try:
+        assert audit_cache.audit_cache.refresh_if_stale(session) is True
+    finally:
+        session.close()
+    groups = client.get(URL).json()["groups"]
+    assert [_event_said(g) for g in groups[:1]] == [
+        ("ab-r", 1, [RECEIPT_COLUMN], [(LEDGER, RECEIPT_COLUMN, "Ledger batch")], [])], groups[:1]
+    assert "ab-x" not in _keys(groups)
+    route = client.get("/audit_logs/transaction/ab-r").json()
+    assert [(e["table_name"], e["column_name"], e["row_id"]) for e in route["logs"]] == [
+        (LEDGER, RECEIPT_COLUMN, "batch-ab-r")], route
+    assert route["total_count"] == 1
+    assert client.get("/audit_logs/transaction/ab-x").status_code == 404, "a cell's line in audit_logs is not one"
+
+
+def test_pages_name_a_receipt_group_once(panel):
+    _client, engine, bits = panel
+    _seed(engine, bits)
+    _events(engine, _receipt("ab-c"), _receipt("ab-r"))
+    cache = _load(engine, limit_groups=1)
+    seen, cursor = _keys(cache.groups), cache.next_cursor
+    session = _session(engine)
+    try:
+        for _ in range(6):
+            if not cursor:
+                break
+            groups, _truncated, cursor, _scanned = cache.page_from_cursor(session, cursor, 1)
+            seen += _keys(groups)
+    finally:
+        session.close()
+    assert (seen, cursor) == (["ab-r", "ab-c", "ab-a", "ab-b"], None), seen
