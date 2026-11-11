@@ -193,23 +193,51 @@ def physical_kinds(db, relation: str) -> dict:
 
 def bit_map(db, table_name: str) -> dict:
     """{column: bit} of t's live columns."""
-    rows = db.execute(select(LineColumn.column_name, LineColumn.bit).where(
-        LineColumn.table_name == table_name, LineColumn.retired_at.is_(None))).all()
-    return {name: bit for name, bit in rows}
+    return bit_maps(db, [table_name]).get(table_name, {})
+
+
+def bit_maps(db, table_names) -> dict:
+    """{table: {column: bit}} of these tables' live columns - one read for any number of tables."""
+    out = {}
+    for name, column, bit in db.execute(select(LineColumn.table_name, LineColumn.column_name, LineColumn.bit).where(
+            LineColumn.table_name.in_(list(table_names)), LineColumn.retired_at.is_(None))).all():
+        out.setdefault(name, {})[column] = bit
+    return out
 
 
 def has_lines(db, table_name: str) -> bool:
     """Whether t's lines are BUILT - t__lines exists AND t carries won_by - THE answer every read of won_by or
-    t__lines asks. keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses a table (no
-    unique business key index, an orphaned t__lines). Not the slots: those are assigned before building and outlive
+    t__lines asks (`_catalogue`). keeps_lines answers whether t SHOULD be built; the two differ while ensure refuses
+    a table (an orphaned t__lines, a lock not had). Not the slots: those are assigned before building and outlive
     drop_line_table."""
+    return table_name in _catalogue(db, [table_name])
+
+
+def _catalogue(db, table_names) -> dict:
+    """{table: its t__lines' head chunks} of the tables whose lines are BUILT - THE predicate has_lines asks, read
+    for any number of tables at once: a walk over every declared table (cells_stamped_by None, 1,183 on the box)
+    paid three catalogue reads a table (C board 11-11: 24 ms a table, 28.5 s a lap)."""
     from sqlalchemy import inspect
 
-    if table_name_refusal(table_name):
-        return False
-    insp = inspect(db.connection())
-    return (insp.has_table(lines_relation(table_name)) and insp.has_table(table_name)
-            and WON_BY in {c["name"] for c in insp.get_columns(table_name)})
+    names = [n for n in dict.fromkeys(table_names) if not table_name_refusal(n)]
+    if not names:
+        return {}
+    rels = names + [lines_relation(n) for n in names]
+    conn = db.connection()
+    if conn.dialect.name == "postgresql":
+        rows = conn.execute(text(
+            "SELECT c.relname, a.attname FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid "
+            "WHERE c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema()) "
+            "AND c.relkind IN ('r', 'p') AND c.relname = ANY(:rels) AND a.attnum > 0 AND NOT a.attisdropped "
+            "AND (a.attname = :won OR a.attname LIKE 'head\\_%')"), {"rels": rels, "won": WON_BY}).all()
+    else:
+        insp = inspect(conn)
+        rows = [(rel, c["name"]) for rel in rels if insp.has_table(rel) for c in insp.get_columns(rel)]
+    held = {}
+    for rel, column in rows:
+        held.setdefault(rel, set()).add(column)
+    return {n: sum(1 for i in range(len(held[lines_relation(n)])) if f"head_{i}" in held[lines_relation(n)])
+            for n in names if WON_BY in held.get(n, ()) and lines_relation(n) in held}
 
 
 def assign_bits(db, table_name: str, columns) -> dict:
@@ -261,6 +289,37 @@ def index_name(table_name: str, suffix: str) -> str:
     return _checked(f"{lines_relation(table_name)}_{suffix}")
 
 
+def head_index_name(table_name: str, chunks: int) -> str:
+    """The head index's name for `chunks` head chunks - its WHERE names every one, so a new chunk is a new index
+    (`head_index`); one chunk keeps the first name, `t__lines_h`."""
+    return index_name(table_name, "h" if chunks <= 1 else f"h{chunks}")
+
+
+def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
+    """PostgreSQL: t__lines' head index for its chunks as they stand, built outside any transaction by the one
+    CONCURRENTLY builder (`models._ensure_one_index_once` - its INVALID repair, its waits, its cut) with the earlier
+    chunks' head indexes as its leftovers, taken away first: writes are never held, and head reads go by _ra while it
+    builds (lead 11-11 - a 65th column on a table of many lines). ensure_declared asks it for a table of more than
+    one chunk; sqlite builds it in alter_columns. -> the builder's answer."""
+    import logging
+
+    from sqlalchemy.orm import Session
+    from sqlalchemy.schema import CreateIndex
+
+    from . import models
+
+    with Session(engine) as db:
+        s = shape(db, table_name, table_cfg)
+        db.rollback()
+    name = head_index_name(table_name, s["chunks"])
+    head = next(i for i in s["lines"].indexes if i.name == name)
+    ddl = str(CreateIndex(head).compile(dialect=engine.dialect))
+    return models._ensure_one_index_once(
+        engine, name, ddl.replace("CREATE INDEX", "CREATE INDEX CONCURRENTLY IF NOT EXISTS", 1), "line head",
+        say=say or logging.getLogger(__name__).info, table=lines_relation(table_name),
+        leftovers=[head_index_name(table_name, n) for n in range(1, s["chunks"])])
+
+
 def shape(db, table_name: str, table_cfg: dict) -> dict:
     """t's line table as a Core Table on a private MetaData, with the bit map it was built from. A column t already
     holds is typed as STORED (the stored kind is what line_text reads). Assigns slots to new declared columns (the
@@ -291,14 +350,15 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     Index(index_name(table_name, "b"), lines.c.batch, postgresql_ops={"batch": "text_pattern_ops"})
     Index(index_name(table_name, "p"), lines.c.at, postgresql_include=["row_id", "batch"],
           postgresql_where=text(HUMAN_SOURCE_SQL), sqlite_where=text(HUMAN_SOURCE_SQL))
-    Index(index_name(table_name, "h"), lines.c.row_id, lines.c.source_name,
+    Index(head_index_name(table_name, chunks), lines.c.row_id, lines.c.source_name,
           postgresql_where=text(head_any), sqlite_where=text(head_any))
     # «the cells these source rows fed» (cells_stamped_by) - only a line that carries its source row is in it
     Index(index_name(table_name, "i"), lines.c.input_row,
           postgresql_where=text("input_row IS NOT NULL"), sqlite_where=text("input_row IS NOT NULL"))
     table = current_table(db, table_name, table_cfg, won_by=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
-    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
+    # kinds: t's columns as stored - value_types' answer, already read by _as_stored (A 11-11: one read a write)
+    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns, "kinds": types}
 
 
 def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
@@ -343,11 +403,7 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
     from sqlalchemy import inspect
 
     conn = db.connection()
-    if conn.dialect.name == "postgresql":
-        refused = key_index_refusal(conn, table_name)
-        if refused:
-            raise ValueError(refused)
-    else:                                        # sqlite: no index builder, no concurrency - built here, same name
+    if conn.dialect.name != "postgresql":        # sqlite: no index builder, no concurrency - built here, same name
         import migrations.add_business_key_unique_index as bk
 
         conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
@@ -384,8 +440,8 @@ def drop_every_line_table(engine) -> list:
 
 def key_index_standing(conn, table_name: str) -> bool:
     """Does a VALID unique index on exactly (business_key_val) stand on t - what INSERT ... ON CONFLICT
-    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat: ensure,
-    key_index_missing and write_lines' claim ask this."""
+    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat:
+    write_lines' claim and the rules list ask this. Lines do not need it - they are bound to row_id (owner 11-11)."""
     if conn.dialect.name == "postgresql":
         import migrations.add_business_key_unique_index as bk
 
@@ -399,54 +455,17 @@ def key_index_standing(conn, table_name: str) -> bool:
     return False
 
 
-def key_index_missing(conn, table_name: str):
-    """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
-    than one row · KEY_INVALID: a broken index holds the name). The index has one builder (ingestion_worker's,
-    CONCURRENTLY, never inside this transaction)."""
-    import migrations.add_business_key_unique_index as bk
-
-    if key_index_standing(conn, table_name):    # the catalogue only - the census below reads the whole table
-        return None
-    verdict = bk.plan_table(conn, table_name)
-    if verdict.get("verdict") == bk.OK_ALREADY:
-        return None
-    if verdict.get("verdict") == bk.REFUSED_INVALID_INDEX:
-        return (KEY_INVALID, 0)
-    dups = verdict.get("dup_keys") or 0
-    return (KEY_FOLD, dups) if dups else (KEY_BUILD, 0)
+def key_index_next(tables) -> str:
+    """The rules list's word for tables a rule writes whose business key has no valid unique index: what it means
+    (KEY_RACE) and the next action - the scheduler builds it; keys held twice wait for Fold duplicate rows."""
+    return f"{KEY_RACE}: " + "; ".join(
+        f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; if it cannot, "
+        f"auto_update.log says why (keys held by more than one row: in the Retroactive tab run Fold duplicate rows "
+        f"on {t})" for t in tables)
 
 
-KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
-#: not read: a screen that asks on every open asks key_index_standing only - the census reads the whole table (A 11-11)
-KEY_UNKNOWN = "unknown"
-
-
-def key_index_next(missing) -> str:
-    """[(table, state)] -> per table why + the ONE next action its state calls for (lead 11-11): the scheduler builds
-    a clean table's index, Fold duplicate rows builds it after its merge, only a broken index needs the hand command.
-    The pre-check line, ensure's refusal and the rules list (its business key part) say this sentence."""
-    said = []
-    for t, (kind, n) in missing:
-        if kind == KEY_FOLD:
-            said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
-                        f"rows on {t}; it builds the index after the merge")
-        elif kind == KEY_UNKNOWN:
-            said.append(f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; "
-                        f"if it cannot, auto_update.log says why (keys held by more than one row: in the Retroactive "
-                        f"tab run Fold duplicate rows on {t})")
-        elif kind == KEY_INVALID:
-            said.append(f"{t} (an INVALID index holds the name) - drop it with python "
-                        f"server/migrations/add_business_key_unique_index.py, an operator watching")
-        else:
-            said.append(f"{t} (no unique index on business_key_val yet) - the scheduler builds it at start, a Reload "
-                        f"or the table's own ask; wait")
-    return "; ".join(said)
-
-
-def key_index_refusal(conn, table_name: str):
-    state = key_index_missing(conn, table_name)
-    return None if state is None else f"Cannot keep lines: {key_index_next([(table_name, state)])}"
+#: what a table without the index means (owner 11-11 «비즈니스키는 업서트 용»): its new keys are taken today's way
+KEY_RACE = "two writes of one new key at the same moment can make two rows"
 
 
 def drop_line_table(db, table_name: str) -> None:
@@ -508,13 +527,14 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
     for family in BIT_FAMILIES:
         for name in bit_columns(family, after)[before:]:
             statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
-    if after > before:                           # the head index's WHERE names every head chunk
-        statements.append(f'DROP INDEX IF EXISTS "{index_name(table_name, "h")}"')
+    rebuild = after > before and dialect != "postgresql"     # PostgreSQL: head_index, outside this transaction
+    if rebuild:                                  # the head index's WHERE names every head chunk
+        statements += [f'DROP INDEX IF EXISTS "{head_index_name(table_name, n)}"' for n in range(1, after)]
     for stmt in statements:
         conn.exec_driver_sql(stmt)
     s = shape(db, table_name, table_cfg)
-    if after > before:
-        head = next(i for i in s["lines"].indexes if i.name == index_name(table_name, "h"))
+    if rebuild:
+        head = next(i for i in s["lines"].indexes if i.name == head_index_name(table_name, after))
         from sqlalchemy.schema import CreateIndex
 
         ddl = str(CreateIndex(head).compile(dialect=conn.dialect))
@@ -604,80 +624,81 @@ def layers(db, table_name: str, row_ids, columns=None) -> dict:
     return out
 
 
-def winners_sql(s: dict, table_name: str, column: str, exclude_source: str = None):
-    """For one column: (row_id, line_id, value, pinned) of the winning head line of each row in the expanding
-    bindparam `row_ids` - built from crud.rank_terms, the one order compute_priority_value walks. A head line that
-    withdrew the column is no candidate. A pin (cell_overwrites.manual_priority_source) admits only the pinned
-    source's head line; `pinned` says a pin was there. `exclude_source`: that source's line is no candidate (R2's
-    «what shows once this source is gone»). s = shape(...)."""
+def winners_sql(s: dict, table_name: str, exclude_source: str = None):
+    """ONE statement for every column of the rows in the expanding bindparam `row_ids` (C board 11-11: a statement a
+    column was 30 x 45 ms for 1,000 rows): (row_id, col, line_id, value, lost, pin) a (row, column) some head line
+    spoke in - written or withdrawn, any source. `lost` 0: line_id is the winner, ordered by crud.rank_terms (the one
+    order compute_priority_value walks); 1: no candidate is left - every head line withdrew it, or the pin
+    (cell_overwrites.manual_priority_source) names a source with no head line, or `exclude_source` (R2's «what shows
+    once this source is gone») was the only one. The rank's «an unowned chain layer sits on the cell» counts the
+    head lines that say the cell, pinned or excluded or not, as before. s = shape(...)."""
     from types import SimpleNamespace
 
-    from sqlalchemy import and_, bindparam, case, exists, func, literal, not_
-    from sqlalchemy.orm import aliased
+    from sqlalchemy import BigInteger as _Big, and_, bindparam, case, func, literal, or_, union_all
 
     from . import crud
     from .models import CellOverwrite
 
-    lt = s["lines"]
-    bit = s["bits"][column]
-    head, withdrawn = f"head_{bit // BITS_PER_CHUNK}", f"withdrawn_{bit // BITS_PER_CHUNK}"
-    mask = _mask(bit)
+    lt, bits, chunks = s["lines"], s["bits"], s["chunks"]
+    columns = [c for c in sorted(bits) if value_column(c) in lt.c and bits[c] // BITS_PER_CHUNK < chunks]
+    cv = union_all(*[select(literal(c).label("col"), literal(bits[c] // BITS_PER_CHUNK).label("k"),
+                            literal(_mask(bits[c]), _Big).label("m")) for c in columns]).subquery("cv")
+
+    def chunk(family):
+        if chunks == 1:
+            return lt.c[f"{family}_0"]
+        return case(*[(cv.c.k == k, lt.c[f"{family}_{k}"]) for k in range(chunks)])
+
     src = LineSource.__table__
     ov = CellOverwrite.__table__
+    says = case((chunk("withdrawn").op("&")(cv.c.m) == 0, 1), else_=0)
+    inner = (select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at, src.c.ranks_as,
+                    cv.c.col, case(*[(cv.c.col == c, lt.c[value_column(c)]) for c in columns]).label("value"),
+                    says.label("says"), ov.c.manual_priority_source.label("pin"),
+                    func.max(case((and_(chunk("withdrawn").op("&")(cv.c.m) == 0, src.c.ranks_as == crud.CHAIN_SOURCE,
+                                        lt.c.owner_rule.is_(None)), 1), else_=0))
+                    .over(partition_by=[lt.c.row_id, cv.c.col]).label("unowned"))
+             .select_from(lt.join(cv, chunk("head").op("&")(cv.c.m) != 0)
+                          .outerjoin(src, src.c.source_name == lt.c.source_name)
+                          .outerjoin(ov, and_(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id,
+                                              ov.c.column_name == cv.c.col)))
+             .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)),
+                    or_(*[lt.c[h] != 0 for h in bit_columns("head", chunks)]))
+             .subquery("i"))
+    candidate = and_(inner.c.says == 1, or_(inner.c.pin.is_(None), inner.c.source_name == inner.c.pin),
+                     *([inner.c.source_name != exclude_source] if exclude_source is not None else []))
+    lost = case((candidate, 0), else_=1)
+    cols = SimpleNamespace(ranks_as=inner.c.ranks_as, owner_rule=inner.c.owner_rule, at=inner.c.at,
+                           source_name=inner.c.source_name)
+    order = [lost] + [sql(cols, inner.c.unowned == 1) for _, sql in crud.rank_terms(table_name)]
+    ranked = (select(inner.c.row_id, inner.c.col, inner.c.line_id, inner.c.value, lost.label("lost"), inner.c.pin,
+                     func.row_number().over(partition_by=[inner.c.row_id, inner.c.col], order_by=order).label("rn"))
+              .subquery("r"))
+    return select(ranked.c.row_id, ranked.c.col, ranked.c.line_id, ranked.c.value, ranked.c.lost,
+                  ranked.c.pin).where(ranked.c.rn == 1)
 
-    def says(t):
-        return and_(t.c[head].op("&")(mask) != 0, t.c[withdrawn].op("&")(mask) == 0)
 
-    other = lt.alias("other")
-    other_src = src.alias("other_src")
-    unowned = exists().select_from(other.outerjoin(other_src, other_src.c.source_name == other.c.source_name)).where(
-        other.c.row_id == lt.c.row_id, says(other), other_src.c.ranks_as == crud.CHAIN_SOURCE,
-        other.c.owner_rule.is_(None))
-    pin = (select(ov.c.manual_priority_source)
-           .where(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id, ov.c.column_name == column)
-           .scalar_subquery())
-    cols = SimpleNamespace(ranks_as=src.c.ranks_as, owner_rule=lt.c.owner_rule, at=lt.c.at,
-                           source_name=lt.c.source_name)
-    order = [sql(cols, unowned) for _, sql in crud.rank_terms(table_name)]
-    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[value_column(column)].label("value"), pin.isnot(None).label("pinned"),
-                     func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
-              .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
-              .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
-                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin),
-                     *([lt.c.source_name != exclude_source] if exclude_source is not None else []))
-              .subquery())
-    return select(ranked.c.row_id, ranked.c.line_id, ranked.c.value, ranked.c.pinned).where(ranked.c.rn == 1)
-
-
-def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None) -> dict:
+def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
        a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
        a spoken column with no candidate left (all withdrawn) is (None, None).
-    Values are read back as t's stored kind (crud.line_value)."""
+    Values are read back as t's stored kind (crud.line_value). One statement (`winners_sql`). `s`: the shape the
+    caller already holds (a write reads it once - A 11-11), else read here."""
     from . import crud
-    from .models import CellOverwrite
 
     row_ids = list(row_ids)
     if not row_ids:
         return {}
-    s = shape(db, table_name, table_cfg)
-    kinds = value_types(db, table_name)
-    said = spoken(db, table_name, row_ids)
-    ov = CellOverwrite.__table__
-    pins = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
-        ov.c.table_name == table_name, ov.c.row_id.in_(row_ids), ov.c.manual_priority_source.isnot(None)))}
+    s = s if s is not None else shape(db, table_name, table_cfg)
+    kinds = s["kinds"]
     out = {}
-    for column in {c for cols in said.values() for c in cols}:
-        rows = [r for r in row_ids if column in said.get(r, ())]
-        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column, exclude_source),
-                                                           {"row_ids": rows})}
-        for r in rows:
-            if r in won:
-                v, lid = won[r]
-                out.setdefault(r, {})[column] = (crud.line_value(v, kinds.get(column, "string")), lid)
-            elif (r, column) not in pins:
-                out.setdefault(r, {})[column] = (None, None)
+    for r, column, line_id, value, lost, pin in db.execute(winners_sql(s, table_name, exclude_source),
+                                                          {"row_ids": row_ids}):
+        if not lost:
+            out.setdefault(r, {})[column] = (crud.line_value(value, kinds.get(column, "string")), line_id)
+        elif pin is None:
+            out.setdefault(r, {})[column] = (None, None)
     return out
 
 
@@ -711,6 +732,8 @@ def ensure_declared(engine, tables=None) -> dict:
             have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
             missing = [c for c in (cfg.get("column_types") or {}) if value_column(c) not in have] if built else []
         if built and not missing:
+            if sum(1 for c in have if c.startswith("head_")) > 1 and engine.dialect.name == "postgresql":
+                head_index(engine, name, cfg, say=log.info)
             continue
 
         def work(conn, name=name, cfg=cfg, built=built, missing=missing):
@@ -718,11 +741,16 @@ def ensure_declared(engine, tables=None) -> dict:
             if built:
                 alter_columns(db, name, cfg, add=missing)
             else:
-                ensure_line_table(db, name, cfg)            # refuses (ValueError) a table without the key index
+                ensure_line_table(db, name, cfg)
             db.flush()
 
         try:
             db_safety.short_ddl(engine, name, work, "lines")
+            if built and engine.dialect.name == "postgresql":
+                with Session(engine) as db:
+                    wide = chunk_count(db, name) > 1
+                if wide:
+                    head_index(engine, name, cfg, say=log.info)
         except ValueError as err:
             refused[name] = str(err)
             log.error("[Lines] %s", err)
@@ -735,36 +763,41 @@ def ensure_declared(engine, tables=None) -> dict:
     return refused
 
 
-def stamped_by(db, table_name: str, origin_row_ids) -> list:
-    """[(row_id, column, source_name, input_row)] - the cells of t these source rows feed now: each line carrying one
-    of them as its input_row, its head columns it did not withdraw (the index t__lines_i). Reads only."""
+def stamped_by(db, table_names, origin_row_ids) -> list:
+    """[(table, row_id, column, source_name, input_row)] - the cells of these tables these source rows feed now: each
+    line carrying one of them as its input_row, its head columns it did not withdraw (the index t__lines_i). The
+    catalogue and the slots are read once for all the tables (`_catalogue`, `bit_maps`); a table, one data query.
+    Reads only."""
     from sqlalchemy import or_
 
     ids = list(dict.fromkeys(str(i) for i in origin_row_ids or () if i))
-    if not ids or not has_lines(db, table_name):
+    if not ids:
         return []
-    chunks = _built_chunks(db.connection(), table_name)
-    heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
-    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
-    lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
-               Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+    built = _catalogue(db, table_names)
+    maps = bit_maps(db, list(built))
     postgres = db.get_bind().dialect.name == "postgresql"
     out = []
-    for i in range(0, len(ids), 1000):
-        if postgres:
-            # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
-            #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
-            picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
-            rows = db.execute(text(
-                f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
-                f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
-                f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
-        else:
-            rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
-                                               or_(*[lt.c[h] != 0 for h in heads]))).mappings()
-        for r in rows:
-            cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
-            out.extend((r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
+    for table_name in [t for t in dict.fromkeys(table_names) if t in built]:
+        chunks = built[table_name]
+        heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
+        by_bit = {bit: col for col, bit in maps.get(table_name, {}).items()}
+        lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), Column("source_name", String),
+                   Column("input_row", String), *[Column(n, BigInteger) for n in heads + gone])
+        for i in range(0, len(ids), 1000):
+            if postgres:
+                # 🔴 each origin through t__lines_i on its own (총괄 d28171060 - one IN (1,000) under a low n_distinct
+                #    belief read the whole table: 370 ms vs 10 ms on 3M rows); OFFSET 0 keeps the LATERAL unfolded
+                picked = ", ".join(f's."{n}"' for n in ["row_id", "source_name", "input_row", *heads, *gone])
+                rows = db.execute(text(
+                    f"SELECT {picked} FROM unnest(CAST(:ids AS varchar[])) AS o(id) CROSS JOIN LATERAL "
+                    f'(SELECT * FROM "{lines_relation(table_name)}" s WHERE s.input_row = o.id AND '
+                    f"({' OR '.join(f'{h} <> 0' for h in heads)}) OFFSET 0) s"), {"ids": ids[i:i + 1000]}).mappings()
+            else:
+                rows = db.execute(select(lt).where(lt.c.input_row.in_(ids[i:i + 1000]),
+                                                   or_(*[lt.c[h] != 0 for h in heads]))).mappings()
+            for r in rows:
+                cols = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
+                out.extend((table_name, r["row_id"], col, r["source_name"], r["input_row"]) for col in sorted(cols))
     return out
 
 

@@ -32,26 +32,17 @@ def report_line(differences: list):
     return f"Columns migrated as stored: {listed} - retyping them is a separate step"
 
 
-def key_index_missing(db, tables) -> list:
-    """(table, state) for every table that lacks the unique business_key_val index keeping lines needs - the
-    pre-check REPORTS these before landing so the operator builds them first; ensure_line_table refuses them on the day."""
-    conn = db.connection()
-    if conn.dialect.name != "postgresql":
-        return []
-    found = ((name, lines.key_index_missing(conn, name)) for name in tables)
-    return [(name, state) for name, state in found if state is not None]
-
-
-def key_index_line(missing: list):
-    """The operator line the pre-check prints, or None."""
-    return f"Tables without a unique business key index: {lines.key_index_next(missing)}" if missing else None
-
-
 COPY_WORK = "copy"
 #: a layer value that is a JSON object: no writer is known to store one (box: 0 of 39.5M), so the copy refuses the
 #: page rather than guess how to read it (lead 11-11) - if it happens, unwrapping goes in front of line_text, once
-OBJECT_REFUSAL = ("Cannot copy %(t)s: row %(row)s column %(col)s (source %(source)s) holds an object value - "
-                  "nothing of this page was copied; tell the lead")
+OBJECT_HELD = "holds an object value"
+
+
+def copy_refusal(table, row_id, column, source, why) -> str:
+    """The one sentence a copy refuses a page with - an object value, or a value today's write refuses (lead 11-11):
+    the old layer may not win, so the grid cannot fix it and ops has no SQL - the lead decides on the row."""
+    return (f"Cannot copy {table}: row {row_id} column {column} (source {source}) {why} - "
+            "nothing of this page was copied; tell the lead")
 
 
 class AlreadyCopied(Exception):
@@ -93,8 +84,9 @@ def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
 
 def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transaction_id: str,
               written_by: str = "system") -> tuple:
-    """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines, as
-    they are: one «write» line per (row, source, ingested_at, updated_by, owner) - so each cell keeps its own time
+    """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines: one
+    «write» line per (row, source, ingested_at, updated_by, owner), each value the one today's write would have stored
+    (`crud.cast_value_by_type` on the declared type, then `crud.line_text` - lead 11-11) - so each cell keeps its own time
     and the order rank_terms walks gives today's winner. A column a later write already heads keeps that head (the
     copied line is history under it). t's values are not touched; won_by names a line only where the line's value
     is what t shows. In the caller's transaction - the caller commits per page.
@@ -128,6 +120,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     s = lines.shape(db, table, table_cfg)
     lt, bits, chunks = s["lines"], s["bits"], s["chunks"]
     kinds = lines.value_types(db, table)
+    declared = table_cfg.get("column_types") or {}
     heads = {}
     if rows:
         head_cols = lines.bit_columns("head", chunks)
@@ -145,8 +138,13 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         if col not in bits:
             continue                                   # a column t no longer holds
         if isinstance(value, dict):                    # a shape no writer is known to store - refused, not guessed
-            raise ValueError(OBJECT_REFUSAL % {"t": table, "row": row_id, "col": col, "source": source})
+            raise ValueError(copy_refusal(table, row_id, col, source, OBJECT_HELD))
         g = groups.setdefault((row_id, source, at, by, rule, key), {})
+        try:
+            value = crud.cast_value_by_type(value, declared.get(col, "string"), col, table)
+        except crud.CellRefused as refused:
+            raise ValueError(copy_refusal(table, row_id, col, source, "holds %r, which the write refuses: %s is expected"
+                                          % (refused.value, refused.expected))) from None
         g[col] = crud.line_text(value, kinds.get(col, "string"))
         copied += 1
     empty = {**{lines.value_column(c): None for c in bits},

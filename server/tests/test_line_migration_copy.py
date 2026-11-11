@@ -119,6 +119,40 @@ def test_an_object_value_refuses_the_page_and_copies_nothing(db):
                                                     ingested_at=T2, updated_by="seed"))
     with pytest.raises(ValueError) as said:
         line_migration.copy_page(db, "t", CFG, None, 10, transaction_id="tx-copy")
-    assert str(said.value) == line_migration.OBJECT_REFUSAL % {"t": "t", "row": "r1", "col": "qty", "source": "fileZ"}
+    assert str(said.value) == line_migration.copy_refusal("t", "r1", "qty", "fileZ", line_migration.OBJECT_HELD)
+    lt = lines.shape(db, "t", CFG)["lines"]
+    assert db.execute(select(lt.c.line_id)).all() == []
+
+
+@pytest.mark.parametrize("stored, line, won", [("1.0", "1.0", True)])     # JSON 1.0: sqlite keeps it as 1 - see _pg
+def test_a_text_cell_copies_what_todays_write_would_store(db, stored, line, won):
+    """A JSON number in a text column's layer is stored in the write's spelling (cast_value_by_type ->
+    clean_str_value, «1»); a text «1.0» stays as written (6d77e1ad0) - the copy runs the write's cast (lead 11-11).
+    t shows «1.0» as PostgreSQL wrote it: won_by names the line only where the line says what t shows - the state
+    the notation retro reads (A 95b58102c: no won_by key = ask lines.merge)."""
+    import json
+
+    db.execute(text("UPDATE t SET lot = '1.0' WHERE row_id = 'r2'"))
+    db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r2", column_name="lot",
+                                                    source_name="fileN", value=stored,
+                                                    ingested_at=T2, updated_by="seed"))
+    copy_all(db)
+    lt = lines.shape(db, "t", CFG)["lines"]
+    line_id, said = db.execute(select(lt.c.line_id, lt.c[lines.value_column("lot")])
+                               .where(lt.c.row_id == "r2", lt.c.source_name == "fileN")).one()
+    assert said == line
+    won_by = db.execute(text("SELECT won_by FROM t WHERE row_id = 'r2'")).scalar()
+    won_by = (json.loads(won_by) if isinstance(won_by, str) else won_by) or {}
+    assert (won_by.get("lot") == line_id) if won else ("lot" not in won_by)
+
+
+def test_a_value_the_write_refuses_refuses_the_page_and_copies_nothing(db):
+    db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="qty",
+                                                    source_name="fileZ", value="abc",
+                                                    ingested_at=T2, updated_by="seed"))
+    with pytest.raises(ValueError) as said:
+        line_migration.copy_page(db, "t", CFG, None, 10, transaction_id="tx-copy")
+    assert str(said.value) == ("Cannot copy t: row r1 column qty (source fileZ) holds 'abc', which the write refuses: "
+                               "a number is expected - nothing of this page was copied; tell the lead")
     lt = lines.shape(db, "t", CFG)["lines"]
     assert db.execute(select(lt.c.line_id)).all() == []

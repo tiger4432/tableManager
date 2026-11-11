@@ -147,12 +147,13 @@ def test_chunks_follow_the_built_table_not_the_slot_map(db):
     lines.alter_columns(db, "t", wider, add=["c64"])
     cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
     assert {"v_c64", "written_1", "head_1", "withdrawn_1"} <= cols
-    head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h'")).scalar()
+    head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h2'")).scalar()
     assert "head_1" in head_sql
+    assert db.execute(text("SELECT count(*) FROM sqlite_master WHERE name = 't__lines_h'")).scalar() == 0
     said = lines.alter_columns(db, "t", {"column_types": {**wider["column_types"], **{f"d{i}": "string" for i in range(64)}}},
                                add=[f"d{i}" for i in range(64)])
-    index_line = next(x for x in said if "t__lines_h" in x and x.startswith("CREATE INDEX"))
-    db.execute(text('DROP INDEX "t__lines_h"'))
+    index_line = next(x for x in said if "t__lines_h3" in x and x.startswith("CREATE INDEX"))
+    db.execute(text('DROP INDEX "t__lines_h3"'))
     db.execute(text(index_line))                        # the line shown to the operator runs as it is
 
 
@@ -252,8 +253,9 @@ def test_note_sources_keeps_one_row_per_name(db):
     assert all(rows[n] == crud.layer_ranks_as(n) for n in rows)
 
 
-def test_the_unknown_state_names_the_doors_that_exist():
-    said = lines.key_index_next([("big", (lines.KEY_UNKNOWN, 0))])
+def test_the_key_index_word_says_what_it_means_and_the_doors_that_exist():
+    said = lines.key_index_next(["big"])
+    assert said.startswith(lines.KEY_RACE + ": ")
     assert "auto_update.log" in said and "Fold duplicate rows on big" in said
     assert "add_business_key_unique_index" not in said
 

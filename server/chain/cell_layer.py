@@ -310,7 +310,7 @@ def cells_stamped_by(db, table_name, origin_row_ids) -> list:
 
     tables = [table_name] if table_name else [t for t, cfg in (crud.TABLE_CONFIG or {}).items()
                                                if isinstance(cfg, dict) and lines.keeps_lines(t, cfg)]
-    return [(t, *cell) for t in tables for cell in lines.stamped_by(db, t, origin_row_ids)]
+    return lines.stamped_by(db, tables, origin_row_ids)
 
 
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE,
@@ -365,8 +365,8 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
     are the rule that ran, and `keep` {(origin_row_id, row_id)} the rows its write just put that
     origin's output on. A deletion passes none of the three.
 
-    `lost_a_layer` is {table: (columns, row ids)} of the layers withdrawn - what the delete path
-    tells the rules (총괄 e11bb4de0 (나)).
+    `lost_a_layer` is {table: (columns, row ids)} of the layers write_lines withdrew - what the delete path
+    tells the rules (총괄 e11bb4de0 (나)); a deleted row's cells, asked but left out, are not in it (lead 11-11).
     """
     return withdraw_layers(db, cells_stamped_by(db, table, origin_row_ids), apply, log, table, columns, keep)
 
@@ -389,9 +389,6 @@ def withdraw_layers(db, layers, apply: bool = False, log=logger.info, table: str
             continue
         groups.add((table_name, source_name))
         claims_by_table.setdefault(table_name, {}).setdefault((row_id, column), set()).add(source_name)
-        lost_columns, lost_rows = stats["lost_a_layer"].setdefault(table_name, (set(), set()))
-        lost_columns.add(column)
-        lost_rows.add(row_id)
     for table_name, source_name in sorted(protected):
         log("[withdraw-origin] '%s' on '%s' is a protected layer and was NOT withdrawn "
             "— a human's value cannot carry a chain's origin, so this is worth reading",
@@ -402,11 +399,17 @@ def withdraw_layers(db, layers, apply: bool = False, log=logger.info, table: str
     # queries and commit - measured 332 s on PostgreSQL. One pass, the same per-cell order.
     for table_name, claims in sorted(claims_by_table.items()):
         target = resolve_target(table_name, sorted({col for _row, col in claims}))
+        taken = set()
         one = _withdraw_cells(db, table_name, target,
                               _pages_of({cell: sorted(names) for cell, names in claims.items()}),
                               apply=apply, log=log,
-                              label="%d source(s) claim" % len({g for g in groups if g[0] == table_name}))
+                              label="%d source(s) claim" % len({g for g in groups if g[0] == table_name}),
+                              withdrawn=taken)
         stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
+        for row_id, column in sorted(taken):            # what write_lines took, not what was asked:
+            lost_columns, lost_rows = stats["lost_a_layer"].setdefault(table_name, (set(), set()))
+            lost_columns.add(column)                    # a deleted row's lines still say their cells (its
+            lost_rows.add(row_id)                       # history) and write_lines leaves its withdraw out
     return stats
 
 
@@ -521,7 +524,7 @@ def _pages_of(claims: dict):
 
 def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info, checkpoint=None,
-                    label: str = "", page_done=None) -> dict:
+                    label: str = "", page_done=None, withdrawn=None) -> dict:
     """R2's one pass over the claims `read(size)` hands a page at a time - `(row ids,
     {(row_id, column): [source_name, ...]})` of at most `size` rows, none in it on a page that holds none, None at
     the end. `page_done(row ids)`, applied: what else that page's step writes, before it ends.
@@ -529,7 +532,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
     A page is ONE `write_lines` call (cell-source overhaul, lead 11-11): a withdraw line a (row, source) naming the
     columns that source takes back - the merge then shows what the lines left, the audit row and the collapsed event
     are write_lines'. A cell a person pinned to that source is skipped and counted. A dry run writes the same page
-    and rolls it back - the preview is the write's own answer, not a second resolver."""
+    and rolls it back - the preview is the write's own answer, not a second resolver. `withdrawn` (a set): filled
+    with the (row_id, column) cells write_lines took back."""
     from database import crud
     from database.write_lines import write_lines
 
@@ -589,6 +593,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                 was, now = change.get("old") or {}, change.get("new") or {}
                 for col in said["columns"]:
                     stats["cells_withdrawn"] += 1
+                    if withdrawn is not None:
+                        withdrawn.add((said["row_id"], col))
                     stats["revealed" if not crud.is_blank_value(now.get(col)) else "emptied"] += 1
                     moved = was.get(col) != now.get(col)
                     stats["value_unchanged"] += not moved
