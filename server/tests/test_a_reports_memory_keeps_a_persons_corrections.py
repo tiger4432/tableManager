@@ -8,6 +8,7 @@ import pytest
 from chain import ask_rule, report_shape, rule_shape
 from database import crud, models, schemas
 from conftest import retire_dynamic_model
+from tests.support import line_tables
 
 TABLES = {
     "rm_report": {"business_key": "wafer_id", "column_types": {
@@ -41,27 +42,26 @@ def world(db_session):
     m = models.DYNAMIC_TABLES
     for name, entry in TABLES.items():
         crud.TABLE_CONFIG[name] = entry
-        m[name].__table__.create(bind=db_session.get_bind())
+        line_tables.build(db_session.get_bind(), name)      # its lines - a layer is a line (A 11-11)
     for wafer in ("W1", "W2"):
         db_session.add(m["rm_report"](row_id=wafer, business_key_val=wafer, wafer_id=wafer,
                                       report_file="/r/%s.html" % wafer, summary_text="scratch led"))
         for column, value in (("summary_text", "scratch led"), ("report_file", "/r/%s.html" % wafer)):
-            db_session.add(models.CellSource(table_name="rm_report", row_id=wafer, column_name=column,
-                                             source_name=crud.CHAIN_SOURCE, value=value, updated_by="eval_summary"))
+            line_tables.line(db_session.connection(), "rm_report", line_tables.bits_of("rm_report"), wafer,
+                             source=crud.CHAIN_SOURCE, written_by="eval_summary", values={column: value})
     db_session.commit()
     yield db_session
     db_session.rollback()
-    db_session.query(models.CellSource).filter(models.CellSource.table_name == "rm_report").delete()
-    db_session.commit()
     for name in TABLES:
+        line_tables.drop(db_session.get_bind(), name)
         m[name].__table__.drop(bind=db_session.get_bind())
         retire_dynamic_model(name)
         crud.TABLE_CONFIG.pop(name, None)
 
 
 def _person(db, row_id, column, value):
-    db.add(models.CellSource(table_name="rm_report", row_id=row_id, column_name=column,
-                             source_name=crud.USER_SOURCE, value=value, updated_by="kim"))
+    line_tables.line(db.connection(), "rm_report", line_tables.bits_of("rm_report"), row_id,
+                     source=crud.USER_SOURCE, written_by="kim", values={column: value})
     db.commit()
 
 

@@ -8,8 +8,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from database import crud, models, schemas
-from maps import alignment_batch_counts
+from sqlalchemy import func, select
+
+from database import crud, lines, models, schemas
+from tests.support import line_tables
 
 TABLE = "foldl_test"
 TABLES = {TABLE: {"business_key": "k",
@@ -23,19 +25,34 @@ def env(db_session):
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    line_tables.build(db_session.get_bind(), TABLE)          # a cell's layers are its lines' (A 11-11)
     yield db_session
     from conftest import retire_dynamic_model
     retire_dynamic_model(TABLE)
     crud.TABLE_CONFIG.pop(TABLE, None)
 
 
+def _standing(db):
+    """{(row, column, source)} - every standing layer of the table (lines.layers)."""
+    rows = [r for (r,) in db.query(models.DYNAMIC_TABLES[TABLE].row_id)]
+    return {(r, c, name) for (r, c), named in lines.layers(db, TABLE, rows).items() for name in named}
+
+
 def _write(db, source, updates):
-    with alignment_batch_counts.counting_group() as summary:
-        crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[
-            schemas.GeneralUpdateItem(updates=dict(u), business_key_val=u["k"],
-                                      source_name=source, updated_by="t")
-            for u in updates], silent=True))
-    return summary()["write_counts"]
+    """What the write did, read from the lines: «cell sources» the cells its new lines wrote (a layer written, or
+    moved to the front under its own source), «folded layers» the standing layers of another source that went."""
+    ln = lines.shape(db, TABLE, TABLES[TABLE])["lines"]
+    since = db.execute(select(func.coalesce(func.max(ln.c.line_id), 0))).scalar()
+    before = _standing(db)
+    crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates=dict(u), business_key_val=u["k"],
+                                  source_name=source, updated_by="t")
+        for u in updates], silent=True))
+    written = [ln.c["written_%d" % k] for k in range(lines.shape(db, TABLE, TABLES[TABLE])["chunks"])]
+    cells = sum(bin(int(v) & ((1 << 64) - 1)).count("1") for row in db.execute(
+        select(*written).where(ln.c.line_id > since, ln.c.line_kind == "write")) for v in row)
+    folded = {layer for layer in before - _standing(db) if layer[2] != source}
+    return {"cell sources": [cells, "rows"], "folded layers": [len(folded), "rows"]}
 
 
 def _row(db, key):
@@ -44,9 +61,9 @@ def _row(db, key):
 
 
 def _layers(db, key, col="v"):
-    return {s.source_name: s.value for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE, models.CellSource.row_id == _row(db, key).row_id,
-        models.CellSource.column_name == col)}
+    row_id = _row(db, key).row_id
+    return {name: layer["value"] for name, layer in
+            lines.layers(db, TABLE, [row_id], columns=[col]).get((row_id, col), {}).items()}
 
 
 # --- the write path ---------------------------------------------------------------------------
@@ -107,13 +124,15 @@ def test_the_layer_no_op_uses_the_one_equality(env):
     compares. What the shared equality changes is a writer re-sending 1 as '1' (a mapper's
     int, a file's text): the old `==` rewrote the layer for it; the one equality does not.
     A machine writer, so the file rule cannot be what keeps it."""
-    stamp = env.query(models.CellSource.ingested_at).filter(
-        models.CellSource.source_name == crud.CHAIN_SOURCE, models.CellSource.column_name == "v")
+    def stamp():
+        row_id = _row(env, "K1").row_id
+        return lines.layers(env, TABLE, [row_id], columns=["v"])[(row_id, "v")][crud.CHAIN_SOURCE]["line_id"]
+
     _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": 1}])
-    before = stamp.scalar()
+    before = stamp()
     assert _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": "1"}])["cell sources"] == \
         [0, "rows"]
-    assert stamp.scalar() == before
+    assert stamp() == before
     assert crud.cast_value_by_type("A ", "string", "v", TABLE) == "A", \
         "the cast trims - the reason a space is no case here"
 
@@ -125,12 +144,11 @@ T0 = datetime(2026, 9, 26, 1, 0, 0)
 
 def _stack(db, key, col, layers, pin=None):
     """Store `[(source, value), ...]` oldest first, one hour apart - the stack the write path
-    no longer builds."""
+    no longer builds, as lines (one a layer)."""
     row = _row(db, key)
     for hour, (source, value) in enumerate(layers):
-        db.add(models.CellSource(table_name=TABLE, row_id=row.row_id, column_name=col,
-                                 source_name=source, value=value, updated_by="t",
-                                 ingested_at=T0 + timedelta(hours=hour)))
+        line_tables.line(db.connection(), TABLE, line_tables.bits_of(TABLE), row.row_id, source=source,
+                         at=T0 + timedelta(hours=hour), written_by="t", values={col: value})
     if pin:
         db.add(models.CellOverwrite(table_name=TABLE, row_id=row.row_id, column_name=col,
                                     is_overwrite=False, updated_by="t",
