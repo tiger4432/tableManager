@@ -141,7 +141,13 @@ def _verify_withdraw_plan(conn, idx_name):
     print(f" - Probe: table_name={table!r} source_name={source!r} "
           f"({matches} of {total} rows)")
 
-    conds = replay._claimed_filter(table, source)
+    from sqlalchemy.orm import Session
+
+    from chain.cell_layer import claimed_lines
+
+    with Session(conn) as db:
+        lt, bits = claimed_lines(db, table)
+    conds = replay._claimed_filter(lt, bits, source)
     # The two shapes the missing index actually cost: the count route's aggregate
     # and `withdraw_source` step 1's (row_id, column_name) projection. The pinned
     # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner
@@ -150,9 +156,9 @@ def _verify_withdraw_plan(conn, idx_name):
     # scan would be miscounted as this index failing.
     probes = [
         ("count route / cells_claimed",
-         select(func.count()).select_from(models.CellSource).where(*conds)),
+         select(func.count()).select_from(lt).where(*conds)),
         ("withdraw_source step 1",
-         select(models.CellSource.row_id, models.CellSource.column_name).where(*conds)),
+         select(lt.c.row_id, lt.c.source_name).where(*conds)),
     ]
     ok = 0
     for label, stmt in probes:

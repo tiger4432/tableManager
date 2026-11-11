@@ -279,7 +279,14 @@ def test_both_collision_sites_go_through_the_one_helper():
     # delete builds an `or_()` of exactly those comparisons), so asserting its absence
     # module-wide would assert something untrue about other code.
     assert "CellOverwrite.column_name == col_name" not in merge
-    for fn in (crud.apply_row_update_internal, crud.set_cell_manual_priority_batch):
-        body = inspect.getsource(fn)
-        assert "_merge_into_key_holder(" in body
-        assert "prime_merge_cells(" not in body
+    body = inspect.getsource(crud.apply_row_update_internal)
+    assert "_merge_into_key_holder(" in body
+    assert "prime_merge_cells(" not in body
+    # on lines (cell-source overhaul): every write's key rebuild (write_lines step 5½ - the funnel, the pin, a
+    # withdraw) and merge_into_key_holders reach ONE body, `write_lines._merge_into`; the pin spells none
+    from database import write_lines
+    assert "_merge_into(" in inspect.getsource(write_lines._rekey)
+    assert "_merge_into(" in inspect.getsource(write_lines.merge_rows)
+    assert "merge_rows(" in inspect.getsource(crud.merge_into_key_holders)
+    pin = inspect.getsource(crud.set_cell_manual_priority_batch)
+    assert "_merge_into_key_holder(" not in pin and "_merge_into(" not in pin

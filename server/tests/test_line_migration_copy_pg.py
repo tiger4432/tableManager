@@ -24,7 +24,7 @@ def db(pg_engine):
     for row_id, col, source, value, at in [("r1", "lot", "user", "u", T1), ("r1", "lot", "fileA", "a", T2),
                                            ("r1", "qty", "fileA", 5, T2), ("r2", "lot", "fileA", "x", T1)]:
         session.execute(CellSource.__table__.insert().values(table_name=NAME, row_id=row_id, column_name=col,
-                                                             source_name=source, value={"value": value},
+                                                             source_name=source, value=value,
                                                              ingested_at=at, updated_by="seed"))
     lines.ensure_line_table(session, NAME, CFG)
     session.commit()

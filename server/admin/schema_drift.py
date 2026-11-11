@@ -687,7 +687,10 @@ def check(engine):
         # has no type to disagree with.
         findings += _type_findings(table, columns, actual[table], dynamic_names)
 
-        extra = sorted(set(actual[table]) - set(columns))
+        # won_by is the overhaul's own column on t (lines.ensure_line_table adds it) - not the operator's to map
+        from database import lines
+
+        extra = sorted(set(actual[table]) - set(columns) - {lines.WON_BY})
         if extra:
             findings.append({
                 "severity": "INFO", "kind": "unmapped-column",

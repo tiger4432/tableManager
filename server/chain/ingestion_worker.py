@@ -3785,7 +3785,7 @@ def _withdraw_what_those_rows_fed(db, table, row_ids, why):
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
             # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
-            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
+            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, None, row_ids)}):
                 _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
@@ -3991,12 +3991,12 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
     out = {}
     if origins.get(""):
         # every column, its keys too - as the withdrawal by origin stamp always took them; the row left a shell goes
-        gone = [layer for layer in cell_layer.cells_stamped_by(db, sorted(origins.pop(""))) if layer[0] == table
+        gone = [layer for layer in cell_layer.cells_stamped_by(db, table, sorted(origins.pop(""))) if layer[0] == table
                 and (layer[1], layer[2], layer[3]) not in answered]
         if gone:
             out[""] = gone
     for rule in sorted(set(rows) | set(origins) | set(cells)):
-        stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, sorted(origins[rule])) if named == table}
+        stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, table, sorted(origins[rule])) if named == table}
         written = {row for row, _column in cells[rule]}
         gone = [layer for layer in cell_layer.cells_written_by(db, table, (), (rule,),
                                                                rows=sorted(rows[rule] | stamped | written))
@@ -4030,7 +4030,7 @@ def _covered_rows(db, table, covers) -> set:
     covers = covers or {}
     found = {str(row) for row in covers.get("rows") or () if row}
     if covers.get("stamped_by"):
-        found.update(row for named, row, *_ in cell_layer.cells_stamped_by(db, covers["stamped_by"]) if named == table)
+        found.update(row for named, row, *_ in cell_layer.cells_stamped_by(db, table, covers["stamped_by"]) if named == table)
     by_columns = defaultdict(list)
     for where in covers.get("where") or ():
         by_columns[tuple(sorted(where))].append(tuple(where[column] for column in sorted(where)))

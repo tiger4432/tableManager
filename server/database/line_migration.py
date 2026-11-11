@@ -48,6 +48,10 @@ def key_index_line(missing: list):
 
 
 COPY_WORK = "copy"
+#: a layer value that is a JSON object: no writer is known to store one (box: 0 of 39.5M), so the copy refuses the
+#: page rather than guess how to read it (lead 11-11) - if it happens, unwrapping goes in front of line_text, once
+OBJECT_REFUSAL = ("Cannot copy %(t)s: row %(row)s column %(col)s (source %(source)s) holds an object value - "
+                  "nothing of this page was copied; tell the lead")
 
 
 class AlreadyCopied(Exception):
@@ -140,8 +144,10 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     for row_id, col, source, value, at, by, rule, key in cells:
         if col not in bits:
             continue                                   # a column t no longer holds
+        if isinstance(value, dict):                    # a shape no writer is known to store - refused, not guessed
+            raise ValueError(OBJECT_REFUSAL % {"t": table, "row": row_id, "col": col, "source": source})
         g = groups.setdefault((row_id, source, at, by, rule, key), {})
-        g[col] = crud.line_text(crud.layer_value({source: value}, source), kinds.get(col, "string"))
+        g[col] = crud.line_text(value, kinds.get(col, "string"))
         copied += 1
     empty = {**{lines.value_column(c): None for c in bits},
              **{f"{f}_{i}": 0 for f in lines.BIT_FAMILIES for i in range(chunks)}}

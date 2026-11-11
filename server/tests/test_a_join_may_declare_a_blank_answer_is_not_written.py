@@ -88,8 +88,7 @@ def _left(db):
 def _chain_layers(db, column):
     from chain import cell_layer
 
-    return db.query(models.CellSource).filter(
-        *cell_layer._claimed_filter(LEFT, join_into.CHAIN_LAYER, [column])).count()
+    return len(_claimed(db, LEFT, join_into.CHAIN_LAYER, [column]))
 
 
 def _run(db, declaration, side):
@@ -178,3 +177,15 @@ def test_the_declaration_form_draws_the_cell():
     derive = next(f["node"] for f in root["fields"] if f["key"] == "derive")
     join = derive["branches"]["join"]
     assert "blank" in [f["key"] for f in join["fields"]]
+
+
+def _claimed(db, table, source, columns):
+    """The product's claim predicate read back as cells: [(row_id, column, line)] the source still says."""
+    from sqlalchemy import select
+
+    from chain import cell_layer
+
+    lt, bits = cell_layer.claimed_lines(db, table)
+    return [(line["row_id"], col, line) for line in db.execute(
+        select(lt).where(*cell_layer._claimed_filter(lt, bits, source, columns))).mappings()
+        for col in cell_layer._claimed_cells(line, bits, columns)]

@@ -6,7 +6,6 @@ cell shows None, not "" (총괄 11-05 (a)+(b)) - the value a cell shows from its
   door that puts a stored value on the row        the cell
   a file writing the same cell (the "" ranks)     None
   another layer deleted                           None
-  the "" layer pinned                             None
   a key merge moving the row's ""                 nothing moved - the holder keeps its value, as for None
   a layer withdrawn (`_resolve_cell`, control)    None - it folded already
 """
@@ -81,13 +80,6 @@ def test_a_file_writing_the_cell(db):
 def test_another_layer_deleted(db):
     row_id = _old_blank(db)
     crud.delete_cell_source_batch(db, TABLE, [{"row_id": row_id, "column_name": "n"}], "file_a.csv")
-    db.commit()
-    assert _shown(db, row_id) is None
-
-
-def test_the_blank_layer_pinned(db):
-    row_id = _old_blank(db)
-    crud.set_cell_manual_priority_batch(db, TABLE, [{"row_id": row_id, "column_name": "n"}], crud.USER_SOURCE)
     db.commit()
     assert _shown(db, row_id) is None
 

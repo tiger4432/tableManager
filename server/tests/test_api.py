@@ -205,16 +205,13 @@ def test_priority_toggle_api(client, db_session):
     row = res.json()["data"][0]
     row_id = row["row_id"]
     
-    # Add a cell source to satisfy the validation
-    db_session.add(models.CellSource(
-        table_name="raw_table_1",
-        row_id=row_id,
-        column_name="EQP_ID",
-        source_name="pipeline_parser",
-        value="TEST_VAL",
-        ingested_at=datetime.now(),
-        updated_by="system"
-    ))
+    # The source a pin names says something on the cell - a line (cell-source overhaul: a pin reads head lines)
+    from database import crud, lines
+    from database.write_lines import write_lines
+    lines.ensure_line_table(db_session, "raw_table_1", crud.TABLE_CONFIG["raw_table_1"])
+    write_lines(db_session, "raw_table_1", [{"row_id": row_id, "values": {"EQP_ID": row["data"]["EQP_ID"]},
+                                             "source_name": "pipeline_parser", "written_by": "system"}],
+                kind="funnel", transaction_id="tx-seed")
     db_session.commit()
     
     # 2. Put manual priority source as 'pipeline_parser'

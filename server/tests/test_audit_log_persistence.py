@@ -51,11 +51,17 @@ def test_delete_cell_source_batch_persists_audit_logs(db_session):
     table_model = models.DYNAMIC_TABLES["raw_table_1"]
     row = db_session.query(table_model).first()
 
+    from sqlalchemy import select
+
+    from database import lines, schemas
+    crud.apply_batch_updates(db_session, "raw_table_1", schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row.row_id, updates={"EQP_ID": "EQP-SYS"}, source_name="system", updated_by="tester")]))
     crud.delete_cell_source_batch(
         db_session, "raw_table_1",
         [{"row_id": row.row_id, "column_name": "EQP_ID"}],
         "system",
     )
 
-    logs = _db_logs(db_session, "raw_table_1", "EQP_ID")
-    assert any(l.row_id == row.row_id and l.source_name.startswith("delete_source:") for l in logs)
+    ln = lines.shape(db_session, "raw_table_1", crud.TABLE_CONFIG["raw_table_1"])["lines"]     # a withdraw line
+    assert db_session.execute(select(ln.c.source_name).where(
+        ln.c.row_id == row.row_id, ln.c.line_kind == "withdraw")).scalars().all() == ["system"]

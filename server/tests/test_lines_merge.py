@@ -100,3 +100,24 @@ def test_bit_63_and_a_number_column_read_back_typed(db):
     put(db, "r1", "fileA", T0, "x", column=sign)
     got = lines.merge(db, "t", {"column_types": {**CFG["column_types"], **cfg["column_types"]}}, ["r1"])
     assert got["r1"]["qty"][0] == 7 and got["r1"][sign][0] == "x"
+
+
+def test_layers_are_each_sources_standing_word_in_the_old_shape(db):
+    put(db, "r1", "fileA", T0, "a")
+    put(db, "r1", "fileB", T0, withdraw=True)
+    put(db, "r1", "fileA", T0, "7", column="qty")
+    got = lines.layers(db, "t", ["r1", "r2"])
+    assert set(got) == {("r1", "lot"), ("r1", "qty")}
+    assert set(got[("r1", "lot")]) == {"fileA"}                    # a withdrawn head is no layer
+    assert got[("r1", "qty")]["fileA"]["value"] == 7               # read back as t's stored kind
+    assert set(got[("r1", "lot")]["fileA"]) >= {"value", "ingested_at", "updated_by", "origin_row_id", "line_id"}
+    assert lines.layers(db, "t", ["r1"], columns={"qty"}).keys() == {("r1", "qty")}
+
+
+def test_merge_without_one_source_is_what_shows_once_it_is_gone(db):
+    put(db, "r1", "user", T0, "u")
+    put(db, "r1", "fileA", T0, "a")
+    put(db, "r2", "user", T0, "only")
+    got = lines.merge(db, "t", CFG, ["r1", "r2"], exclude_source="user")
+    assert got["r1"]["lot"][0] == "a" and got["r2"]["lot"] == (None, None)
+    assert lines.merge(db, "t", CFG, ["r1"])["r1"]["lot"][0] == "u"            # canary: user wins with it

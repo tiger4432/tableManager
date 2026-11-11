@@ -4015,19 +4015,25 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
     from fastapi.concurrency import run_in_threadpool
 
     def _delete_and_build():
-        updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name)
+        gone, gone_edits = [], {}                                       # a row the withdrawal merged into its key's holder
+        updated_row, changed_cols = crud.delete_cell_source(db, table_name, row_id, col_name, source_name,
+                                                            merged=gone, deleted_edits=gone_edits)
         if not updated_row:
             return None
         col_types = crud.TABLE_CONFIG.get(table_name, {}).get("column_types", {})
         merged = read_as_page(db, table_name, [updated_row], [
             c for c in col_types if c not in ["created_at", "updated_at"]], include_sources=True)[0][0]
         return event_constants.upsert_item(
-            row_id, merged["data"], merged["created_at"], merged["updated_at"]), len(changed_cols)
+            updated_row.row_id, merged["data"], merged["created_at"], merged["updated_at"]), len(changed_cols), \
+            (gone, access.tables_in(table_name, gone_edits, gone))
 
     built = await run_in_threadpool(_delete_and_build)
     if not built:
         raise HTTPException(status_code=404, detail="Source or Cell not found")
-    item, change_count = built
+    item, change_count, (deleted_row_ids, deleted_edits) = built
+    if deleted_row_ids:
+        await manager.broadcast(json.dumps(
+            event_constants.row_delete_message(table_name, deleted_row_ids, edits_of=deleted_edits)))
 
     # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
     await manager.broadcast(json.dumps({
@@ -4036,7 +4042,7 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
         "items": [item],
         "change_count": change_count
     }))
-    return {"status": "success", "row_id": row_id}
+    return {"status": "success", "row_id": item["row_id"], "deleted_row_ids": deleted_row_ids}
 
 @app.put("/tables/{table_name}/{row_id}/{col_name}/priority")
 async def set_cell_priority(
@@ -4185,7 +4191,9 @@ async def delete_cell_source_batch_endpoint(
     from fastapi.concurrency import run_in_threadpool
 
     def _delete_and_merge():
-        changed, logs = crud.delete_cell_source_batch(db, table_name, req.cells, req.source_name)
+        gone, gone_edits = [], {}                                       # rows the withdrawal merged into their key's holder
+        changed, logs = crud.delete_cell_source_batch(db, table_name, req.cells, req.source_name,
+                                                      merged=gone, deleted_edits=gone_edits)
         merged = []
         # [P1b] Third copy of the discarded merge; see `set_cell_priority_batch_endpoint`
         # above for the full accounting. Same shape, same commit-then-reload bill, same
@@ -4197,12 +4205,16 @@ async def delete_cell_source_batch_endpoint(
             user_cols = [c for c in col_types.keys() if c not in ["created_at", "updated_at"]]
             merged, _looks = read_as_page(db, table_name, changed, user_cols, include_sources=True)
         edits = access.edits_of(db, table_name, changed) if len(changed) > BROADCAST_ITEM_LIMIT else None
-        return changed, logs, merged, edits
+        return changed, logs, merged, edits, (gone, access.tables_in(table_name, gone_edits, gone))
 
-    changed_rows, created_logs, merged_items, edits = await run_in_threadpool(_delete_and_merge)
+    changed_rows, created_logs, merged_items, edits, (deleted_row_ids, deleted_edits) = \
+        await run_in_threadpool(_delete_and_merge)
 
     if changed_rows:
         invalidate_table_cache(table_name)
+        if deleted_row_ids:
+            await manager.broadcast(json.dumps(
+                event_constants.row_delete_message(table_name, deleted_row_ids, edits_of=deleted_edits)))
 
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
         msg_items = [event_constants.upsert_item(
@@ -4232,7 +4244,7 @@ async def delete_cell_source_batch_endpoint(
                     "created_logs": chunk_logs
                 }))
 
-    return {"status": "success", "count": len(changed_rows)}
+    return {"status": "success", "count": len(changed_rows), "deleted_row_ids": deleted_row_ids}
 
 @app.post("/tables/{table_name}/cells/sources/query")
 def query_cells_sources(
