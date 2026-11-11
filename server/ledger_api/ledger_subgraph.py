@@ -1543,22 +1543,43 @@ class VirtualEvidenceLookup:
 
     @staticmethod
     def _qualifier_cell(leg, ref):
-        """A qualifier as a filter reads it (`walk_filter.where`): its cell, its kind, its blank - as the atom carries
-        it (`_atom`: a blank cell says nothing); None when the sentence carries no such qualifier."""
+        """A qualifier as the walk compares it - a filter (`walk_filter.where`) and a bound value (`_bound`) alike (lead
+        11-11): (its SQL, its kind - text · number · bool · time, its blank, `spell`: a value as that SQL says it, None
+        when it is not one), as the atom carries it (`_atom`: a blank cell says nothing). A time is its instant, one
+        spelling both sides (`assy_key_instant` - `map_overlay.time_key_text`). None when the sentence carries no such
+        qualifier; `walk_filter.NotRead` for one the SQL does not say yet."""
         import expression
-        from ledger.sql_translate import _NUMBERS, _TEXT, _literal, _missing, _quoted
+        from ledger import walk_filter
+        from ledger.sql_translate import _BOOLEAN, _NUMBERS, _TEXT, _held, _literal, _missing, _quoted
 
         spec = leg.qualifiers.get(ref)
         if spec is None:
             return None
         if "constant" in spec:
             value = spec["constant"]
-            return (_literal(value), "number" if isinstance(value, (int, float)) and not isinstance(value, bool)
-                    else "text", "TRUE" if expression.is_blank(value) else "FALSE")
+            kind = walk_filter.kind_of(value)
+            return (_literal(value), kind, "TRUE" if expression.is_blank(value) else "FALSE",
+                    lambda v: v if walk_filter.kind_of(v) == kind else None)
+        cell = f"w.{_quoted(spec['column'])}"
+        if spec.get("time") is not None:
+            if spec["time"].get("format"):
+                raise walk_filter.NotRead(f"[{ref}] of {leg.predicate} is a time read by a format - the walk does not "
+                                          f"compare it yet")
+            from map_overlay import time_key_text
+            from notation_norm import KEY_INSTANT_FUNCTION
+            from utils.time_format import _zone
+
+            name = spec["time"].get("zone") or expression.time_zone().key
+            zone = _zone(name)
+            return (f"{KEY_INSTANT_FUNCTION}({cell}, {_literal(name)})", "time", _missing(spec),
+                    lambda v: time_key_text(v, zone) if expression._wall(v, zone) is not None else None)
+        if spec["kind"] == _BOOLEAN:
+            return cell, "bool", _missing(spec), lambda v: v if isinstance(v, bool) else None
         if spec["kind"] not in (_TEXT, *_NUMBERS):
-            raise ValueError(f"[{ref}] of {leg.predicate} is a {spec['kind']} qualifier - a walk filter does not read "
-                             f"it yet")
-        return f"w.{_quoted(spec['column'])}", "text" if spec["kind"] == _TEXT else "number", _missing(spec)
+            raise walk_filter.NotRead(f"[{ref}] of {leg.predicate} is a {spec['kind']} qualifier - the walk does not "
+                                      f"compare it yet")
+        kind = "text" if spec["kind"] == _TEXT else "number"
+        return cell, kind, _missing(spec), lambda v: _held(v, spec) if walk_filter.kind_of(v) == kind else None
 
     @staticmethod
     def _key_cell(leg, arm, ref):
@@ -1576,25 +1597,21 @@ class VirtualEvidenceLookup:
 
     @staticmethod
     def _bound(leg, bound, params, name):
-        """SQL: the row's qualifiers `bound["names"]` take one of `bound["values"]` (`_qualifier_values`' spelling, a
-        value read as its column holds it - `_held`)."""
-        from ledger.sql_translate import _TEXT, _held, _quoted
-
-        specs = [leg.qualifiers.get(each) for each in bound["names"]]
-        if any(spec is None for spec in specs):
+        """SQL: the row's qualifiers `bound["names"]` take one of `bound["values"]` (`_qualifier_values`' spelling) -
+        each compared as a filter compares it (`_qualifier_cell`: a time by its instant)."""
+        cells = [VirtualEvidenceLookup._qualifier_cell(leg, each) for each in bound["names"]]
+        if any(cell is None for cell in cells):
             return "false"
         ors = []
         for row, values in enumerate(bound["values"]):
             ands = []
-            for index, (spec, value) in enumerate(zip(specs, values)):
-                if "constant" in spec:
-                    ands.append("true" if _json_key(spec["constant"]) == value else "false")
-                elif isinstance(value, bool) or isinstance(value, str) != (spec["kind"] == _TEXT) \
-                        or _held(value, spec) is None:
+            for index, ((sql, _kind, _blank, spell), value) in enumerate(zip(cells, values)):
+                said = spell(value)
+                if said is None:
                     ands.append("false")
                 else:
-                    params[f"{name}_{row}_{index}"] = _held(value, spec)
-                    ands.append(f"w.{_quoted(spec['column'])} = %({name}_{row}_{index})s")
+                    params[f"{name}_{row}_{index}"] = said
+                    ands.append(f"{sql} = %({name}_{row}_{index})s")
             ors.append("(" + " AND ".join(ands or ["true"]) + ")")
         return "(" + " OR ".join(ors or ["false"]) + ")"
 

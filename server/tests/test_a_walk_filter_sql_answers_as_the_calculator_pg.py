@@ -34,7 +34,8 @@ pytestmark = pytest.mark.pg
 MORE = [{"proc_id": "P5", "wafer_id": "W1", "step": "10", "recipe_id": "RCP-4", "eventtime": "2026-09-30 13:00:00"},
         {"proc_id": "P6", "wafer_id": "W1", "step": "9", "recipe_id": "RCP-5", "eventtime": "2026-09-30 14:00:00"},
         {"proc_id": "P7", "wafer_id": "W3", "step": "5.0", "recipe_id": "RCP-6", "eventtime": "2026-09-30 15:00:00"},
-        {"proc_id": "P8", "wafer_id": "W3", "step": "s1", "recipe_id": "RCP-7", "eventtime": "2026-09-30 16:00:00"}]
+        {"proc_id": "P8", "wafer_id": "W3", "step": "s1", "recipe_id": "RCP-7", "eventtime": "2026-09-30 16:00:00"},
+        {"proc_id": "P9", "wafer_id": "W3", "step": "  ", "recipe_id": "RCP-8", "eventtime": "2026-09-30 17:00:00"}]
 EXPRESSIONS = ['[step] = "S1"', '[step] <> "S1"', "[step] is null", "[step] is not null", '[step] > "S"',
                '[step] <= "S2"', "[step] >= 9", "[step] = 5", '[step] < "5"', 'not ([step] = "S1")',
                '[step] = "S1" or [step] is null', '[step] = "S2" and not [step] is null']
@@ -69,7 +70,8 @@ def test_each_expression_draws_the_same_walk_by_sql_as_by_the_calculator(board, 
 
 def test_the_walk_reaches_every_step_the_board_holds(board):
     reached = {json.loads(q).get("step") for q in _steps(_walk(board, "virtual"))}
-    assert reached == {row.get("step") for row in ROWS + MORE}, reached
+    assert reached == {(row.get("step") or "").strip() or None for row in ROWS + MORE}, \
+        "every step reached - spaces stored as no step (`crud.is_blank_value`, storage canonical)"
 
 
 def test_a_node_filter_leaves_out_the_nodes_it_does_not_hold_of_but_not_a_start(board):

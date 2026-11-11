@@ -7,8 +7,9 @@ not hold of is not drawn and not walked on (a node the read starts from is not j
 The expression is the one grammar (`expression`). The calculator (`holds`) is THE judge: the stored walk runs it over
 each atom it fetched. The virtual walk says the same reading in its legs' WHERE (`where`), so a step it refuses is not
 read - held to the calculator's answer by test_a_walk_filter_sql_answers_as_the_calculator_pg. What the SQL says
-exactly is this much: comparisons of a reference or a literal, and / or / not, is null; anything else is refused by
-name when the walk is asked (`compiled`), as is a reference the predicate or type does not carry.
+exactly is this much: comparisons of a reference or a literal (a text, a number, true / false), and / or / not, is null;
+anything else is refused by name when the walk is asked (`compiled`), as is a reference the predicate or type does not
+carry. A time qualifier is refused «not yet»: the calculator compares a time as its text (lead 11-11: an instant).
 """
 import expression
 
@@ -20,6 +21,19 @@ NUMERAL_SQL = r"^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$"
 SAID = "comparisons (= <> < > <= >=), and, or, not, is null"
 
 
+class NotRead(ValueError):
+    """What a walk does not compare yet - said by name (422), never read another way."""
+
+
+def kind_of(value):
+    """A value's kind as a comparison takes it (`expression._kind`): "bool" · "number" · "text", or None."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, (int, float)):
+        return "number"
+    return "text" if isinstance(value, str) else None
+
+
 def split(entries):
     """["<name>:<expression>", ...] -> {name: [expression text]} - split on the first colon, as `follow`'s keys."""
     out = {}
@@ -29,8 +43,9 @@ def split(entries):
     return out
 
 
-def compiled(argument, name, text, readable):
-    """`text` compiled for a filter on `name` reading only `readable` - ValueError names what it cannot be."""
+def compiled(argument, name, text, readable, not_yet=()):
+    """`text` compiled for a filter on `name` reading only `readable` - ValueError names what it cannot be; a name in
+    `not_yet` (a time qualifier) is said so."""
     said = f"{argument}={name}:{text}"
     got = expression.compile(text)
     if not got["ok"]:
@@ -38,6 +53,10 @@ def compiled(argument, name, text, readable):
     refused = _refused(got["tree"], truth=True)
     if refused:
         raise ValueError(f"{said}: {refused} is not read by a walk filter - it reads {SAID}")
+    later = [ref for ref in got["names"] if ref in not_yet]
+    if later:
+        raise NotRead(f"{said}: {', '.join('[%s]' % ref for ref in later)} is a time - a walk filter does not compare "
+                      f"times yet")
     unknown = [ref for ref in got["names"] if ref not in readable]
     if unknown:
         raise ValueError(f"{said}: {', '.join('[%s]' % ref for ref in unknown)} is not one {name} carries - it "
@@ -59,8 +78,6 @@ def _refused(node, truth):
         return _refused(node["a"], truth=True)
     if t == "isnull":
         return _refused(node["a"], truth=False)
-    if t == "lit" and isinstance(node["v"], bool):
-        return f"«{'true' if node['v'] else 'false'}»"
     return None
 
 
@@ -86,11 +103,14 @@ def where(texts, cell_of, params, name):
 
     def value(node):
         if node["t"] == "ref":
-            return cell_of(node["name"]) or ("NULL", "null", "TRUE")
+            said = cell_of(node["name"])
+            if said and said[1] == "time":
+                raise NotRead(f"[{node['name']}] is a time - a walk filter does not compare times yet")
+            return said[:3] if said else ("NULL", "null", "TRUE")
         v = node["v"]
         if expression.is_blank(v):
             return "NULL", "null", "TRUE"
-        return (param(v), "number", "FALSE") if isinstance(v, (int, float)) else (param(str(v)), "text", "FALSE")
+        return param(v if kind_of(v) != "text" else str(v)), kind_of(v) or "text", "FALSE"
 
     def numeric(cell, kind):
         """The calculator's `number_of`: a number as it is, a text only when it reads as a number."""
@@ -108,7 +128,7 @@ def where(texts, cell_of, params, name):
             blank = value(node["a"])[2]
             return f"(NOT {blank})" if node["negate"] else f"({blank})"
         (a, ka, blank_a), (b, kb, blank_b), op = value(node["a"]), value(node["b"]), OPERATORS[node["op"]]
-        if "null" in (ka, kb):
+        if "null" in (ka, kb) or (ka != kb and "bool" in (ka, kb)):       # a bool and another kind: not known
             return "(NULL::boolean)"
         if ka == kb == "text":
             said, reads = f"({a} COLLATE \"C\" {op} {b})", "TRUE"

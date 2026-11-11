@@ -328,7 +328,7 @@ def evidence_subgraph(
             follow, _followable_predicates(world), reason="predicate_not_declared",
             what="predicate", world=world, argument="follow")
         follow_keys = {_bare_name(name): keys for name, keys in follow_keys.items()}
-    filters = _walk_filters(edge_filter, node_filter, world)
+    filters = _walk_filters(edge_filter, node_filter, world, db.connection())
     if isinstance(expand, (list, tuple)):
         expand = [_expanded_bundle(item, world) for item in expand]
     if isinstance(seed_type, str) and seed_type.strip():
@@ -1248,13 +1248,18 @@ def _declared_keys(bare_type: str, world=None) -> set:
     return set()
 
 
-def _walk_filters(edge_filter, node_filter, world):
+def _walk_filters(edge_filter, node_filter, world, connection=None):
     """{"edge": {bare predicate: [compiled]}, "node": {bare type: [compiled]}} of a walk's value filters (lead 11-11,
     `walk_filter`): each name through `_declared_or_refused`, each expression read once and refused by name when a
-    filter does not read it or it reads a name the predicate (its qualifiers) or the type (its keys) does not carry.
-    {} when none - a direct call leaves the Query sentinel."""
+    filter does not read it or it reads a name the predicate (its qualifiers) or the type (its keys) does not carry,
+    or a time qualifier (the declaration's compile, `_compiled`: its spec reads a time) - «not yet». {} when none - a
+    direct call leaves the Query sentinel."""
     from ledger import walk_filter
 
+    times = set()
+    if connection is not None and isinstance(edge_filter, (list, tuple)) and edge_filter:
+        times = {(leg.predicate, name) for leg in _compiled(connection, _worlds(world))[0]
+                 for name, spec in leg.qualifiers.items() if spec.get("time") is not None}
     out = {}
     for argument, entries, kind, declared, reason, what, readable in (
             ("edge_filter", edge_filter, "edge", _followable_predicates, "predicate_not_declared", "predicate",
@@ -1268,7 +1273,9 @@ def _walk_filters(edge_filter, node_filter, world):
                                            argument=argument)
             try:
                 out.setdefault(kind, {}).setdefault(bare, []).extend(
-                    walk_filter.compiled(argument, bare, text, readable(bare)) for text in texts)
+                    walk_filter.compiled(argument, bare, text, readable(bare),
+                                         {name for predicate, name in times if predicate == bare and kind == "edge"})
+                    for text in texts)
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail={
                     "reason": "filter_not_read", "argument": argument, "message": str(exc)})
