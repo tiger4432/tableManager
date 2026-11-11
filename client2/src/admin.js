@@ -106,6 +106,7 @@ import { takeRescopeHandoff } from './rescope_handoff.js';
 import { HelpPanel } from './help_panel.js';
 import { StallLine, stallOf } from './stall_line.js';
 import { NotAdopted, notAdoptedOf } from './not_adopted.js';
+import { ListField, listValues } from './list_field.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -3464,15 +3465,22 @@ function retroParamsEl(op) {
       wrap.appendChild(field);
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'retro-input';
+    // a list parameter (declared "type": "csv", lead 11-11): the base layer's list field - one value a line, comma or tab -
+    // sent as before, comma-joined; any other: one line
+    const list = param.list ? new ListField(document.createElement('div'), { doc: document, rows: 4,
+      values: listValues(state.params[param.key]).values, onChange: (values) => typed(values.join(',')) }) : null;
+    const input = list ? list.box : document.createElement('input');
+    if (!list) {
+      input.type = 'text';
+      input.value = state.params[param.key] || '';
+      input.addEventListener('input', () => typed(input.value));
+    }
+    input.classList.add('retro-input');
     input.dataset.param = param.key;
-    input.value = state.params[param.key] || '';
     input.classList.toggle('is-help', helpFilled(state, param.key));
-    input.addEventListener('input', () => {
+    function typed(value) {
       const wasStale = resolveCount(state, op).stale;
-      state.params[param.key] = input.value;
+      state.params[param.key] = value;
       input.classList.toggle('is-help', helpFilled(state, param.key));
       // 카드를 통째로 다시 그리면 타이핑 중에 포커스가 날아가므로, **측정의 유효성이 실제로
       // 뒤집힌 타이핑에서만** 다시 그린다 — 한 글자 고쳤다 되돌리면 측정은 다시 유효해지고
@@ -3481,8 +3489,8 @@ function retroParamsEl(op) {
       const caret = input.selectionStart;
       renderRetroOperation(op.op);
       retroFocusParam(op.op, param.key, caret);
-    });
-    field.appendChild(input);
+    }
+    field.appendChild(list ? list.root : input);
     // 서버가 준 help는 **입력칸 안(placeholder)이 아니라 아래 줄**에 둔다. placeholder는
     // 폭에 잘리고 타이핑을 시작하면 사라진다 — 「자르지 말고 줄을 하나 더 써라」.
     // 없으면 비워 둔다: 여기서 지어내면 그 순간 클라가 파라미터의 뜻을 자기가 정한다.
@@ -3523,7 +3531,7 @@ function retroChoiceEl(op, param, state) {
 /** 재렌더 뒤 커서를 원래 칸으로 돌려놓는다. 입력칸은 `data-param`으로 자기를 밝힌다. */
 function retroFocusParam(opId, paramKey, caret) {
   const target = document.querySelector(
-    `article.retro-op[data-op="${CSS.escape(opId)}"] input[data-param="${CSS.escape(paramKey)}"]`);
+    `article.retro-op[data-op="${CSS.escape(opId)}"] :is(input, textarea)[data-param="${CSS.escape(paramKey)}"]`);
   if (!target) return;
   target.focus();
   try { target.setSelectionRange(caret, caret); } catch (e) { /* not a text input */ }

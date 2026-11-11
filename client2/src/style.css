@@ -3453,7 +3453,6 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 .value-filter__value:has(input:checked) { background: var(--accent-weak); }
 .value-filter__value.is-blank { font-family: var(--font-body); font-style: italic; color: var(--text-muted); }
 .value-filter__list > .meta, .value-filter__list > .refusal { padding: var(--space-1) var(--space-2); }
-.value-filter__paste { font-family: var(--font-mono); resize: vertical; white-space: pre; }
 .value-filter__cond { display: flex; gap: var(--space-2); }
 .value-filter__cond > * { flex: 1 1 0; min-width: 0; }
 .value-filter__cond > select { flex-grow: 1.4; }

@@ -1237,7 +1237,7 @@ export const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 358],   // 356 -> 358: the count's one address, retroCountRequest (owner 11-10 «노테이션 소급 ㄱ»)
+  ['retroactive_view_harness.mjs', 368],   // 356 -> 358: the count's one address, retroCountRequest (owner 11-10 «노테이션 소급 ㄱ»)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],
@@ -1785,7 +1785,8 @@ export const FLOORS = new Map([
   // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 35],   // -> 35 (lead 11-09 ⓑ): the storage rows S1-S5, XS1-XS6
-  ['value_filter_harness.mjs', 37],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06)
+  ['value_filter_harness.mjs', 36],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06); 37 -> 36: the list's reading (L1) went to list_field
+  ['list_field_harness.mjs', 12],   // the base layer's list field: how a list is read and said, the box (lead 11-11)
   ['tables_harness.mjs', 29],   // Tables L1: the grid's hand-off, the first table by page through the grid's door, 9 mutants (owner 11-06)
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the

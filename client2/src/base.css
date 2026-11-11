@@ -141,6 +141,10 @@
 
 /* ── the small control — the second of the two heights (lead f3639d4a2): a control inside a form row ───────── */
 :where(.ctl-small) { height: var(--control-h-small); min-height: var(--control-h-small); padding: 0 var(--space-3); }
+/* ── list field — a box that takes a list, one value a line, comma or tab, and how many it read (list_field.js, lead 11-11) */
+:where(.list-field) { display: flex; flex-direction: column; gap: var(--space-2); }
+:where(.list-field__box) { font-family: var(--font-mono); resize: vertical; white-space: pre; }
+:where(.list-field__line) { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-label); }
 /* ── chip — one value of a list, at the small height; its remove an icon in a square of that height ─────── */
 :where(.chip) {
   display: inline-flex;

@@ -14,8 +14,12 @@ import './ontology_explorer.css';
 import { readContext, renderSkeletonForm } from './ontology_explorer_view.js';
 // The option list under a box (option_list.js): a formula's names as typed.
 import { OptionList } from './option_list.js';
+// The list field (list_field.js): a list typed or pasted - one value a line, comma or tab - and how many it read.
+import { ListField } from './list_field.js';
 
 const root = document.documentElement;
+const listMount = document.getElementById('sample-list-field');
+if (listMount) new ListField(listMount, { doc: document, values: ['r-0041', 'r-0042', 'r-0043', 'r-0044', 'r-0042'] });
 const button = document.getElementById('sample-theme');
 const draw = () => {
   const dark = root.dataset.theme === 'dark';
