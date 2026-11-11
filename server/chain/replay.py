@@ -1839,9 +1839,10 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
                checkpoint=None) -> dict:
     """A fold rule's answer over every unit row, written without the chain's queue (총괄 10-11, 소유자
     「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」). The answer is the rule seat's (`rule_run.run_rule`,
-    `next_page` followed); a page of it goes through the write door's own per-cell judgement and is written
-    set-based (`_fold_units_page`), one commit a page. After the last page, the worker's settle
-    (`ingestion_worker._settle`) over every unit row handed: a unit that now wins takes its old marks back. No event for the marks and no broadcast - setup ⑥ (copy replay) follows them."""
+    `next_page` followed); a page of it goes through the product's write door (`_fold_units_page`), one commit a
+    page. After the last page, the worker's settle (`ingestion_worker._settle`) over every unit row handed: a unit
+    that now wins takes its old marks back. A page stages one collapsed outbox row; on the retroactive channel a run
+    writes on, it wakes no rule (owner 09-26, lead 11-11) - setup ⑥ (copy replay) follows the marks."""
     from sqlalchemy import func, select
 
     from chain import cell_layer, ingestion_worker, rule_run, rule_shape
@@ -1950,177 +1951,62 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     return stats
 
 
-def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_column, gated, table_name):
-    """'empty' · 'same' · None - the two cells whose write-door answer is already decided (총괄 10-11, speed):
-    no layer and no overwrite on the cell, or its one layer is this item's own, saying the same, and shown.
-    None - the door judges it (`crud.apply_row_update_internal`): any other layer, an overwrite row, a
-    version-gated table, a row whose business key the door would re-read."""
-    from database import crud
-
-    business_key, shown, key_value = plain
-    if (gated or overwrite is not None or len(item.updates) != 1 or item.business_key_val
-            or crud.is_blank_value(clean)):
-        return None
-    if key_column and key_value is not None and (
-            isinstance(key_value, dict)
-            or crud.compose_business_key(table_name, [key_value], [key_column]) not in ("", business_key)):
-        return None
-    if not layers:
-        return "empty"
-    own = layers[0]
-    if (len(layers) == 1 and own.source_name == item.source_name and own.updated_by == item.updated_by
-            and own.origin_row_id == item.origin_row_id and not crud.values_differ(own.value, clean, col_type)
-            and not crud.values_differ(shown, own.value, col_type)):
-        return "same"
-    return None
-
-
 def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fold=lambda: None):
-    """One page of a fold rule's answer, judged as the write door judges it and written as it writes it.
-    The steps `_apply_batch_updates_once` takes before its loop and the worker's layer naming run as they
-    are; a cell `_fold_units_forced` decides takes that answer, every other one goes through
-    `crud.apply_row_update_internal` with the batch path's accumulators. Written: the history lines and
-    the shown values from one array per column (one statement each), layers and overwrites by the door's
-    bulk writers. `on_fold` is called once the page is judged, before it is written. -> (counts, the page's items)"""
+    """One page of a fold rule's answer through the product's write door - `crud.apply_batch_updates`, the funnel
+    into write_lines - collapsed, so the page stages one outbox row (lead 11-11 ㄱ: the old set-based page wrote
+    cell_sources and audit_logs by hand through the old door). The worker's layer naming runs first, as the chain's
+    write names it. A row the answer named that is no longer there is not written (the door would make a row of a
+    mark). The preview writes inside `session_contract.held` and rolls the page back. `on_fold` is called once the
+    page is judged. Counted from the mark's layers before and after (lines.layers) and t's shown mark.
+    -> (counts, the page's items)"""
+    import contextlib
     from collections import Counter
 
-    from sqlalchemy import String, any_, bindparam, inspect
-    from sqlalchemy.dialects.postgresql import ARRAY
-    from sqlalchemy.orm import load_only
-
+    import event_constants
+    import session_contract
     from chain import rule_run
-    from database import crud, models, schemas
+    from database import crud, lines, schemas
+    from database.context import outbox_mode
 
-    if db.get_bind().dialect.name != "postgresql":
-        raise ReplayRefused("fold-units writes with PostgreSQL arrays - this database is %s"
-                            % db.get_bind().dialect.name)
     owners = [rule_run.owner_of(item) for item in proposed]
     batch = schemas.GeneralUpdateBatch(updates=proposed, transaction_id=tx_id)
     for item, owner in zip(batch.updates, owners):
         item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id, owner)
-    items = list(batch.updates)
-    config = crud.TABLE_CONFIG.get(table_name) or {}
-    col_type = (config.get("column_types") or {}).get(mark, "string")
-    key_column, gated = config.get("business_key"), bool(config.get("version_column"))
+    col_type = ((crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}).get(mark, "string")
     counts = Counter()
-    crud.refuse_write_to_view(table_name)
-    crud._fold_written_notation(db, table_name, batch)
-    with crud.transaction_context(items[0].updated_by if items else "system", tx_id,
-                                  items[0].source_name if items else "batch"):
-        crud.fill_nokey_keys(table_name, batch)
-        for item in batch.updates:
-            crud.assemble_composite_business_key(table_name, item)
-        counts["rows_refused"] += len(crud.refuse_virtual_join_duplicates(db, table_name, batch))
-        ids = list(dict.fromkeys(item.row_id for item in batch.updates if item.row_id))
-        read = [model.row_id, model.business_key_val, getattr(model, mark)] + (
-            [getattr(model, key_column)] if key_column else [])
-        plain, sources, overwrites = {}, {}, {}
-        cs, co = models.CellSource, models.CellOverwrite
-        page = bindparam("page", ids, type_=ARRAY(String))      # one read of each kind a page, not one per 1,000
-        for row in db.query(*read).filter(model.row_id == any_(page)):
-            plain[row[0]] = (row[1], row[2], row[3] if key_column else None)
-        for layer in (db.query(cs.table_name, cs.row_id, cs.column_name, cs.source_name, cs.value, cs.updated_by,
-                               cs.ingested_at, cs.origin_row_id)
-                      .filter(cs.table_name == table_name, cs.row_id == any_(page), cs.column_name == mark)
-                      .order_by(cs.source_name.asc())):
-            sources.setdefault((layer[1], layer[2]), []).append(crud.LightCellSource(*layer))
-        for ow in (db.query(co.table_name, co.row_id, co.column_name, co.is_overwrite, co.updated_by,
-                            co.updated_at, co.manual_priority_source)
-                   .filter(co.table_name == table_name, co.row_id == any_(page), co.column_name == mark)):
-            overwrites[(ow[1], ow[2])] = crud.LightCellOverwrite(*ow)
-        # a row the answer named that is no longer there is not created (the door would make a row of a mark)
-        judged = [item for item in batch.updates if item.row_id in plain]
-        counts["rows_gone"] += len(batch.updates) - len(judged)
-        batch_now = crud.batch_write_instant(db)
-        history, layers, ow_put, ow_gone = crud.ByRowLogs(), crud.ByRow(), crud.ByRow(), crud.ByRowSet()
-        folded, moved, door = set(), {}, []
-        for item in judged:
-            business_key, old, _key = plain[item.row_id]
-            cell = (item.row_id, mark)
-            clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
-            forced = _fold_units_forced(item, plain[item.row_id], sources.get(cell), overwrites.get(cell), clean,
-                                        col_type, key_column, gated, table_name)
-            if forced is None:
-                door.append(item)
-            elif forced == "same":
-                counts["rows_already_marked"] += 1
-            else:
-                layers[(table_name, item.row_id, mark, item.source_name)] = {
-                    "table_name": table_name, "row_id": item.row_id, "column_name": mark,
-                    "source_name": item.source_name, "value": clean, "updated_by": item.updated_by,
-                    "origin_row_id": item.origin_row_id, "ingested_at": crud.layer_instant()}
-                counts["rows_to_mark"] += 1
-                if crud.values_differ(old, clean, col_type):
-                    moved.setdefault(frozenset((mark, "updated_at")), []).append([item.row_id, clean])
-                    line = crud.row_update_line(
-                        db, table_name, item.row_id, [mark], {mark: clean}, {mark: old}, False, item.source_name,
-                        item.updated_by, tx_id, business_key, add_to_cache=False)
-                    if line is not None:
-                        history.append(line)
-        if door:
-            loaded = [getattr(model, name) for name in dict.fromkeys(
-                name for name in ("row_id", "business_key_val", mark, config.get("version_column"), key_column)
-                if name)]
-            rows = {row.row_id: row for row in db.query(model).options(load_only(*loaded)).filter(
-                model.row_id == any_(bindparam("door", [item.row_id for item in door], type_=ARRAY(String))))}
-            row_cache, layers_read = {}, crud.LayersRead(rows, [mark])     # the page read the mark's cells
-            for row in rows.values():
-                row_cache[row.row_id] = row
-                if row.business_key_val:
-                    row_cache[row.business_key_val] = row
-            probed = crud.ProbedIdentity(row_ids=frozenset(), business_keys=frozenset())
-            version_stats = {"rows": len(door)} if gated else None
-            with db.no_autoflush:
-                for item in door:
-                    row, _is_new, changed = crud.apply_row_update_internal(
-                        db, table_name, item, row_cache=row_cache, sources_cache=sources,
-                        overwrites_cache=overwrites, transaction_id=tx_id, logs_to_cache=history,
-                        cell_sources_to_upsert=layers, cell_overwrites_to_upsert=ow_put,
-                        cell_overwrites_to_delete=ow_gone, deleted_row_ids=[], version_stats=version_stats,
-                        layers_read=layers_read, probed_identity=probed, drop_stats=crud._new_drop_stats(),
-                        batch_now=batch_now, cell_sources_to_delete=folded)
-                    layer = layers.get((table_name, item.row_id, mark, item.source_name))
-                    if layer is None:
-                        counts["rows_already_marked"] += 1
-                        continue
-                    counts["rows_to_mark"] += 1
-                    if mark not in changed and crud.values_differ(getattr(row, mark), layer["value"], col_type):
-                        counts["rows_higher_layer"] += 1
-            for row in rows.values():
-                names = frozenset(inspect(row).committed_state)
-                if names:
-                    moved.setdefault(names, []).append([row.row_id] + [getattr(row, name) for name in sorted(names)
-                                                                       if name != "updated_at"])
-                db.expunge(row)
-            if version_stats is not None:
-                counts["version_gate"] = dict(version_stats.get("counts") or {})
-        on_fold()
-        if not apply:
-            db.rollback()
-            return counts, batch.updates
-        _insert_by_arrays(db, models.AuditLog.__table__, history)
-        crud.bulk_upsert_cell_sources(db, list(layers.values()))
-        crud.bulk_upsert_cell_overwrites(db, list(ow_put.values()))
-        crud.bulk_delete_cell_overwrites(db, list(ow_gone))
-        crud.bulk_delete_cell_sources(db, [key for key in folded if key not in layers])
-        for names, shown in moved.items():
-            crud.update_by_arrays(db, model.__table__, sorted(names), shown, batch_now)
-        db.commit()
+    ids = list(dict.fromkeys(item.row_id for item in batch.updates if item.row_id))
+    there = {r for (r,) in db.query(model.row_id).filter(model.row_id.in_(ids))} if ids else set()
+    judged = [item for item in batch.updates if item.row_id in there]
+    counts["rows_gone"] += len(batch.updates) - len(judged)
+    before = lines.layers(db, table_name, sorted(there), [mark])
+    report = {}
+    if judged:
+        with contextlib.nullcontext() if apply else session_contract.held(db), \
+                outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            crud.apply_batch_updates(db, table_name, schemas.GeneralUpdateBatch(updates=judged, transaction_id=tx_id),
+                                     drop_report=report)
+    on_fold()
+    after = lines.layers(db, table_name, sorted(there), [mark])
+    shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
+    for item in judged:
+        clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
+        said = lambda layers: (layers.get((item.row_id, mark)) or {}).get(item.source_name)   # noqa: E731
+        if said(before) is not None and not crud.values_differ(said(before)["value"], clean, col_type):
+            counts["rows_already_marked"] += 1
+        elif said(after) is not None and not crud.values_differ(said(after)["value"], clean, col_type):
+            counts["rows_to_mark"] += 1
+            counts["rows_higher_layer"] += crud.values_differ(shown.get(item.row_id), clean, col_type)
+    for reason, rows in (report.get("rows_refused") or {}).items():
+        if reason == crud.DROP_UNIQUE_VIOLATED:
+            counts["rows_refused"] += rows
+        else:
+            counts.setdefault("version_gate", {})[reason] = rows
+    if not apply:
+        db.rollback()
+        return counts, batch.updates
+    db.commit()
     counts["rows_marked"] += counts["rows_to_mark"]
     return counts, batch.updates
-
-
-def _insert_by_arrays(db, table, mappings):
-    """The rows of `mappings` (every column but the key) into `table` in one statement."""
-    from sqlalchemy import text
-    from database import crud
-
-    if not mappings:
-        return
-    columns = [column for column in table.columns if not column.primary_key]
-    params, casts = crud.array_params(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
-    db.execute(text('INSERT INTO "%s" (%s) SELECT * FROM unnest(%s)' % (
-        table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.
