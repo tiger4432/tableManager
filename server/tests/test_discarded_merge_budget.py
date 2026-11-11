@@ -73,8 +73,10 @@ def _events(captured, name):
 
 
 def _reads(recorded, tables=READ):
-    """{table: the SELECTs that read it} - CANARY: the write read its own table."""
+    """{table: the SELECTs that read it, "*": every SELECT} - a table's count is by name, so t's holds t__lines'
+    too; the whole count catches a read a row on a table not named (QA 11-11). CANARY: the write read its own table."""
     said = {name: len(selects_from(recorded, name)) for name in tables}
+    said["*"] = sum(1 for call in recorded if call.sql.lstrip().upper().startswith("SELECT"))
     assert said[tables[0]] > 0, ("CANARY: the recorder saw no read of the written table", said)
     return said
 

@@ -402,8 +402,8 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
 
 def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
     """Step 2 - the items that change something, judged in their order on the head lines as the batch's earlier
-    items left them (one source's last word in a batch wins - lead 11-11; two sources' lines of one batch share its
-    instant and the rank's name decides - QA 11-11, to the lead). A write's column is left out when its source's head
+    items left them (a batch's last word wins - lead 11-11; its lines share an instant and the later line wins, C's
+    rank_terms 2c). A write's column is left out when its source's head
     there says the same text (`_head_text`), from the same hand and input row (ruling 434), or when another source
     says it already (`_others`); the write when no column is left. A withdraw keeps the columns its source still
     speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL would speak
@@ -439,7 +439,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
                 own.pop(c)
         elif it["line_kind"] == WRITE:
             hand = (_text_or_none(it.get("written_by")), _text_or_none(it.get("input_row")))
-            if it.get("source_name") == "user":     # a person's write takes the pin off (`_marks`) - for the items after
+            if it.get("source_name") == "user" and not it.get("respelled"):  # takes the pin off (`_marks`) - for the items after
                 for c in it["values"]:
                     pins.pop((row_id, c), None)
             same = {c for c, value in it["values"].items() if c in own and own[c][:2] == hand

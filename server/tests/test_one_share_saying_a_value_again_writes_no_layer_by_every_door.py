@@ -117,6 +117,32 @@ def test_a_persons_write_takes_the_pin_off_for_the_items_after_it(db):
     assert crud.CHAIN_SOURCE in _layers(db, r)
 
 
+def test_a_persons_re_spelling_takes_no_pin_off_for_the_items_after_it(db):
+    """QA 11-11 Q1: a re-spelling moves no mark or pin (the module's `respelled`) - step 2 asks as `_marks` does, so
+    a chain item after it saying what the pinned cell shows is left out."""
+    g = _ext("b", "g.csv")
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "p"}, "source_name": "f1"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "q"}, "source_name": g}, tx="tx2")
+    crud.bulk_upsert_cell_overwrites(db, [{"table_name": TABLE, "row_id": r, "column_name": "a", "is_overwrite": True,
+                                           "updated_by": "kim", "updated_at": None, "manual_priority_source": "f1"}])
+    _write(db, {"row_id": r, "line_kind": "mark", "columns": ["a"], "source_name": "f1"}, kind="mark", tx="tx3")
+    out = _write(db, {"row_id": r, "values": {"a": "Z"}, "source_name": "user", "written_by": "kim", "respelled": True},
+                 {"row_id": r, "values": {"a": "p"}, "source_name": crud.CHAIN_SOURCE, "written_by": "chain"},
+                 kind="notation", tx="tx4")
+    assert crud.CHAIN_SOURCE not in _layers(db, r) and out["left_out"] == 1, out
+
+
+def test_two_sources_in_one_batch_the_later_line_wins(db):
+    """QA 11-11 P1: one batch's lines share its instant - the later line wins whatever the sources' names (C 2c)."""
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    r1, r2 = (crud.merged_layer_name(crud.CHAIN_SOURCE, s) for s in ("src1", "src2"))
+    for n, (first, then) in enumerate([(r1, r2), (r2, r1)]):
+        _write(db, {"row_id": r, "values": {"a": "y%d" % n}, "source_name": first, "written_by": "chain"},
+               {"row_id": r, "values": {"a": "z%d" % n}, "source_name": then, "written_by": "chain"},
+               kind="chain", tx="tx%d" % (n + 2))
+        assert _now(db)[r]["a"] == "z%d" % n, (first, then)
+
+
 def test_a_row_an_earlier_item_of_the_batch_made_is_there_for_the_items_after_it(db):
     """QA 11-11 P3: a new key written [file x, chain x] in one batch - the chain item meets the row the file item made
     and says what it shows, so it is left out (the old write's is_new False on the second item)."""
