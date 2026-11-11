@@ -425,8 +425,8 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old):
 def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
     """{(row_id, source): {column: (written_by, input_row, value text, at)}} - the columns each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
-    row, «when» and - for `columns` - its value. One read of the rows' head lines, a statement the cache keeps (no
-    literal per item, 11-11)."""
+    row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
+    item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]

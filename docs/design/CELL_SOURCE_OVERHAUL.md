@@ -65,13 +65,15 @@
    - 새 개체: 키로 정렬해 `INSERT INTO t__now … ON CONFLICT (business_key_val) DO NOTHING`(정렬 — 두 쓰기가 새 키 둘을 반대 순서로 넣어 유일 인덱스 대기에서 교착하지 않게) 뒤 그 키들을 같은 잠금으로 다시 읽는다. row_id 는 여기서 정해진다 — 줄은 그 뒤에만 쓴다. 같은 새 키를 두 쓰기가 동시에 내면 둘째는 첫째의 지금 줄을 기다렸다 같은 row_id 로 이어 쓴다(고아 줄 없음). 오늘 `_is_business_key_unique_violation` 재시도의 일을 이 단계가 맡는다.
    - 지금 줄이 없는 row_id(이미 지워짐)로 온 거두기 · 지움 항목은 말없이 빠진다(할 일이 없다). 값 쓰기 항목은 거절한다 — 오늘 동작과 같은지는 A 가 시험으로 확인하고, 다르면 오늘 쪽을 따른다.
    - sqlite 에는 행 잠금이 없다(DB 쓰기 잠금 하나). SQLAlchemy 가 FOR UPDATE 를 sqlite 에서는 내지 않고, write_lines 의 트랜잭션은 sqlite 에서 BEGIN IMMEDIATE 로 연다(기다림이 SQLITE_BUSY 오류가 되지 않게 — 짓는 날 시험으로 확인). 방언 갈림은 이 잠금 둘이다.
-2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 SQL 로 뺀다(머리 줄 값 vs 들어온 값).
+2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 뺀다 — 손댄 행들의 머리 줄을 한 번 읽고(`_spoken`) 파이썬에서 견준다(A 11-11 안 1: 항목마다 리터럴 SQL 이던 문장이 쪽마다 다시 컴파일됐다).
+   - 그 출처의 머리 줄: 같은 손 · 같은 입력 행이고 `crud.line_text(머리 값, 저장 종류)` 가 들어온 텍스트와 같으면 그 칸을 뺀다. SQL 견주기와 갈리는 것은 line_text 이전에 쓰인 비정본 머리 텍스트(숫자 칸 «1» · 앞뒤 공백 · '' · 시간대 표기)에 같은 값이 다시 올 때 하나다 — 이제 «같음 · 뺌»(총괄 11-11 받음).
+   - 다른 출처가 이미 말하는 칸(`_others` — 옛 쓰기의 두 판정, 총괄 11-11): 파일 층은 `crud.file_layer_fold` — repeat 는 빼고, 같은 공유의 같은 값 층은 그 칸만 접고(4), 같은 공유가 그 값을 다른 층 뒤에 들고 있으면 그 칸을 그 옛 층의 출처로 쓴다(소유자 11-08 «층을 새로하지 말고 순서를 바꿔»). 체인의 새 층이 칸이 보여 주는 값을 다시 말하면 뺀다(소유자 11-08). 표기 고치기(respelled)는 둘 다 묻지 않는다 — 새 진술이 아니다. 핀은 `_overwrites` 한 읽기(4½ 의 표지와 같은 함수).
    - 쓰기 항목에만 건다. 거두기는 «그 출처가 그 칸의 머리가 아님»일 때만 빠진다 — 값 견주기로 빠지지 않는다(NULL 머리 줄을 거둘 때 NULL = NULL 로 빠지면 거둔 줄이 계속 말한다). 지움은 1 에서만 빠진다.
    - 정답지: s4(착지 안 함, 소유자 11-10 ㄱ)의 crud.file_cell_verdict 판정과 시험 test_a_files_unchanged_rows_are_left_out_before_the_lock (C 작업 트리, 커밋 안 함). 까닭 — s4 판(박스 10 만 행 · 층 300 만 · 1,000 행 × 30 칸, wl/run_s4_board.sh): 같은 내용 묶음 2.962 → 2.732 s, 그중 파이썬 칸마다 판정 2.66 s(DB 읽기 0.07 s).
-   - «같나»는 따로 생성기를 두지 않는다 (A 11-10): 쓰기가 어차피 하는 cast_value_by_type 뒤의 «저장 꼴»을 그 칸의 물리 타입(number → Float · datetime → timestamptz · 나머지 → text)으로 `IS NOT DISTINCT FROM`(빈 값 = NULL) 견주는 한 문장이다. 오늘의 crud.values_differ(캐스트한 값끼리)와 같은 답인지는 A 의 철자 표(number 23 · datetime 11 · string 14 가지, 짝 447 — 어긋남 0, 파이썬만 · DB 없이 잼)를 시험으로 고정해 지킨다. 남은 하나: 시간대 없는 datetime 글자를 PG 는 세션 시간대로, value_key 는 선언 시간대(expression.time_zone())로 읽는다 — write_lines 게이트의 PG 시험 «시간대 없는 글자 둘 → 같나»로 재고, 갈리면 캐스트가 선언 시간대를 단 값을 넘기는 쪽으로 맞춘다.
+   - «같나»는 따로 생성기를 두지 않는다 (A 11-10 · 11-11): 두 텍스트 모두 `crud.line_text` 를 지난다 — 한 문장이던 11-10 판(`IS NOT DISTINCT FROM`)은 위 까닭으로 은퇴했다. 오늘의 crud.values_differ(캐스트한 값끼리)와 같은 답인지는 A 의 철자 표(number 23 · datetime 11 · string 14 가지, 짝 447 — 어긋남 0, 파이썬만 · DB 없이 잼)를 시험으로 고정해 지킨다. 남은 하나: 시간대 없는 datetime 글자를 PG 는 세션 시간대로, value_key 는 선언 시간대(expression.time_zone())로 읽는다 — write_lines 게이트의 PG 시험 «시간대 없는 글자 둘 → 같나»로 재고, 갈리면 캐스트가 선언 시간대를 단 값을 넘기는 쪽으로 맞춘다.
 3. 줄: 남은 항목마다 `t__lines` 에 줄 하나 INSERT(written_bits · withdrawn_bits · 값 · 출처 · 언제 · 누가 · 묶음 · 입력 행 · 주인).
 4. 머리 비트(«write» · «withdraw» 줄만): 같은 (개체, 원천)의 앞선 줄들 — 그리고 folded 판정이 가리킨 앞선 파일 원천의 줄들 — 의 head_bits 에서 새 줄의 written_bits 를 내린다(UPDATE 한 문장).
-5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
+5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. updated_at 은 새 행이거나 보이는 값이 움직인 행만 이 쓰기의 시각이다(`_moved` — outbox 의 EDIT 와 같은 함수, 옛 쓰기 규칙, 총괄 11-11) — 층만 는 행은 그대로다. 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
 6. 감사: 감사 로그 한 행 INSERT.
 
 규칙 (A 11-10):
