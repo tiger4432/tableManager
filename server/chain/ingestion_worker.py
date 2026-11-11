@@ -2600,9 +2600,9 @@ UNOWNED_CENSUS_EVERY_SECONDS = 600.0
 
 
 def count_unowned_layers_sync(db_session_factory, log=logger.info):
-    """One lap over `cell_sources` by id, a page at a time at its declared pace: the chain's layers no rule owns, by
-    who wrote them - their count and the three tables they hold most of - recorded as this process's
-    `UNOWNED_CENSUS_LOOP` lap, one line said. A pause stops the lap and records nothing. -> the lap, or None."""
+    """One lap over the head lines of every table that keeps lines, a page at a time at its declared pace: the
+    chain's layers no rule owns, by who wrote them - their count and the three tables they hold most of - recorded
+    as this process's `UNOWNED_CENSUS_LOOP` lap, one line said. A pause stops the lap and records nothing. -> the lap, or None."""
     import pacing
     from collections import Counter
     from chain import cell_layer
@@ -2631,7 +2631,7 @@ def count_unowned_layers_sync(db_session_factory, log=logger.info):
     seconds = time.monotonic() - started
     heartbeat.record_lap("chain", UNOWNED_CENSUS_LOOP, seconds=seconds, depth=read, pace=rest, not_adopted=names,
                          layers=sum(layers.values()))
-    log("[ChainUnowned] pass: %d layer(s) under %d name(s) no rule owns, %d row(s) read in %.1f s"
+    log("[ChainUnowned] pass: %d layer(s) under %d name(s) no rule owns, %d line(s) read in %.1f s"
         % (sum(layers.values()), len(names), read, seconds))
     return names
 

@@ -636,7 +636,7 @@
 > 답의 뜻  다음 바퀴부터 1,000 행 읽고 60 s 쉼 — 지금 도는 바퀴는 원래 빠르기로 끝까지 (파일은 바퀴 시작 때 한 번 읽음)
 >          박스 크기면 한 바퀴 약 27 일 → Not adopted 수는 사실상 «마지막 바퀴의 수 · 그 시각» 에 멈춤. 다른 동작은 그대로
 >          되돌리기: "slow" 로 — 역시 다음 바퀴부터
-> 볼 줄    chain_worker.log «[ChainUnowned] pass: … row(s) read in N s» — 바퀴가 끝날 때만 한 줄
+> 볼 줄    chain_worker.log «[ChainUnowned] pass: … line(s) read in N s» — 바퀴가 끝날 때만 한 줄
 > 주의     11-09 부터 server/pacing.json 은 추적 안 함 — 맨 위 블록
 > ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
 >
@@ -886,7 +886,7 @@
 >          (예외: 주인 없는 옛 체인 층이 그 칸에 남아 있는 동안은 그 칸의 체인 층들이 시각 순)
 >          한 답에 한 칸 값 둘 -> 둘 다 안 씀
 > 볼 줄    ⚠️ [Chain Write Discard] ... Next: fix the rule - one answer gave these cells two values, neither was written. Not written: two_values_in_one_answer <칸>=<수>
->          [ChainUnowned] pass: N layer(s) under M name(s) no rule owns, R row(s) read in S s      (체인 워커 - 앞 바퀴가 끝나야, 그 시작 10 분 뒤부터 다음 바퀴)
+>          [ChainUnowned] pass: N layer(s) under M name(s) no rule owns, R line(s) read in S s      (체인 워커 - 앞 바퀴가 끝나야, 그 시작 10 분 뒤부터 다음 바퀴)
 >          실패 줄에 statement timeout · N s · stage settle      (거두기가 문장 상한에 걸림 - 그 그룹은 실패하고 다시 돈다)
 > 화면     어드민 Chain 탭, 규칙 표 밑 «Not adopted» — 주인 없는 옛 체인 층의 쓴 이름 · 층 수 · 많이 든 표 셋
 >          Counting - the first pass has not ended   재기동 뒤 첫 바퀴 전(박스 cell_sources 약 3,800만 행: slow 한 바퀴 약 2 시간)
