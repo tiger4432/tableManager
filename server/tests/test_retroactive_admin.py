@@ -1742,7 +1742,7 @@ class TestTheRunSentenceSaysWhatWasNotMade:
                     "rows_staged", "events_staged", "rows_scanned", "cells_withdrawn",
                     "revealed", "emptied", "pinned_skipped", "cells_changed", "cells_examined",
                     "confirmed", "written_cells", "queue_size", "rows_read", "batches",
-                    "molecules", "stopped"}
+                    "molecules", "stopped", "rows_deleted"}
         assert returned <= set(retroactive.RESULT_NAMES), returned - set(retroactive.RESULT_NAMES)
         assert "cursor_after" not in retroactive.RESULT_NAMES
 
