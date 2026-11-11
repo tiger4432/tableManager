@@ -73,9 +73,12 @@ export class TableStateStore {
   }
 
   /** A tab closed: the table leaves the row, its rows the memory; its settings stay for the next time it is opened. */
+  /** A tab closed: off the row and forgotten, rows and settings (owner 11-11 × = forget). */
   close(table) {
     this.open = this.open.filter((t) => t !== table);
     this._write(TABS_KEY, this.open);
     this.data.delete(table);
+    this.settings.delete(table);
+    try { if (this.storage) this.storage.removeItem(settingsKey(table)); } catch { /* storage refused: the page's copy is gone */ }
   }
 }

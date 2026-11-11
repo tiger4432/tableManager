@@ -1374,7 +1374,7 @@ export const FLOORS = new Map([
   ['grid_world_tabs_harness.mjs', 103],   // -> 102: W38-W42 the jump on the grid board, Global marked old by the socket, and G54-G58 (lead 10-28); -> 103: W44 a table left and opened again comes back (owner 11-05, table tabs)
   // the open tables' store and the Open tables row (owner 11-05 ㄱ, mockup v3)
   ['table_state_harness.mjs', 11],
-  ['table_tabs_harness.mjs', 14],
+  ['table_tabs_harness.mjs', 16],
   // 0 -> 44: the visual testbed (lead aca803a7a, d1b3c1b7f, 5835e6714) - T1-T17 (the reduces against contracts/walk_aggregate,
   //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
   //    the bundle); M1-M23.

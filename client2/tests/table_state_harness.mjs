@@ -39,7 +39,9 @@ console.log('[S] the store');
     [['a', 'b'], null, 40]);
 
   store.close('a');
-  eq('S7 a tab closed: off the row, its rows gone, its settings kept for the next time', [store.tables(), store.take('a').settings !== null], [['b'], true]);
+  eq('S7 a tab closed: off the row, its rows and settings forgotten - here and in the browser (owner 11-11 × = forget)',
+    [store.tables(), store.take('a'), storage.m.has('grid-table:a'), new TableStateStore({ storage }).take('a')],
+    [['b'], { settings: null, data: null }, false, { settings: null, data: null }]);
 }
 
 console.log('[I] two stores on one page');

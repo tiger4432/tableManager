@@ -82,6 +82,15 @@ export function tableNote(settings) {
 /** ← → over the tables opened in this browser tab, and the address saying the table (?table=, so a reload opens it):
  *  each table opened is a step; Back / Forward walk them through the browser's own history; a step walked opens its
  *  table without adding a step. -> { went(table) } for the table follower. */
+/** × on a tab (owner 11-11: × forgets - the table opened again is clean). The open table is left first, since leaving
+ *  parks it; a refused leave (staged edits) keeps the tab. -> true when the tab closed. */
+export async function closeTable(table, { store, current, open }) {
+  const others = store.tables().filter((t) => t !== table);
+  if (table === current && others.length && (await open(others[others.length - 1])) === false) return false;
+  store.close(table);
+  return true;
+}
+
 export function tableSteps({ back, forward, open, win = window }) {
   let at = (win.history.state && win.history.state.tableStep) || 0;
   let top = at;

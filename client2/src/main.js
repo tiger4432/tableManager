@@ -2,7 +2,7 @@ import { createGrid, ModuleRegistry, AllCommunityModule } from 'ag-grid-communit
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import { TableStateStore } from './table_state.js';
-import { TableTabs, tableNote, tableSteps } from './table_tabs.js';
+import { TableTabs, closeTable, tableNote, tableSteps } from './table_tabs.js';
 import './tokens.css';
 import './style.css';
 import './base.css';
@@ -244,11 +244,10 @@ async function init() {
       const tableTabs = tabsMount ? new TableTabs({
         mount: tabsMount,
         onPick: (table) => switchTable(table),
-        onClose: (table) => {
-          tableStates.close(table);
-          const left = tableStates.tables();
-          if (table === state.currentTable && left.length) switchTable(left[left.length - 1]);
-          else tableTabs.draw(left, state.currentTable);
+        onClose: async (table) => {
+          if (await closeTable(table, { store: tableStates, current: state.currentTable, open: switchTable })) {
+            tableTabs.draw(tableStates.tables(), state.currentTable);
+          }
         },
         noteOf: (table) => tableNote(table === state.currentTable ? {
           filterModel: state.gridApi ? state.gridApi.getFilterModel() : null, pivot: state.pivotView,

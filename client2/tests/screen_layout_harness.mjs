@@ -2384,7 +2384,9 @@ async function servePage(chrome, dist) {
   await chrome.send('Page.enable');
   await chrome.send('Runtime.enable');
   await chrome.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
-  await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('assy.adminToken', '${TOKEN}'); } catch (e) {}` });
+  // each page opens with no open tables kept from the last (table_state.js keys) - a size starts as the states expect
+  await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('assy.adminToken', '${TOKEN}');
+    for (const k of Object.keys(localStorage)) if (k === 'grid-tabs' || k.startsWith('grid-table:')) localStorage.removeItem(k); } catch (e) {}` });
   return log;
 }
 
@@ -4391,6 +4393,9 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
         for (const [name, step] of states) {
           state = name;
           chrome.at.state = name;
+          // the open tables (owner 11-11 × = forget): every tab but the open one closed first, so a table a state opens is
+          // clean - the states were written when a switch dropped the table's filters
+          await evaluate(chrome, "(() => { for (const x of document.querySelectorAll('#table-tabs .table-tab:not(.is-open) .table-tab-close')) x.click(); return true; })()");
           await step(chrome, log);
           add(state, waitsRunOut.splice(0).map((what) => ({ rule: 'answers', path: entry, what })));
           await settle(chrome, log);

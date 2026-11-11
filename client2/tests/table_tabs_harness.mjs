@@ -1,7 +1,8 @@
 // table_tabs.js - the «Open tables» row (owner 11-05 ㄱ, mockup v3): a tab per open table, the open one marked, its note,
 // × closes, past `fit` the rest under «+N ▾», the open table always in the row; ← → over the tables opened, the address
 // saying ?table=; two rows on one page do not meet. A small document stub - no jsdom.
-import { TableTabs, tableNote, tableSteps } from '../src/table_tabs.js';
+import { TableTabs, closeTable, tableNote, tableSteps } from '../src/table_tabs.js';
+import { TableStateStore } from '../src/table_state.js';
 
 let pass = 0;
 const failures = [];
@@ -89,6 +90,22 @@ console.log('[H] back and forward');
   for (let i = 0; i < 6; i += 1) await Promise.resolve();
   eq('H5 Back refused (edits staged): the address goes back to the table on screen, opened once, Back still on',
     [history.state.table, history.at, opened.length, back.disabled, forward.disabled], ['c', 2, 3, false, true]);
+}
+
+console.log('[C] × on a tab');
+{
+  // the page's own order: opening a table parks the one left (api.js switchTable), so the open table is left first
+  const store = new TableStateStore();
+  const page = { current: 'b', refuse: false };
+  const open = async (t) => { if (page.refuse) return false; store.park(page.current, { filterModel: { x: {} } }); store.opened(t); page.current = t; return true; };
+  for (const t of ['a', 'b']) { store.opened(t); store.park(t, { filterModel: { x: {} } }); }
+  page.refuse = true;
+  const kept = await closeTable('b', { store, current: page.current, open });
+  eq('C1 × on the open table refused (edits staged): the tab and its settings stay', [kept, store.tables(), store.take('b').settings !== null], [false, ['a', 'b'], true]);
+  page.refuse = false;
+  const closed = await closeTable('b', { store, current: page.current, open });
+  eq('C2 × on the open table: the one before opened, then the closed one forgotten though leaving it parked it',
+    [closed, page.current, store.tables(), store.take('b')], [true, 'a', ['a'], { settings: null, data: null }]);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
