@@ -256,8 +256,8 @@ def _count_withdraw(db, params, scan_limit):
         "affected_label": "cells to withdraw (at most)",
         "count_kind": COUNT_UPPER_BOUND,
         "scanned": None,
-        # null, not the requested budget: this count is two aggregates and scans no
-        # rows, so echoing a scan budget would imply a sample it never took.
+        # null, not the requested budget: this count reads every line the source claims
+        # (two grouped reads) and takes no sample, so echoing a scan budget would imply one.
         "scan_limit": None,
         "truncated": False,
         "detail": (
@@ -266,16 +266,15 @@ def _count_withdraw(db, params, scan_limit):
             f"(manual_priority_source) and will not be touched. At most {affected} "
             f"are in scope for withdrawal - the number of cells whose VISIBLE value "
             f"actually changes can be smaller (where the source underneath holds the "
-            f"same value, the display stays as it is). At most {c['rows_emptied']} row(s) "
-            f"are left with no layer and are deleted as shells."
+            f"same value, the display stays as it is). Rows left with nothing that keeps "
+            f"them are deleted too - counted when it runs (rows_deleted on its DONE log line)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
-            "rows_emptied": c["rows_emptied"],
             "why_upper_bound": (
                 "The number in scope shrinks in only two ways: (1) the row was "
-                "already deleted and only its cell_sources remain, (2) the value "
+                "already deleted and only its lines remain, (2) the value "
                 "revealed after the withdrawal equals the current one. Both need a "
                 "cell-by-cell recomputation, which a cheap query cannot answer."
             ),

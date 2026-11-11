@@ -1201,12 +1201,15 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Aggregates grouped by a line's bit chunks, no row materialisation, no per-cell recompute - so this is the half of
-    `withdraw_source` that can sit on a request path. Each group's cells are `_claimed_cells`' answer, the one the
-    run's read gives, times the group's lines: a line may say several columns, in any chunk. The pin count is driven
-    from `cell_overwrites` and is therefore bounded by the number of manual pins.
+    Two reads of the lines the source claims, grouped by a line's head/withdrawn bits - no row materialisation, no
+    per-cell recompute. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
+    this source on a cell its lines claim.
 
-    Returns ``{cells_claimed, pinned, rows_emptied}``. ``cells_claimed - pinned`` is an UPPER
+    Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
+    judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
+
+    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
     BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
     gaps are worth naming because a surface that reported it as exact would
     overstate the operation:
@@ -1219,7 +1222,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
     Closing either gap requires the per-cell recompute that is the run itself.
     """
-    from sqlalchemy import case, false, func, select
+    from sqlalchemy import func, select
 
     from chain.cell_layer import _claimed_cells, claimed_lines
     from database import models
@@ -1241,26 +1244,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
         .where(*claims).group_by(co.column_name, *said)).mappings()
         if g["column_name"] in _claimed_cells(g, bits, columns))
 
-    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
-    # a pinned cell, or a value no layer carries, keeps one. A line keeps its row by a cell it still says that this
-    # withdrawal does not take; each bit pattern is judged once, the rows are counted by the patterns they hold.
-    hit = case((and_(*claims), 1), else_=0)
-    heads = or_(*[c != 0 for c in said if c.name.startswith("head_")])
-    per = select(hit.label("hit"), *said).where(heads).subquery()
-    takes, keeps = [false()], [false()]
-    for g in db.execute(select(*per.c).group_by(*per.c)).mappings():
-        taken = set(_claimed_cells(g, bits, columns)) if g["hit"] else set()
-        same = and_(hit == g["hit"], *[c == g[c.name] for c in said])
-        if set(_claimed_cells(g, bits)) - taken:
-            keeps.append(same)
-        elif taken:
-            takes.append(same)
-    whole = (select(lt.c.row_id).where(heads).group_by(lt.c.row_id)
-             .having(func.max(case((or_(*keeps), 1), else_=0)) == 0,
-                     func.max(case((or_(*takes), 1), else_=0)) == 1).subquery())
-    emptied = db.execute(select(func.count()).select_from(whole)).scalar() or 0
-
-    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
 
 
 
