@@ -1,4 +1,4 @@
-"""database.lines.merge / winners_sql / spoken on sqlite: the SQL order is crud.rank_terms, the same order
+"""database.lines.merge / spoken on sqlite: the SQL order is crud.rank_terms, the same order
 compute_priority_value walks (parity per cell); a column no line spoke in keeps t; a pin whose source has no head
 line keeps t; a column every source withdrew is empty (docs/design/CELL_SOURCE_OVERHAUL.md «순위로 합치는 법»)."""
 from datetime import datetime, timedelta, timezone
