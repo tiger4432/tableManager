@@ -114,11 +114,11 @@ def _layers(db, row_id, col):
 
 
 def _without_recency(monkeypatch):
-    """THE MUTATION: the layer order with its two time terms (2a dated, 2b newest) taken out - the order the
-    resolution had before recency: ranks, then the name decides."""
+    """THE MUTATION: the layer order with its time terms (2a dated, 2b newest, 2c the later line of one instant)
+    taken out - the order the resolution had before recency: ranks, then the name decides."""
     keep = crud.rank_terms
     monkeypatch.setattr(crud, "rank_terms",
-                        lambda table_name=None: [t for i, t in enumerate(keep(table_name)) if i not in (4, 5)])
+                        lambda table_name=None: [t for i, t in enumerate(keep(table_name)) if i not in (4, 5, 6)])
 
 
 def _audit(db, row_id, col):
