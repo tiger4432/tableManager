@@ -150,7 +150,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 | `join` | `.` `_` `-` 공백의 연속을 이 한 글자로(`-` `_` `.` 공백 중 하나) | 예 — 두 엔진 |
 | `pad_last_number` | 끝 숫자가 n 자리(1–9)보다 짧으면 앞에 0. 길면 그대로 — `zero_pad`(앞 0 제거)와 반대 방향 | 예 — 두 엔진 |
 | `replace` | `[[패턴, 바꿀 것], ...]` 차례로. 위 둘로 안 되는 경우 | 예 — 두 엔진 |
-| `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수 | 아니오 — 쓸 때만 |
+| `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수. 해가 없는 꼴은 `"year": "arrival"` — §2.4 | 아니오 — 쓸 때만 |
 | `collapse_repeats` | 이 한 글자로 가른 마디가 바로 앞 마디와 같으면 하나로 — `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. `write` 필수 | 아니오 — 쓸 때만 |
 
 - **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case` → `collapse_repeats`. 마디는 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
@@ -172,6 +172,15 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
   - 🔴 **맵 키 칸(`map_key_columns`)을 `write` 로 선언하면 소급을 같은 날에** — 첫 `replace_map` 푸시의 범위(접힌 값)가 옛 철자 행을 못 찾아, 그 푸시가 뺀 칸이 남습니다(새 행은 안 생김).
   - 별칭 표 순서: `install_product_tables.py --apply` → reload(설정 감시가 물리 표를 만듦) → 선언. 모델만 있고 표가 없으면 `write` 칸이 있는 표의 쓰기가 실패합니다.
 - **`time` 이 그대로 둔 값**: 파일마다 FILE 줄에 한 칸 — `time rule left as written: no matching format N, time zone written M`(0 이면 안 씀).
+
+### 2.4 해가 없는 날짜 — «3월 5일» 은 `"year": "arrival"` (eea7069b4, 11-10)
+
+```json
+"columns": {"<표>": {"<칸>": {"write": true, "rules": {"time": {"from": ["%m월 %d일", "%m월%d일"], "year": "arrival"}}}}}
+```
+- «3월 5일» → `<들어온 해>-03-05 00:00:00`. **쓸 때는 지금 해**, **소급은 그 층이 들어온(`ingested_at`) 해**. 꼴에 안 맞는 값은 그대로.
+- ⚠️ **해 넘김**: 12월 값이 1월에 들어오면 새해로 접힙니다(12-xx 가 다음 해). 그런 값은 손으로 고칩니다.
+- **거절**: 해가 없는 꼴을 `"year"` 없이 적으면 1900 년으로 접지 않고 거절합니다 — `[Notation] <표>.<칸>: input format '%m월 %d일' reads no year - add "year": "arrival" to take the year the value comes in - not folded`. `"year"` 값은 `"arrival"` 하나뿐입니다.
 
 ## 3. 🔴 선언한 다음에 반드시 해야 할 것 — 무엇이 합쳐지는지 본다
 
