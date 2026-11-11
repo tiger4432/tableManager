@@ -190,35 +190,6 @@ def test_a_confirmation_with_no_contributors_is_refused(db_session):
     assert fc.live_confirmation(db_session, RULE["name"], fc.compose_unit_key(RULE, _unit("EQP-E", "P1"))) is None
 
 
-def test_the_derived_cell_scope_is_a_query_and_never_a_deletion(db_session):
-    """Spec 0.3 note 4: the stamp is at `cell_sources` granularity, and re-derivation stays
-    with `chain_replay.withdraw_source`. This module hands over a scope, not a fourth
-    spelling of retraction."""
-    h = fc.record_confirmation(
-        db_session, RULE, _unit("EQP-F", "P1"),
-        [_contrib("total_chips", "core_wafer_map", "user")],
-        confirmed_by="tester", frame="rot0_front")
-
-    db_session.add(models.CellSource(
-        table_name="eqp_frame_attribution", row_id="r1", column_name="dt_frame",
-        source_name="user", value="rot0_front", confirmation_uid=h.confirmation_uid))
-    db_session.add(models.CellSource(
-        table_name="eqp_frame_attribution", row_id="r2", column_name="dt_frame",
-        source_name="user", value="rot0_front"))          # unstamped, must stay outside
-    db_session.commit()
-
-    scope = fc.derived_cell_scope(db_session, h.confirmation_uid)
-    assert [c.row_id for c in scope] == ["r1"]
-
-    # Reading the scope removes nothing - the unstamped sibling is still there, and so is
-    # the stamped one. Counted over the rows this test wrote, because the fixture database
-    # carries rows from elsewhere and a whole-table count would assert about those instead.
-    mine = (db_session.query(models.CellSource)
-            .filter(models.CellSource.table_name == "eqp_frame_attribution",
-                    models.CellSource.row_id.in_(["r1", "r2"])).all())
-    assert sorted(c.row_id for c in mine) == ["r1", "r2"]
-
-
 def test_a_half_bound_decision_unit_is_refused(db_session):
     """A confirmation of half a unit does not know what it confirmed. The view route may
     filter on a partial key; the write route may not."""

@@ -2793,7 +2793,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 🆕 `_reject_unreadable_frame` | `_reject_unreadable_frame(where: str, value)` |
 | `_resolve_frames` | `_resolve_frames(rule: dict, frames: dict, frame: str) -> dict` |
 | 🔴 **`record_confirmation`** | `record_confirmation(db, rule, decision_key, contributors, confirmed_by, frames=None, ruling=None, reference=None, enrichment_row_id=None, commit=True, frame=None, map_table=None, columns=None, state=None)` |
-| `as_payload` / `derived_cell_scope` | `(db, header) -> dict` / `(db, confirmation_uid: str)` |
+| `as_payload` | `(db, header) -> dict` |
 
 - 상수: `MIN_CONTRIBUTORS=1` · `UNRANKED=99` · `WARRANT_CONFIRMED`/`WARRANT_NOT_DECLARED` · `_ASSUMED` — `map_overlay.GEOMETRY_ASSUMED`의 **의도적 두 번째 철자**, `test_map_alignment_assumption.py`가 고정) · `STATE_NOT_TRANSPORTED` · `META_SOURCE_NAME`, `"user"`).
 - **`_write_confirmed_meta`가 하는 일**: 실제로 쓴 `(target_table, map_id)` 쌍의 목록을 돌려준다. `excluded_reason`이 있는 기여자는 건너뛰고, **기여자 자신의 `applied_frame`**(없으면 라운드의 `frame`)을 쓰며, **내용 결정은 통째로 `map_alignment.confirmed_meta_for`에 위임**한다. 쓰기는 `crud.apply_batch_updates` → `map_meta_registrar.META_TABLE`, `transaction_id=mark["confirmation_uid"]`. 메타 테이블이 선언된 동적 테이블이 아니면 **경고 후 `[]`**. 호출부는 `record_confirmation`. ⚠️ **`commit=False`와 `frame`을 함께 주면 `ValueError`**.
