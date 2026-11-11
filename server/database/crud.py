@@ -4589,6 +4589,10 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     config = TABLE_CONFIG.get(table_name, {})
     types = config.get("column_types") or {}
     named = update_item.row_id or update_item.business_key_val
+    if not update_item.updates:                   # sent empty: a row with no columns, as create_empty_rows_batch
+        return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
+                 "line_kind": "created", "source_name": update_item.source_name,
+                 "written_by": update_item.updated_by}, [])   # makes (the boundary test_write_path_drop_report pins)
     values, formulas = {}, []
     for col_name, val in update_item.updates.items():
         reason = (DROP_SYSTEM_COLUMN if col_name in SYSTEM_COLUMNS

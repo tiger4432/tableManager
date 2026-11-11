@@ -299,16 +299,16 @@ def _claim(db, table, cfg, now, items):
             if it["line_kind"] != CREATED:         # a row already there is not made again
                 targets[i] = it["row_id"]
             continue
-        if it["line_kind"] == CREATED:             # made with no value - its row_id as given, or one minted
-            targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
-            bare.append(targets[i])
-            continue
-        if it["line_kind"] != WRITE:
+        if it["line_kind"] not in (WRITE, CREATED):
             continue                               # nothing to take back from a row that is not there
         bk = it.get("business_key_val")
         if bk is None and it.get("key") and keys_of:
             bk = crud.compose_business_key(table, [it["key"].get(c) for c in keys_of], keys_of)
-        if not it.get("values"):
+        if it["line_kind"] == CREATED and crud.is_blank_value(bk):   # made with no value - its row_id or a minted one
+            targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
+            bare.append(targets[i])
+            continue
+        if it["line_kind"] == WRITE and not it.get("values"):
             # a write of nothing makes no row (the funnel's phantom-row guard); naming a row's key it still finds it
             if not crud.is_blank_value(bk):
                 looked[i] = bk
@@ -347,6 +347,8 @@ def _claim(db, table, cfg, now, items):
                 old.setdefault(row["row_id"], row)  # the key was someone's already: an edit of that row
         for i, bk in by_key.items():
             targets[i] = holder[bk]["row_id"]
+            if items[i]["line_kind"] == CREATED and holder[bk]["row_id"] != wanted.get(bk):
+                items[i]["line_kind"] = WRITE      # its key's row was there: named, not made again - a write of nothing
         for i, bk in looked.items():
             if bk in holder:
                 targets[i] = holder[bk]["row_id"]

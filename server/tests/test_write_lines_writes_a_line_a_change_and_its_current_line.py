@@ -189,6 +189,17 @@ def test_a_created_line_makes_a_row_with_no_value_and_an_existing_row_is_not_mad
     assert (again["items"][0]["work"], again["lines"], len(_lines(db))) == (None, 0, 1), again
 
 
+def test_a_created_item_with_a_key_makes_that_keys_row_or_names_the_row_holding_it(db):
+    """Lead 11-11 (an item sent with updates={} - the funnel's «created»): a key nobody holds makes its row, keyed; a key
+    a row holds names that row and makes nothing - no second row, no «created» line (the old _get_or_create_row)."""
+    out = _write(db, {"business_key_val": "K9", "line_kind": "created", "written_by": "kim"}, kind="funnel")
+    [said] = out["items"]
+    assert (_now(db)[said["row_id"]]["business_key_val"], said["work"], [l["line_kind"] for l in _lines(db)]) == (
+        "K9", "new", ["created"]), out
+    again = _write(db, {"business_key_val": "K9", "line_kind": "created", "written_by": "kim"}, kind="funnel", tx="tx2")
+    assert (again["items"][0]["row_id"], again["lines"], len(_now(db)), len(_lines(db))) == (said["row_id"], 0, 1, 1), again
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})
