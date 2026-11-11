@@ -1404,14 +1404,25 @@ FOLD_ROWS_DIFFERING_KEYS = 5
 FOLD_KEEP_MOST_LAYERS = "most_layers"
 
 
-def _layer_count(model, table_name):
-    """How many cell layers the row holds - `keep` most_layers ranks by it."""
-    from sqlalchemy import func, select
+def _layer_count(db, model, table_name):
+    """How many cells the row's head lines still claim (head, not withdrawn - a line says many cells) - `keep`
+    most_layers ranks by it. `cell_layer._claimed_cells`' answer, spelled in SQL (it sits in the ranking's ORDER BY)
+    with `lines._mask` a column, as `lines.winners_sql` reads a cell."""
+    from sqlalchemy import and_, case, func, literal, select
 
-    from database import models
+    from chain.cell_layer import claimed_lines
+    from database import lines
 
-    cs = models.CellSource
-    return select(func.count()).where(cs.table_name == table_name, cs.row_id == model.row_id).scalar_subquery()
+    if not lines.has_lines(db, table_name):
+        return literal(0)
+    lt, bits = claimed_lines(db, table_name)
+
+    def has(family, bit):
+        return lt.c["%s_%d" % (family, bit // lines.BITS_PER_CHUNK)].op("&")(lines._mask(bit))
+    cells = sum((case((and_(has("head", bit) != 0, has("withdrawn", bit) == 0), 1), else_=0)
+                 for bit in bits.values()), literal(0))
+    return select(func.coalesce(func.sum(cells), 0)).where(
+        lt.c.row_id == model.row_id, or_(*[c != 0 for c in lt.c if c.name.startswith("head_")])).scalar_subquery()
 
 
 def _blank_key(model, keys):
@@ -1553,7 +1564,7 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     compared = [column for column in config.get("column_types") or {} if column in model.__table__.columns
                 and column not in keys and column != mark and column not in identity]
     ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged, compared=compared,
-                                by=_layer_count(model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
+                                by=_layer_count(db, model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
     said_as = order or "layers"
     woken = _excluding_by(table_name, mark) if mark else []
     found = _key_index(db, table_name, keys)
@@ -1767,8 +1778,11 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
     grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
     person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
     and refuses a table that moved since."""
+    from sqlalchemy import func, select
+
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from chain.ingestion_worker import loaded_chain_rules, watches_table
-    from database import crud, models
+    from database import crud, lines, models
     from ledger import backfill, followup, schema
     from ledger.setup import load_setup
 
@@ -1780,9 +1794,16 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' is not a declared table (table_config)" % table_name)
     setup = load_setup() if setup is None else setup
     rules = loaded_chain_rules() if rules is None else rules
-    layers = dict(db.execute(text(
-        "SELECT source_name, count(*) FROM cell_sources WHERE table_name = :t GROUP BY source_name"),
-        {"t": table_name}).fetchall())
+    layers = {}            # {source: the cells its head lines on t's rows still claim} - count_withdrawable's count
+    if lines.has_lines(db, table_name):
+        lt, bits = claimed_lines(db, table_name)
+        said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+        rows = models.DYNAMIC_TABLES[table_name].__table__
+        for g in db.execute(select(lt.c.source_name, *said, func.count().label("n"))
+                            .where(lt.c.row_id.in_(select(rows.c.row_id)),
+                                   or_(*[c != 0 for c in said if c.name.startswith("head_")]))
+                            .group_by(lt.c.source_name, *said)).mappings():
+            layers[g["source_name"]] = layers.get(g["source_name"], 0) + g["n"] * len(_claimed_cells(g, bits))
     found = {
         "mode": "apply" if apply else "dry-run", "table": table_name,
         "rows": db.execute(text('SELECT count(*) FROM "%s"' % table_name)).scalar(),

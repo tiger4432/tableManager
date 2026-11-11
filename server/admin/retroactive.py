@@ -1496,9 +1496,11 @@ def _count_remove_shell_rows(db, params, scan_limit):
 
 
 def _count_delete_every_row(db, params, scan_limit):
+    from sqlalchemy import func, or_, select
+
     import chain_bindings
     from chain import cell_layer, replay
-    from database import models
+    from database import crud, lines, models
 
     table = params["table"]
     if params.get("how") == FULL_RESET:
@@ -1523,9 +1525,13 @@ def _count_delete_every_row(db, params, scan_limit):
                                               "chain_rules")},
         }
     s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
-    kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
-                                                      models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
-            .distinct().count())
+    kept = 0               # t's rows a person's head line sits on (`crud.human_source_clause` - its backups too)
+    if lines.has_lines(db, table):
+        lt, _bits = cell_layer.claimed_lines(db, table)
+        rows = models.DYNAMIC_TABLES[table].__table__
+        kept = db.execute(select(func.count(lt.c.row_id.distinct())).where(
+            crud.human_source_clause(), or_(*[c != 0 for c in lt.c if c.name.startswith("head_")]),
+            lt.c.row_id.in_(select(rows.c.row_id)))).scalar()
     taking = sorted("%s -> %s" % (rule.get("name"), rule.get("target_table")) for rule in replay.load_rules()
                     if rule.get("trigger_table") == table and chain_bindings.takes_deletions(rule))
     return {
