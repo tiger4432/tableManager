@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 import pytest
 
 from conftest import retire_dynamic_model
-from database import crud, models
+from database import crud, lines, models
 from tests.support import line_tables
 
 # Session ids are namespaced so a test can never be confused with real traffic.
@@ -428,6 +428,9 @@ def test_effort_is_optional_and_its_absence_writes_no_row(client, db_session):
 
 
 def test_a_measured_correction_stores_its_raw_counts_against_the_audit_tx(client, db_session):
+    # another writer's audit batch beside the person's - the actor filter below is what leaves it out
+    line_tables.audit_batch(db_session.connection(), "effort-other-tx", "raw_table_1", written_by="parser_x")
+    db_session.commit()
     res = _put(client, {"session_id": S1, "key": 7, "mouse": 2, "nav": 1})
     assert res.status_code == 200
     assert res.json()["effort_recorded"] is True, \
@@ -437,10 +440,11 @@ def test_a_measured_correction_stores_its_raw_counts_against_the_audit_tx(client
     row = db_session.query(models.InteractionEffortLog).one()
     assert (row.key_count, row.mouse_count, row.nav_count) == (7, 2, 1)
     assert row.session_id == S1
-    # The key is the SAME tx id the audit trail already uses - no new correlation concept.
-    audit_txs = {a.transaction_id for a in db_session.query(models.AuditLog)
-                 .filter(models.AuditLog.source_name == crud.USER_SOURCE).all()}
-    assert row.transaction_id in audit_txs
+    # The key is the SAME tx id the audit trail already uses - no new correlation concept. The audit trail is
+    # audit_batches (cell-source overhaul); the person's batch is the one its actor is the person
+    ab = lines.AuditBatch
+    audit_txs = {a.transaction_id for a in db_session.query(ab).filter(ab.written_by == "tester").all()}
+    assert audit_txs == {row.transaction_id}
 
 
 @pytest.mark.parametrize("bad_effort, why", [
@@ -543,12 +547,12 @@ def test_a_broken_counter_never_costs_the_user_their_correction(client, db_sessi
     the real consequence was that a client-side counter bug refused every save the
     operator attempted. The correction is the product; the measurement is not.
     """
-    before = db_session.query(models.AuditLog).count()
+    before = db_session.query(lines.AuditBatch).count()
     res = _put(client, {"session_id": S1, "key": -3, "mouse": 0, "nav": 0},
                value="EFF_ALWAYS_LANDS")
     assert res.status_code == 200
     assert res.json()["change_count"] == 1
-    assert db_session.query(models.AuditLog).count() > before, \
+    assert db_session.query(lines.AuditBatch).count() > before, \
         "the correction must be applied even when the effort payload is refused"
     assert db_session.query(models.InteractionEffortLog).count() == 0, \
         "...and the refused counts must still not be stored"
