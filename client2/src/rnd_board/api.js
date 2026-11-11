@@ -559,10 +559,13 @@ function intervalExcluded(raw) {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
-/** One line of what the walk's virtual read said - «<label>: <what> — <why>» (`notReadOf`, `scannedOf`). */
-function engineLine(label, what, why) {
-  return `${label}: ${what} — ${why}`;
+/** One line of what the walk's virtual read said - «<label>: <part> — <part>» (`notReadOf`, `scannedOf`). */
+function engineLine(label, ...parts) {
+  return `${label}: ${parts.join(' — ')}`;
 }
+
+/** How many of the slowest legs the walk shows (lead 11-11). */
+const SLOWEST_SHOWN = 3;
 
 /** The sources the walk's virtual read could not read, each with the server's why (`engine.left_out`; owner 11-10
  *  «아무것도 안 나옴» - a walk that read nothing said nothing) - one line each, [] when every source was read. */
@@ -571,17 +574,22 @@ export function notReadOf(body) {
   return out.map((item) => engineLine('Not read', String((item && item.source) ?? '?'), String((item && item.why) ?? '')));
 }
 
-/** Each key end of the walk's virtual read and what came of its index - the server's last word, none yet while the
- *  ask waits (`engine.scans`, `engine.served`; lead 11-11, owner «인덱스 없어») - then the leg the read waited on
- *  longest (`engine.legs`, slowest first). [] for a stored read. */
+/** What the walk's virtual read said of its key ends and its legs (lead 11-11, owner «인덱스 없어»): `scanned` a line
+ *  each end no index serves - the server's sentence, or its name while the ask waits (`engine.scans`); `served` the
+ *  ends an index serves folded under one head (`engine.served`), null when none; `slowest` the SLOWEST_SHOWN legs the
+ *  read waited on longest (`engine.legs`, slowest first). All empty for a stored read. */
 export function scannedOf(body) {
   const engine = (body && body.engine) || {};
-  const ends = (label, list) => (Array.isArray(list) ? list : []).map((end) => engineLine(label,
-    `${String(end.table)}.${String(end.column ?? '?')}`, end.said == null ? 'index asked - no answer yet' : String(end.said)));
-  const slowest = Array.isArray(engine.legs) && engine.legs.length ? engine.legs[0] : null;
-  return [...ends('Scanned', engine.scans), ...ends('Served', engine.served),
-    ...(slowest ? [engineLine('Slowest', `${String(slowest.table)} (${String(slowest.leg)})`,
-      `${Number(slowest.seconds).toFixed(2)} s · ${Number(slowest.rows)} rows`)] : [])];
+  const list = (each) => (Array.isArray(each) ? each : []);
+  const said = (end) => (end.said == null
+    ? [`${String(end.table)}.${String(end.column ?? '?')}`, 'index asked - no answer yet'] : [String(end.said)]);
+  const served = list(engine.served).map((end) => said(end).join(' — '));
+  return {
+    scanned: list(engine.scans).map((end) => engineLine('Scanned', ...said(end))),
+    served: served.length ? { head: engineLine('Served', `${served.length} end${served.length === 1 ? '' : 's'}`), lines: served } : null,
+    slowest: list(engine.legs).slice(0, SLOWEST_SHOWN).map((leg) => engineLine('Slowest',
+      `${String(leg.table)} (${String(leg.leg)})`, `${Number(leg.seconds).toFixed(2)} s · ${Number(leg.rows)} rows`)),
+  };
 }
 
 export function subgraphModel(result) {

@@ -777,14 +777,20 @@ ok('NR2 no engine, or nothing left out, says nothing', notReadOf({}).length === 
       { table: 'lot_slot_wafer', column: 'lot', said: 'lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer holds auto_index_per_table (3) automatic indexes' }],
     served: [{ table: 'wafer_process', column: 'recipe_id', said: 'wafer_process (recipe_id) - served by by_hand_recipe' }],
     legs: [{ table: 'lot_slot_wafer', leg: 'lot_slot_wafer.seat-holds-wafer', seconds: 1.234, rows: 7, statements: 2 },
-      { table: 'wafer_process', leg: 'wafer_process_recipe.wafer-processed-with-recipe', seconds: 0.1, rows: 3, statements: 1 }] } });
-  ok('SC1 a scan waiting its answer, a scan its ask refused, a served end, then the slowest leg - one line each',
-    JSON.stringify(said) === JSON.stringify([
-      'Scanned: wafer_process.wafer_id — index asked - no answer yet',
-      'Scanned: lot_slot_wafer.lot — lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer holds auto_index_per_table (3) automatic indexes',
-      'Served: wafer_process.recipe_id — wafer_process (recipe_id) - served by by_hand_recipe',
-      'Slowest: lot_slot_wafer (lot_slot_wafer.seat-holds-wafer) — 1.23 s · 7 rows']), JSON.stringify(said));
-  ok('SC2 a stored read (no engine) says nothing', scannedOf({}).length === 0 && scannedOf(null).length === 0);
+      { table: 'wafer_process', leg: 'wafer_process_recipe.wafer-processed-with-recipe', seconds: 0.1, rows: 3, statements: 1 },
+      { table: 'wafer_process', leg: 'b.c', seconds: 0.05, rows: 1, statements: 1 },
+      { table: 'wafer_process', leg: 'b.d', seconds: 0.01, rows: 0, statements: 1 }] } });
+  ok('SC1 a scan waiting its answer by its name, a scan its ask refused by the server\'s sentence alone, the served ends '
+    + 'under one head, the three slowest legs',
+    JSON.stringify(said) === JSON.stringify({
+      scanned: ['Scanned: wafer_process.wafer_id — index asked - no answer yet',
+        'Scanned: lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer holds auto_index_per_table (3) automatic indexes'],
+      served: { head: 'Served: 1 end', lines: ['wafer_process (recipe_id) - served by by_hand_recipe'] },
+      slowest: ['Slowest: lot_slot_wafer (lot_slot_wafer.seat-holds-wafer) — 1.23 s · 7 rows',
+        'Slowest: wafer_process (wafer_process_recipe.wafer-processed-with-recipe) — 0.10 s · 3 rows',
+        'Slowest: wafer_process (b.c) — 0.05 s · 1 rows'] }), JSON.stringify(said));
+  ok('SC2 a stored read (no engine) says nothing', JSON.stringify([scannedOf({}), scannedOf(null)])
+    === JSON.stringify([{ scanned: [], served: null, slowest: [] }, { scanned: [], served: null, slowest: [] }]));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
