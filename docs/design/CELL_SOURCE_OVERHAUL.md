@@ -113,7 +113,13 @@
 
 ## 11-14 관문 — 옛 두 표를 묻는 자리를 다시 센다
 
-착지할 트리(아래 `<ref>`)에서 센다. 낱말 셈이라 주석 · 독스트링도 걸린다 — 걸린 줄을 열어 «읽거나 쓰는 자리» 만 함수 이름으로 관문 글에 적는다. 카나리아가 0 이면 셈이 고장 난 것이다(수를 적지 않는다).
+관문 명령은 AST 셈 시험이다(총괄 11-11 — 낱말 셈은 자리를, AST 는 성질을 센다). 셈 함수 하나(`askers`)가 세 물음에 답한다: cell_sources 를 묻는 함수 · audit_logs 를 묻는 함수 · chain/cell_layer 의 cell_sources 읽기. 기대 답은 «허용 목록 밖 0» 이다. 허용 목록(cell_sources): line_migration 의 copy_page · copy_total · copied_through 와 write_back(B). 모델은 함수가 아니라 세지 않는다. 카나리아는 같은 시험 안에 있다(copy_page · write_lines._audit 이 반드시 잡힘).
+
+```bash
+python -m pytest -q server/tests/test_the_old_layer_and_audit_tables_are_asked_only_where_allowed.py
+```
+
+시험이 없을 때 손으로 세는 길: 착지할 트리(아래 `<ref>`)에서 센다. 낱말 셈이라 주석 · 독스트링도 걸린다 — 걸린 줄을 열어 «읽거나 쓰는 자리» 만 함수 이름으로 관문 글에 적는다. 카나리아가 0 이면 셈이 고장 난 것이다(수를 적지 않는다).
 
 ```bash
 git grep -n -w -E "CellSource|CellSourceModel|cell_sources" <ref> -- server ':!server/tests'
