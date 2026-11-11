@@ -60,7 +60,7 @@ const EXT_MUTANTS = {
   delete: ['background.js', '[[TABLES.fields, () => fieldRowsOf(p, t.name)], [TABLES.templates,', '[[TABLES.templates,'],
   shown: ['lib/open_check.js', 'return shown(el, win); });', 'return true; });'],
   settle: ['lib/page_dom.js', 'if (this.late && !(await waitStill(', 'if (false && !(await waitStill('],
-  sticky: ['lib/page_dom.js', 'this.late = !o.opened;', 'this.late = this.late || !o.opened;'],
+  sticky: ['lib/page_dom.js', "this.late = o.opened ? null : 'clicked';", "this.late = o.opened ? this.late : 'clicked';"],
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
