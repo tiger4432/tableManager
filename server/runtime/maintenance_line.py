@@ -397,7 +397,6 @@ def _start_work(db_session_factory):
     from chain import ingestion_worker as worker
 
     return [(worker._ensure_business_key_unique_indexes_sync, db_session_factory),
-            (worker._ensure_human_claims_index_sync, db_session_factory),
             (worker._analyze_stale_tables_sync, db_session_factory)] + _declared_work(db_session_factory)
 
 

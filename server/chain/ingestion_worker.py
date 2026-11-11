@@ -99,7 +99,6 @@ LOG_FILENAME = "chain_worker.log"
 logger = get_process_logger("Chain", LOG_FILENAME)
 
 
-
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
 #: The rules file's shape refusal - the loader's line and the save's answer (lead 10-29: one reader, one sentence).
@@ -1521,13 +1520,6 @@ def column_loops(rules) -> list:
     return [(table, list(loop) + [loop[0]], names) for (table, loop), names in sorted(loops.items())]
 
 
-
-
-
-
-
-
-
 #: 🔴 THE SAME FAILURE, ONCE (2026-09-14 outage). A poisoned group is NARROWED down to
 #: single rows on purpose, so one bad row becomes thousands of identical failures - and
 #: each one printed a full traceback. The operator could not read the log at all, which
@@ -1566,11 +1558,6 @@ def log_folded(logger_, rule_name, target_table, reason: str, said="FAILED", sin
 #   `chain_state_of` - the scheduler drains rows too and does not import this module.
 from event_constants import mark_processed  # noqa: E402
 from error_said import told
-
-
-
-
-
 
 
 def _rule_outcome_before_running(rule, events):
@@ -2991,10 +2978,6 @@ async def _say_what_a_stalled_group_waits_on(db):
 #   nothing to cache and nothing to invalidate on reload.
 
 
-
-
-
-
 def reload_worker_process_cache():
     """The Reload button in this process: every declaration and mapper again (`config_watcher.reload_everything`
     - a mapper that does not import keeps the one it had)."""
@@ -3738,8 +3721,6 @@ def another_chain_loop_is_running(now=None):
     return heartbeat.another_process_beats("chain", now)
 
 
-
-
 # ⚰️ [소유자 정본] THE LAP'S THREE HELPERS WENT WITH IT — they had no other caller:
 #       followup_already_served  (29 lines) + `_FOLLOWUP_SERVED` · `MAX_REMEMBERED_CAUSES`
 #       log_followup_folded      (45 lines) + `_FOLLOWUP_SAID` · `FOLLOWUP_LOG_EVERY`
@@ -4236,69 +4217,6 @@ def _report_layer_table_health():
     return rest
 
 
-def _ensure_human_claims_index_sync(db_session_factory):
-    """Build the human-claims index, and NAME the full-table one it replaces (판정 245-b).
-
-    🔴 CREATION IS AUTOMATIC, DELETION IS A PERSON'S (판정 243). Adding an index only
-    weakens - it costs disk and write time and cannot make a query wrong - so a boot may
-    build one. Dropping 5 GB is not reversible inside a maintenance window, and a box may
-    be mid-replay when this line runs, so the ensure states the name, the size and the
-    exact command and stops there.
-
-    ⚠️ AND IT SPEAKS EITHER WAY. A line only when something happens makes "nothing to do"
-    and "the ensure never ran" the same silence - which is exactly how the decision-key
-    ensure's first failure nearly went unseen.
-    """
-    from sqlalchemy import text as _text
-
-    from database import models
-
-    db = db_session_factory()
-    try:
-        engine = db.get_bind()
-        name, statement = models.human_claims_index_ddl()
-        # 🔴 THE SAME WORDS THE OTHER THREE CALLERS USE. This read the builder's return as
-        # a truth value, and when `False` came to mean "already there" the boot printed
-        # `COULD NOT BE ENSURED` about an index that exists - a false line, in the opposite
-        # direction from the false line the same round had just fixed.
-        state = models._ensure_one_index(engine, name, statement, "human-claims", table="cell_sources")
-        logger.info("[Chain] human-claims index %s: %s", name, {
-            models.INDEX_BUILT: "built",
-            models.INDEX_PRESENT: "already in place",
-            models.INDEX_BUSY: "another session is building it",
-            models.INDEX_DEFERRED: "not built this time - see the line above",
-        }.get(state, "COULD NOT BE ENSURED - see the line above"))
-        # ⚠️ THE LEFTOVER LOOKUP IS A REPORT, NOT A REQUIREMENT. If it cannot run, the
-        # line above has already said whether the index this boot needed is there; letting
-        # the lookup take that line down with it would trade a fact for a warning.
-        leftover = None
-        try:
-            with engine.connect() as connection:
-                leftover = connection.execute(_text(
-                    "SELECT pg_size_pretty(pg_relation_size(c.oid)) FROM pg_class c "
-                    " WHERE c.relname = :name AND c.relkind = 'i'"),
-                    {"name": models.RETIRED_CLAIMS_INDEX}).scalar()
-        except Exception as err:                                       # noqa: BLE001
-            logger.warning("[Chain] could not check whether %s is still present: %s",
-                           models.RETIRED_CLAIMS_INDEX, told(err), exc_info=err)
-    finally:
-        db.close()
-    if leftover:
-        # ⛔ NOT DROPPED HERE. The size is in the line because "an index is redundant" and
-        # "an index is costing you five gigabytes on every cell write" are read very
-        # differently by whoever decides when the window is.
-        # ⚠️ NOT "NOTHING READS IT" - that would be false and an operator would find out
-        # the hard way. The parameterised half of the replay path DOES read it, and drops
-        # to a parallel Seq Scan without it; measured on 34M rows, that costs seconds on a
-        # path that runs by hand. What is true is the trade, so the line states the trade.
-        logger.warning(
-            "[Chain] %s (%s) is retired and still present: every cell write maintains it, "
-            "and what still reads it is the by-hand replay path, which falls back to a "
-            "scan (measured: seconds). Drop it when the box is quiet with: python "
-            "migrations/drop_redundant_layering_indexes.py --apply",
-            models.RETIRED_CLAIMS_INDEX, leftover)
-
-
 def _build_unique_index_waiting(bind, uq, table, name):
     """`uq`'s unique index on `table` by the one builder (`models._ensure_one_index`, 총괄 11-05 ㄴ): an INVALID
     leftover of its name dropped first unless another session is building it, the wait before the build at most
@@ -4401,7 +4319,6 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
         return {"built": built, "refused": refused, "invalid": invalid}
     finally:
         db.close()
-
 
 
 def _execute_retroactive(payload):

@@ -69,7 +69,7 @@ def test_every_caller_of_the_builder_speaks_the_same_three_words():
     assert {models.INDEX_BUILT, models.INDEX_PRESENT,
             models.INDEX_FAILED} == {"built", "present", "failed"}
 
-    body = inspect.getsource(worker._ensure_human_claims_index_sync)
+    body = inspect.getsource(worker._build_unique_index_waiting)
     assert "models.INDEX_BUILT" in body and "models.INDEX_PRESENT" in body, body[:400]
 
 

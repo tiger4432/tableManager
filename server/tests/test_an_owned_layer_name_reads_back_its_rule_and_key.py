@@ -95,9 +95,20 @@ def test_two_rules_on_one_cell_rank_by_priority_then_declared_order(monkeypatch,
     assert crud.compute_priority_value(sources, ingested_at_by_source={n: times[n] for n in layers}) == (shown, shown)
 
 
-def test_a_database_from_before_owners_is_refused_at_the_write_until_the_boot_adds_the_columns():
-    """A box pulled onto this code has cell_sources without owner_rule / owner_key: a layer write says so (never fails
-    inside the ORM), the boot adds them, then the write passes - and the rows already there keep their values."""
+def _add_owner_columns(engine):
+    from sqlalchemy import text
+
+    from database import models
+
+    with engine.begin() as conn:
+        for name in models.OWNER_COLUMNS:
+            conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s VARCHAR" % name))
+
+
+def test_a_database_from_before_owners_is_refused_at_the_write_by_name():
+    """A box with cell_sources but no owner_rule / owner_key: a layer write says so (never fails inside the ORM) - the
+    boot no longer adds them (the old layer table retires, lead 11-11); with them there the write passes and the rows
+    already there keep their values."""
     from sqlalchemy import create_engine, text
 
     from database import models
@@ -106,9 +117,9 @@ def test_a_database_from_before_owners_is_refused_at_the_write_until_the_boot_ad
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
         conn.execute(text("INSERT INTO cell_sources (source_name, value) VALUES ('user', 'x')"))
-    with pytest.raises(RuntimeError, match="the boot adds them"):
+    with pytest.raises(RuntimeError, match="nothing adds them any more"):
         models.require_owner_columns(engine)
-    models.ensure_owner_columns(engine)
+    _add_owner_columns(engine)
     models.require_owner_columns(engine)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT source_name, value, owner_rule, owner_key FROM cell_sources")).all() == [
@@ -127,11 +138,10 @@ def test_a_session_bound_to_a_connection_is_asked_through_that_connection():
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
     with engine.connect() as conn:
-        with pytest.raises(RuntimeError, match="the boot adds them"):
+        with pytest.raises(RuntimeError, match="nothing adds them any more"):
             models.require_owner_columns(conn)
-    models.ensure_owner_columns(engine)
-    models._OWNER_COLUMNS.discard(engine)            # the boot remembered it - forget, so the next read is the
-    assert engine not in models._OWNER_COLUMNS       # Connection's own
+    _add_owner_columns(engine)
+    assert engine not in models._OWNER_COLUMNS       # nothing remembered yet - the next read is the Connection's own
     with engine.connect() as conn:
         models.require_owner_columns(conn)
     assert engine in models._OWNER_COLUMNS
