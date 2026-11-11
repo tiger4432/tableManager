@@ -126,13 +126,13 @@ const COUNTS = {
     label: mark('label', 'chain_replay'), cli: mark('cli', 'chain_replay'),
     deletes: null, restartable: true, commit_granularity: mark('commit', 'chain_replay'),
   },
-  // upper_bound + the sentence that names the gap between the ceiling and the answer
-  upper_bound: {
+  // the withdraw count - exact since B 4dcdfe33a (the cells it withdraws, no ceiling)
+  withdraw: {
     affected: 31, affected_label: mark('affected-label', 'withdraw'),
-    count_kind: 'upper_bound', scanned: null, scan_limit: null, truncated: false,
+    count_kind: 'exact', scanned: null, scan_limit: null, truncated: false,
     detail: mark('detail', 'withdraw'),
     blocked_reason: null,
-    extra: { cells_claimed: 40, pinned: 9, why_upper_bound: mark('why', 'withdraw') },
+    extra: { cells_claimed: 40, pinned: 9 },
     op: 'withdraw', mode: 'dry-run', params: { table: 't', source: 's' },
     label: mark('label', 'withdraw'), cli: mark('cli', 'withdraw'),
     deletes: mark('deletes', 'withdraw'), restartable: true,
@@ -372,10 +372,8 @@ async function suite(source) {
   for (const extra of sampled.extras) {
     ok(Boolean(extra.label), 'count: every extra number carries the label the server gave it');
   }
-  ok(view.buildCountView(COUNTS.upper_bound).extras.length === 0,
+  ok(view.buildCountView(COUNTS.withdraw).extras.length === 0,
     'count: unlabelled extras are not invented into a label');
-  ok(view.buildCountView(COUNTS.upper_bound).why !== null,
-    'count: the sentence naming the gap between the ceiling and the answer is carried');
 
   const blocked = view.buildCountView(COUNTS.blocked);
   ok(blocked.blocked && blocked.blocked.text === 'auto_confirm_off',
@@ -390,7 +388,7 @@ async function suite(source) {
     'count: an unrecognised count kind draws neutral instead of a guess');
   ok(toneOf('exact') !== toneOf('something_new'),
     '🔴 F3: an unrecognised kind must not render identically to `exact`');
-  ok(toneOf('sample') !== toneOf('exact') && toneOf('upper_bound') !== toneOf('exact'),
+  ok(toneOf('sample') !== toneOf('exact'),
     'F3: an approximate kind never shares a colour with the exact one');
 
   // ── the acknowledgement ──────────────────────────────────────────────────────────
@@ -415,7 +413,7 @@ async function suite(source) {
   const withdrawRecord = {
     params: { table: 'bonding_log', source: 'old_rule' },
     count: {
-      ok: true, view: view.buildCountView(COUNTS.upper_bound),
+      ok: true, view: view.buildCountView(COUNTS.withdraw),
       paramsKey: view.paramsKey(params),
     },
     busy: null,
@@ -428,7 +426,7 @@ async function suite(source) {
   const scoreConfirm = (rows, label, payload) => {
     const { strings } = payload
       ? scanPayload({ inventory: INVENTORY, count: payload })
-      : scanPayload({ inventory: INVENTORY, count: COUNTS.upper_bound });
+      : scanPayload({ inventory: INVENTORY, count: COUNTS.withdraw });
     let questions = 0;
     rows.forEach((line, i) => {
       if (line.src === 'chrome') {
@@ -461,21 +459,19 @@ async function suite(source) {
   };
 
   scoreConfirm(lines, 'P4 confirm');
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.deletes),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.deletes),
     "confirm: what this operation deletes is stated, in the server's words");
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.commit_granularity),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.commit_granularity),
     "confirm: how it commits is stated, in the server's words");
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.detail),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.detail),
     'confirm: the sentence from the count the operator just took is carried into the dialog');
   // 🔴 F4: whatever the row is allowed to say about certainty, the dialog says at least as much.
-  // The row has four carriers; the dialog is plain text, so the two that were colour-only
+  // The row has two carriers; the dialog is plain text, so the two that were colour-only
   // (`count_kind` chip, `truncated` border) have to arrive as words and values.
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.count_kind),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.count_kind),
     '🔴 F4: the exactness declaration reaches the last surface before the write');
-  ok(lines.some((l) => l.text === JSON.stringify(COUNTS.upper_bound.truncated)),
+  ok(lines.some((l) => l.text === JSON.stringify(COUNTS.withdraw.truncated)),
     '🔴 F4: whether the sample hit its budget reaches the dialog — a border colour cannot');
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.extra.why_upper_bound),
-    '🔴 F4: the sentence naming the gap between the ceiling and the answer reaches the dialog');
   const sampledLines = view.buildConfirmLines(
     byOp.chain_replay,
     { params: { rule: 'inv' },

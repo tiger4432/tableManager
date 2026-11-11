@@ -83,7 +83,7 @@ import { gapCatalogueView } from './gap_catalogue.js';
 import { planDryRunView } from './plan_dry_run.js';
 // [Queue 25] 소급 적용(retroactive/backfill). 같은 규율의 두 번째 표면 — 서버가 문장을 만들고
 // 여기서는 그대로 렌더한다. 특히 **숫자는 서버가 붙인 라벨과 함께가 아니면 화면에 나오지
-// 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
+// 않는다**: 라벨이 그 수가 «무엇의» 수인지 말하고, 표본(sample)이면 `count_kind` 가 그렇다고 말한다.
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView, runsPollBusy,
@@ -2904,9 +2904,9 @@ async function runAutoConfirmDryRun(rule, btn, host) {
 // 않는다 — F9의 「설정 반영」 줄이 자리잡은 그 방식 그대로 Overview 상단의 한 줄이고, 펼치면
 // 제자리에서 열린다.
 //
-// 🔴 이 절은 「몇 건인가」의 뜻을 스스로 판정하지 않는다. 다섯 중 넷은 요청 경로에서 정확한
-//    수를 낼 수 없고(그게 곧 드라이런 전수 스캔이다), 서버가 그 사실을 `count_kind`(exact /
-//    sample / upper_bound)와 **라벨 자체**("cells to withdraw (at most)")와 `detail` 문장 셋으로 말한다.
+// 🔴 이 절은 「몇 건인가」의 뜻을 스스로 판정하지 않는다. 스캔 예산이 다하면 그 수는 표본이고,
+//    서버가 그 사실을 `count_kind`(exact / sample)와 `truncated` 와 `detail` 문장으로 말한다.
+//    라벨("cells to withdraw")은 그 수가 «무엇의» 수인지 말한다.
 //    그래서 렌더 규칙은 기계적이다: **숫자는 서버가 붙인 라벨과 함께가 아니면 그리지 않는다.**
 //    판정과 채점은 `retroactive_view.js` + `client2/tests/retroactive_view_harness.mjs`.
 //
@@ -3624,7 +3624,7 @@ function retroCountEl(cached, stale) {
 
   const head = cfgEl('div', 'retro-count-head');
   // 🔴 숫자는 서버 라벨과 한 쌍으로만 나온다. 라벨이 없으면 숫자도 없다 — 맨숫자는 「답」으로
-  // 읽히고, 다섯 중 넷에서 그것은 답이 아니다(`detail` 문장 안에 여전히 들어 있다).
+  // 읽히고, 표본에서 그것은 답이 아니다(`detail` 문장 안에 여전히 들어 있다).
   // 그리고 이 두 가지가 **쓰기 결정이 딛고 있는 사실**이므로 주변 산문보다 작아서는 안 된다.
   if (view.affectedLabel && view.affected) {
     head.appendChild(cfgEl('span', 'retro-count-label', cfgText(view.affectedLabel)));
@@ -3649,7 +3649,6 @@ function retroCountEl(cached, stale) {
   if (head.childNodes.length) box.appendChild(head);
 
   if (view.detail) box.appendChild(cfgEl('div', 'cfg-detail retro-detail', cfgText(view.detail)));
-  if (view.why) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.why)));
   // 서버가 **라벨을 붙여 준** 두 번째 숫자만 나온다(R1의 회수 후보처럼). `affected`에 더하지
   // 않는 것이 핵심이다 — 더하면 「쓰기 연산」의 수에 「절대 쓰지 않는 것」의 수가 섞인다.
   // 쌍마다 자기 상자를 갖는다: 구분자 없는 한 줄에서는 값이 다음 라벨에 붙어 읽힌다.

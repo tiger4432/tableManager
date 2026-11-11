@@ -8,16 +8,16 @@
 //   checks each tag against the payload it was built from.
 //
 // THE ONE THING THIS SURFACE MUST NOT DO — PRESENT AN APPROXIMATE COUNT AS EXACT.
-//   Four of the five counts cannot be exact on a request path, and `server/retroactive.py` says
-//   so in three separate places rather than hiding it:
+//   A count whose scan ran out of budget is a sample, not the answer, and `server/retroactive.py`
+//   says which in the payload rather than hiding it:
 //
-//     `count_kind`      exact | sample | upper_bound     — the machine-readable declaration
-//     `affected_label`  e.g. "cells to withdraw (at most)"  — the qualifier, inside the label itself
+//     `count_kind`      exact | sample                   — the machine-readable declaration
+//     `affected_label`  e.g. "cells to withdraw"          — what the number counts
 //     `detail`          the whole sentence, with numbers
 //
 //   So the rule here is mechanical: **a number is never emitted without the server's own label
 //   for it.** `buildCountView` returns `affected: null` when `affected_label` is missing, because
-//   a bare integer on a screen is read as the answer, and for four of five it is not. The client
+//   a bare integer on a screen is read as the answer, and for a sample it is not. The client
 //   never decides that a count is approximate and never decides that it is not — it carries what
 //   the server declared, in the server's words.
 //
@@ -109,7 +109,7 @@ export const RETRO_CHROME_STRINGS = Object.freeze(Object.values(RETRO_CHROME));
 // most confident one, which is `미상` reading as a value. F9's `POPULATION_TONE` does not have
 // the collision (its safe value `effective` is `'ok'`); this table was modelled on it and had
 // broken the property it was copying.
-const KIND_TONE = { exact: 'ok', sample: 'warn', upper_bound: 'warn' };
+const KIND_TONE = { exact: 'ok', sample: 'warn' };
 
 // ---------------------------------------------------------------------------
 // THE PER-OPERATION RECORD, and the three pure functions that read it.
@@ -361,9 +361,8 @@ export function retroCountRequest(base, op, entries) {
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.
  *
  * 🔴 THE NUMBER TRAVELS WITH ITS LABEL OR IT DOES NOT TRAVEL. `affected` is emitted only when
- * `affected_label` is present, because the qualifier for four of the five counts lives IN that
- * label ("cells to withdraw (at most)"). Rendering the integer alone would strip the word that keeps the
- * screen honest, and `detail` — which always carries the number in a sentence — is still there.
+ * `affected_label` is present - the label says what the number counts. Rendering the integer alone would leave it
+ * unnamed, and `detail` — which always carries the number in a sentence — is still there.
  */
 export function buildCountView(payload) {
   const data = payload || {};
@@ -381,9 +380,6 @@ export function buildCountView(payload) {
       ? KIND_TONE[kind] : '',
     // THE sentence. Straight through, untouched.
     detail: text(data.detail),
-    // A second server sentence, on the two counts whose cheap query answered a superset. It names
-    // the gap between the ceiling and the answer, which `detail` states but does not explain.
-    why: text(data.extra && data.extra.why_upper_bound),
     extras: buildExtras(data.extra),
     // `truncated` means the scan budget ran out before the population did, i.e. the sample number
     // is a floor. The server does not (yet) put that in words on this route (its sibling dry-run
@@ -771,14 +767,12 @@ export function buildConfirmLines(operation, record, params) {
   });
   if (countView) {
     pair(countView.affectedLabel, countView.affected);
-    // 🔴 EVERY CARRIER THE ROW HAS, THE DIALOG HAS. The row shows the qualifier four ways — the
-    // label text, the `count_kind` chip, the `truncated` border, the `why_upper_bound` sentence —
-    // and the dialog is plain text, so no colour can reach it. Three of the five `affected_label`s
-    // carry no qualifier of their own, which left the dialog's honesty resting on `detail` alone.
+    // 🔴 EVERY CARRIER THE ROW HAS, THE DIALOG HAS. The row shows what kind of number it is two ways
+    // — the `count_kind` chip and the `truncated` border — and the dialog is plain text, so no colour
+    // can reach it; the kind and the cut are said here in words.
     pair(countView.kindLabel, countView.kind);
     pair(countView.truncatedLabel, countView.truncatedValue);
     pair(null, countView.detail);
-    pair(null, countView.why);
     list(countView.extras).forEach((extra) => pair(extra.label, extra.count));
   }
   // The facts come from the count when one was taken and from the inventory otherwise. They are
