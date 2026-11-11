@@ -2003,8 +2003,9 @@ export function boot(doc, host, deps) {
       }
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 문장을 들고 오면 머리가 그것을 씁니다.
       //    A source the read could not read says so, and says why - with no node, it stands where «No node reached» would.
+      //    Then each key end and its index, and the slowest leg (lead 11-11) - lines of the same shape, not «read nothing».
       const notRead = r.notRead || [];
-      for (const line of notRead) box.append(el(doc, 'div', 'wk-note', line));
+      for (const line of [...notRead, ...(r.scanned || [])]) box.append(el(doc, 'div', 'wk-note', line));
       if (!r.nodes.length && !r.message && !notRead.length) box.append(el(doc, 'div', 'wk-note', 'No node reached'));
       const askedOf = state.at === 0 ? state.asked : shown.asked;
       renderTable(box, r, askedStarts(askedOf), shown.resultB);

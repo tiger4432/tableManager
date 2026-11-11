@@ -559,11 +559,29 @@ function intervalExcluded(raw) {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
+/** One line of what the walk's virtual read said - «<label>: <what> — <why>» (`notReadOf`, `scannedOf`). */
+function engineLine(label, what, why) {
+  return `${label}: ${what} — ${why}`;
+}
+
 /** The sources the walk's virtual read could not read, each with the server's why (`engine.left_out`; owner 11-10
  *  «아무것도 안 나옴» - a walk that read nothing said nothing) - one line each, [] when every source was read. */
 export function notReadOf(body) {
   const out = body && body.engine && Array.isArray(body.engine.left_out) ? body.engine.left_out : [];
-  return out.map((item) => `Not read: ${String((item && item.source) ?? '?')} — ${String((item && item.why) ?? '')}`);
+  return out.map((item) => engineLine('Not read', String((item && item.source) ?? '?'), String((item && item.why) ?? '')));
+}
+
+/** Each key end of the walk's virtual read and what came of its index - the server's last word, none yet while the
+ *  ask waits (`engine.scans`, `engine.served`; lead 11-11, owner «인덱스 없어») - then the leg the read waited on
+ *  longest (`engine.legs`, slowest first). [] for a stored read. */
+export function scannedOf(body) {
+  const engine = (body && body.engine) || {};
+  const ends = (label, list) => (Array.isArray(list) ? list : []).map((end) => engineLine(label,
+    `${String(end.table)}.${String(end.column ?? '?')}`, end.said == null ? 'index asked - no answer yet' : String(end.said)));
+  const slowest = Array.isArray(engine.legs) && engine.legs.length ? engine.legs[0] : null;
+  return [...ends('Scanned', engine.scans), ...ends('Served', engine.served),
+    ...(slowest ? [engineLine('Slowest', `${String(slowest.table)} (${String(slowest.leg)})`,
+      `${Number(slowest.seconds).toFixed(2)} s · ${Number(slowest.rows)} rows`)] : [])];
 }
 
 export function subgraphModel(result) {
@@ -2062,7 +2080,7 @@ export function createWalkBoxWalk(deps) {
       const truncated = body.truncated || null;
       const cutAxes = truncationAxes(truncated, { hopsChosen: hops !== undefined && hops !== null });
       return {
-        ok: true, nodes, edges, truncated, notRead: notReadOf(body),
+        ok: true, nodes, edges, truncated, notRead: notReadOf(body), scanned: scannedOf(body),
         // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,

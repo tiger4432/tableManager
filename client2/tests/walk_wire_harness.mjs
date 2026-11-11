@@ -16,7 +16,7 @@
 // Run: node client2/tests/walk_wire_harness.mjs
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWalkBoxWalk, entitySeedId, fetchSubgraph, notReadOf } from '../src/rnd_board/api.js';
+import { createWalkBoxWalk, entitySeedId, fetchSubgraph, notReadOf, scannedOf } from '../src/rnd_board/api.js';
 import { loadWithProbe } from './lib/probe.mjs';
 
 let pass = 0;
@@ -769,6 +769,23 @@ ok('NR1 a left-out source is one Not read line with the server\'s why',
   JSON.stringify(notReadOf({ engine: { name: 'virtual', left_out: [{ source: 'dt_log', why: 'no time column' }] } }))
     === JSON.stringify(['Not read: dt_log — no time column']));
 ok('NR2 no engine, or nothing left out, says nothing', notReadOf({}).length === 0 && notReadOf({ engine: { left_out: [] } }).length === 0);
+
+// each key end says what came of its index, then the slowest leg (engine.scans · served · legs, lead 11-11)
+{
+  const said = scannedOf({ engine: { name: 'virtual', left_out: [],
+    scans: [{ table: 'wafer_process', column: 'wafer_id', said: null },
+      { table: 'lot_slot_wafer', column: 'lot', said: 'lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer holds auto_index_per_table (3) automatic indexes' }],
+    served: [{ table: 'wafer_process', column: 'recipe_id', said: 'wafer_process (recipe_id) - served by by_hand_recipe' }],
+    legs: [{ table: 'lot_slot_wafer', leg: 'lot_slot_wafer.seat-holds-wafer', seconds: 1.234, rows: 7, statements: 2 },
+      { table: 'wafer_process', leg: 'wafer_process_recipe.wafer-processed-with-recipe', seconds: 0.1, rows: 3, statements: 1 }] } });
+  ok('SC1 a scan waiting its answer, a scan its ask refused, a served end, then the slowest leg - one line each',
+    JSON.stringify(said) === JSON.stringify([
+      'Scanned: wafer_process.wafer_id — index asked - no answer yet',
+      'Scanned: lot_slot_wafer.lot — lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer holds auto_index_per_table (3) automatic indexes',
+      'Served: wafer_process.recipe_id — wafer_process (recipe_id) - served by by_hand_recipe',
+      'Slowest: lot_slot_wafer (lot_slot_wafer.seat-holds-wafer) — 1.23 s · 7 rows']), JSON.stringify(said));
+  ok('SC2 a stored read (no engine) says nothing', scannedOf({}).length === 0 && scannedOf(null).length === 0);
+}
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`MUTANTS ${caught}/${RENAME_DEFECTS.length + TRUNCATION_DEFECTS.length + INTERVAL_DEFECTS.length + REFUSAL_DEFECTS.length + ONE_BUILDER_DEFECTS.length} caught, ${wrong.length} wrong`);
