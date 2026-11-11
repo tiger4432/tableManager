@@ -396,3 +396,14 @@ def test_a_write_saying_its_head_lines_text_again_is_left_out_cell_by_cell(db, c
     _write(db, {"key": {"k": "K1"}, "values": {column: again}, "source_name": "f1", "written_by": hand[0],
                 "input_row": hand[1]}, tx="tx2")
     assert (len(_lines(db)) == before) is left_out
+
+
+def test_a_line_that_moves_no_shown_value_leaves_the_row_s_updated_at(db):
+    """Lead 11-11 ㄱ: t.updated_at is when a shown value moved (the old write's rule) - a person saying what the cell
+    shows writes a line and leaves it; another value moves it."""
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    first = _now(db)[r]["updated_at"]
+    out = _write(db, {"row_id": r, "values": {"a": "x"}, "source_name": "user", "written_by": "kim"}, tx="tx2")
+    assert first is not None and out["lines"] == 1 and _now(db)[r]["updated_at"] == first, out
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "user", "written_by": "kim"}, tx="tx3")
+    assert _now(db)[r]["a"] == "y" and _now(db)[r]["updated_at"] != first

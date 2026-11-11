@@ -73,7 +73,7 @@ def test_the_notation_op_folds_what_the_retired_script_folded(pg_engine, tmp_pat
         lines.ensure_line_table(db, TABLE, DECL)
         db.commit()
         _write(db, SEED, "f01.csv")
-        _write(db, {"K1": "AB 12"}, "f02.csv")                                     # a second layer on one cell
+        _write(db, {"K1": "AB_12"}, "f02.csv")      # a second layer on one cell (the same value would fold into f01's)
         seeded, seeded_lines = len(_layers(db)), _write_lines(db)
         rules.write_text(json.dumps({"columns": {TABLE: {"comp_id": {"write": True, "rules": {"join": "-"}}}}}),
                          encoding="utf-8")

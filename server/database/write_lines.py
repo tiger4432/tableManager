@@ -23,7 +23,9 @@ An item is a dict:
                   pin, and a key merge reads it as neither named nor a person's
     rekey         true: step 5½ rebuilds the row's key though no key part moved (a key in an old spelling; a mark
                   item with no columns carries it)
-    folds         source names whose head bits the write's columns also take off (a file's folded layer)
+    folds         {source name: columns} whose head bits the write's line also takes off there - set by step 2 (a file's
+                  layers of its share that say the same value, `crud.file_layer_fold`)
+    of            the item step 2 split this one off (a column written under its share's older layer - owner 11-08)
     version_judged  true when the caller judged the row's version already (a map judged whole)
 `kind` is the writing seat's word (funnel · chain · formula · withdraw · delete · create · notation · merge · mark ·
 seed); the
@@ -117,6 +119,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     data = _data(bits) if keeps else [c.name for c in now.columns
                                       if c.name not in {name for name, _type in lines.FRAMEWORK}]
     items = [dict(it, line_kind=it.get("line_kind") or WRITE) for it in items]
+    n = len(items)                                 # step 2 may split an item (`of`); the answer is per given item
     for it in items:
         if it["line_kind"] not in LINE_KINDS:
             raise ValueError("write_lines: line kind %r is not one of %s" % (it["line_kind"], ", ".join(LINE_KINDS)))
@@ -135,7 +138,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
     # a mark still merges its row again (a re-key it asks for)
-    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held) if keeps
+    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old) if keeps
                       else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
                             sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
     moved = [i for i in sorted(plain) if i not in kept]  # an item that changed only a column of no history
@@ -174,15 +177,25 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         changed.setdefault(holder, {"old": holder_old, "work": "merge"})["new"] = holder_new
         said_rows.setdefault(("merge", who), set()).add(holder)
     audit = _audit(db, table, said_rows, transaction_id, at) if keeps else []
-    _stage(db, table, cfg, shape["columns"], changed, keys,
-           {targets[i]: set(items[i].get("values") or ()) | set(plain.get(i) or ())
-            for i in list(kept) + moved if items[i]["line_kind"] == WRITE})
+    wrote = {}                                     # a row's columns, every item on it (two items, one row)
+    for i in list(kept) + moved:
+        if items[i]["line_kind"] == WRITE:
+            wrote.setdefault(targets[i], set()).update(set(items[i].get("values") or ()) | set(plain.get(i) or ()))
+    _stage(db, table, cfg, shape["columns"], changed, keys, wrote)
     landed = {shell: m[0] for shell, m in merged.items()}
-    said = [{"row_id": landed.get(claimed.get(i), claimed.get(i)), "line_id": line_ids.get(i), "work": work[i] if i in work else "gated" if i in claimed and i not in targets
-             else "left_out" if i in targets else None,
-             "columns": sorted(set(it.get("values") or ()) | set(plain.get(i) or ())) if it["line_kind"] == WRITE
-             else list(it.get("columns") or ())}
-            for i, it in enumerate(items)]
+    kin = {}                                       # a given item and the items step 2 split off it
+    for j, it in enumerate(items):
+        kin.setdefault(it.get("of", j), []).append(j)
+    said = []
+    for i, it in enumerate(items[:n]):
+        did = next((j for j in kin[i] if j in work), None)
+        said.append({"row_id": landed.get(claimed.get(i), claimed.get(i)),
+                     "line_id": line_ids.get(did) if did is not None else None,
+                     "work": work[did] if did is not None else "gated" if i in claimed and i not in targets
+                     else "left_out" if i in targets else None,
+                     "columns": sorted(set().union(*[set(items[j].get("values") or ()) for j in kin[i]])
+                                       | set(plain.get(i) or ())) if it["line_kind"] == WRITE
+                     else list(it.get("columns") or ())})
     return {"changed": changed, "lines": len(kept) if keeps else 0, "left_out": left_out, "audit": audit, "gated": gated,
             "items": said, "at": at, "merged": landed}
 
@@ -360,13 +373,14 @@ def _version_gate(table, cfg, items, targets, old) -> dict:
     return gated
 
 
-def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
+def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old):
     """Step 2 - the items that change something. A write's column is left out when its source's head line there says
     the same text, from the same hand and input row (ruling 434) - both texts through `crud.line_text` on t's stored
-    kind, the one fold a line's value takes (a blank is None, «1» and 1.0 one text on a number column) - and the
-    write when no column is left. A withdraw keeps the columns its source still speaks in and is left out when none -
-    never by comparing values (a NULL head withdrawn by NULL = NULL would speak on). Both ask one read of the head
-    lines (`_spoken`). Deletes and marks are kept. Returns (kept indexes, how many left)."""
+    kind, the one fold a line's value takes (a blank is None, «1» and 1.0 one text on a number column) - or when
+    another source says it already (`_others`), and the write when no column is left. A withdraw keeps the columns its
+    source still speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL
+    would speak on). All ask one read of the head lines (`_spoken`). Deletes and marks are kept. Returns (kept
+    indexes, how many left)."""
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
@@ -374,14 +388,24 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
                                                 held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
-    heads = _spoken(db, ln, bits, chunks, {(targets[i], items[i].get("source_name")) for i in targets
-                                          if items[i]["line_kind"] in (WRITE, WITHDRAW)}, columns)
+    heads = _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"] in (WRITE, WITHDRAW)},
+                    columns)
     same = {}
     for i in writes:                               # its source's head line there: the same text, hand and input row
         said = heads.get((targets[i], items[i].get("source_name")), {})
         hand = (_text_or_none(items[i].get("written_by")), _text_or_none(items[i].get("input_row")))
         same[i] = {c for c, value in items[i]["values"].items() if c in said and said[c][:2] == hand
                    and crud.line_text(said[c][2], held.get(c, "string")) == value}
+    folds, moves = _others(db, table, items, writes, targets, heads, held, old, same)
+    for i, by in sorted(moves.items()):            # its share's layer of the value, written under its own source
+        for source, cs in sorted(by.items()):
+            kid = dict(items[i], source_name=source, values={c: items[i]["values"][c] for c in cs}, of=i,
+                       folds={s: f & cs for s, f in (folds.get(i) or {}).items() if f & cs})
+            targets[len(items)] = targets[i]
+            items.append(kid)
+            same[i] |= cs
+    for i, by in folds.items():
+        items[i]["folds"] = {s: f - same[i] for s, f in by.items() if f - same[i]}
     kept, left_out = set(), 0
     for i in sorted(targets):
         it = items[i]
@@ -389,6 +413,8 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
             it["columns"] = [c for c in it.get("columns") or () if c in heads.get((targets[i], it.get("source_name")), {})]
         if it["line_kind"] == WRITE and same.get(i):
             it["values"] = {c: value for c, value in it["values"].items() if c not in same[i]}
+        if it["line_kind"] == WRITE and not it["values"] and i in moves:
+            continue                               # its columns went to the items split off it
         if (it["line_kind"] == WRITE and not it["values"]) or (it["line_kind"] == WITHDRAW and not it["columns"]):
             left_out += 1
         else:
@@ -396,25 +422,88 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held):
     return kept, left_out
 
 
-def _spoken(db, ln, bits, chunks, pairs, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text)}} - the columns that source heads on the row and
-    has not withdrawn (what a withdraw can take back), each with its head line's hand, input row and - for `columns` -
-    its value. One read of the pairs' rows' head lines, a statement the cache keeps (no literal per item, 11-11)."""
+def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
+    """{(row_id, source): {column: (written_by, input_row, value text, at)}} - the columns each source heads on the row
+    and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
+    row, «when» and - for `columns` - its value. One read of the rows' head lines, a statement the cache keeps (no
+    literal per item, 11-11)."""
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]
     out = {}
-    for page in _pages(sorted({row_id for row_id, _s in pairs}), 1):
-        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, *heads,
+    for page in _pages(sorted(row_ids), 1):
+        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at, *heads,
                                      *withdrawn, *values)
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
-            if (row[0], row[1]) not in pairs:
-                continue
-            said = dict(zip(columns, row[4 + 2 * chunks:]))
+            said = dict(zip(columns, row[5 + 2 * chunks:]))
             for c in bits:
                 k, m = _bit(bits, c)
-                if row[4 + k] & m and not row[4 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c))
+                if row[5 + k] & m and not row[5 + chunks + k] & m:
+                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4])
+    return out
+
+
+def _others(db, table, items, writes, targets, heads, held, old, same):
+    """What another source on the cell says, for a write the old seat asked it of (lead 11-11 ㄴ - its two answers, on
+    the layers `_spoken` read): a file's `crud.file_layer_fold` - a repeat is left out, its share's other layers of
+    the value fold into the line, a value its share holds behind another layer is written under that layer's source
+    (owner 11-08 «층을 새로하지 말고 순서를 바꿔»); a chain's new layer saying what the cell shows is left out (owner
+    11-08). On a row there before, never the pinned layer, never a re-spelling (no new statement: its own line is
+    re-spelled where it is). Adds to `same`; -> ({item: {source: {column}}} folds,
+    {item: {source: {column}}} moves)."""
+    from types import SimpleNamespace
+
+    asks = {}
+    for i in writes:
+        source = items[i].get("source_name")
+        if targets[i] in old and not items[i].get("respelled") and (crud.is_file_layer(source)
+                                                                   or crud.writer_kind(source) == "chain"):
+            cs = [c for c in items[i]["values"] if c not in same[i]]
+            if cs:
+                asks[i] = cs
+    if not asks:
+        return {}, {}
+    rows = {targets[i] for i in asks}
+    cells = {}
+    for (row_id, source), said in heads.items():
+        if row_id in rows:
+            for c, (_by, _input, text, at) in said.items():
+                cells.setdefault((row_id, c), []).append(SimpleNamespace(
+                    source_name=source, value=crud.line_value(text, held.get(c, "string")), ingested_at=at))
+    pins = {cell: was[2] for cell, was in _overwrites(db, table, rows, {c for cs in asks.values() for c in cs}).items()}
+    folds, moves = {}, {}
+    for i, cs in sorted(asks.items()):
+        source = items[i].get("source_name")
+        for c in cs:
+            layers, kind, value = cells.get((targets[i], c), []), held.get(c, "string"), items[i]["values"][c]
+            pin = pins.get((targets[i], c))
+            if crud.is_file_layer(source):
+                repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin)
+                if repeat:
+                    same[i].add(c)
+                for gone in folded:
+                    folds.setdefault(i, {}).setdefault(gone.source_name, set()).add(c)
+                if moved is not None:
+                    moves.setdefault(i, {}).setdefault(moved.source_name, set()).add(c)
+            elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
+                shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+                                                     for s in layers}, pin, table)[0]
+                if not crud.values_differ(shown, value, kind):
+                    same[i].add(c)
+    return folds, moves
+
+
+def _overwrites(db, table, row_ids, columns) -> dict:
+    """{(row_id, column): (is_overwrite, updated_by, manual_priority_source)} - the cells' cell_overwrites rows."""
+    from database import models
+
+    ov = models.CellOverwrite.__table__
+    out = {}
+    for page in _pages(sorted(row_ids), 1, most=PARAMS_MOST - len(columns)):
+        for r, c, flag, by, pin in db.execute(select(ov.c.row_id, ov.c.column_name, ov.c.is_overwrite, ov.c.updated_by,
+                                                      ov.c.manual_priority_source).where(
+                ov.c.table_name == table, ov.c.row_id.in_(page), ov.c.column_name.in_(sorted(columns)))):
+            out[(r, c)] = (flag, by, pin)
     return out
 
 
@@ -426,8 +515,8 @@ def _text_or_none(value):
 def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id):
     """Step 3 - one line a kept item, in item order. A write's head bits start as its written bits, a withdraw's too
     (with its withdrawn bits); a deleted or mark line's three are 0. Returns [(line_id, row_id, sources, masks)] of
-    the write and withdraw lines in line_id order - the sources being its own and its folds - for step 4 - and {item
-    index: line_id} of every line."""
+    the write and withdraw lines in line_id order - [(source, masks)]: its own with the line's columns, a fold's with
+    its columns - for step 4 - and {item index: line_id} of every line."""
     order = sorted(kept)
     rows = []
     for i in order:
@@ -453,18 +542,18 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     for line_id, i, row in zip(ids, order, rows):
         line_ids[i] = line_id
         if row["line_kind"] in (WRITE, WITHDRAW):
-            out.append((line_id, row["row_id"], [row["source_name"]] + list(items[i].get("folds") or ()),
-                        [row["written_%d" % k] for k in range(chunks)]))
+            out.append((line_id, row["row_id"], [(row["source_name"], [row["written_%d" % k] for k in range(chunks)])]
+                        + [(s, _masks(bits, chunks, cs)) for s, cs in sorted((items[i].get("folds") or {}).items())]))
     return sorted(out), line_ids
 
 
 def _heads(db, ln, chunks, written):
-    """Step 4 - each new write or withdraw line takes its columns' head bits off the earlier lines of its sources on
-    the row (one UPDATE, a parameter set a line and source). Lines of one batch go in line_id order, so the later of
-    two on one cell keeps the head."""
+    """Step 4 - each new write or withdraw line takes its columns' head bits off the earlier lines of its source on
+    the row, and a fold's columns' off its folded sources' (one UPDATE, a parameter set a line and source). Lines of
+    one batch go in line_id order, so the later of two on one cell keeps the head."""
     params = [{"r": row_id, "s": source, "id": line_id, **{"n%d" % k: ~masks[k] for k in range(chunks)},
                **{"m%d" % k: masks[k] for k in range(chunks)}}
-              for line_id, row_id, sources, masks in written for source in sources]
+              for line_id, row_id, sources in written for source, masks in sources]
     if not params:
         return
     statement = update(ln).where(
@@ -483,8 +572,6 @@ def _marks(db, table, shape, items, kept, targets, asked):
     was taken off - their merge moves though no line did."""
     from datetime import datetime
 
-    from database import models
-
     cells = {}                                     # (row_id, column) -> (item, its line moved)
     for i in sorted(targets):
         it = items[i]
@@ -495,15 +582,9 @@ def _marks(db, table, shape, items, kept, targets, asked):
             cells[(targets[i], c)] = (it, c in moved)
     if not cells:
         return set()
-    ov = models.CellOverwrite.__table__
     row_ids = sorted({r for r, _c in cells})
     columns = sorted({c for _r, c in cells})
-    held = {}
-    for page in _pages(row_ids, 1, most=PARAMS_MOST - len(columns)):
-        for r, c, flag, by, pin in db.execute(select(ov.c.row_id, ov.c.column_name, ov.c.is_overwrite, ov.c.updated_by,
-                                                      ov.c.manual_priority_source).where(
-                ov.c.table_name == table, ov.c.row_id.in_(page), ov.c.column_name.in_(columns))):
-            held[(r, c)] = (flag, by, pin)
+    held = _overwrites(db, table, row_ids, columns)
     ln, bits, chunks = shape["lines"], shape["bits"], shape["chunks"]
     person = set()                                 # (row_id, column) a person's head line says
     heads, gone = lines.bit_columns("head", chunks), lines.bit_columns("withdrawn", chunks)
@@ -536,7 +617,9 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
     """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge; `lines.winners_sql` under it):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
-    with won_by. Returns {row_id: {column: value}} as written."""
+    with won_by; updated_at is the write's instant on a new row or one whose values moved (`_moved`), else it stays -
+    a line that moved nothing shown is no change of the row (the old write's rule, lead 11-11 ㄱ). Returns {row_id:
+    {column: value}} as written."""
     now = shape["table"]
     data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
     if not row_ids:
@@ -558,13 +641,21 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
             if key is not None:
                 merged[row_id][key_column] = key
                 won_by[row_id].pop(key_column, None)
+    types = cfg.get("column_types") or {}
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
         {**{c: bindparam("__%d" % n) for n, c in enumerate(data)}, **({"won_by": bindparam("__won")} if keeps else {}),
-         "updated_at": at}),
-        [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)}}
+         "updated_at": bindparam("__at")}),
+        [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
+          "__at": at if row_id not in old or _moved(old[row_id], merged[row_id], data, types)
+          else old[row_id].get("updated_at")}
          for row_id in row_ids])
     return merged
+
+
+def _moved(old, new, columns, types) -> list:
+    """The `columns` whose value moved from the row `old` to `new` - what a reader of t sees change."""
+    return [c for c in columns if crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
 
 
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
@@ -817,7 +908,7 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
             events["CREATE"].append((row_id, sorted(wrote.get(row_id, set()) | {"row_id", "business_key_val"}),
                                      None, row))
             continue
-        moved = [c for c in shown if crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
+        moved = _moved(old, new, shown, types)
         if moved:
             events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, row))
     for event_type, rows in events.items():

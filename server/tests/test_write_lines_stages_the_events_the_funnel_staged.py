@@ -106,7 +106,7 @@ def test_a_rolled_back_write_leaves_no_event(db):
 def test_a_line_that_changes_no_shown_value_stages_nothing(db):
     _write(db, "f1", k="A", n="x")
     _events(db)
-    out = _write(db, "f2", k="A", n="x")
+    out = _write(db, "user", k="A", n="x")      # a file of its share would fold into f1 (crud.file_layer_fold)
     assert out["lines"] == 1 and _events(db) == [], "another source saying what the cell shows is a line, not an edit"
 
 

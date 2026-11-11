@@ -152,14 +152,15 @@ def test_the_time_rule_folds_and_counts_what_it_left(env):
 
 
 def test_a_resent_spelling_writes_no_line(env):
-    """3eb161a9c ①: the hourly refetch of one spelling by one source mints no line."""
+    """3eb161a9c ①: the hourly refetch of one spelling by one source mints no line - nor by the next file of its
+    share (`crud.file_layer_fold`, 225b2c658; names with no share fold as one share)."""
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0100.csv")
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0200.csv")
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.1"}], source="day_0200.csv")
-    assert len(_said(env, PLAIN, "v")) == 2
+    assert len(_said(env, PLAIN, "v")) == 1
     _write(env, PLAIN, [{"k": "K-01", "v": "wafer.2"}], source="day_0300.csv")
     assert _said(env, PLAIN, "v")[-1] == ("day_0300.csv", "wafer-02")
-    assert len(_said(env, PLAIN, "v")) == 3
+    assert len(_said(env, PLAIN, "v")) == 2
 
 
 def test_a_retried_batch_is_folded_once(env, tmp_path, monkeypatch):

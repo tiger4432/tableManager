@@ -123,7 +123,7 @@ def test_two_writers_by_the_key_of_a_committed_row_one_after_the_other(sessions)
 def test_two_writers_of_one_new_key_end_on_one_row(sessions):
     make = sessions
     item = {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "f1"}
-    answer, waited = _second_waits(make, [item], [dict(item, source_name="f2")])
+    answer, waited = _second_waits(make, [item], [dict(item, source_name="f2", values={"k": "K2", "a": "y"})])  # x folds
     rows, alive = _state(make)
     assert waited >= 0.9 and len(alive) == 1, alive
     assert {r for r, *_ in rows} == alive and len(rows) == 2, rows
