@@ -27,7 +27,7 @@ if SERVER_DIR not in sys.path:
 import event_constants                                               # noqa: E402
 from chain import ingestion_worker as worker                         # noqa: E402
 from chain import cell_layer, replay, rule_run                       # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
 from database.context import channel, retroactive_run                # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
 
@@ -68,7 +68,7 @@ def _log(world):
 
 def _layers_of(world, log_id):
     row_id = _log(world)[log_id][0]
-    return world["db"].query(models.CellSource).filter_by(table_name=hw.OFFICIAL, origin_row_id=row_id).count()
+    return len(lines.stamped_by(world["db"], [hw.OFFICIAL], [row_id]))
 
 
 def test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed(world, monkeypatch, caplog):
