@@ -14,7 +14,8 @@ from ledger_api import ledger_subgraph                              # noqa: E402
 from support import walk_shape_gate as gate                         # noqa: E402
 from test_ledger_worlds_are_independent_and_meet_in_a_walk import fixture_config  # noqa: E402,F401
 
-VALUED = ("attribute", "qualifier_optional", "qualifier_required", "value")
+VALUED = ("attribute", "qualifier_optional", "qualifier_required", "qualifier_required_attribute", "follow_bound",
+          "value")
 
 
 def _board(config, monkeypatch):
@@ -55,6 +56,8 @@ def census(config, monkeypatch):
         want = gate.expected(seat, kind, ledger_subgraph._instant)
         for leg in mine:
             spec = leg.value if seat == "value" else leg.qualifiers.get("v" if seat == "attribute" else "q")
+            if seat == "qualifier_required_attribute" and leg.sentence != f"s_{cell}":
+                continue                                # its holder's own references, if any - not the sentence
             if seat in VALUED and spec is not None:
                 compared.add(cell)
                 for row in gate.ROWS:
@@ -76,13 +79,13 @@ def census(config, monkeypatch):
 
 
 def test_every_enabled_cell_compiles(config, monkeypatch):
-    assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 74
-    assert len(gate.ENABLED) == 64 and gate.ENABLED <= set(gate.CELLS)      # 74 - the value-object row (pending owner)
-    assert all(gate.not_yet(*cell) == gate.PENDING_OWNER for cell in gate.CELLS if cell not in gate.ENABLED)
+    assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 94
+    assert len(gate.ENABLED) == 74 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - D's row
+    assert all(gate.not_yet(*cell) in (gate.PENDING_OWNER, gate.D_SHARE) for cell in gate.CELLS if cell not in gate.ENABLED)
     reds, compared = census(config, monkeypatch)
     assert len(reds) == len(gate.CELLS), "canary: every cell compiled"
     held = {gate.name(*cell): reds[gate.name(*cell)] for cell in sorted(gate.ENABLED)}
     assert held == {cell: [] for cell in held}, " | ".join(f"{cell}: {'; '.join(why)}" for cell, why in held.items() if why)
-    # the cells held, then the floor: attribute and both qualifiers x 10 types, the value row's compiled cells, the 3
-    # event times read
-    assert compared >= 30 + 3, f"canary: {compared} cells compared as a value or a time"
+    # the cells held, then the floor: the attribute, optional, required and bound-qualifier seats x 10 types, the 3
+    # event times read (and the value row's compiled cells)
+    assert compared >= 40 + 3, f"canary: {compared} cells compared as a value or a time"

@@ -33,8 +33,8 @@ TYPES = {
     "text_format": ("text", "string", "20260930_100000", {"timezone": ZONE, "format": "%Y%m%d_%H%M%S"}, False),
 }
 TIMES = ("timestamptz", "timestamp_zone", "date", "text_format")
-SEATS = ("key_one", "key_several", "key_constant", "attribute", "qualifier_optional", "qualifier_required", "value",
-         "event_time")
+SEATS = ("key_one", "key_several", "key_constant", "attribute", "qualifier_optional", "qualifier_required",
+         "qualifier_required_attribute", "follow_bound", "value", "event_time")
 #: a constant is a JSON value: it has no column, so no column type - the four JSON kinds stand for it
 CANNOT_EXIST = {("key_constant", kind): "a constant has no column type"
                 for kind in ("bigint", "numeric", "timestamptz", "timestamp_zone", "date", "text_format")}
@@ -43,15 +43,23 @@ CELLS = tuple((seat, kind) for seat in SEATS for kind in TYPES if (seat, kind) n
 #: (owner 11-07 «원장 소스에는 datetime만»), and from text with a format (83d2654bf retired that path)
 REFUSED = {("event_time", kind): "{0} is {1} - declare {0} datetime".format(f"c_{kind}", TYPES[kind][1])
            for kind in ("text", "integer", "bigint", "double", "numeric", "boolean", "text_format")}
+#: a required qualifier the sentence leaves to its subject's attribute: the save refuses it by name - a required role is
+#: bound in the sentence (`setup_bundle` «missing_required_role»), so the stored translator never takes it from an
+#: attribute and neither does the walk (lead 11-11 A)
+REFUSED.update({("qualifier_required_attribute", kind):
+                f"predicate 'p_qualifier_required_attribute_{kind}' requires role 'q'" for kind in TYPES})
 PENDING_OWNER = "pending owner: the walk draws no value object (retired 2026-08-28) - the owner's ruling (lead 11-11)"
-#: the cells the gate holds - every cell but the value-object row
-ENABLED = frozenset(cell for cell in CELLS if cell[0] != "value")
+#: a walk that binds a predicate on a qualifier (`follow=<predicate>:<qualifier>`, `VirtualEvidenceLookup._bound`) - its
+#: sentence is an optional qualifier's here, the binding check is lane D's to write
+D_SHARE = "D's share (value filter, lead 11-11)"
+#: the cells the gate holds - every cell but the value-object row and D's
+ENABLED = frozenset(cell for cell in CELLS if cell[0] not in ("value", "follow_bound"))
 VALUE_TYPES = {"text": "string", "boolean": "boolean", **{kind: "timestamp" for kind in TIMES}}
 
 
 def not_yet(seat, kind):
     """Why a cell is walked but not held - None for an enabled one."""
-    return None if (seat, kind) in ENABLED else PENDING_OWNER
+    return None if (seat, kind) in ENABLED else D_SHARE if seat == "follow_bound" else PENDING_OWNER
 
 
 def column(kind, seat=None):
@@ -143,7 +151,14 @@ def document():
             bind["subject"] = _entity(holder, {"sid": {"kind": "column", "column": "sid"}})
             extra = {"entities": {holder: {"attributes": {"v": {"kind": "column", "column": read, **as_time}}}}}
             predicate, obj = "register@1", None
-        elif seat in ("qualifier_optional", "qualifier_required"):
+        elif seat == "qualifier_required_attribute":
+            holder = f"{cell}@1"                        # its subject's attribute `q` is the required qualifier
+            entities[holder] = {"keys": ["sid"], "attributes": ["q"]}
+            qualifiers["required"].append("q")
+            bind["subject"] = _entity(holder, {"sid": {"kind": "column", "column": "sid"}})
+            bind["target"] = target
+            extra = {"entities": {holder: {"attributes": {"q": {"kind": "column", "column": read, **as_time}}}}}
+        elif seat in ("qualifier_optional", "qualifier_required", "follow_bound"):
             qualifiers["required" if seat == "qualifier_required" else "optional"].append("q")
             bind["target"] = target
             bind["q"] = {"kind": "column", "column": read, **as_time}
@@ -154,7 +169,8 @@ def document():
             bind["target"] = target
             bind["occurred_at"] = {"kind": "column", "column": read}
         if obj is not None:
-            vocabulary[predicate] = {"status": "active", "cardinality": "many", "subjects": ["subj@1"], "object": obj}
+            vocabulary[predicate] = {"status": "active", "cardinality": "many", "object": obj,
+                                     "subjects": [f"{cell}@1" if seat == "qualifier_required_attribute" else "subj@1"]}
         sources[cell] = {"relation": TABLE, "read": _read(seat, kind),
                          "map": {"implementation_id": "declarative-role", "implementation_version": 1,
                                  "unit": {"kind": "row"}},
