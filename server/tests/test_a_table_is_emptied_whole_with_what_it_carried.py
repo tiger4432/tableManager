@@ -34,6 +34,7 @@ def fixture_world(pg_engine, monkeypatch, tmp_path):
         try:
             yield world
         finally:
+            world["db"].rollback()                        # its open read would hold the drop's lock
             line_tables.drop(pg_engine, hw.OFFICIAL)
 
 
