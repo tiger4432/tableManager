@@ -306,7 +306,7 @@ def meaning_draft(db, payload, rule=None):
     own layer (`crud.LLM_DRAFT_SOURCE`, below a person's). A person who emptied a meaning keeps it empty (S-243)."""
     import product_tables
     from chain.dynamic_mappers import _row_ids
-    from database import crud, models, schemas
+    from database import crud, lines, models, schemas
     from ledger import trace_router
     from utils import llm
 
@@ -315,11 +315,9 @@ def meaning_draft(db, payload, rule=None):
     if model is None or not row_ids:
         return {"updates": [], "refusal": "no meaning rows reached this mapper"}
     rows = [row for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all() if crud.is_blank_value(row.meaning)]
-    layer = models.CellSource
-    written = {row_id for (row_id,) in db.query(layer.row_id).filter(
-        layer.table_name == product_tables.MEANING_TABLE, layer.column_name == "meaning",
-        layer.row_id.in_([row.row_id for row in rows]),
-        layer.source_name.in_([crud.USER_SOURCE, crud.LLM_DRAFT_SOURCE]))} if rows else set()
+    # a person's or a draft's standing word on the meaning, from the table's lines (cell-source overhaul)
+    said = lines.layers(db, product_tables.MEANING_TABLE, [row.row_id for row in rows], ["meaning"]) if rows else {}
+    written = {row_id for (row_id, _column), by in said.items() if {crud.USER_SOURCE, crud.LLM_DRAFT_SOURCE} & set(by)}
     rows = [row for row in rows if row.row_id not in written]
     if not rows:
         return {"updates": []}
