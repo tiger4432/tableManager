@@ -357,7 +357,8 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
           postgresql_where=text("input_row IS NOT NULL"), sqlite_where=text("input_row IS NOT NULL"))
     table = current_table(db, table_name, table_cfg, won_by=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
-    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns}
+    # kinds: t's columns as stored - value_types' answer, already read by _as_stored (A 11-11: one read a write)
+    return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns, "kinds": types}
 
 
 def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
@@ -623,80 +624,81 @@ def layers(db, table_name: str, row_ids, columns=None) -> dict:
     return out
 
 
-def winners_sql(s: dict, table_name: str, column: str, exclude_source: str = None):
-    """For one column: (row_id, line_id, value, pinned) of the winning head line of each row in the expanding
-    bindparam `row_ids` - built from crud.rank_terms, the one order compute_priority_value walks. A head line that
-    withdrew the column is no candidate. A pin (cell_overwrites.manual_priority_source) admits only the pinned
-    source's head line; `pinned` says a pin was there. `exclude_source`: that source's line is no candidate (R2's
-    «what shows once this source is gone»). s = shape(...)."""
+def winners_sql(s: dict, table_name: str, exclude_source: str = None):
+    """ONE statement for every column of the rows in the expanding bindparam `row_ids` (C board 11-11: a statement a
+    column was 30 x 45 ms for 1,000 rows): (row_id, col, line_id, value, lost, pin) a (row, column) some head line
+    spoke in - written or withdrawn, any source. `lost` 0: line_id is the winner, ordered by crud.rank_terms (the one
+    order compute_priority_value walks); 1: no candidate is left - every head line withdrew it, or the pin
+    (cell_overwrites.manual_priority_source) names a source with no head line, or `exclude_source` (R2's «what shows
+    once this source is gone») was the only one. The rank's «an unowned chain layer sits on the cell» counts the
+    head lines that say the cell, pinned or excluded or not, as before. s = shape(...)."""
     from types import SimpleNamespace
 
-    from sqlalchemy import and_, bindparam, case, exists, func, literal, not_
-    from sqlalchemy.orm import aliased
+    from sqlalchemy import BigInteger as _Big, and_, bindparam, case, func, literal, or_, union_all
 
     from . import crud
     from .models import CellOverwrite
 
-    lt = s["lines"]
-    bit = s["bits"][column]
-    head, withdrawn = f"head_{bit // BITS_PER_CHUNK}", f"withdrawn_{bit // BITS_PER_CHUNK}"
-    mask = _mask(bit)
+    lt, bits, chunks = s["lines"], s["bits"], s["chunks"]
+    columns = [c for c in sorted(bits) if value_column(c) in lt.c and bits[c] // BITS_PER_CHUNK < chunks]
+    cv = union_all(*[select(literal(c).label("col"), literal(bits[c] // BITS_PER_CHUNK).label("k"),
+                            literal(_mask(bits[c]), _Big).label("m")) for c in columns]).subquery("cv")
+
+    def chunk(family):
+        if chunks == 1:
+            return lt.c[f"{family}_0"]
+        return case(*[(cv.c.k == k, lt.c[f"{family}_{k}"]) for k in range(chunks)])
+
     src = LineSource.__table__
     ov = CellOverwrite.__table__
+    says = case((chunk("withdrawn").op("&")(cv.c.m) == 0, 1), else_=0)
+    inner = (select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at, src.c.ranks_as,
+                    cv.c.col, case(*[(cv.c.col == c, lt.c[value_column(c)]) for c in columns]).label("value"),
+                    says.label("says"), ov.c.manual_priority_source.label("pin"),
+                    func.max(case((and_(chunk("withdrawn").op("&")(cv.c.m) == 0, src.c.ranks_as == crud.CHAIN_SOURCE,
+                                        lt.c.owner_rule.is_(None)), 1), else_=0))
+                    .over(partition_by=[lt.c.row_id, cv.c.col]).label("unowned"))
+             .select_from(lt.join(cv, chunk("head").op("&")(cv.c.m) != 0)
+                          .outerjoin(src, src.c.source_name == lt.c.source_name)
+                          .outerjoin(ov, and_(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id,
+                                              ov.c.column_name == cv.c.col)))
+             .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)),
+                    or_(*[lt.c[h] != 0 for h in bit_columns("head", chunks)]))
+             .subquery("i"))
+    candidate = and_(inner.c.says == 1, or_(inner.c.pin.is_(None), inner.c.source_name == inner.c.pin),
+                     *([inner.c.source_name != exclude_source] if exclude_source is not None else []))
+    lost = case((candidate, 0), else_=1)
+    cols = SimpleNamespace(ranks_as=inner.c.ranks_as, owner_rule=inner.c.owner_rule, at=inner.c.at,
+                           source_name=inner.c.source_name)
+    order = [lost] + [sql(cols, inner.c.unowned == 1) for _, sql in crud.rank_terms(table_name)]
+    ranked = (select(inner.c.row_id, inner.c.col, inner.c.line_id, inner.c.value, lost.label("lost"), inner.c.pin,
+                     func.row_number().over(partition_by=[inner.c.row_id, inner.c.col], order_by=order).label("rn"))
+              .subquery("r"))
+    return select(ranked.c.row_id, ranked.c.col, ranked.c.line_id, ranked.c.value, ranked.c.lost,
+                  ranked.c.pin).where(ranked.c.rn == 1)
 
-    def says(t):
-        return and_(t.c[head].op("&")(mask) != 0, t.c[withdrawn].op("&")(mask) == 0)
 
-    other = lt.alias("other")
-    other_src = src.alias("other_src")
-    unowned = exists().select_from(other.outerjoin(other_src, other_src.c.source_name == other.c.source_name)).where(
-        other.c.row_id == lt.c.row_id, says(other), other_src.c.ranks_as == crud.CHAIN_SOURCE,
-        other.c.owner_rule.is_(None))
-    pin = (select(ov.c.manual_priority_source)
-           .where(ov.c.table_name == table_name, ov.c.row_id == lt.c.row_id, ov.c.column_name == column)
-           .scalar_subquery())
-    cols = SimpleNamespace(ranks_as=src.c.ranks_as, owner_rule=lt.c.owner_rule, at=lt.c.at,
-                           source_name=lt.c.source_name)
-    order = [sql(cols, unowned) for _, sql in crud.rank_terms(table_name)]
-    ranked = (select(lt.c.row_id, lt.c.line_id, lt.c[value_column(column)].label("value"), pin.isnot(None).label("pinned"),
-                     func.row_number().over(partition_by=lt.c.row_id, order_by=order).label("rn"))
-              .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
-              .where(lt.c.row_id.in_(bindparam("row_ids", expanding=True)), says(lt),
-                     case((pin.is_(None), literal(True)), else_=lt.c.source_name == pin),
-                     *([lt.c.source_name != exclude_source] if exclude_source is not None else []))
-              .subquery())
-    return select(ranked.c.row_id, ranked.c.line_id, ranked.c.value, ranked.c.pinned).where(ranked.c.rn == 1)
-
-
-def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None) -> dict:
+def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
        a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
        a spoken column with no candidate left (all withdrawn) is (None, None).
-    Values are read back as t's stored kind (crud.line_value)."""
+    Values are read back as t's stored kind (crud.line_value). One statement (`winners_sql`). `s`: the shape the
+    caller already holds (a write reads it once - A 11-11), else read here."""
     from . import crud
-    from .models import CellOverwrite
 
     row_ids = list(row_ids)
     if not row_ids:
         return {}
-    s = shape(db, table_name, table_cfg)
-    kinds = value_types(db, table_name)
-    said = spoken(db, table_name, row_ids)
-    ov = CellOverwrite.__table__
-    pins = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
-        ov.c.table_name == table_name, ov.c.row_id.in_(row_ids), ov.c.manual_priority_source.isnot(None)))}
+    s = s if s is not None else shape(db, table_name, table_cfg)
+    kinds = s["kinds"]
     out = {}
-    for column in {c for cols in said.values() for c in cols}:
-        rows = [r for r in row_ids if column in said.get(r, ())]
-        won = {r: (v, lid) for r, lid, v, _ in db.execute(winners_sql(s, table_name, column, exclude_source),
-                                                           {"row_ids": rows})}
-        for r in rows:
-            if r in won:
-                v, lid = won[r]
-                out.setdefault(r, {})[column] = (crud.line_value(v, kinds.get(column, "string")), lid)
-            elif (r, column) not in pins:
-                out.setdefault(r, {})[column] = (None, None)
+    for r, column, line_id, value, lost, pin in db.execute(winners_sql(s, table_name, exclude_source),
+                                                          {"row_ids": row_ids}):
+        if not lost:
+            out.setdefault(r, {})[column] = (crud.line_value(value, kinds.get(column, "string")), line_id)
+        elif pin is None:
+            out.setdefault(r, {})[column] = (None, None)
     return out
 
 

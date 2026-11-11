@@ -28,13 +28,13 @@ def db():
     session.close()
 
 
-def put(db, row, source, at, value=None, withdraw=False, column="lot"):
+def put(db, row, source, at, value=None, withdraw=False, column="lot", owner_rule=None):
     s = lines.shape(db, "t", CFG)
     bit = s["bits"][column]
     mask, chunk = lines._mask(bit), bit // lines.BITS_PER_CHUNK
     lines.note_sources(db, [source])
     db.execute(s["lines"].insert().values(
-        line_kind="withdraw" if withdraw else "write", source_name=source, at=at, row_id=row,
+        line_kind="withdraw" if withdraw else "write", source_name=source, at=at, row_id=row, owner_rule=owner_rule,
         **{lines.value_column(column): None if withdraw else value, f"written_{chunk}": mask, f"head_{chunk}": mask,
            f"withdrawn_{chunk}": mask if withdraw else 0}))
 
@@ -121,3 +121,15 @@ def test_merge_without_one_source_is_what_shows_once_it_is_gone(db):
     got = lines.merge(db, "t", CFG, ["r1", "r2"], exclude_source="user")
     assert got["r1"]["lot"][0] == "a" and got["r2"]["lot"] == (None, None)
     assert lines.merge(db, "t", CFG, ["r1"])["r1"]["lot"][0] == "u"            # canary: user wins with it
+
+
+@pytest.mark.parametrize("unowned, shown", [(False, "b"), (True, "a")])
+def test_the_rule_declared_later_wins_unless_an_unowned_chain_layer_sits_on_the_cell(db, monkeypatch, unowned, shown):
+    """rank_terms 1d: two rules' chain layers - the one declared later wins over the newer one; an unowned chain layer
+    on the cell turns the term off and the newer wins (the one statement counts every head line saying the cell)."""
+    monkeypatch.setattr(crud, "_rule_order", lambda: {"ra": 0, "rb": 1})
+    put(db, "r1", crud.merged_layer_name(crud.CHAIN_SOURCE, "ka"), T0 + timedelta(minutes=3), "a", owner_rule="ra")
+    put(db, "r1", crud.merged_layer_name(crud.CHAIN_SOURCE, "kb"), T0 + timedelta(minutes=1), "b", owner_rule="rb")
+    if unowned:
+        put(db, "r1", crud.CHAIN_SOURCE, T0, "c")
+    assert lines.merge(db, "t", CFG, ["r1"])["r1"]["lot"][0] == shown
