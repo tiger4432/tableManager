@@ -1438,9 +1438,11 @@ def _count_remove_shell_rows(db, params, scan_limit):
 
 
 def _count_delete_every_row(db, params, scan_limit):
+    from sqlalchemy import func, or_, select
+
     import chain_bindings
     from chain import cell_layer, replay
-    from database import models
+    from database import crud, lines, models
 
     table = params["table"]
     if params.get("how") == FULL_RESET:
@@ -1457,17 +1459,22 @@ def _count_delete_every_row(db, params, scan_limit):
             "scanned": s["rows"],
             "scan_limit": scan_limit,
             "truncated": False,
-            "detail": (f"Full reset of '{table}': {s['rows']} row(s), {s['layers']} cell layer(s) - {s['user_layers']} "
-                       f"of them a person's - and {s['overwrites']} pin(s) go in one transaction. Cannot be undone. "
+            "detail": (f"Full reset of '{table}': {s['rows']} row(s) and {s['overwrites']} pin(s) go in one "
+                       f"transaction; {s['layers']} cell(s) - {s['user_layers']} of them a person's - are shown no "
+                       f"more, their lines stay as history. Cannot be undone. "
                        f"No chain rule is told: {', '.join(s['chain_rules']) or 'none reads it'}. Ledger atoms taken "
                        f"back afterwards: {atoms}. Run it with confirm_rows {s['rows']}."),
             "extra": {key: s[key] for key in ("rows", "layers", "user_layers", "overwrites", "ledger_atoms",
                                               "chain_rules")},
         }
     s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
-    kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
-                                                      models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
-            .distinct().count())
+    kept = 0               # t's rows a person's head line sits on (`crud.human_source_clause` - its backups too)
+    if lines.has_lines(db, table):
+        lt, _bits = cell_layer.claimed_lines(db, table)
+        rows = models.DYNAMIC_TABLES[table].__table__
+        kept = db.execute(select(func.count(lt.c.row_id.distinct())).where(
+            crud.human_source_clause(), or_(*[c != 0 for c in lt.c if c.name.startswith("head_")]),
+            lt.c.row_id.in_(select(rows.c.row_id)))).scalar()
     taking = sorted("%s -> %s" % (rule.get("name"), rule.get("target_table")) for rule in replay.load_rules()
                     if rule.get("trigger_table") == table and chain_bindings.takes_deletions(rule))
     return {
@@ -1499,8 +1506,7 @@ def _run_delete_every_row(db, params, log, control=None):
         except replay.ReplayRefused as e:
             raise RetroactiveRefused(str(e)) from None
         _final_progress(control, s["rows_deleted"], s)
-        return {"rows_deleted": s["rows_deleted"], "layers_deleted": s["layers_deleted"],
-                "overwrites_deleted": s["overwrites_deleted"],
+        return {"rows_deleted": s["rows_deleted"], "overwrites_deleted": s["overwrites_deleted"],
                 "ledger_atoms_withdrawn": sum(s["ledger_withdrawn"].values())}
     s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
                                 checkpoint=_checkpoint(control))
