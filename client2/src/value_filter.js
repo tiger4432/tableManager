@@ -296,7 +296,9 @@ export class ValueFilter {
   isFilterActive() { return this.model != null; }
   getModel() { return this.model; }
   setModel(model) { this.model = model || null; }
-  doesFilterPass(params) { return passes(this.kind, this.model, this.params.getValue(params.node)); }
+  // a pivot's carried column (owner 11-11 ㄴ): the server kept the group if any of its long rows passes - a group row
+  // holds one value or only how many, so every row it sent passes here
+  doesFilterPass(params) { return this.params.server || passes(this.kind, this.model, this.params.getValue(params.node)); }
 
   /** The floating cell typed (AG Grid's onFloatingFilterChanged): one condition of `type`, or none. */
   onFloatingFilterChanged(type, value) {
