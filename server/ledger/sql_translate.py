@@ -203,8 +203,18 @@ class NotCompiled(Exception):
     """A source the walk's compile does not read - why, in the answer's `engine.left_out`."""
 
 
+class NotBuilt(NotCompiled):
+    """A column the catalogue declares and the database has not built yet (before its schema sync) - the one reason a
+    declared column is not read (lead 11-11); the line says so."""
+
+
+#: a column table_config declares that the table does not hold yet (`column_kinds`)
+NOT_BUILT = "not built yet"
+
+
 _TEXT, _FLOAT, _INTEGER, _TIME = "text", "float", "integer", "time"
 _NUMBERS = (_FLOAT, _INTEGER, "numeric")
+_NAIVE, _DATE, _BOOLEAN = "timestamp without time zone", "date", "boolean"
 #: the type a column key is compared in when read as its column holds it (`Leg.compared`)
 _HELD_AS = {_FLOAT: "float8", _INTEGER: "bigint", "numeric": "numeric", _TIME: "timestamptz",
             "timestamp without time zone": "timestamp"}
@@ -237,9 +247,12 @@ class Leg:
         import notation_norm
 
         column = spec["column"]
+        cell = f"w.{_quoted(column)}"
+        if spec["kind"] == _BOOLEAN:                # `canonical_key_value` spells it str(value): True · False
+            cell = f"initcap({cell}::text)"
         return notation_norm.key_expression_text(
-            f"w.{_quoted(column)}", rules=notation_norm.rules_for_column(self.relation, column),
-            text_column=spec["kind"] == _TEXT, zone=spec.get("zone"), number_column=spec["kind"] in _NUMBERS)
+            cell, rules=notation_norm.rules_for_column(self.relation, column),
+            text_column=spec["kind"] in (_TEXT, _BOOLEAN), zone=spec.get("zone"), number_column=spec["kind"] in _NUMBERS)
 
     def compared(self, spec) -> tuple:
         """(SQL, type) a read compares a column key by (owner 11-07 «함수를 씌워서 인덱스를 못 탄다면 안 씌우면 안
@@ -249,7 +262,8 @@ class Leg:
         import notation_norm
 
         spelled = notation_norm.rules_for_column(self.relation, spec["column"]) or (
-            spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone"))
+            spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone")) or (
+            spec["kind"] != _TEXT and spec["kind"] not in _HELD_AS)    # a boolean or date key: by its spelling
         if spelled:
             return self.key(spec), "text"
         return f"w.{_quoted(spec['column'])}", "text" if spec["kind"] == _TEXT else _HELD_AS[spec["kind"]]
@@ -302,10 +316,18 @@ class Leg:
         from .event_frame import SourcePreparationError, _aware_time
 
         try:
-            return _aware_time(value if hasattr(value, "tzinfo") else roleframe._plain(value), self.time.timezone,
-                               f"read.{self.time.column}")
+            return _aware_time(moment(value) if hasattr(value, "year") else roleframe._plain(value),
+                               self.time.timezone, f"read.{self.time.column}")
         except SourcePreparationError:
             return None
+
+
+def moment(value):
+    """A cell read as a time, as the translator's time read takes it (`roleframe.aware_time`): a date is its 00:00 - on
+    the declared zone, as a naive time is (lead 11-11)."""
+    from datetime import date, datetime
+
+    return datetime.combine(value, datetime.min.time()) if type(value) is date else value
 
 
 def _held(value, spec):
@@ -357,12 +379,17 @@ def column_kinds(fetch, relation) -> dict:
                        _INTEGER if kind in ("integer", "bigint", "smallint") else
                        "numeric" if kind.startswith("numeric") else
                        _TIME if kind == "timestamp with time zone" else kind)
-    return kinds
+    from database import crud
+
+    declared = ((crud.TABLE_CONFIG.get(relation) or {}).get("column_types") or {})
+    return {**{name: NOT_BUILT for name in declared if name not in kinds}, **kinds}
 
 
 def _column(kinds, column, why):
     if column not in kinds:
         raise NotCompiled(f"{why}: column {column!r} is not in the table")
+    if kinds[column] == NOT_BUILT:
+        raise NotBuilt(f"{why}: column {column!r} not built yet")
     return f"w.{_quoted(column)}", kinds[column]
 
 
@@ -406,7 +433,7 @@ def _key(relation, kinds, binding, why) -> dict:
     _cell, kind = _column(kinds, binding.get("column"), why)
     declared = map_overlay.declared_column_type(relation, binding.get("column"))
     zone = map_overlay.key_time_zone(relation, binding.get("column"))
-    if not zone and kind not in _NUMBERS and (kind != _TEXT or declared == "number"):
+    if not zone and kind not in _NUMBERS and (kind not in (_TEXT, _BOOLEAN, _DATE) or declared == "number"):
         raise NotCompiled(f"{why}: a {declared or 'text'} key read from a {kind} column")
     return {"column": binding["column"], "declared": declared, "kind": kind, "zone": zone}
 
@@ -429,7 +456,7 @@ def _naive(plan, kinds) -> bool:
     _cell, kind = _column(kinds, occurred.column, "read.occurred_at")
     if kind == _TIME:
         return False
-    if kind == "timestamp without time zone":
+    if kind in (_NAIVE, _DATE):
         if not occurred.timezone:
             raise NotCompiled("read.occurred_at: a time without a zone - declare read.occurred_at.timezone")
         return True
@@ -449,10 +476,16 @@ def _value(kinds, binding, why) -> dict:
     stored compiler keeps the cell as it came, `roleframe._plain`; a qualifier's `roleframe._attribute_value`)."""
     if binding.get("kind") == "constant":
         return {"constant": roleframe._plain(binding.get("value"))}
-    if binding.get("kind") != "column" or binding.get("timezone") or binding.get("format"):
-        raise NotCompiled(f"{why}: a value bound by {binding.get('kind')!r} or read as a time")
+    if binding.get("kind") != "column":
+        raise NotCompiled(f"{why}: a value bound by {binding.get('kind')!r}")
     _cell, kind = _column(kinds, binding.get("column"), why)
-    if kind not in (_TEXT, *_NUMBERS):
+    zone, fmt = binding.get("timezone"), binding.get("format")
+    if zone or fmt or kind in (_TIME, _NAIVE, _DATE):
+        # a time: read by the translator's time read (`roleframe.aware_time`), spelled as the walk spells one
+        if kind not in (_TEXT, _TIME, _NAIVE, _DATE) or (fmt and kind != _TEXT) or not (zone or kind == _TIME):
+            raise NotCompiled(f"{why}: a {kind} column read as a time{'' if zone else ' names no timezone'}")
+        return {"column": binding["column"], "kind": kind, "time": {"zone": zone, "format": fmt}}
+    if kind not in (_TEXT, _BOOLEAN, *_NUMBERS):
         raise NotCompiled(f"{why}: a value read from a {kind} column")
     return {"column": binding["column"], "kind": kind}
 
@@ -497,8 +530,8 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
         if valued:                              # no far node - its value is the atom's object (`roleframe`)
             try:
                 value = _value(kinds, mapping.bindings[emission.object_role.role_id], f"{sentence}.value")
-            except NotCompiled:
-                unread.add(f"{sentence}: a value object not read")
+            except NotCompiled as why:
+                unread.add(_out(why, f"{sentence}: a value object not read"))
                 continue
         named = {role: mapping.bindings[reference.role_id]
                  for role, reference in (("subject", emission.subject), ("object", emission.object_role))
@@ -519,11 +552,11 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                 break
             try:
                 qualifiers[name] = _value(kinds, binding, f"{sentence}.{name}")
-            except NotCompiled:
+            except NotCompiled as why:
                 if not attribute:
-                    unsaid = f"{sentence}: qualifier {name} not read"
+                    unsaid = _out(why, f"{sentence}: qualifier {name} not read")
                     break
-                unread.add(f"attributes of {ends['subject'][0]} not read")    # its value out, not the source
+                unread.add(_out(why, f"attributes of {ends['subject'][0]} not read"))    # its value out, not the source
                 continue
             if attribute:
                 from_attributes.add(name)
@@ -547,11 +580,13 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
         for role_id in mapping.registered_roles:
             binding = mapping.bindings[role_id]
             end = _entity(plan.relation, kinds, binding, f"{sentence}.{role_id}")
-            try:
-                specs = {name: _value(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
-                         for name, child in sorted((binding.get("attributes") or {}).items())}
-            except NotCompiled:
-                unread.add(f"attributes of {end[0]} not read")
+            specs = {}
+            for name, child in sorted((binding.get("attributes") or {}).items()):
+                try:
+                    specs[name] = _value(kinds, child, f"{sentence}.{role_id}.attributes.{name}")
+                except NotCompiled as why:                  # that attribute out, the others read
+                    unread.add(_out(why, f"attributes of {end[0]} not read"))
+            if not specs:
                 continue
             # its time rule is the naming sentence's (`runtime_v2._stamp_occurred_at_basis`); one registration of a
             # node per row, as the translator makes one per molecule: the same end and
@@ -587,6 +622,12 @@ def compile_source(snapshot, plan, kinds, world) -> tuple:
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
                                 {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
     return legs, sorted(unread)
+
+
+def _out(why, line) -> str:
+    """The engine.left_out line of what a sentence or an attribute does not read - `line`, or the column it names not
+    built yet."""
+    return str(why) if isinstance(why, NotBuilt) else line
 
 
 def _one_present(specs) -> str:
