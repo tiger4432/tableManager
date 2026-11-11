@@ -49,8 +49,6 @@ def setup_database():
         print("  - Step 4: Optimizing indices (ANALYZE)...")
         try:
             conn.execute(text("ANALYZE cell_overwrites;"))
-            conn.execute(text("ANALYZE cell_sources;"))
-            conn.execute(text("ANALYZE audit_logs;"))
             for table_name in table_config.keys():
                 conn.execute(text(f"ANALYZE {table_name};"))
             conn.commit()

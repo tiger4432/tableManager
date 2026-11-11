@@ -19,7 +19,7 @@ CELL_SOURCES_ALLOWED = {"database/line_migration.py:copy_page", "database/line_m
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
                         "*:write_back",
                         # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)
-                        "scripts/snapshot.py:_facts", "scripts/restore.py:counts"}
+                        "scripts/snapshot.py:_facts", "scripts/restore.py:counts", "scripts/restore.py:main"}
 
 
 def _server_files():

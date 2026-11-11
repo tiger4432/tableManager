@@ -12436,7 +12436,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
 >              ② ⚰️ 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
->              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
+>              ③ python server/scripts/tune_layer_tables.py --table <표>__lines --vacuum      (그 표의 줄 표 - 층은 갈아엎기 뒤 여기 산다)
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
 > 사실 둘        맵 키 칸(map_key_columns)을 write 로 선언하면 소급을 같은 날 — 첫 replace_map 푸시가 옛 철자 행의 뺀 칸을 못 지움
