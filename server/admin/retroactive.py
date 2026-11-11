@@ -2361,7 +2361,7 @@ OPERATIONS = {
                             "a text column keeps numbers stored before text took them, and a row keyed "
                             "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
         "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
-        "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
+        "next": [],
         "params": [_p("table"),
                    # the cell chain_replay takes (S-254): the grid holds row_id on every table
                    _p("row_ids", required=False, kind="csv",
