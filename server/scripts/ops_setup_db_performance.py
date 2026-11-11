@@ -194,30 +194,10 @@ def setup_performance():
             except Exception as e:
                 print(f"   Failed to drop {idx_name}: {told(e)}")
 
-        # 3.6 [재교정률] 대시보드 재교정률 집계 전용 부분 커버링 인덱스.
-        #   create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않으므로, 운영 DB에는 이 경로로만
-        #   반영된다(models.py AuditLog.__table_args__ 와 동일 정의 — 두 곳을 함께 고칠 것).
-        #   없으면 /dashboard/summary 의 재교정률 집계가 병렬 Seq Scan으로 떨어진다(실측 512ms/2.6M행).
-        print("\nStep 3.6: Creating audit_logs re-correction index...")
-        recorrection_idx = (
-            "idx_audit_user_recorrection", "audit_logs",
-            "(timestamp) INCLUDE (table_name, row_id, column_name, transaction_id) "
-            "WHERE source_name = 'user'",
-        )
-        idx_name, table, definition = recorrection_idx
-        print(f" - Creating {idx_name} on {table}...")
-        t0 = time.time()
-        try:
-            conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
-            print(f"   Success ({time.time() - t0:.2f}s)")
-        except Exception as e:
-            print(f"   Failed to create {idx_name}: {told(e)}")
-
         # 3.7 [V1 계기 — 완료까지의 상호작용 점수] interaction_effort_logs 집계/멱등성 인덱스.
         #   models.py InteractionEffortLog.__table_args__ 와 동일 정의 — **두 곳을 함께 고칠 것**.
         #   신규 설치에서는 create_all 이 테이블과 함께 만들지만, 테이블이 이미 존재하는 DB에는
-        #   create_all 이 인덱스를 추가하지 않으므로 이 경로가 유일한 반영 수단이다
-        #   (idx_audit_user_recorrection 이 정확히 그 이유로 여기 있다).
+        #   create_all 이 인덱스를 추가하지 않으므로 이 경로가 유일한 반영 수단이다.
         #
         #   - uq_effort_transaction : tx당 1행 불변식. 없으면 클라 재시도가 같은 공수를 두 번
         #     세어 세션 평균이 왜곡된다.
@@ -269,7 +249,7 @@ def setup_performance():
         # 3.8 [F3 값 제안] 접두 조회 인덱스 — `(lower(col) COLLATE "C", col COLLATE "C")`.
         #   **models.py에 선언하지 않는다.** 두 가지 이유가 겹친다:
         #     ① create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않는다
-        #        (idx_audit_user_recorrection·idx_effort_window이 여기 있는 바로 그 이유).
+        #        (idx_effort_window이 여기 있는 바로 그 이유).
         #     ② `COLLATE "C"`는 PostgreSQL 전용 표현이라 테스트 스위트의 sqlite
         #        create_all이 깨진다. 따라서 이 경로가 **유일한** 반영 수단이다.
         #
@@ -383,8 +363,7 @@ def setup_performance():
         #   `models.py CellSource.__table_args__` carries the SAME definition —
         #   **fix both places**. create_all builds it on a NEW database; on an
         #   existing one it never adds an index to a table that is already there,
-        #   so this step is the only path (idx_audit_user_recorrection, Step 3.6,
-        #   is here for that identical reason).
+        #   so this step is the only path.
         #
         #   Why it is needed: the existing composite is
         #   (table_name, row_id, column_name, source_name) — `source_name` LAST, so
