@@ -32,6 +32,7 @@ import {
   drawTableMenu,
   fetchData,
   addRows,
+  addPivotItem,
   deleteSelectedRows,
   checkChainHealth,
   seatWorldTabs,
@@ -878,6 +879,15 @@ function setupEventListeners() {
 
     await addRows(count);
   });
+
+  // Add an item in pivot view (owner 11-11) - its column on the screen until a value is written under it
+  if (elements.addItemBtn) {
+    elements.addItemBtn.addEventListener('click', () => {
+      const name = prompt('Item name:', '');
+      if (name === null) return;
+      addPivotItem(name);
+    });
+  }
 
   // Delete Selected Rows Button
   elements.deleteRowBtn.addEventListener('click', () => {

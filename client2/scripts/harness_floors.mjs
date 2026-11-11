@@ -1183,7 +1183,7 @@ export const FLOORS = new Map([
   // NEW 2026-10-22 (owner, lead ㄱ ①): the main grid's pivot - rows, columns, one cell's write, the narrowing, the footer's
   // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
   // the footer's unit ignored (N3) - each red alone.
-  ['grid_pivot_harness.mjs', 29],
+  ['grid_pivot_harness.mjs', 36],
   // new with the entered order and its places (owner 11-06): its count on the commit that adds it
   ['grid_order_harness.mjs', 16],
   // a cell's look (owner 11-06, lead L2): paint over rules, the later rule, columns, writer, the broadcast, the writes, a rule moved, the selection and its paints, a broadcast's answer, M1-M8
