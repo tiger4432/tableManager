@@ -76,7 +76,8 @@ export class DomPage {
       return this.openTab(address, fields, this.t.pair ? readColumn(h, this.t.pair.item) : null);
     }
     const limitMs = this.t.waitSeconds * 1000;
-    // the item before did not open: its late content first, or this item is kept unopened (never read as its content)
+    // the item before did not open: its late content first, or this item is kept unopened. Content later than twice the
+    // wait is not caught - the pane stood still and this item opens (QA 11-11, bench X7)
     if (this.late && !(await waitStill(() => this.print(), { limitMs }))) return { opened: false, detail: 'the item before opened late' };
     target.scrollIntoView({ block: 'nearest' });
     const before = this.print();

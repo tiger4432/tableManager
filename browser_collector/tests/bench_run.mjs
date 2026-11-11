@@ -60,6 +60,7 @@ const EXT_MUTANTS = {
   delete: ['background.js', '[[TABLES.fields, () => fieldRowsOf(p, t.name)], [TABLES.templates,', '[[TABLES.templates,'],
   shown: ['lib/open_check.js', 'return shown(el, win); });', 'return true; });'],
   settle: ['lib/page_dom.js', 'if (this.late && !(await waitStill(', 'if (false && !(await waitStill('],
+  sticky: ['lib/page_dom.js', 'this.late = !o.opened;', 'this.late = this.late || !o.opened;'],
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -240,7 +241,7 @@ async function crossBench() {
   const server = createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname !== '/x/') { res.writeHead(404); res.end(); return; }
-    const src = `${other.url}/api/v2/mail?page=1&delay=${Number(u.searchParams.get('delay') || 150)}`;
+    const src = `${other.url}/api/v2/mail?${new URLSearchParams({ page: '1', delay: '150', ...Object.fromEntries(u.searchParams) })}`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(readFileSync(path.join(HERE, 'frame_bench', 'host.html'), 'utf8').replace('src="/api/v2/mail?page=1"', `src="${src}"`));
   });
@@ -261,6 +262,8 @@ async function crossCases(chrome, ext, cb) {
     ['X1 two areas, opens in 0.15 s', 150, {}],
     ['X2 two areas, opens in 4 s (wait 3 s)', 4000, {}],
     ['X6 two areas, opens in 5 s (wait 3 s)', 5000, {}],
+    ['X7 two areas, opens in 7 s (wait 3 s) - past twice the wait', 7000, {}],
+    ['X8 one mail (#5) opens in 4 s among ones in 0.15 s', '150&slow=5', {}],
     ['X3 one area that two mails in a row share (the title)', 150, { content: '#reader-head' }],
     ['X4 frame pattern of the same port as the page', 150, { frame: `${cb.url.replace('http://', '')}/api/v2/mail*` }],
     ['X5 no frame pattern (the top page)', 150, { frame: '' }],
@@ -287,6 +290,8 @@ async function crossCases(chrome, ext, cb) {
   eq('X1 opens in time - 36 rows, each its own mail', [got.X1.rows, got.X1.wrong], [36, 0]);
   eq('X2 X6 opens later than the wait - no row holds the mail before it; every mail kept or its own',
     [got.X2.wrong, got.X2.rows + got.X2.kept, got.X6.wrong, got.X6.rows + got.X6.kept], [0, 36, 0, 36]);
+  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (under 60 s)',
+    [got.X8.kept, got.X8.rows, got.X8.wrong, got.X8.seconds < 60], [1, 35, 0, true]);
 }
 
 async function frameCases(chrome, ext, ask, fb) {
