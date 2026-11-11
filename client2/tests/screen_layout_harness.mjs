@@ -3412,7 +3412,9 @@ const DRIVE = {
       await evaluate(c, "(() => { const b = document.getElementById('table-back'); if (!b || b.disabled) return false; b.click(); return true; })()");
       await sleep(900);
       await settle(c, log);
-      await until(c, GRID_LOADED);
+      // the table before comes back from what it was left as - no read, so no «Loaded» line: the open table and its rows
+      await until(c, `(document.getElementById('table-select') || {}).value === ${JSON.stringify(names[names.length - 2])}
+        && Boolean(document.querySelector('#table-tabs .table-tab.is-open')) && document.querySelectorAll('#myGrid .ag-row').length > 0`);
     }],
     ['Open tables, the first table again', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__tabsFrom || sel.value === window.__tabsFrom) return true;
