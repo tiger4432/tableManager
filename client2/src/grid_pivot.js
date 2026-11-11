@@ -22,6 +22,17 @@ const NEW_ROW_PREFIX = 'pivot:new:';
 export const isNewPivotRow = (rowId) => typeof rowId === 'string' && rowId.startsWith(NEW_ROW_PREFIX);
 export const newPivotRows = (count, now = Date.now()) => Array.from({ length: count }, (_, i) => ({ row_id: `${NEW_ROW_PREFIX}${now}-${i}`, data: {} }));
 
+/** An item added in pivot view (owner 11-11 «피벗 상태에서 다이렉트로 아이템 추가»): its column on the screen alone, like a
+ *  new row - the first value written under it makes its long row, as any blank cell's does (`pivotUpdate`). {view, item,
+ *  refusal}: a blank name, or an item the view already shows, is refused and the view kept. */
+export const PIVOT_ITEM_BLANK_NOTE = 'Name the item';
+export function withItem(view, name) {
+  const item = String(name == null ? '' : name).trim();
+  if (!item) return { view, item, refusal: PIVOT_ITEM_BLANK_NOTE };
+  if (view.items.includes(item)) return { view, item, refusal: `«${item}» is already an item` };
+  return { view: { ...view, items: [...view.items, item] }, item, refusal: '' };
+}
+
 /** A paste, fill or clear reaching a carried column in pivot view - refused whole (owner 11-06): its value is its long
  *  rows', one or «N values». */
 export const PIVOT_CARRY_NOTE = 'Carried columns cannot be changed in pivot view';
