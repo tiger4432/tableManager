@@ -8295,15 +8295,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
 >            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
 >            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
-> ①c 겹친 층 접기            python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"   «로그 표» · «공식 표» · 인벤토리 차례로 · 표마다 같은 명령 한 번 더
->    초      dt_log 3.0 · 2.5 · official_dt 2.3 · 2.4 · dt_inventory 2.4 · 2.3
->    답      끝 줄 «[fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M whose row layer is there deleted, … S shown value(s) move» — 리허설(소급 실행 기록) «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 430 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 0 · differing 0 · without a source row 205 · copies 0 · shown 0 · layers 2755 -> 2755 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20
->            한 번 더: «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 430 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 0 · differing 0 · without a source row 205 · copies 0 · shown 0 · layers 2755 -> 2755 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20 — renamed · deleted · shown 이 0 이면 끝
->    뜻      원천 행을 찍은 옛 plain 체인 층이 그 행의 층 chain_ingestion (<행>) 이 된다(값 · 시각 그대로) — 그 뒤로 원천 행 하나를 거두면 그 행 층만 걷힘
->            원천 없는 plain 층(«without a source row»)은 남는다 — 결정 · 보류 · 맵 파생이 원천 없이 쓴 것(db928d441, 총괄 «다») · 키 칸 plain 층도 남는다(40b3a0f07)
->            체인 층 plain/행 층(표마다): 재기동 직후 dt_log=645/0 · official_dt=820/1935 -> ①c 뒤 dt_log=645/0 · official_dt=820/1935
->    화면     어드민 Retroactive -> «Fold layers that repeat another» -> table -> Count -> Run (Count 는 앞 200 행 견본, 표 전체 수는 Run 의 끝 줄)
->    박스     이 박스 dt_log 사본의 초 · 수는 이 파일 「체인 층은 원천 행마다 하나」 절의 「박스 수」 줄 · 서버를 켠 채로 돌린다(그 절 ⚠️ 줄)
+> ①c ⚰️ 겹친 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
 > ①d (이 pull «전»에 층 접기를 돌린 공식 표만) python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply   2.6 · 4.4 초 — ⑤ · ⑥ 전에
 >    답      source rows scanned : 127 · rows handed over : 127 — 공식 표 전부
 >    뜻      공식 표 키 칸의 plain 체인 층이 다시 선다 — 리허설 B(꼬임 7e2fc0575 · pull 전 그 코드로 공식 표 층 접기 -> pull 1a022befe): 키 칸 층 381 -> 접기 뒤 12 -> ①c 뒤 12 -> 이 명령 뒤 381 · 끝 상태 공식 행 200 · agreed 200 · 원자 200 · 키 밖 값 없는 행 0
@@ -9066,7 +9058,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ## [10-11] **층 접기는 키 칸의 체인 층을 안 건드린다 — 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남지 않는다 (응용 7e2fc0575 · 총괄 10-11, 착지 40b3a0f07) — 이주 «없음» · 재기동 «서버 · 스케줄러»**
 >
 > ```
-> 무엇        «Fold layers that repeat another» 가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
+> 무엇        층 접기(⚰️ 11-11 은퇴)가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
 >            그 층은 보류 다시 세기가 키를 쓰는 층 — 지우면, 그 키를 먹이던 원천 행 하나가 표시돼 거둬질 때 키 칸까지 비어
 >            다시 세기가 그 행을 못 찾고 hold 만 agreed 로 남았다(일요일 표 ⑦ 의 «알려진 것» 한 행)
 > 순서        pull -> 서버 · 스케줄러 재기동 (화면 Count 는 서버, 화면 Run 은 스케줄러가 돈다 · python -c 는 새 프로세스라 재기동 무관)
@@ -9090,9 +9082,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇        원천 행을 찍은 체인 쓰기(조인 · @mapper · 복사 규칙 · 접기 맵퍼)는 그 행의 층 chain_ingestion (<원천 행>) 에 써진다
 >            행 층은 체인 순위(4) — 같은 순위 안에서는 늦게 쓴 것. 합치기 사본(user (…) 등)은 오늘 순위 그대로
 > 순서        ① pull -> 체인 워커 · 서버 재기동
->            ② 체인이 쓴 표마다: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count -> Run
->               또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
->            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
+>            ② ⚰️ 체인이 쓴 표마다 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
 > Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
 >            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
 >                   M whose row's layer is already there go            원천이 찍힌 plain 인데 그 행 층이 이미 있음
@@ -12445,7 +12435,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
->              ② 같은 표에 "Fold layers that repeat another" — 철자만 달랐던 파일 층이 이제 같은 값
+>              ② ⚰️ 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
 >              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
@@ -12532,11 +12522,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
 >            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
 >            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
-> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count
->            문장 "layers N -> M, the deepest cell A -> B" — N-M 이 지울 수
->            (이 박스 1,000 행 x 5 칸 x 9 겹 픽스처: 46,000 -> 6,000 · 9 -> 1 · 1.2 s — 운영 규모는 안 쟀음)
->            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
->            끝나면: python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
+> 쌓인 것     ⚰️ 소급 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 값이 다시 오면 줄을 안 쓰고, 남은 것은 뒤의 «오래된 줄 정리»
 > 뜻         되돌릴 수 없음 — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐. 칸 값 · 이력 · 이기는 층은 그대로
 > 되돌리기    코드: git revert 98471a546 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴 (그 --grep 은 보고 커밋 461c6fdbd 를 먼저 집었다 · 09-26 — 단독 되돌리기는 충돌할 수 있음)
 > ```

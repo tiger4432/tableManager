@@ -134,15 +134,11 @@ def test_a_row_that_lost_require_is_taken_back_in_a_fresh_process(world, monkeyp
     assert (_layers_of(world, "B"), float(hw.official(world).netdie), hw.hold(world)) == (0, 7.0, "agreed")
 
 
-@pytest.mark.parametrize("folded", [False, True])
-def test_a_key_whose_only_row_is_marked_leaves_no_official_row_whether_or_not_the_layers_were_folded(world, folded):
-    """응용 일요일 판 7e2fc0575 (총괄 10-11): with the layer fold run at the restart the key was left behind - hold
-    agreed, no value - where the run before it took the row away."""
+def test_a_key_whose_only_row_is_marked_leaves_no_official_row(world):
+    """응용 일요일 판 7e2fc0575 (총괄 10-11): the key left behind - hold agreed, no value - was the defect."""
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7},
                     {"log_id": "B", "dt_job": "J2", "dt_x": 3, "dt_y": 4, "netdie": 5}])
     hw.settle(world)
-    if folded:
-        replay.fold_file_layers(world["db"], hw.OFFICIAL, apply=True, log=lambda m: None)
     crud.apply_batch_updates(world["db"], hw.LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
         row_id=_log(world)["B"][0], updates={MARK: "folded into A"}, source_name="user", updated_by="t")]))
     world["db"].commit()

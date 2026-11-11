@@ -208,7 +208,7 @@ class TestInventory:
         # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
         # the forward scan was the one the owner could only stop by restarting the server.
         # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
-        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658);
+        # ⚰️ `fold_file_layers` the same day (총괄 225b2c658), retired 11-11 - a repeat writes no line (owner ㄱ).
         # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
         # `ledger_catch_up` joined on 2026-10-04 - a world switched back on (총괄 71880678a).
         # `rule_rows` joined on 2026-10-06 - the rows a `run_in: operation` rule's group queued
@@ -223,7 +223,7 @@ class TestInventory:
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
-            "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
+            "set_aside", "rerun_set_aside", "fold_written_notation",
             "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
             "remove_shell_rows", "fold_units", "retype_column", "retype_declared_columns"}
 
