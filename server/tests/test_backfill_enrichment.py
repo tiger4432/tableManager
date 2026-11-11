@@ -289,6 +289,7 @@ def test_apply_creates_exactly_new_combinations(bkfl_env):
     pre_row = pre["EQP0_T0"]
     pre_snapshot = {c.name: getattr(pre_row, c.name) for c in pre_row.__table__.columns}
     pre_sources = sorted((s.column_name, s.source_name, str(s.value)) for s in _layer_list(db, pre_row.row_id))
+    assert pre_sources, "canary: the pre-existing row's layers are read - the seed wrote them"
 
     stats = bf.run_backfill(db, _rule(), apply=True, log=lambda *_: None)
     assert stats["created_rows"] == 3

@@ -466,6 +466,7 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         db.expire_all()
         assert _layer_rows(db) == [], (
             "the count route wrote a chain_ingestion layer to the target table")
+        assert _layer_rows(db, "pipeline_parser"), "canary: the witness reads the target's layers - the seed's"
 
     def test_a_sample_says_it_is_a_sample(self, client, retro_env):
         db = retro_env
@@ -780,6 +781,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         assert _derived_rows(db) == [], "the count route created derived rows"
         assert _backfill_layer_rows(db) == [], (
             "the count route wrote an enrichment_backfill layer")
+        assert _said(db, "retro_enrich_src"), "canary: the layer read sees this world's lines - the seed's"
 
     def test_an_unknown_rule_is_refused_by_name(self, client, retro_enrich_env):
         r = client.get("/admin/retroactive/enrichment_backfill/count?rule=nope")
@@ -960,6 +962,7 @@ class TestTheTriggerQueuesAndReturns:
         db.expire_all()
         assert _layer_rows(db) == [], (
             "the trigger route executed the run inline instead of queueing it")
+        assert _layer_rows(db, "pipeline_parser"), "canary: the witness reads the target's layers - the seed's"
 
     def test_a_scheduler_owned_op_still_gets_its_wake_up_row(self, client, retro_env,
                                                              admin_token):
