@@ -134,14 +134,14 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     at = _instant(db, table)
     targets, old, keys = _claim(db, table, cfg, now, items)
     claimed = dict(targets)
-    gated = _version_gate(table, cfg, items, targets, old)
+    gated, before = _version_gate(table, cfg, items, targets, old)
     held = shape["kinds"]                          # a line's text by what t holds, not the declaration (C)
-    plain = _plain(table, cfg, items, targets, old, held, keeps)
+    plain = _plain(table, cfg, items, targets, before, held, keeps)
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
     # a mark still merges its row again (a re-key it asks for)
-    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at) if keeps
+    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at) if keeps
                       else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
                             sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
     split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
@@ -256,7 +256,7 @@ def _open(db):
         connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-def _plain(table, cfg, items, targets, old, held, keeps) -> dict:
+def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
     """A write's columns of no history (`crud.keeps_history`, `no_history_columns` - state cells written every few
     seconds; lead 11-11 ㄴ) leave no line and no audit: their value goes to t as it is - the «a column of no line is t's
     value» rule's case, no new mechanism. Taken out of the item's values here, after the claim and the version gate
@@ -270,11 +270,11 @@ def _plain(table, cfg, items, targets, old, held, keeps) -> dict:
         if not free:
             continue
         it["values"] = {c: v for c, v in it["values"].items() if c not in free}
-        was = old.get(targets[i]) or {}
+        was = before.get(i)                        # the row this item meets (`_version_gate`), None: new
         said = {c: crud.line_value(crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
                                                   held.get(c, "string")), held.get(c, "string"))
                 for c, v in free.items()}
-        said = {c: v for c, v in said.items() if targets[i] not in old or was.get(c) != v}
+        said = {c: v for c, v in said.items() if was is None or was.get(c) != v}
         if said:
             out[i] = said
     return out
@@ -377,30 +377,37 @@ def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
         del wanted[bk]
 
 
-def _version_gate(table, cfg, items, targets, old) -> dict:
-    """Step 1's other half - a write to a version-gated table (`version_column`) is judged against the current line
-    step 1 locked, by `crud.version_gate_verdict`, the row taken or refused whole. A refused item leaves `targets`.
-    -> {reason: items refused}."""
+def _version_gate(table, cfg, items, targets, old) -> tuple:
+    """Step 1's other half - each item, in its order, meets its row as the batch's earlier items left it: the
+    current line step 1 locked, with the values of the writes taken before it (None: a row the batch makes). THE
+    seat of «was this row there before this item» - step 2's asking and `_plain` read `before`; the work kind asks
+    «was it there before the batch» (`old` - a row the batch made is «new» in its audit however many items wrote it)
+    (the old write's row_cache and is_new, lead 11-11: [v2, v1] on one key both went through and v1 showed). A write
+    to a version-gated table (`version_column`) is judged on that row by `crud.version_gate_verdict`, taken or
+    refused whole; a refused one leaves `targets` and the row as it was.
+    -> ({reason: items refused}, {item index: the row it meets, None: new})."""
     from types import SimpleNamespace
 
-    if not cfg.get("version_column"):
-        return {}
-    gated = {}
+    gate = bool(cfg.get("version_column"))
+    gated, rows, before = {}, {}, {}
     for i in sorted(targets):
-        it = items[i]
-        if it["line_kind"] != WRITE or it.get("version_judged"):
-            continue
-        applied, reason = crud.version_gate_verdict(
-            table, cfg, SimpleNamespace(**(old.get(targets[i]) or {})), targets[i] not in old,
-            SimpleNamespace(source_name=it.get("source_name"), updates=it.get("values") or {}))
-        if not applied:
-            del targets[i]
-        if reason is not None:
-            gated[reason] = gated.get(reason, 0) + 1
-    return gated
+        it, row_id = items[i], targets[i]
+        was = rows[row_id] if row_id in rows else old.get(row_id)
+        if gate and it["line_kind"] == WRITE and not it.get("version_judged"):
+            applied, reason = crud.version_gate_verdict(
+                table, cfg, SimpleNamespace(**(was or {})), was is None,
+                SimpleNamespace(source_name=it.get("source_name"), updates=it.get("values") or {}))
+            if reason is not None:
+                gated[reason] = gated.get(reason, 0) + 1
+            if not applied:
+                del targets[i]
+                continue
+        before[i] = was
+        rows[row_id] = dict(was or {}, **(it.get("values") or {})) if it["line_kind"] == WRITE else (was or {})
+    return gated, before
 
 
-def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
+def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at):
     """Step 2 - the items that change something, judged in their order on the head lines as the batch's earlier
     items left them (a batch's last word wins - lead 11-11; its lines share an instant and the later line wins, C's
     rank_terms 2c). A write's column is left out when its source's head
@@ -420,11 +427,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, old, at):
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
                                                                  in (WRITE, WITHDRAW)}, columns).items():
         heads.setdefault(row_id, {})[source] = said
-    asking, there = [], set(old)                   # a row an earlier item of the batch made is there (the old is_new)
-    for i in sorted(targets):
-        if items[i]["line_kind"] == WRITE and _asks_others(items[i], targets[i] in there):
-            asking.append(i)
-        there.add(targets[i])
+    asking = [i for i in writes if _asks_others(items[i], before.get(i) is not None)]   # `_version_gate`'s seat
     pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
                                                        {c for i in asking for c in items[i]["values"]}).items()}
             if asking else {})
