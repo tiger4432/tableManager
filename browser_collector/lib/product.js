@@ -51,7 +51,7 @@ export class Product {
 
   /** Of the rows `cellsList`, the keys (`keys` columns joined by «|») `table` already has -> {have: Set of keys, tooLong: Set of
    *  first-key values whose read the server refused as too long}. The values go in reads of at most URL_BUDGET each (owner
-   *  11-11 «uri too large»); one value past it is asked alone. Any other refused read throws its sentence. */
+   *  11-11 «uri too large»); one value past it is asked alone. Any other refused or unreached read throws its sentence. */
   async existing(table, keys, cellsList) {
     const have = new Set();
     const tooLong = new Set();
@@ -66,7 +66,8 @@ export class Product {
     const joined = (row) => keys.map((k) => (row[k] === null || row[k] === undefined ? '' : String(row[k]))).join('|');
     for (const values of parts) {
       const r = await this.rows(table, { [keys[0]]: values }, opts(values));
-      if (r.status === 414 && values.length === 1) { tooLong.add(values[0]); continue; }
+      // one value past the budget, refused (414) or its connection cut (status 0, a proxy's way): that value only
+      if (values.length === 1 && (r.status === 414 || (r.status === 0 && !fits(values)))) { tooLong.add(values[0]); continue; }
       if (!r.ok) throw Object.assign(new Error(r.detail), { status: r.status });
       for (const row of r.rows) have.add(joined(row));
     }
