@@ -1257,6 +1257,41 @@ class TestTheSchedulerRunsItOffTheTickThread:
         assert state == retroactive.RUN_FAILED and "runner gone" in error and "WinError 10106" in error, states
         assert spawned == [held, queued["run_id"]] and states[queued["run_id"]][0] == retroactive.RUN_RUNNING
 
+    def test_a_queued_run_of_a_retired_op_ends_failed_with_why_on_the_tick(self, retro_env, monkeypatch, tmp_path):
+        """총괄 11-11: the screen draws no line for a queued retired run (it rides the scheduler's outbox row), so the
+        owner's way out is the tick itself - claimed, handed to its child, and the child's judgement ends it failed
+        with why. The child runs here in process (`run_claimed`), the queue behind it is not held."""
+        import paths
+        import run_auto_update
+
+        monkeypatch.setattr(paths, "log_path", lambda name: str(tmp_path / name))
+        spawned = []
+
+        def child(run_id, log=None):
+            spawned.append(run_id)
+            with pytest.raises(retroactive.RetroactiveRefused):
+                retroactive.run_claimed(run_id)
+            return 4242
+
+        monkeypatch.setattr(retroactive, "spawn_claimed", child)
+        run = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target", "source": "s"})
+        retro_env.get(models.RetroactiveRun, run["run_id"]).op = "reread_files"     # retired 10-09
+        for ob in retro_env.query(models.DatabaseOutbox).all():
+            pay = ob.payload if isinstance(ob.payload, dict) else json.loads(ob.payload)
+            if pay.get("run_id") == run["run_id"]:
+                ob.payload = {**pay, "op": "reread_files"}
+        retro_env.commit()
+        with pytest.raises(retroactive.RetroactiveRefused):
+            retroactive.operation("reread_files")                                    # canary: it is retired
+        run_auto_update.MultiDiscoveryScheduler.__new__(run_auto_update.MultiDiscoveryScheduler) \
+            .handle_retroactive_trigger(retro_env)
+        retro_env.expire_all()
+        row = retro_env.get(models.RetroactiveRun, run["run_id"])
+        assert spawned == [run["run_id"]]
+        assert (row.state, "unknown retroactive operation 'reread_files'" in (row.error or "")) == (
+            retroactive.RUN_FAILED, True), (row.state, row.error)
+        assert retroactive.in_flight(retro_env) is None, "nothing holds the gate after one tick"
+
     def test_the_scheduler_consumes_the_declared_event_type(self):
         """The subject here IS the text: does the scheduler NAME the shared constant, or
         does it spell the string again? A second spelling is how the publisher and the

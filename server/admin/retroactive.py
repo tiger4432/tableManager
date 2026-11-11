@@ -2972,6 +2972,10 @@ MOVING_UNREPORTED = "unreported"
 CANCEL_AT_NEXT_BATCH = "at_next_batch"
 CANCEL_UNKNOWN = "unknown"
 CANCEL_NEVER = "never"
+#: A × that releases the row: it is queued (the server ends it on the spot) or no process runs it any more
+#: (`_nobody_runs` - the question `request_cancel` asks), whatever its operation - a retired one too (owner 10-11:
+#: a retired op's running row held the queue and the screen drew no ×).
+CANCEL_RELEASES = "releases"
 
 #: The states in which a run still holds the scheduler's gate closed.
 #:
@@ -3249,8 +3253,10 @@ def _described(row, now, stall_after, stages):
     try:
         cancellable = bool(operation(row.op)["cancellable"])
     except RetroactiveRefused:
-        cancellable = False
-    if not cancellable:
+        cancellable = False                               # a retired operation - no batch boundary to stop at
+    if row.state == RUN_QUEUED or (not cancellable and _nobody_runs(row)):
+        cancel = CANCEL_RELEASES
+    elif not cancellable:
         cancel = CANCEL_NEVER
     elif moving == MOVING_PROGRESSING:
         cancel = CANCEL_AT_NEXT_BATCH
@@ -3784,6 +3790,16 @@ class RunControl:
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
 
 
+def _nobody_runs(row) -> bool:
+    """No process runs this row any more - its runner is orphaned by the heartbeat, no fresh beat holds it, and its pid
+    is not alive here. THE question a × asks before it releases a row (`request_cancel`) and the run list asks before
+    it offers one (`_described`)."""
+    from utils import heartbeat
+
+    return (_runner_state(row.runner) == "orphaned" and not heartbeat.beat_holds(row.run_id)
+            and heartbeat.pid_here(row.runner, row.run_id, _since(row.started_at)) is not True)
+
+
 def _since(started_at):
     """A run's claim as epoch seconds - what `heartbeat.pid_here` holds a runner's start against; None stays None."""
     return None if started_at is None else _utc(started_at).timestamp()
@@ -3888,12 +3904,10 @@ def request_cancel(db, run_id: str) -> dict:
                  .filter(models.RetroactiveRun.run_id == run_id).first())
         return {"run_id": run_id, "op": op,
                 "state": moved.state if moved else None, "released": True}
-    from utils import heartbeat
 
     # A runner alive here (a child just started, no beat yet) or a run a fresh beat holds is asked like any other:
     # judgement ① releases «the process that started it is GONE» (lead 11-09: × released a healthy child).
-    if (_runner_state(runner) == "orphaned" and not heartbeat.beat_holds(run_id)
-            and heartbeat.pid_here(runner, run_id, _since(row.started_at)) is not True):
+    if _nobody_runs(row):
         # 🔴 `failed`, NOT `cancelled` (총괄 판정 ①). Nobody stopped it - the process
         #    died - and its work did not finish and never will. `cancelled` would tell the
         #    operator they stopped it themselves, which is not true, and it is the word a
