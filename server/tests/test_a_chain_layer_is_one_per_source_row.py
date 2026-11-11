@@ -28,6 +28,7 @@ from chain import ingestion_worker as worker                        # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.database import Base                                  # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 SRC, TGT, LEFT, RIGHT = "cl_src", "cl_tgt", "cl_left", "cl_right"
 TABLES = {SRC: {"business_key": "s", "composite_key_source": ["s"],
@@ -61,6 +62,8 @@ def fixture_db():
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    for name in TABLES:
+        line_tables.build(engine, name)            # a cell's layers are its lines' (A 11-11)
     mapper_sdk.register("cl_mapper", _copy)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
@@ -109,8 +112,15 @@ def _cell(db, key="K", column="x"):
     """(shown value, {layer: value}) of the target's cell."""
     db.expire_all()
     row = db.query(models.DYNAMIC_TABLES[TGT]).filter_by(business_key_val=key).one()
-    return getattr(row, column), {s.source_name: s.value for s in db.query(models.CellSource).filter_by(
-        table_name=TGT, row_id=row.row_id, column_name=column)}
+    return getattr(row, column), _layers(db, TGT, row.row_id, column)
+
+
+def _layers(db, table, row_id, column):
+    """{source: value} - the cell's standing layers (lines.layers)."""
+    from database import lines
+
+    return {name: layer["value"] for name, layer in
+            lines.layers(db, table, [row_id], columns=[column]).get((row_id, column), {}).items()}
 
 
 def _row_layer(db, source_key):
@@ -191,8 +201,7 @@ def test_a_left_row_that_matches_another_right_row_keeps_the_first_rows_layer_an
     _drain(db, rules)
     db.expire_all()
     row = db.query(models.DYNAMIC_TABLES[LEFT]).filter_by(business_key_val="L1").one()
-    layers = {s.source_name: s.value for s in db.query(models.CellSource).filter_by(
-        table_name=LEFT, row_id=row.row_id, column_name="lot")}
+    layers = _layers(db, LEFT, row.row_id, "lot")
     assert (row.lot, layers) == ("B", {crud.owned_layer_name(JOIN["name"], "J2"): "B"})
 
 

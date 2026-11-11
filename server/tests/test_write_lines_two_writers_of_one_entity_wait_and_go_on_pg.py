@@ -182,3 +182,31 @@ def test_a_table_without_its_key_index_still_takes_new_keys_the_old_way(pg_engin
         s.execute(text('DROP TABLE IF EXISTS "%s"' % name))
         s.commit()
         s.close()
+
+
+def test_at_one_instant_step_two_asks_the_later_line_on_postgresql(sessions, monkeypatch):
+    """A 11-11, rank 2c where `at` reads back with its zone: a.csv x then b.csv y at one instant - a chain's x is no
+    repeat of what the cell shows (y) and is written; and the same with b.csv's line in the chain's own batch (not
+    numbered yet, ranked after every stored line)."""
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    s = sessions()
+
+    def write(tx, *items):
+        return write_lines(s, TABLE, list(items), kind="funnel", transaction_id=tx)
+
+    try:
+        [r1] = write("t1", {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+        [r2] = write("t2", {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "a.csv"})["changed"]
+        write("t3", {"row_id": r1, "values": {"a": "y"}, "source_name": "b.csv"})
+        write("t4", {"row_id": r1, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE})
+        write("t5", {"row_id": r2, "values": {"a": "y"}, "source_name": "b.csv"},
+              {"row_id": r2, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE})
+        s.commit()
+        said = lines.layers(s, TABLE, [r1, r2])
+        assert {r: sorted(said[(r, "a")]) for r in (r1, r2)} == {
+            r: ["a.csv", "b.csv", crud.CHAIN_SOURCE] for r in (r1, r2)}, said
+    finally:
+        s.rollback()
+        s.close()

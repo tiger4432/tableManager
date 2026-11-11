@@ -173,23 +173,23 @@ def test_a_colliding_row_is_merged_into_the_holder_and_a_persons_value_stays(db,
     plan, merged = _apply(db, table)
     assert plan["collisions"] == [(shell, holder)] and merged == [shell]
     assert [r[0] for r in _rows(db, table, "L1")] == [holder]          # one row: the holder
+    from database import lines
+
     with db["engine"].connect() as conn:
         v = conn.execute(text('SELECT v FROM "%s"."%s" WHERE row_id = :r' % (PG_TEST_SCHEMA, table)),
                          {"r": holder}).scalar()
-        layers = conn.execute(text('SELECT source_name FROM "%s".cell_sources WHERE table_name = :t '
-                                   "AND row_id = :r AND column_name = 'v'" % PG_TEST_SCHEMA),
-                              {"t": table, "r": holder}).scalars().all()
-        merges = conn.execute(text('SELECT count(*) FROM "%s".audit_logs WHERE table_name = :t '
-                                   "AND source_name = 'collision_merge'" % PG_TEST_SCHEMA),
-                              {"t": table}).scalar()
+        merges = conn.execute(text('SELECT count(*) FROM "%s".audit_batches WHERE table_name = :t '
+                                   "AND work_kind = 'merge'" % PG_TEST_SCHEMA), {"t": table}).scalar()
+        overwrites = conn.execute(text('SELECT count(*) FROM "%s".cell_overwrites WHERE table_name = :t '
+                                       "AND row_id = :r" % PG_TEST_SCHEMA), {"t": table, "r": shell}).scalar()
+    said = lines.layers(db["db"], table, [holder, shell])                # the layers are the lines' (A 11-11)
+    layers = sorted(said.get((holder, "v"), {}))
     assert v == "person", (v, layers)                                 # the person's value stays
     assert "chain:a" in layers and any(                               # the shell's layer came over,
         layer.startswith("user (") for layer in layers), layers       # named by the merge body
     assert merges >= 1
-    with db["engine"].connect() as conn:                               # 총괄 a13fcf00c
-        assert [conn.execute(text('SELECT count(*) FROM "%s".%s WHERE table_name = :t AND row_id = :r'
-                                  % (PG_TEST_SCHEMA, side)), {"t": table, "r": shell}).scalar()
-                for side in ("cell_sources", "cell_overwrites")] == [0, 0]  # the shell's are gone
+    # 총괄 a13fcf00c: the shell's are gone - no standing layer, no overwrite mark
+    assert ([cell for cell in said if cell[0] == shell], overwrites) == ([], 0)
     again = _plan(db, table)
     assert (again["pending"], again["collisions"]) == ([], [])          # run again: nothing
 
