@@ -313,7 +313,8 @@ def apply_search_filter(query, table_model, table_name, q, cols,
 
 def transaction_rows(db, table_model, table_name, transaction_id):
     """The rows transaction `transaction_id` changed, as a filter: the rows of its lines (cell-source overhaul - the
-    (batch) index; a formula writes lines too, C 11-10); none in a relation without lines."""
+    (batch) index) and the rows its receipts name (`crud.receipt_row_ids` - a formula's write keeps a receipt and no
+    line a row, owner 11-12 ㄴ); none in a relation without lines."""
     import sqlalchemy as sa
 
     from admin import audit_history
@@ -322,7 +323,11 @@ def transaction_rows(db, table_model, table_name, transaction_id):
     refuse_row_address(table_name)
     if not lines.has_lines(db, table_name):
         return sa.false()
-    return table_model.row_id.in_(audit_history.group_line_rows(table_name, transaction_id))
+    from database import crud
+
+    lined = table_model.row_id.in_(audit_history.group_line_rows(table_name, transaction_id))
+    named = list(crud.receipt_row_ids(db, table_name, transaction_id))
+    return sa.or_(lined, table_model.row_id.in_(named)) if named else lined
 
 
 def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
