@@ -111,6 +111,28 @@
 - 복사: 작은 판에서 초당 약 7,500 칸이다. 박스 NVMe 수이고, 운영 HDD 는 안 쟀다.
 - 쓰기 한 번의 카탈로그: shape 한 번 17.9 ms(표 1,183 개). 쓰기 한 번에 shape 1 번, 저장 타입 읽기 1 번으로 줄였다(68c8145ef + A a-shape-once).
 
+## 11-14 관문 — 옛 두 표를 묻는 자리를 다시 센다
+
+착지할 트리(아래 `<ref>`)에서 센다. 낱말 셈이라 주석 · 독스트링도 걸린다 — 걸린 줄을 열어 «읽거나 쓰는 자리» 만 함수 이름으로 관문 글에 적는다. 카나리아가 0 이면 셈이 고장 난 것이다(수를 적지 않는다).
+
+```bash
+git grep -n -w -E "CellSource|CellSourceModel|cell_sources" <ref> -- server ':!server/tests'
+```
+```bash
+git grep -c "def copy_page" <ref> -- server/database/line_migration.py
+```
+- 기대(소유자 ② «착지 때 cell_sources 쓰기 0»): 쓰는 자리 0. 읽는 자리는 복사(line_migration 의 copy_page · copy_total · copied_through) · 되돌리기(B 의 write_back) · 모델 정의뿐. 그 밖이 남으면 그 이름이 관문 글에 오른다.
+- 11-11 c-reads 8123a3895 ~ 839f67b64 에서 이 낱말이 걸린 파일은 54 개다(git grep -l, 카나리아 1). 줄 단위로 열어 본 수가 아니다.
+
+```bash
+git grep -n -w -E "AuditLog|audit_logs" <ref> -- server ':!server/tests'
+```
+```bash
+git grep -c "def write_lines" <ref> -- server/database/write_lines.py
+```
+- 기대(«감사 로그» 절 — audit_logs 는 착지 날 완전 은퇴): 읽거나 쓰는 함수 0. 남는 것은 모델 정의뿐. 그 밖이 남으면 그 이름이 관문 글에 오른다.
+- 같은 날 같은 트리에서 걸린 파일은 35 개다(카나리아 1). 역시 줄 단위로 열어 본 수가 아니다.
+
 ## 이 착지 밖
 
 - 선언의 원본을 시스템 표 행으로(소유자 11-10 ㄱ, 다음 라운드).
