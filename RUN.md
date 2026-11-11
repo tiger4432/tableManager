@@ -9495,6 +9495,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 이제 화면 × 로   대기열 화면 그 running 줄의 × — 돌리는 프로세스가 없으면 놓임(failed), 살아 있으면 × 없음
+> queued 는 그대로  화면에 줄 없음 — 스케줄러 다음 틱이 집어 자식이 failed(unknown retroactive operation 'reread_files')로 끝냄, 뒤 줄 안 막음
 > ```
 >
 > ---
