@@ -93,7 +93,12 @@ WITHDRAW_PLAN_MIN_ROWS = 100_000
 
 
 def _verify_withdraw_plan(conn, idx_name):
-    """EXPLAIN the two statements the R2 withdraw path issues; prove the index BOUNDS them.
+    """EXPLAIN two statements over the claimed lines; prove the index BOUNDS them.
+
+    🔴 NOTHING CALLS THIS since 9acf4243e (indexes are the models' declarations; the chain worker builds
+    them). Kept as it was, and what it checks is narrower than the route: its first probe is a plain count over the
+    lines `_claimed_filter` matches, not `count_withdrawable`'s read grouped by head/withdrawn bits, and its row
+    floor and probe pair still read `cell_sources` (both below).
 
     Same discipline as Step 3.9 and for the same reason: "CREATE INDEX ...
     Success" proves the index EXISTS, which is a different fact from the planner
@@ -107,8 +112,8 @@ def _verify_withdraw_plan(conn, idx_name):
     a range would fail a healthy index.
 
     The predicate is compiled from `chain_replay._claimed_filter`, the single
-    builder `count_withdrawable` and `withdraw_source` share, so the plan
-    verified cannot drift from the plan served. The probe pair is the LARGEST
+    builder `count_withdrawable` and `withdraw_source` share - the predicate, not
+    the statements around it. The probe pair is the LARGEST
     real (table_name, source_name) in the data — a literal that matches nothing
     produces a plan that proves nothing, and the worst case is the case worth
     proving.
@@ -148,14 +153,14 @@ def _verify_withdraw_plan(conn, idx_name):
     with Session(conn) as db:
         lt, bits = claimed_lines(db, table)
     conds = replay._claimed_filter(lt, bits, source)
-    # The two shapes the missing index actually cost: the count route's aggregate
-    # and `withdraw_source` step 1's (row_id, column_name) projection. The pinned
+    # A plain count over the claimed lines (the count route groups them by bits instead)
+    # and a (row_id, source_name) projection of `withdraw_source` step 1's predicate (step 1 reads whole lines). The pinned
     # JOIN in `count_withdrawable` is deliberately NOT checked here — the planner
     # drives it from `cell_overwrites` (bounded by the number of manual pins, not
     # by cell_sources), so it does not exercise this index and its unrelated seq
     # scan would be miscounted as this index failing.
     probes = [
-        ("count route / cells_claimed",
+        ("claimed lines count",
          select(func.count()).select_from(lt).where(*conds)),
         ("withdraw_source step 1",
          select(lt.c.row_id, lt.c.source_name).where(*conds)),

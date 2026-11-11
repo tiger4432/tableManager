@@ -1201,56 +1201,45 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Two aggregate queries, no row materialisation, no per-cell recompute - so this
-    is the half of `withdraw_source` that can sit on a request path. The first
-    counts the source's claims among the table's layers - the source is the lookup
-    index's last column (`idx_sources_by_source` is retired, S-118; `withdraw_source`
-    step 1); the second is driven from `cell_overwrites` and is therefore
-    bounded by the number of manual pins, not by `cell_sources`.
+    Two reads of the lines the source claims on rows t holds, grouped by a line's head/withdrawn bits - no row
+    materialisation, no per-cell recompute. A line whose row is gone is left out by the join on t: the run never
+    reaches it, since it pages t's own rows (`resolve_target`'s model) and asks their lines by id. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
+    this source on a cell its lines claim.
 
-    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
-    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
-    gaps are worth naming because a surface that reported it as exact would
-    overstate the operation:
+    Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
+    judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
 
-      * a `cell_sources` row whose dynamic row no longer exists is counted here and
-        skipped there (`withdraw_source` looks the row up and `continue`s on None),
-      * and `cells_withdrawn` is itself larger than the number of cells whose
-        DISPLAYED value changes, because the revealed source may carry the same
-        value (`value_unchanged`).
-
-    Closing either gap requires the per-cell recompute that is the run itself.
+    Returns ``{cells_claimed, pinned}`` - the run's `cells_matched` and `pinned_skipped`, so ``cells_claimed - pinned``
+    is its `cells_withdrawn` (the gate test holds them equal). That is still more than the cells whose DISPLAYED value
+    changes, because the revealed source may carry the same value (`value_unchanged`); closing that gap is the
+    per-cell recompute that is the run itself.
     """
-    from sqlalchemy import and_, case, func
+    from sqlalchemy import func, select
 
-    from chain.cell_layer import claimed_lines
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from database import models
 
-    # lines now: a claimed line may say several columns - B rewrites this body to cells (C 11-11 handover)
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
-    claimed = db.query(func.count()).select_from(lt).filter(*claims).scalar() or 0
+    rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
+    held = lt.join(rows, rows.c.row_id == lt.c.row_id)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    n = func.count().label("n")
+    claimed = sum(g["n"] * len(_claimed_cells(g, bits, columns))
+                  for g in db.execute(select(*said, n).select_from(held).where(*claims).group_by(*said)).mappings())
 
-    # Cells this source claims AND a human pinned TO this source. Joined rather
-    # than counted separately: a pin naming this source on a cell it does not
-    # claim changes nothing, and counting it would understate the result.
-    pinned = db.query(func.count()).select_from(lt).join(
-        models.CellOverwrite,
-        and_(models.CellOverwrite.table_name == table_name,
-             models.CellOverwrite.row_id == lt.c.row_id,
-             models.CellOverwrite.column_name.in_(list(columns or bits))),
-    ).filter(
-        *claims,
-        models.CellOverwrite.manual_priority_source == lt.c.source_name,
-    ).scalar() or 0
+    # Cells this source claims AND a human pinned TO this source - the pin's column among the line's claimed cells:
+    # a pin naming this source on a cell it does not claim changes nothing, and counting it would overstate.
+    co = models.CellOverwrite
+    pinned = sum(g["n"] for g in db.execute(
+        select(co.column_name, *said, n).select_from(held)
+        .join(co, and_(co.table_name == table_name, co.row_id == lt.c.row_id,
+                       co.manual_priority_source == lt.c.source_name))
+        .where(*claims).group_by(co.column_name, *said)).mappings()
+        if g["column_name"] in _claimed_cells(g, bits, columns))
 
-    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
-    # a pinned cell, or a value no layer carries, keeps one.
-    whole = (db.query(lt.c.row_id).filter(lt.c.head_0 != 0).group_by(lt.c.row_id)
-             .having(func.min(case((and_(*claims), 1), else_=0)) == 1).subquery())
-    emptied = db.query(func.count()).select_from(whole).scalar() or 0
-
-    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
 
 
 
