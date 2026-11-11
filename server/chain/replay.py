@@ -1201,56 +1201,45 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Two aggregate queries, no row materialisation, no per-cell recompute - so this
-    is the half of `withdraw_source` that can sit on a request path. The first
-    counts the source's claims among the table's layers - the source is the lookup
-    index's last column (`idx_sources_by_source` is retired, S-118; `withdraw_source`
-    step 1); the second is driven from `cell_overwrites` and is therefore
-    bounded by the number of manual pins, not by `cell_sources`.
+    Two reads of the lines the source claims on rows t holds, grouped by a line's head/withdrawn bits - no row
+    materialisation, no per-cell recompute. A line whose row is gone is left out by the join on t: the run never
+    reaches it, since it pages t's own rows (`resolve_target`'s model) and asks their lines by id. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
+    this source on a cell its lines claim.
 
-    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
-    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
-    gaps are worth naming because a surface that reported it as exact would
-    overstate the operation:
+    Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
+    judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
 
-      * a `cell_sources` row whose dynamic row no longer exists is counted here and
-        skipped there (`withdraw_source` looks the row up and `continue`s on None),
-      * and `cells_withdrawn` is itself larger than the number of cells whose
-        DISPLAYED value changes, because the revealed source may carry the same
-        value (`value_unchanged`).
-
-    Closing either gap requires the per-cell recompute that is the run itself.
+    Returns ``{cells_claimed, pinned}`` - the run's `cells_matched` and `pinned_skipped`, so ``cells_claimed - pinned``
+    is its `cells_withdrawn` (the gate test holds them equal). That is still more than the cells whose DISPLAYED value
+    changes, because the revealed source may carry the same value (`value_unchanged`); closing that gap is the
+    per-cell recompute that is the run itself.
     """
-    from sqlalchemy import and_, case, func
+    from sqlalchemy import func, select
 
-    from chain.cell_layer import claimed_lines
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from database import models
 
-    # lines now: a claimed line may say several columns - B rewrites this body to cells (C 11-11 handover)
     lt, bits = claimed_lines(db, table_name)
     claims = _claimed_filter(lt, bits, source_name, columns, written_by)
-    claimed = db.query(func.count()).select_from(lt).filter(*claims).scalar() or 0
+    rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
+    held = lt.join(rows, rows.c.row_id == lt.c.row_id)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    n = func.count().label("n")
+    claimed = sum(g["n"] * len(_claimed_cells(g, bits, columns))
+                  for g in db.execute(select(*said, n).select_from(held).where(*claims).group_by(*said)).mappings())
 
-    # Cells this source claims AND a human pinned TO this source. Joined rather
-    # than counted separately: a pin naming this source on a cell it does not
-    # claim changes nothing, and counting it would understate the result.
-    pinned = db.query(func.count()).select_from(lt).join(
-        models.CellOverwrite,
-        and_(models.CellOverwrite.table_name == table_name,
-             models.CellOverwrite.row_id == lt.c.row_id,
-             models.CellOverwrite.column_name.in_(list(columns or bits))),
-    ).filter(
-        *claims,
-        models.CellOverwrite.manual_priority_source == lt.c.source_name,
-    ).scalar() or 0
+    # Cells this source claims AND a human pinned TO this source - the pin's column among the line's claimed cells:
+    # a pin naming this source on a cell it does not claim changes nothing, and counting it would overstate.
+    co = models.CellOverwrite
+    pinned = sum(g["n"] for g in db.execute(
+        select(co.column_name, *said, n).select_from(held)
+        .join(co, and_(co.table_name == table_name, co.row_id == lt.c.row_id,
+                       co.manual_priority_source == lt.c.source_name))
+        .where(*claims).group_by(co.column_name, *said)).mappings()
+        if g["column_name"] in _claimed_cells(g, bits, columns))
 
-    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
-    # a pinned cell, or a value no layer carries, keeps one.
-    whole = (db.query(lt.c.row_id).filter(lt.c.head_0 != 0).group_by(lt.c.row_id)
-             .having(func.min(case((and_(*claims), 1), else_=0)) == 1).subquery())
-    emptied = db.query(func.count()).select_from(whole).scalar() or 0
-
-    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
 
 
 
@@ -1261,145 +1250,13 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
 def _write_resolved(db, table_name, row, col, decision, tx_id):
     """R3's write of a cell whose stored layers answer another value: the column and one history line
-    (`R3_AUDIT_SOURCE`, `resolved:<winner>`). The layer fold writes the cells it moves the same way."""
+    (`R3_AUDIT_SOURCE`, `resolved:<winner>`)."""
     from database import crud
 
     setattr(row, col, decision["new_value"])
     crud.create_audit_log(db, table_name, row.row_id, col, decision["old_value"], decision["new_value"],
                           R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}", transaction_id=tx_id,
                           business_key=getattr(row, "business_key_val", None))
-
-
-#: Cells each of the fold's lists names, for the dry run (총괄 4dd303f01 「앞 다섯」).
-FOLD_SAMPLE = 5
-
-
-def fold_file_layers(db, table_name: str, apply: bool = False,
-                     chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None, pace: str = None,
-                     log=logger.info, checkpoint=None) -> dict:
-    """The layer fold over what one table has already stacked (총괄 225b2c658 · 8ec008914 · 4dd303f01) -
-    the write path stops the stacking, this removes what stacked before it. The name is the first
-    fold's: old run records and the CLI name it.
-
-    Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
-    with a source row becomes that row's (`chain_ingestion (<row>)`), or goes when that row's layer is
-    there; one with no source row stays (총괄 10-11 «다»), and so does a key column's. A cell of two layers and more holding a chain row layer,
-    whose layers now answer another value (a row layer ranks as the chain's), gets R3's write - the
-    value and one history line. One commit per page; a stop lands between pages and a re-run finds
-    only what is left.
-    """
-    from sqlalchemy import literal, update
-
-    from database import crud, models
-
-    from chain import keyset_scan
-
-    model, col_types = resolve_target(table_name)
-    keys = key_columns(table_name)
-    pages_per_cycle, rest_seconds = resolve_pace(pace)
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
-             "layers_before": 0, "layers_after": 0, "deepest_before": 0, "deepest_after": 0,
-             "chain_renamed": 0, "chain_deleted": 0, "chain_unstamped": 0, "chain_differs": 0,
-             "chain_copies": 0, "shown_changed": 0,
-             "first": {"chain_differs": [], "chain_copies": [], "shown_changed": []}, "stopped": False}
-    cells = models.CellSource.__table__.c
-    # 🔴 ONE STATEMENT PER PAGE AND COLUMN, the row's layer spelled from its own origin_row_id - one UPDATE per
-    #    layer took 1,196 s for 53,520 on the box's dt_log copy (the dry run, 83 s). The two halves around the
-    #    origin are `merged_layer_name`'s, so the name has one spelling.
-    before, after_tag = crud.merged_layer_name(crud.CHAIN_SOURCE, "\x00").split("\x00")
-
-    def rename(column, row_ids):
-        db.execute(update(models.CellSource.__table__)
-                   .where(cells.table_name == table_name, cells.column_name == column,
-                          cells.source_name == crud.CHAIN_SOURCE, cells.row_id.in_(row_ids))
-                   .values(source_name=literal(before) + cells.origin_row_id + literal(after_tag)))
-
-    def first(key, entry):
-        if len(stats["first"][key]) < FOLD_SAMPLE:
-            stats["first"][key].append(entry)
-
-    tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
-    with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):   # the label R3's writes carry
-        size = keyset_scan.PageSize(chunk_size)
-        for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
-                                           limit=limit, size=size):
-            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
-                stats["stopped"] = True
-                log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
-                break
-            stats["pages"] += 1
-            stats["rows_scanned"] += len(page)
-            cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
-            gone, renames, asked = [], [], []
-            for (row_id, col), layers in cell_sources.items():
-                if col not in col_types:
-                    continue
-                pin = pins.get((row_id, col))
-                fold = crud.stacked_layers(layers, col_types[col], table_name, pin, key=col in keys)
-                drop = fold["file"] + fold["chain"]
-                after = {name: entry for name, entry in layers.items() if name not in drop}
-                for was, now in fold["renamed"].items():
-                    after[now] = after.pop(was)
-                stats["layers_before"] += len(layers)
-                stats["layers_after"] += len(after)
-                stats["deepest_before"] = max(stats["deepest_before"], len(layers))
-                stats["deepest_after"] = max(stats["deepest_after"], len(after))
-                stats["cells_folded"] += bool(fold["file"])
-                stats["layers_deleted"] += len(fold["file"])
-                stats["chain_deleted"] += len(fold["chain"])
-                stats["chain_renamed"] += len(fold["renamed"])
-                plain = layers.get(crud.CHAIN_SOURCE)
-                stats["chain_unstamped"] += bool(col not in keys and plain is not None
-                                                 and not plain.get("origin_row_id"))
-                if fold["differs"]:
-                    stats["chain_differs"] += 1
-                    first("chain_differs", {"row_id": row_id, "column": col})
-                if fold["copies"]:
-                    stats["chain_copies"] += fold["copies"]
-                    first("chain_copies", {"row_id": row_id, "column": col})
-                gone.extend((table_name, row_id, col, name) for name in drop)
-                renames.extend((col, row_id) for _was in fold["renamed"])
-                if len(layers) > 1 and any(name != crud.CHAIN_SOURCE and crud.layer_ranks_as(name)
-                                           == crud.CHAIN_SOURCE for name in after):
-                    asked.append((row_id, col, after, pin))
-            rows = {}
-            if asked:
-                rows = {row.row_id: row for row in db.query(model).filter(
-                    model.row_id.in_(sorted({row_id for row_id, *_rest in asked}))).all()}
-            moved = []
-            for row_id, col, after, pin in asked:
-                row = rows.get(row_id)
-                if row is None:
-                    continue
-                decision = _resolve_cell(table_name, col_types, row, col, after, pin)
-                if decision["changed"]:
-                    stats["shown_changed"] += 1
-                    first("shown_changed", {"row_id": row_id, "column": col, "old_value": decision["old_value"],
-                                            "new_value": decision["new_value"], "top_source": decision["top_source"]})
-                    moved.append((row, col, decision))
-            if apply and (gone or renames or moved):
-                crud.bulk_delete_cell_sources(db, gone)
-                by_column = {}
-                for col, row_id in renames:
-                    by_column.setdefault(col, []).append(row_id)
-                for col, row_ids in sorted(by_column.items()):
-                    rename(col, row_ids)
-                for row, col, decision in moved:
-                    _write_resolved(db, table_name, row, col, decision, tx_id)
-                db.commit()
-            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                size.rest(rest_seconds)
-    if not apply:
-        db.rollback()
-    log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
-        f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
-        f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
-        f"{stats['deepest_after']}; chain plain layers off the keys {stats['chain_renamed']} renamed to their row's, "
-        f"{stats['chain_deleted']} whose row layer is there deleted, {stats['chain_differs']} kept differing "
-        f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
-        f"{stats['shown_changed']} shown value(s) move")
-    return stats
 
 
 #: Who deleted, in the history of each row `fold_duplicate_rows` takes.

@@ -6,6 +6,8 @@
   ② its own output          each run's process prints to its own file; the row quotes that run's line, the file goes
   ③ the start's window      the scheduler died between the child's start and its stamp: the row names a dead pid, the
                             child beats holding the run - the next scheduler does not release it
+  ④ a retired op's run     (lead 11-11, fold_file_layers): queued it closes no gate, × ends it cancelled, a claim
+                            ends it failed by name; running with its runner gone, the tick releases it
 """
 import os
 import socket
@@ -169,3 +171,27 @@ def test_a_run_cancelled_before_its_child_starts_ends_cancelled_not_runner_gone(
         retroactive.run_claimed("x1", log=lambda line: None)
     assert _state(db, "x1") == (retroactive.RUN_CANCELLED, None)
     assert retroactive.release_dead_runs(log=lambda line: None) == [], "nothing left in flight for the tick"
+
+
+def test_a_retired_ops_run_holds_no_gate_and_ends_said(db):
+    """④ - the op is gone from OPERATIONS; its rows still list, by name, and each ends on a door that exists."""
+    op = "fold_file_layers"
+    assert op not in retroactive.OPERATIONS, "canary: the op is retired"
+    _row(db, "r1", "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, HOST, _dead_pid()), op=op)
+    assert retroactive.release_dead_runs(log=lambda line: None) == ["r1"]
+    assert _state(db, "r1")[1].startswith("runner gone"), _state(db, "r1")
+
+    for run_id in ("q1", "q2"):
+        db.add(models.RetroactiveRun(run_id=run_id, op=op, params='{"table": "t"}', state=retroactive.RUN_QUEUED,
+                                     queued_at=datetime.now(timezone.utc)))
+    db.commit()
+    assert retroactive.gate_refusal(db) is None, "a queued row is not in flight"
+    assert {run["run_id"]: run["label"] for run in retroactive.runs(db)}["q1"] == op + " (retired)"
+    assert retroactive.request_cancel(db, "q1")["state"] == retroactive.RUN_CANCELLED
+
+    assert retroactive.claim(run_id="q2") == "q2"
+    with pytest.raises(retroactive.RetroactiveRefused):
+        retroactive.run_claimed("q2", log=lambda line: None)
+    state, error = _state(db, "q2")
+    assert state == retroactive.RUN_FAILED and "unknown retroactive operation '%s'" % op in error, (state, error)
+    assert retroactive.gate_refusal(db) is None, "nothing of it left in flight"

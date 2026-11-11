@@ -208,7 +208,7 @@ class TestInventory:
         # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
         # the forward scan was the one the owner could only stop by restarting the server.
         # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
-        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658);
+        # ⚰️ `fold_file_layers` the same day (총괄 225b2c658), retired 11-11 - a repeat writes no line (owner ㄱ).
         # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
         # `ledger_catch_up` joined on 2026-10-04 - a world switched back on (총괄 71880678a).
         # `rule_rows` joined on 2026-10-06 - the rows a `run_in: operation` rule's group queued
@@ -223,7 +223,7 @@ class TestInventory:
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
-            "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
+            "set_aside", "rerun_set_aside", "fold_written_notation",
             "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
             "remove_shell_rows", "fold_units", "retype_column", "retype_declared_columns"}
 
@@ -482,8 +482,8 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                                                                     retro_env):
         """Echoing the requested budget would say a sample was taken when none was.
 
-        `withdraw`'s count is two aggregates. It reads no row, so it has no
-        denominator, and `null` is the only honest value. (`graph_orphans` was the
+        `withdraw`'s count reads every line the source claims, grouped - no sample, so it has
+        no denominator, and `null` is the only honest value. (`graph_orphans` was the
         other example here until R-2026-08-14-H deregistered it.)
         """
         body = client.get("/admin/retroactive/withdraw/count"
@@ -491,20 +491,10 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                           "&scan_limit=50").json()
         assert body["scan_limit"] is None
         assert body["scanned"] is None
-        assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
+        assert body["count_kind"] == retroactive.COUNT_EXACT
 
-    def test_an_upper_bound_is_never_presented_as_the_answer(self, client, retro_env):
-        # Subject moved from `graph_orphans` to `withdraw` when R-2026-08-14-H
-        # deregistered the graph sweep. Both are upper-bound counts, so the
-        # property under test is unchanged - only the operation that carries it.
-        body = client.get("/admin/retroactive/withdraw/count"
-                          "?table=retro_test_target&source=chain_ingestion").json()
-        assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
-        assert body["extra"]["why_upper_bound"]
-        # ⚰️ 이 줄은 「최대」를 맞춰 봤다. 그 라벨은 브라우저에 렌더되므로 2026-09-23 에
-        #    영어로 옮겼다(소유자 「UI에 한국어 쓰지 말라고」). 재는 성질은 그대로다 —
-        #    「이 수가 상한임을 라벨이 «말하나»」.
-        assert "at most" in body["affected_label"]
+    # ⚰️ test_an_upper_bound_is_never_presented_as_the_answer stood here: its subject, withdraw's count, is exact
+    #    since the preview joins t (lead 11-11 ㄱ) - no count is an upper bound now. The gate file asserts the label.
 
     def test_a_typo_in_a_parameter_is_refused_not_ignored(self, client, retro_env):
         """A silently dropped parameter makes "0건" look like an answer."""

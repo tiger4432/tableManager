@@ -57,6 +57,11 @@ def _report_replay(s):
     return "\n".join(lines)
 
 
+def _shown(value):
+    """A cell value as the report reads it - an empty cell is said, not printed as None."""
+    return "(empty)" if value is None else repr(value)
+
+
 def _report_withdraw(s):
     lines = [
         "",
@@ -68,6 +73,8 @@ def _report_withdraw(s):
         f"    left empty            : {s['emptied']}",
         f"    value unchanged       : {s['value_unchanged']}",
         f"  skipped (human-pinned)  : {s['pinned_skipped']}",
+        f"  rows nothing keeps      : {s['rows_deleted']} "
+        f"({'deleted' if s['mode'] == 'apply' else 'deleted on --apply'})",
     ]
     if s["cells_withdrawn"]:
         lines.append("  Every cell whose visible value changed has an AuditLog entry naming")
@@ -76,9 +83,8 @@ def _report_withdraw(s):
         if sm["action"] == "skipped":
             lines.append(f"      SKIP {sm['row_id'][:8]}.{sm['column']}: {sm['why']}")
         else:
-            lines.append(f"      {sm['row_id'][:8]}.{sm['column']}: {sm['old_value']!r} -> "
-                         f"{sm['new_value']!r} (now from {sm['top_source']!r}; "
-                         f"remaining {sm['remaining_sources']})")
+            lines.append(f"      {sm['row_id'][:8]}.{sm['column']}: {_shown(sm['old_value'])} -> "
+                         f"{_shown(sm['new_value'])} ('{sm['source']}' withdrawn)")
     lines.append("")
     return "\n".join(lines)
 

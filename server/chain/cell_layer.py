@@ -498,7 +498,8 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         # a row this withdrawal left a shell goes, as any withdrawal's does (총괄 69b8b029c) - in the page's own
         # commit: after every page it was a commit of its own, and a death between left the shells (총괄 g33 · g85)
         db.flush()
-        gone.extend(delete_shells(db, table_name, shells(db, table_name, sorted(row_ids))))
+        found = shells(db, table_name, sorted(row_ids))
+        gone.extend(delete_shells(db, table_name, found) if apply else found)   # dry: counted, the page rolls back
     stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
                                  log=log, checkpoint=checkpoint, label=f"'{source_name}' claims",
                                  page_done=its_shells))
@@ -527,7 +528,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     label: str = "", page_done=None, withdrawn=None) -> dict:
     """R2's one pass over the claims `read(size)` hands a page at a time - `(row ids,
     {(row_id, column): [source_name, ...]})` of at most `size` rows, none in it on a page that holds none, None at
-    the end. `page_done(row ids)`, applied: what else that page's step writes, before it ends.
+    the end. `page_done(row ids)`: what else that page's step does, before it ends - a dry run's page too, before its
+    rollback.
 
     A page is ONE `write_lines` call (cell-source overhaul, lead 11-11): a withdraw line a (row, source) naming the
     columns that source takes back - the merge then shows what the lines left, the audit row and the collapsed event
@@ -602,11 +604,11 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                         stats["samples"].append({"row_id": said["row_id"], "column": col, "action": "withdraw",
                                                  "old_value": was.get(col), "new_value": now.get(col),
                                                  "top_source": None, "source": it["source_name"]})
+            if page_done is not None:
+                page_done(chunk)
             if not apply:
                 db.rollback()                           # the preview's page, unwritten - its locks let go
                 continue
-            if page_done is not None:
-                page_done(chunk)
             from session_contract import end_step
             end_step(db)
 

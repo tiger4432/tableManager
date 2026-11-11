@@ -66,9 +66,9 @@
 | 🆕 **원장이 못 본 수정**이 있는지, 몇 행인지 알고 싶다 — 표 값이 바뀌었는데 원자가 옛 값 그대로 | `python -m ledger census --source <소스>` → 「… · 차이 X · 새 행 N · 수정 누락 D · 지워진 행 G · 지문 없음 U」(10-03 `6b698fe2d` · 🆕 10-04 `5e41fa599` 새 행 · 지워진 행 · 차이 — 차이 = 표 행 − 색인 행이라 새 행과 지워진 행이 상쇄된다, 차이 0 은 «남은 0» 이 아니다). 행 색인 줄마다 번역할 때의 행 지문(그 소스가 읽는 칸만, 빈 값은 NULL 로 접은 md5)이 있고 census 가 지금 값으로 다시 내어 견준다 — «지문 없음»은 그 전에 번역된 줄이라 따로 센다(섞으면 누락이 부풀어 보임). 고치기: 🆕 셋을 한 번에 `python -m ledger.backfill --world <세상> --catch-up`(그 세상이 읽는 소스 전부 — 새 행 · 수정 누락 · 지워진 행 차례로) · 수정 누락만 `python -m ledger.backfill --source <소스> --drifted`(미리보기) → `--drifted --apply`. 주기 census(엔진 안)는 이 수를 안 센다 — 표를 훑기 때문. 🆕 화면: 대시보드 원장 소스 패널이 소스마다 `New, not translated N · Edited, not followed N · Gone, atoms remain N · Not yet printed N · Measured <시각>`(🆕 10-04 `f36723a70` — 넷, 서버 이름표대로) 을 보이고, 새 행 · 수정 누락 · 지워진 행 중 0 보다 큰 칸이 눈에 띄고(🆕 10-04 `4b2cbc9a5` — 전엔 누락 하나, 지문 없음은 표시 없음), 그 아래에 기록이 싣는 다음 명령 한 줄(10-03 `c965f6206` · `cb9082b79` — 서버 글자 그대로). 셋째 수 칸은 `Table less indexed`(`difference` — 부호 있는 차이, «남은 수»가 아니다 · 10-04 `f36723a70`, 옛 기록의 `not_yet` 도 같은 이름 `Table less indexed` 로 — 10-06 `9ea93f6fd`, 다음 주기가 다시 찍을 때까지). 🆕 `66570d724` 주기 census 는 세지 않고, 사람이 센 수(🆕 10-04 넷 — 새 행 · 수정 누락 · 지워진 행 · 지문 없음)를 «그때 잰 시각 그대로» 잇는다(~~다음 주기가 지움~~). 기록은 다음 명령도 싣는다(`next_step`: ~~누락 > 0 → `--drifted`~~ 🆕 10-04 `5e41fa599` 새 행 · 수정 누락 · 지워진 행 중 하나라도 > 0 → `python -m ledger.backfill --world <세상> --catch-up`, 센 적 없음 → `python -m ledger census --source <소스>` — 🆕 `279d04475` 둘 다 늘 `--world <잰 세상>` 을 단다 — 🆕 10-04 `ec6874b28` 세상 하나, 이름 없으면 운영 세상). ⚠️ `--catch-up`(또는 `--drifted --apply`) 로 고친 뒤에도 기록의 수와 다음 명령은 «고치기 전» 그대로다(주기 census 는 그 넷을 잇기만 한다) — 사람이 census 를 다시 돌려야 0 이 된다 |
 | 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 🆕 11-04 `36acdd577` 한 날이 실패하면(스크립트 예외 · 파일 실패 · 잠겨서 err/ 로 간 파일) **멈추지 않고** 그 날과 까닭을 `failed_days` 에 남기고 다음 날로 간다(전: 그 날 이름을 대고 멈춤, 소유자 11-04 가 뒤집음). 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) · 🆕 `failed_days`(「failed days」 — 수와 «날 (까닭)» 목록) · 🆕 `done_until`(「collected up to (KST)」 — 지나간 마지막 날의 끝, 실패한 날 포함) — 화면에서는 낱말로(`f6d64682`). 🆕 **다음 번 `start` 는 소급 목록의 그 줄 `next_start`**(09-29 `efa60fd9c`) — 끝까지 · 취소 → `done_until`, 실행이 터짐 → 거기까지 간 날의 끝(`start` + 지난 날 수), 도는 중 → null. 그대로 다시 넣으면 틈도 겹침도 없다(`start` 는 `YYYY-MM-DD HH:MM:SS` 도 읽는다). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
 
-| 🆕 칸마다 **파일 층이 여러 겹** 쌓여 있다(같은 행을 매시간 다시 가져오는 수집기) · 헤비 레인 청크 줄의 `prefetch` 가 크다 | **`fold_file_layers`**(09-26, 총괄 225b2c658) — 파라미터 `table` · `pace`. 칸마다 같은 부류 · 같은 값의 파일 층은 **가장 새 것 하나**만 남긴다(§2.6). 쓰기 쪽은 같은 날부터 **안 쌓는다**(§1.1) |
+| ⚰️ 칸마다 **파일 층이 여러 겹** 쌓여 있다 | 소급 층 접기는 11-11 은퇴(소유자 ㄱ) — 같은 값이 다시 오면 줄을 안 씁니다(§1.1). 남은 것은 뒤의 «오래된 줄 정리»(§2.6) |
 | 🆕 사고 중 체인 대기열에 **지금 돌면 안 되는** 일이 쌓였다 / 그것을 나중에 돌린다 | **`set_aside`** · **`rerun_set_aside`**(09-26 · 09-27) — 치워 두기는 지우지 않음, 다시 돌리기는 규칙마다 한 번 · 연쇄 없음(§2.8) |
-| 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 · 문자 칸에 **숫자로 저장된 층**이 있다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf · 10-01 ㉡) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7). 끝나면 `fold_file_layers` → VACUUM |
+| 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 · 문자 칸에 **숫자로 저장된 층**이 있다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf · 10-01 ㉡) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7) |
 
 🔴 **ⓒ와 ⓓ를 가르는 질문은 하나입니다 — 「파생 테이블에 그 행이 있습니까?」**
 `ⓒ`는 **없던 파생 행을 만듭니다.** `ⓓ`는 **이미 있는 행의 빈 칸을 채웁니다.**
@@ -242,22 +242,11 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
   - **대량 실행이 훨씬 빨라졌습니다** — 종전에는 수리 행마다 별도 그룹으로 직렬 처리돼(그룹당 ~0.4초) 1만 행이 한 시간을 넘겼고 그동안 **정상 인제션이 뒤에 줄을 섰습니다.** 지금은 실행 전체가 그룹 하나입니다.
   - ✅ **ⓑ(철회)도 같은 날 닫혔습니다**(`53f9187` — §2.3). ⓐ(재적용)만 아직 페이지 단위로 묶여 있어 대량 실행이 여러 그룹으로 갈립니다.
 
-> 🔴 **이 명령은 「같은 값이 여러 번 쌓이는 문제」를 고치지 않습니다.** 고치는 것은 **쌓인 것 중 무엇이 이기는가**뿐입니다. 쌓인 것을 줄이는 것은 🆕 **§2.6 `fold_file_layers`** 이고, 09-26 부터 쓰기 쪽은 같은 값을 안 쌓습니다(§1.1).
+> 🔴 **이 명령은 「같은 값이 여러 번 쌓이는 문제」를 고치지 않습니다.** 고치는 것은 **쌓인 것 중 무엇이 이기는가**뿐입니다. 쌓인 것을 줄이던 소급(§2.6)은 11-11 은퇴했고, 09-26 부터 쓰기 쪽은 같은 값을 안 쌓습니다(§1.1).
 
-### 2.6 🆕 `fold_file_layers` — 같은 값을 말하는 층 접기 · 체인 층을 원천 행마다 (**지웁니다 · 되돌릴 수 없습니다**)
+### 2.6 ⚰️ 층 접기 — 11-11 은퇴 (소유자 ㄱ)
 
-```bash
-python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
-```
-어드민 **Retroactive** 탭에서는 🆕 10-11 `Fold layers that repeat another`(옛 이름 `Fold file layers that repeat a newer one` — id 는 옛 실행 기록 · CLI 때문에 그대로) — 파라미터 `table` · `pace`(`limit` · `chunk_size` 는 CLI).
-
-- **하는 일**: 칸마다, 같은 우선순위 부류의 파일 층 중 **값이 같은 것**은 `compute_priority_value` 가 먼저 세우는 것(가장 새 것)과 **사람이 고정한 것**만 남기고 지웁니다. 칸의 승자는 자기 무리에서 첫째라 늘 남습니다 — **보이는 값 · 행 · 이력은 안 움직입니다.** 사람 · 자동 확정 · 백필 층은 안 건드립니다(체인 층은 아래).
-- 🆕 10-11 **체인 층**(총괄 8ec008914 · 4dd303f01): 원천 행이 찍힌 plain `chain_ingestion` 층은 그 행의 층 `chain_ingestion (<행>)` 으로 이름만 바뀝니다(그 이름 층이 이미 있으면 plain 을 지움). 🆕 `db928d441` 원천 없는 plain 은 지우지 않습니다 — 결정 · 보류 다시 세기 · 맵 파생이 원천 없이 쓰고 그 층에 기댑니다(총괄 «다»). 그중 같은 칸에 행 층이 있고 어느 것도 그 값을 안 든 것은 세어 앞 다섯 칸을 댑니다 — 사람이 볼 칸. 행 층이 없는 칸의 plain 은 그대로. 행 층이 체인 순위로 서면서 보이는 값이 바뀌는 칸(층 둘 이상)은 R3 와 같은 쓰기로 값 + 이력 한 줄(`resolution_recompute`) — 체인 층에서는 «보이는 값이 움직일 수 있습니다». 🆕 `40b3a0f07` **키 칸은 빼고** — 키 칸의 plain 체인 층은 이름도 안 바꾸고 안 지웁니다(보류 항목이 원천 행 없이 그 밑에 키를 씁니다. 지우면 그 키의 «유일한» 원천 행을 표시할 때 키 칸이 비어 다시 세기가 행을 못 찾았습니다). 이 고침 전에 접은 표는 행을 표시 · 철회하기 «전»에 다시 세기 replay 를 한 번 — `python scripts/chain_replay_cli.py replay «다시 세기 규칙» --apply`.
-- **드라이런(Count)**: 「Files: cells in rows hold file layers that repeat a newer one: layers N -> M, the deepest cell A -> B. Chain, outside the key columns: N plain layer(s) become their source row's layer, M whose row's layer is already there go, K have no source row and stay」 + 그중 행 층이 안 든 값(«D of those hold a value no row layer of the cell holds») · 합치기 사본 체인 층 · 「Shown values that move: S」. Count 는 앞 200 행 견본(`DEFAULT_SCAN_LIMIT`)이라 표 전체 수는 Run 의 끝 줄입니다.
-- 🔴 **되돌릴 수 없습니다** — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐이지만 되돌릴 방법은 없습니다.
-- **끝나면**: `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum` — 지운 자리를 돌려받습니다(VACUUM 은 트랜잭션 밖이라 이 연산이 하지 않습니다).
-- ⚠️ **R2(ⓑ)의 가장자리가 달라집니다**: 파일3 A · 파일10 A 에서 파일10 을 철회하면 접기 «전»엔 파일3 의 A 가 드러나고, 접은 «뒤»엔 그 아래 층이 드러납니다. 쓰기 쪽에서 «안 쓴» 경우(파일10 이 파일3 과 같아 층이 안 생김)도 같습니다 — 그 칸을 마지막으로 같은 값이라 말한 파일은 옛 파일로 남습니다.
-- 페이지(기본 1000 행)마다 커밋 · 취소는 페이지 사이 · 다시 돌리면 남은 것만 찾습니다.
+같은 값이 다시 오면 줄을 안 씁니다 — 쌓이지 않습니다. 남은 것은 뒤의 «오래된 줄 정리» 일입니다. 옛 실행 기록은 목록에 `fold_file_layers (retired)` 로 남습니다.
 
 ### 2.7 🆕 `fold_written_notation` — 선언 전에 저장된 값을 선언한 철자로 (**되돌릴 수 없습니다**)
 
@@ -271,7 +260,6 @@ python -c "from admin import retroactive; retroactive.run_here('fold_written_not
 - **합침 · 건너뜀**: 🆕 10-06(`74df5ce00`) 접은 키를 다른 행이 이미 쥐고 있으면 그 행을 키를 쥔 행으로 **합칩니다**(`crud.merge_into_key_holders` — 쓰기 문 · 키 고침과 같은 함수, 드라이런은 «to merge» 로 셈). 🆕 키는 접기가 **키 부품 칸**을 바꾼 행만 바뀌고, 그 행의 **안 접은 칸이 저장 키를 그대로 짓는 때만** 바뀝니다 — 아니면(옛 구분자 · 시각 철자 등으로 이미 어긋난 키) 그 행도 한 칸도 안 접고 `keys_not_rebuilt` 로 셉니다(신원 그대로).
 - **멈춤**: 한 번 더 접으면 또 바뀌는 값이 든 페이지 «앞»에서 멈춥니다 — 선언이나 별칭 행을 먼저 고칩니다.
 - 🔴 **되돌릴 수 없습니다** — 저장돼 있던 철자는 칸마다 이력 줄(`notation_backfill`)의 옛 값으로 남습니다.
-- **끝나면**: `fold_file_layers`(같은 표) → `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum`.
 - 바뀐 행은 소급 경로(`retroactive`)의 사건을 내므로 체인 규칙은 안 깨고, 원장 후속 랩은 그 사건으로 다시 번역합니다.
 - 페이지마다 커밋 · 취소는 페이지 사이 · 다시 돌리면 남은 것만 접습니다.
 
