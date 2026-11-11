@@ -4,11 +4,12 @@
 
 Real processes - the API (uvicorn) and the watcher (run_watcher.main) - on one sqlite file and a scratch data root;
 ta reads share_a (10 files), tb share_b (2), each with its plugin; reread_max_files 2:
-  ta's plugin broken             its read files unchecked, the sweep reads 3, fails them, stops - the rest unchecked
+  ta's plugin broken, its files  the sweep reads 3, fails them, stops - the rest unchecked
+  let go by hand (replay_ingestion --apply; a changed plugin lets none go, 소유자 11-11)
   Read all again on share_a      the press lets the stop go; the retry door fails 3 and stops - 7 still waiting
   Read all again on share_b      read while ta's 7 wait - more of them than one turn picks
-  ta's plugin fails f6-f9        the reading change lets go; read files come first - no stop, every waiting file
-                                 read; the three that failed before stay failed (소유자 10-24: Retry only)
+  ta's plugin fails f6-f9        said, the stop stays - no hand pressed (소유자 11-11)
+  Read all again on share_a      the press lets it go; read files come first - no stop, every file read, f6-f9 failed
 """
 import json
 import os
@@ -172,8 +173,11 @@ def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
         assert _until(lambda: len(_records(db, "tb")) == 2, 60, api, watcher), "tb's first reads"
         assert set(_records(db, "ta")) == {"SUCCESS"}, "CANARY: the good plugin reads every file"
 
-        # 1 the unchecked sweep's way: ta's plugin broken - its read files unchecked, the sweep fails 3 and stops
+        # 1 the unchecked sweep's way: ta's plugin broken, its read files let go by hand - the sweep fails 3, stops
         _plugin(data, "ta", BROKEN)
+        subprocess.run([sys.executable, os.path.join("scripts", "replay_ingestion.py"), "--table", "ta", "--apply"]
+                       + [a for i in range(10) for a in ("--path", str(shares["share_a"] / ("f%d.csv" % i)))],
+                       cwd=SERVER_DIR, env=env, check=True, capture_output=True)
         assert _until(lambda: len(stops()) == 1, 90, api, watcher), "the sweep never stopped: %s" % _records(db, "ta")
         time.sleep(8)                                          # sweeps after the stop: nothing more of ta read
         failed = _records(db, "ta")[10:]
@@ -205,19 +209,26 @@ def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
             "tb's re-read never ran behind ta's waiting: %s" % _records(db, "tb")
         assert _checklist(db, "ta")["waiting"] == 7, "ta's still wait"
 
-        # 4 bad files among good ones (owner «근본 불량 파일들도 있네»): the plugin fails f6-f9 - the change lets go,
-        #   the files read first keep it going to the end: every waiting file read, the four bad ones failed; the
-        #   three that failed in 2 are not read again by the change (소유자 10-24: Retry only)
+        # 4 the plugin changed (fails f6-f9 now): said, and the stop stays - only a hand lets it go (소유자 11-11)
+        reads = len(_records(db, "ta"))
         _plugin(data, "ta", SOME_BAD)
+        assert _until(lambda: "[Watcher] ta: its reading changed (scripts\\p.py)" in said(), 30, api, watcher), \
+            "the changed plugin was not said"
+        time.sleep(8)                                          # the poller's ticks after it: nothing of ta read
+        assert (len(_records(db, "ta")), _checklist(db, "ta")["waiting"]) == (reads, 7), _records(db, "ta")[reads:]
+        assert "let go (its reading changed)" not in said()
+
+        # 5 bad files among good ones (owner «근본 불량 파일들도 있네»): Read all again lets it go - the files read
+        #   first keep it going to the end: every file read, the four bad ones failed
+        assert read_all_again(shares["share_a"])["status"] == "success"
 
         def ta_done():
             return (_checklist(db, "ta") == {"waiting": 0, "unchecked": 0}
-                    and _failed_files(db, "ta") == sorted(set(failed_before) | {"f6.csv", "f7.csv", "f8.csv", "f9.csv"}))
+                    and _failed_files(db, "ta") == ["f6.csv", "f7.csv", "f8.csv", "f9.csv"])
         assert _until(ta_done, 120, api, watcher), "the re-read did not go to the end: %s %s" % (
             _checklist(db, "ta"), _records(db, "ta")[-12:])
         assert len(stops()) == 2, stops()
-        assert "the re-read stop let go (a person asked a re-read)" in said()
-        assert "the re-read stop let go (its reading changed)" in said()
+        assert said().count("the re-read stop let go (a person asked a re-read)") >= 2, said()
     finally:
         for process in (api, watcher):
             process.kill()

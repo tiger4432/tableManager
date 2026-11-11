@@ -469,7 +469,7 @@ def stamp_read_files_once(watcher):
     stands: the rows from before it are stamped by the first full sweep off the stat it takes anyway
     (`directory_watcher.start_read_files_fill`; the marker is written when that sweep reached every source). Here only
     the readings are kept as `reading_of` spells them now (it no longer reads `enabled`), else the first tick takes the
-    new spelling for a changed reading and unchecks those tables. A failure is said and the watcher goes on."""
+    new spelling for a changed reading and says those tables changed. A failure is said and the watcher goes on."""
     import directory_watcher
     import paths
     from ingestion import reread
@@ -501,22 +501,24 @@ def folders_of(watcher, table, table_config):
 
 
 def sweep_a_table_now(watcher, raws, sources, line):
-    """What a changed reading unchecked is looked at now, by that table's own sweeps - not the next periodic one - and
-    ONE line says both: what was unchecked and what was dispatched to be read again (총괄 10-21)."""
+    """A table whose reading changed is swept now by its own sweeps - not the next periodic one - and ONE line says
+    both: its read files kept as read and what was dispatched (총괄 10-21): a file new or saved again, not a read one
+    (소유자 11-11 - those are read again only by hand)."""
     dispatched = 0
     try:
         if raws:
             dispatched += watcher.sweep_existing_files(raws)
         if sources:
             dispatched += watcher.sweep_external_sources(sources)
-        logger.info("%s - %d dispatched to be read again", line, dispatched)
+        logger.info("%s - %d new or changed file(s) dispatched", line, dispatched)
     except Exception as e:                                         # noqa: BLE001 - the periodic sweep reads them
         logger.warning("%s - its sweep failed, the next periodic sweep reads them: %s", line, told(e), exc_info=e)
 
 
 def hear_changed_readings(db, stamps):
     """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
-    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
+    changed -> said, its files and its stopped re-reads left as they are - a hand reads them, a hand lets a stop go
+    (`reread.hand_on_a_changed_reading`, 소유자 11-11); a table seen the first time is only kept. A
     table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. An
     ingestion_settings.json there that reads as nothing (mid-write, 총괄 10-20) keeps each table's external part as
     kept - neither compared nor written over; its table_config and plugins are compared as ever. -> the stamps."""
@@ -531,8 +533,6 @@ def hear_changed_readings(db, stamps):
     for table, reading in changed.items():
         if table not in stamps:
             continue
-        from directory_watcher import REREAD_STOPS
-        REREAD_STOPS.release(table=table, why="its reading changed")
         raws, sources = folders_of(workspace_watcher, table, table_config)
         line = reread.hand_on_a_changed_reading(
             db, table, stamps[table], reading,
@@ -609,7 +609,7 @@ def poll_pending_retries():
                     except Exception as e:
                         logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {told(e)}")
                 
-            # a table whose reading changed hands its failed files here, so the query below reads them this cycle
+            # a table whose reading changed is said here; its files and a stopped re-read wait for a hand (소유자 11-11)
             try:
                 reading_stamps = hear_changed_readings(db, reading_stamps)
             except Exception as reading_error:                         # noqa: BLE001 - the retries below go on
