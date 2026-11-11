@@ -52,18 +52,3 @@ def clear_source(connection, source, translator_prefix):
     return deleted
 
 
-def clear_layer_rows(connection, updated_by):
-    """Remove the cell-layer records one writer left, by its `updated_by` name.
-
-    🔴 SEPARATE FROM THE DOOR'S OWN LAYER CLEANUP, AND NOT A DUPLICATE OF IT.
-    `crud.delete_rows_batch` clears the layers belonging to the ROWS it deletes; this
-    clears layers keyed on a WRITER, which outlives any particular row and is how a
-    fixture's generic writes are attributed. A row deleted through the door takes its
-    layers with it; a layer record whose row was never this fixture's does not.
-    """
-    from sqlalchemy import text
-
-    refuse_unknown_database(connection)
-    return connection.execute(text(
-        "DELETE FROM cell_sources WHERE updated_by = :updated_by"),
-        {"updated_by": updated_by}).rowcount
