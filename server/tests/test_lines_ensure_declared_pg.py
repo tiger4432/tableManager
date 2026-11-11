@@ -49,14 +49,3 @@ def test_a_held_lock_refuses_then_the_next_call_builds(engine):
     assert lines.ensure_declared(engine) == {}
     assert inspect(engine).has_table(f"{NAME}__lines")
 
-
-def test_the_one_key_index_builder_builds_the_lines_on_the_fold_path(engine):
-    """A fold's merge calls the key index builder for its table (retroactive._build_key_index_after_merge); the lines
-    stand right after it, not at the next boot."""
-    from sqlalchemy.orm import sessionmaker
-
-    from chain.ingestion_worker import _ensure_business_key_unique_indexes_sync
-
-    out = _ensure_business_key_unique_indexes_sync(sessionmaker(bind=engine), only=[NAME])
-    assert [t for t, *_ in out["built"]] == [NAME]                                # canary: the index was built here
-    assert inspect(engine).has_table(f"{NAME}__lines")

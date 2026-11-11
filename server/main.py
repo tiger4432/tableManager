@@ -146,8 +146,12 @@ def bootstrap_database_schema(bind=None):
     made = set(_inspect(target).get_table_names()) - held
     for table in sorted(made & set(models.DYNAMIC_TABLES)):    # made now: its key index on the line's next poll
         models.ask_key_unique(table, target)
+    from database.lines import LineTablesRefused
+
     try:
         models.sync_dynamic_tables_schema(target)
+    except LineTablesRefused:
+        raise                                       # the process does not start (lead 11-11 ㄴ)
     except Exception as e:
         logger.error(f"Failed to sync dynamic tables schema: {told(e)}", exc_info=e)
 

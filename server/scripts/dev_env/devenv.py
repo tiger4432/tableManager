@@ -238,6 +238,13 @@ def cmd_up(args):
         return 1
 
     env = isolated_env()
+    # the launcher's build first (models.build_before_start, lead 11-11 ㄷ'): 3 = a table refused, nothing starts
+    first = subprocess.call([sys.executable, "-c", "import sys; from database import models; from database.database "
+                             "import engine; sys.exit(0 if models.build_before_start(engine, print) else 3)"],
+                            cwd=SERVER_DIR, env=env)
+    if first == 3:
+        log("line tables refused (above) - nothing started")
+        return 1
     pids = {}
     for name, cmd in PROCESSES + _workers():
         logfile = os.path.join(LOG_DIR, f"{name}.log")

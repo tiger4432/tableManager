@@ -269,6 +269,15 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     refused = maintenance_line.storage_refusal(table, declaration)
     if refused:
         raise _table_config_refusal("storage_refused", *refused)
+    # the build's own judge, before the file is written (lead 11-11): a declaration whose lines would be refused
+    from database import lines
+    if lines.keeps_lines(table, declaration):
+        from database.database import engine
+        with engine.connect() as conn:
+            said = lines.build_refusal(conn, table)
+        if said:
+            raise _table_config_refusal("line_table_refused", f"tables.{table}",
+                                        str(lines.LineTablesRefused({table: said})))
 
     path = table_config_path()
     current_base = file_fingerprint(path)
