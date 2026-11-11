@@ -241,8 +241,13 @@ export function chainStateWhy(chainState) {
   const w = s.why && typeof s.why === 'object' ? s.why : {};
   const moved = formatAge(w.moved_seconds);
   const attempt = isCount(w.attempt) ? `attempt ${w.attempt}${isCount(w.cap) ? `/${w.cap}` : ''}` : '';
+  // the AI report its group builds now (server bac7050dc, owner 11-05): its rule, wafer, step, what it does, the wafers after
+  const r = w.report && typeof w.report === 'object' ? w.report : {};
+  const queued = (Array.isArray(r.queued) ? r.queued.length : 0) + (isCount(r.queued_more) ? Number(r.queued_more) : 0);
   const parts = {
-    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],
+    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), r.rule && `report ${r.rule}`,
+      r.wafer && `wafer ${r.wafer}`, isCount(r.step) ? `step ${r.step}${isCount(r.cap) ? `/${r.cap}` : ''}` : '', r.doing,
+      queued ? `${queued} queued` : ''],
     // who holds that table, as the server words it (B's held_by, «slot 2 · r9 · 12 s»); null says nothing
     waiting_for_table: [w.table && `waiting for ${w.table}`, w.held_by && `held by ${w.held_by}`],
     stalled: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), w.stalled_on && `on ${w.stalled_on}`],
