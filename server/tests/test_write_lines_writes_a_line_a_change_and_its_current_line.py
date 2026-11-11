@@ -189,6 +189,54 @@ def test_a_created_line_makes_a_row_with_no_value_and_an_existing_row_is_not_mad
     assert (again["items"][0]["work"], again["lines"], len(_lines(db))) == (None, 0, 1), again
 
 
+def test_a_created_item_with_a_key_makes_that_keys_row_or_names_the_row_holding_it(db):
+    """Lead 11-11 (an item sent with updates={} - the funnel's «created»): a key nobody holds makes its row, keyed; a key
+    a row holds names that row and makes nothing - no second row, no «created» line (the old _get_or_create_row)."""
+    out = _write(db, {"business_key_val": "K9", "line_kind": "created", "written_by": "kim"}, kind="funnel")
+    [said] = out["items"]
+    assert (_now(db)[said["row_id"]]["business_key_val"], said["work"], [l["line_kind"] for l in _lines(db)]) == (
+        "K9", "new", ["created"]), out
+    again = _write(db, {"business_key_val": "K9", "line_kind": "created", "written_by": "kim"}, kind="funnel", tx="tx2")
+    assert (again["items"][0]["row_id"], again["lines"], len(_now(db)), len(_lines(db))) == (said["row_id"], 0, 1, 1), again
+
+
+def test_a_column_of_no_history_shows_the_batch_s_last_word(db, monkeypatch):
+    """QA 11-11: [n=3, n=5] on a row at 5 - each item meets the row its earlier items left (`_version_gate`'s
+    `before`), so 5 shows; on the batch's first state both items «moved» and 3 was the merge's."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(CFG, no_history_columns=["n"]))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x", "n": "5"}, "source_name": "f1"})["changed"]
+    _write(db, {"row_id": r, "values": {"n": "3"}, "source_name": "f1"},
+           {"row_id": r, "values": {"n": "5"}, "source_name": "f1"}, tx="tx2")
+    assert _now(db)[r]["n"] == 5.0
+
+
+def test_at_one_instant_step_two_asks_the_later_line_as_the_merge_shows_it(db, monkeypatch):
+    """B 11-11: a.csv says x, then b.csv says y, at one instant - the cell shows y (rank 2c, the later line). A chain's
+    new layer of x is then no repeat of what the cell shows and is written; step 2 used to rank the two by name (a.csv
+    first) and saw x shown."""
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "b.csv"}, tx="tx2")
+    assert _now(db)[r]["a"] == "y"
+    _write(db, {"row_id": r, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE}, tx="tx3")
+    assert crud.CHAIN_SOURCE in lines.layers(db, TABLE, [r])[(r, "a")]
+
+
+def test_at_one_instant_a_batch_s_line_ranks_after_every_stored_line(db, monkeypatch):
+    """B 11-11: a.csv said x; one batch [b.csv y, the chain x] at a.csv's instant - step 2 ranks b.csv's line (not
+    numbered yet) after a.csv's, so the cell shows y and the chain's x is written. A naive instant: sqlite reads a
+    stored `at` back naive, and the batch's own aware one would not tie with it."""
+    from datetime import datetime
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1))
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "y"}, "source_name": "b.csv"},
+           {"row_id": r, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE}, tx="tx2")
+    assert crud.CHAIN_SOURCE in lines.layers(db, TABLE, [r])[(r, "a")]
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})

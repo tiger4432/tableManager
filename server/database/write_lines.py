@@ -23,6 +23,8 @@ An item is a dict:
                   pin, and a key merge reads it as neither named nor a person's
     rekey         true: step 5½ rebuilds the row's key though no key part moved (a key in an old spelling; a mark
                   item with no columns carries it)
+    A mark naming no column and asking no re-key merges its row again and writes no line (`_merges_again` -
+    lead 11-11: a formula saved, R3, the notation backfill's re-merge, a formula column offered alone).
     old_key       the key the item was sent with when it is not its assembled key (a raw spelling, a rename by
                   the old key): asked when the assembled key is nobody's - ruling 191, S-90 - and the row it
                   names is re-keyed
@@ -144,11 +146,13 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at) if keeps
                       else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
                             sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
+    again = {i for i in kept if _merges_again(items[i])}   # its row merged again, no line
+    kept -= again
     split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
     moved = [i for i in sorted(plain) if i not in kept and i not in split]  # changed only a column of no history
     left_out -= len(moved)
     work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
-        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved}
+        items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved + sorted(again)}
     unpinned, line_ids = set(), {}
     if keeps:
         lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
@@ -166,14 +170,22 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     rows_plain = {}
     for i in sorted(plain):
         rows_plain.setdefault(targets[i], {}).update(plain[i])
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved} - set(gone)), at, old,
-                     rows_plain, keeps)
+    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
+                     at, old, rows_plain, keeps)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
     changed = {}
     for i in sorted(list(kept) + moved):
         row_id = targets[i]
         changed.setdefault(row_id, {"old": old.get(row_id), "new": new.get(row_id), "work": work[i]})
+    types = cfg.get("column_types") or {}
+    for i in sorted(again):                        # a row merged again changed when a shown value moved
+        row_id = targets[i]
+        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], shape["columns"], types):
+            changed.setdefault(row_id, {"old": old.get(row_id), "new": new[row_id], "work": work[i]})
     said_rows = {}
+    for i in sorted(again):                        # its audit row only when a shown value moved (lead 11-11)
+        if targets[i] in changed:
+            said_rows.setdefault((work[i], items[i].get("acted_by") or items[i].get("written_by")), set()).add(targets[i])
     for i in kept:
         said_rows.setdefault((work[i], items[i].get("acted_by") or items[i].get("written_by")), set()).add(targets[i])
     for shell, (holder, holder_old, holder_new, who) in merged.items():
@@ -299,16 +311,16 @@ def _claim(db, table, cfg, now, items):
             if it["line_kind"] != CREATED:         # a row already there is not made again
                 targets[i] = it["row_id"]
             continue
-        if it["line_kind"] == CREATED:             # made with no value - its row_id as given, or one minted
-            targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
-            bare.append(targets[i])
-            continue
-        if it["line_kind"] != WRITE:
+        if it["line_kind"] not in (WRITE, CREATED):
             continue                               # nothing to take back from a row that is not there
         bk = it.get("business_key_val")
         if bk is None and it.get("key") and keys_of:
             bk = crud.compose_business_key(table, [it["key"].get(c) for c in keys_of], keys_of)
-        if not it.get("values"):
+        if it["line_kind"] == CREATED and crud.is_blank_value(bk):   # made with no value - its row_id or a minted one
+            targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
+            bare.append(targets[i])
+            continue
+        if it["line_kind"] == WRITE and not it.get("values"):
             # a write of nothing makes no row (the funnel's phantom-row guard); naming a row's key it still finds it
             if not crud.is_blank_value(bk):
                 looked[i] = bk
@@ -347,6 +359,8 @@ def _claim(db, table, cfg, now, items):
                 old.setdefault(row["row_id"], row)  # the key was someone's already: an edit of that row
         for i, bk in by_key.items():
             targets[i] = holder[bk]["row_id"]
+            if items[i]["line_kind"] == CREATED and holder[bk]["row_id"] != wanted.get(bk):
+                items[i]["line_kind"] = WRITE      # its key's row was there: named, not made again - a write of nothing
         for i, bk in looked.items():
             if bk in holder:
                 targets[i] = holder[bk]["row_id"]
@@ -359,12 +373,16 @@ def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
     """Ruling 191 (S-90, lead 3eb161a9c ②): an item's assembled key first; when that is nobody's, the key it was
     sent with (`old_key`) - a row stored under a raw spelling, a rename naming the row by its old key. Both read
     under the claim's lock before a new key is put; the row found is the item's target, re-keyed in step 5½ (a key
-    another row took meanwhile merges it there). `wanted` and `by_key` lose what it took."""
+    another row took meanwhile merges it there). The batch's other items of a key an old key gave a row go to that
+    row too - the entity keeps its row_id whichever spelling came first (QA 11-11). Every key the claim asks is
+    read in this one sorted, locked read, so the claim takes its rows in one order. `wanted` and `by_key` lose what
+    it took."""
     asks = {i: items[i]["old_key"] for i in by_key if not crud.is_blank_value(items[i].get("old_key"))
             and items[i]["old_key"] != by_key[i]}
     if not asks:
         return
-    held = key_owners(db, now, set(asks.values()) | {by_key[i] for i in asks}, lock=True, read=list(now.c))
+    held = key_owners(db, now, set(asks.values()) | set(by_key.values()), lock=True, read=list(now.c))
+    took = {}                                      # assembled key -> the row an old key gave it
     for i, old_key in sorted(asks.items()):
         if by_key[i] in held or old_key not in held:
             continue
@@ -372,7 +390,14 @@ def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
         targets[i] = row["row_id"]
         old.setdefault(row["row_id"], row)
         items[i]["rekey"] = True
+        took.setdefault(by_key[i], row["row_id"])
         del by_key[i]
+    for j, bk in list(by_key.items()):
+        if bk in took:
+            targets[j] = took[bk]
+            if items[j]["line_kind"] == CREATED:
+                items[j]["line_kind"] = WRITE  # the row is there: named, not made again
+            del by_key[j]
     for bk in set(wanted) - set(by_key.values()):
         del wanted[bk]
 
@@ -423,7 +448,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                                                 held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
-    heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at)}}}
+    heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at, line_id)}}}
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
                                                                  in (WRITE, WITHDRAW)}, columns).items():
         heads.setdefault(row_id, {})[source] = said
@@ -457,11 +482,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                 items.append(kid)
                 same |= cs
                 for c in cs:
-                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when)
+                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i)
             it["folds"] = {s: f - same for s, f in folds.items() if f - same}
             it["values"] = {c: value for c, value in it["values"].items() if c not in same}
             for c, value in it["values"].items():
-                own[c] = hand + (value, when)
+                own[c] = hand + (value, when, UNNUMBERED + i)
             for s, f in folds.items():             # a folded source no longer heads the column, whichever line took it
                 for c in f:
                     row.get(s, {}).pop(c, None)
@@ -474,6 +499,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
     return kept, left_out
 
 
+#: the line_id step 2 ranks a batch line by before step 3 numbers it (rank 2c): after every stored line, in the
+#: batch's item order - an item split off its parent at its parent's place (`_lines`; the two say no column alike)
+UNNUMBERED = 1 << 62
+
+
 def _head_text(text, kind):
     """A head line's value as step 2 compares it with a write's text: a blank is absence; a text column's text as it
     stands - a person re-sending it trimmed is a change (lead 11-11 ㄴ); any other kind its line text (a number's
@@ -484,7 +514,7 @@ def _head_text(text, kind):
 
 
 def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text, at)}} - the columns each source heads on the row
+    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id)}} - the columns each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
     row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
     item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
@@ -493,14 +523,14 @@ def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
     values = [ln.c[lines.value_column(c)] for c in columns]
     out = {}
     for page in _pages(sorted(row_ids), 1):
-        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at, *heads,
-                                     *withdrawn, *values)
+        for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
+                                     ln.c.line_id, *heads, *withdrawn, *values)
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
-            said = dict(zip(columns, row[5 + 2 * chunks:]))
+            said = dict(zip(columns, row[6 + 2 * chunks:]))
             for c in bits:
                 k, m = _bit(bits, c)
-                if row[5 + k] & m and not row[5 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4])
+                if row[6 + k] & m and not row[6 + chunks + k] & m:
+                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5])
     return out
 
 
@@ -528,8 +558,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
         if c in same:
             continue
         kind, pin = held.get(c, "string"), pins.get((row_id, c))
-        layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3])
-                  for s, said in row.items() if c in said]
+        layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3],
+                                  line_id=said[c][4]) for s, said in row.items() if c in said]
         if crud.is_file_layer(source):
             repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin, ranks)
             if repeat:
@@ -539,7 +569,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
             if moved is not None and c not in row.get(source, {}):   # its own layer takes it (the old `src_obj or moved`)
                 moves.setdefault(moved.source_name, set()).add(c)
         elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
-            shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+            shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at,
+                                                                 "line_id": s.line_id}
                                                  for s in layers}, pin, table, ranks=ranks)[0]
             if not crud.values_differ(shown, value, kind):
                 same.add(c)
@@ -570,7 +601,7 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     (with its withdrawn bits); a deleted or mark line's three are 0. Returns [(line_id, row_id, sources, masks)] of
     the write and withdraw lines in line_id order - [(source, masks)]: its own with the line's columns, a fold's with
     its columns - for step 4 - and {item index: line_id} of every line."""
-    order = sorted(kept)
+    order = sorted(kept, key=lambda i: (items[i].get("of", i), i))   # a split item's lines at its parent's place
     rows = []
     for i in order:
         it = items[i]
@@ -697,6 +728,8 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
                 merged[row_id][key_column] = key
                 won_by[row_id].pop(key_column, None)
     types = cfg.get("column_types") or {}
+    if keeps:
+        _formulas_won(db, table, shape, row_ids, data, merged, won_by)
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
         {**{c: bindparam("__%d" % n) for n, c in enumerate(data)}, **({"won_by": bindparam("__won")} if keeps else {}),
@@ -706,6 +739,40 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
           else old[row_id].get("updated_at")}
          for row_id in row_ids])
     return merged
+
+
+def _formulas_won(db, table, shape, row_ids, data, merged, won_by) -> None:
+    """A formula column's candidate (lead 10-28 ㄴ: a formula holds no line, its value is the merge's; A 11-11 안 1):
+    each row's formula column ranked with its layers and pin by `crud.compute_priority_value(cell=)` - the rank the
+    old write asked - over the row as merged; where the formula wins its answer is the value and won_by says
+    `lines.FORMULA_WON`. A pin whose source has no head line leaves the merge's answer (t's value, lead 11-11)."""
+    from types import SimpleNamespace
+
+    from chain import formula
+
+    said = {c: name for (t, c), (name, *_rest) in formula.columns().items() if t == table and c in data}
+    if not said:
+        return
+    cells = lines.layers(db, table, row_ids, sorted(said), s=shape)
+    pins = _overwrites(db, table, row_ids, sorted(said))
+    ranks = {}
+    for row_id in row_ids:
+        row = SimpleNamespace(**merged[row_id])
+        for c, name in sorted(said.items()):
+            layers = cells.get((row_id, c)) or {}
+            pin = (pins.get((row_id, c)) or (None, None, None))[2]
+            if pin is not None and pin != name and pin not in layers:
+                continue
+            value, top = crud.compute_priority_value(dict(layers), pin, table, ranks=ranks, cell=(table, c, row))
+            if top == name:
+                merged[row_id][c] = value
+                setattr(row, c, value)
+                won_by[row_id][c] = lines.FORMULA_WON
+
+
+def _merges_again(item) -> bool:
+    """A mark naming no column and asking no re-key: its row merged again, no line written (lead 11-11 (가))."""
+    return item["line_kind"] == MARK and not item.get("columns") and not item.get("rekey")
 
 
 def _moved(old, new, columns, types) -> list:

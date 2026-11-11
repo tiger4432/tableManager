@@ -132,6 +132,18 @@ def test_a_persons_re_spelling_takes_no_pin_off_for_the_items_after_it(db):
     assert crud.CHAIN_SOURCE not in _layers(db, r) and out["left_out"] == 1, out
 
 
+def test_an_item_split_off_its_parent_takes_the_parents_place_in_the_batch(db):
+    """QA 11-11: share a said v, share b w; a batch [a2 v (split to a1's layer), a2 u] - the later item's u shows.
+    The split item was the batch's last line (its index after every given item), so v won the instant's tie."""
+    a1, a2, b1 = _ext("a", "d1.csv"), _ext("a", "d2.csv"), _ext("b", "d1.csv")
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "v"}, "source_name": a1,
+                      "input_row": "1"})["changed"]
+    _write(db, {"row_id": r, "values": {"a": "w"}, "source_name": b1, "input_row": "1"}, tx="tx2")
+    out = _write(db, {"row_id": r, "values": {"a": "v"}, "source_name": a2, "input_row": "2"},
+                 {"row_id": r, "values": {"a": "u"}, "source_name": a2, "input_row": "3"}, tx="tx3")
+    assert _now(db)[r]["a"] == "u", out["items"]
+
+
 def test_two_sources_in_one_batch_the_later_line_wins(db):
     """QA 11-11 P1: one batch's lines share its instant - the later line wins whatever the sources' names (C 2c)."""
     [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]

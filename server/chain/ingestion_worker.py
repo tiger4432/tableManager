@@ -2608,7 +2608,7 @@ def count_unowned_layers_sync(db_session_factory, log=logger.info):
     from chain import cell_layer
 
     units, rest = pacing.job_pace(UNOWNED_CENSUS_JOB)
-    started, after, read, pages = time.monotonic(), 0, 0, 0
+    started, after, read, pages = time.monotonic(), None, 0, 0
     layers, tables = Counter(), defaultdict(Counter)
     while True:
         if chain_control.paused() is not None:

@@ -18,6 +18,7 @@ from chain.enrichment import analysis
 from chain import enrichment
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support import line_tables  # noqa: E402
 from tests.support.enrich_decl import rewrite_rules, write_rules  # noqa: E402
 from chain import enrich_declarations  # noqa: E402
 
@@ -105,6 +106,8 @@ def an_env(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(AN_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    for table in AN_TABLES:
+        line_tables.build(db_session.get_bind(), table)   # a cell's layers are its lines' (A 11-11)
 
     rules_path = write_rules(tmp_path, monkeypatch, {"enan_rule": _rule(), "enan_single": SINGLE_RULE})
     settings = tmp_path / "ingestion_settings.json"
@@ -466,13 +469,12 @@ SUBSET_VIEW = {
 
 def _cell_sources(db, table, column):
     """(business_key_val, source_name) for one column - the provenance record."""
+    from database import lines
+
     m = models.DYNAMIC_TABLES[table]
-    rows = (db.query(m.business_key_val, models.CellSource.source_name)
-            .join(models.CellSource, models.CellSource.row_id == m.row_id)
-            .filter(models.CellSource.table_name == table,
-                    models.CellSource.column_name == column)
-            .all())
-    return {bk: src for bk, src in rows}
+    keys = dict(db.query(m.row_id, m.business_key_val).all())
+    return {keys[row_id]: name for (row_id, _c), named in lines.layers(db, table, list(keys), columns=[column]).items()
+            for name in named}
 
 
 def _enable_auto_confirm(tmp_path, views):
