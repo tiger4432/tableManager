@@ -131,7 +131,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     targets, old, keys = _claim(db, table, cfg, now, items)
     claimed = dict(targets)
     gated = _version_gate(table, cfg, items, targets, old)
-    held = lines.value_types(db, table)            # a line's text by what t holds, not the declaration (C)
+    held = shape["kinds"]                          # a line's text by what t holds, not the declaration (C)
     plain = _plain(table, cfg, items, targets, old, held, keeps)
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
@@ -213,12 +213,14 @@ def merge_rows(db, table: str, pairs, *, source_name, written_by, transaction_id
 
 
 def _table_shape(db, table, cfg):
-    """(t keeps lines, its shape) - a table with no lines (shipped, or one ensure refused) has t only: every column
-    of no history (lead 11-11 2)."""
+    """(t keeps lines, its shape) - read once a write: every seat below takes it, the merge too (`lines.merge` s=;
+    lead 11-11). `kinds`: t's columns as stored - the type a line's text takes. A table with no lines (shipped, or one
+    ensure refused) has t only: every column of no history (lead 11-11 2)."""
     if lines.has_lines(db, table):
         return True, lines.shape(db, table, cfg)
     now = lines.current_table(db, table, cfg)
-    return False, {"table": now, "columns": [c.name for c in now.columns], "lines": None, "bits": None, "chunks": None}
+    return False, {"table": now, "columns": [c.name for c in now.columns], "lines": None, "bits": None, "chunks": None,
+                   "kinds": lines.value_types(db, table)}
 
 
 def _instant(db, table):
@@ -312,7 +314,7 @@ def _claim(db, table, cfg, now, items):
             db.execute(upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"]),
                        [{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
     elif wanted:
-        # no valid unique index on the key (lines.key_index_next says why - the rules list and the pre-check show it):
+        # no valid unique index on the key (lines.key_index_next says why - the rules list shows it):
         # today's funnel's way - the keys held read under lock, the rest inserted - with its race window: two writers
         # of one new key in the same instant can make two rows (D3, as before; lead 11-11 ㄴ - collection never stops)
         held = set()
@@ -548,7 +550,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps):
         return {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
     won_by = {row_id: {} for row_id in row_ids}
-    for row_id, decided in (lines.merge(db, table, cfg, row_ids) if keeps else {}).items():
+    for row_id, decided in (lines.merge(db, table, cfg, row_ids, s=shape) if keeps else {}).items():
         for c, (value, line_id) in decided.items():
             merged[row_id][c] = value
             if line_id is not None:
@@ -720,8 +722,7 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
     bits = shape["bits"] if keeps else {}
     plain = {c: v for c, v in chosen.items() if c not in bits}
     if keeps:
-        ln, chunks = shape["lines"], shape["chunks"]
-        held = lines.value_types(db, table)
+        ln, chunks, held = shape["lines"], shape["chunks"], shape["kinds"]
         shell_key = shell_key if shell_key is not None else s_now.get("business_key_val")
         tag = "%s_%s" % (shell_key, shell) if shell_key else shell
         user_cols = sorted(c for c in both if c in bits)

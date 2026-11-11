@@ -346,3 +346,24 @@ def test_a_persons_write_marks_its_cell_and_takes_the_pin_off_and_a_pin_holds_th
     pin("f9")
     _write(db, {"row_id": r, "values": {"a": "z"}, "source_name": "f1", "written_by": "loader"}, tx="tx5")
     assert _now(db)[r]["a"] == "kim", "a pin whose source has no head line leaves t's value"
+
+
+def test_a_write_reads_t_s_shape_once_a_key_merge_too(db, monkeypatch):
+    """Lead 11-11: one shape a write - the step-5 merge and a key merge take the write's (`lines.merge` s=), and a
+    line's text takes its stored kind from it (shape["kinds"]), not another read of t's columns."""
+    _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1", "written_by": "loader"})
+    _write(db, {"key": {"k": "K2"}, "values": {"k": "K2", "a": "y"}, "source_name": "f1", "written_by": "loader"})
+    k2 = [r for r, row in _now(db).items() if row["k"] == "K2"][0]
+    seen = {"shape": 0, "value_types": 0}
+    for name in seen:
+        real = getattr(lines, name)
+
+        def counted(*a, _real=real, _name=name, **k):
+            seen[_name] += 1
+            return _real(*a, **k)
+        monkeypatch.setattr(lines, name, counted)
+    _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "z"}, "source_name": "f2", "written_by": "loader"})
+    plain = dict(seen)
+    seen.update(shape=0, value_types=0)
+    merged = _write(db, {"row_id": k2, "values": {"k": "K1"}, "source_name": "f3", "written_by": "loader"})["merged"]
+    assert (plain, dict(seen), len(merged)) == ({"shape": 1, "value_types": 0}, {"shape": 1, "value_types": 0}, 1)
