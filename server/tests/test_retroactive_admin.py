@@ -127,6 +127,7 @@ def retro_env(db_session, monkeypatch):
     crud.TABLE_CONFIG.update(RETRO_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
     _install_mapper_module()
     # The REAL rule loader reads the user's chain config; pin it to the test rule
     # so `find_rule` resolves without touching a gitignored file.
@@ -578,6 +579,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(ENRICH_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
 
     rules_path = write_rules(tmp_path, monkeypatch, ENRICH_RULES)
     monkeypatch.setattr("database.database.SessionLocal",

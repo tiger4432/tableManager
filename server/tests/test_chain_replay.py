@@ -111,6 +111,7 @@ def rep_env(db_session):
     crud.TABLE_CONFIG.update(REP_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
     _install_mapper_module()
     yield db_session
     sys.modules.pop(MAPPER_MODULE, None)
