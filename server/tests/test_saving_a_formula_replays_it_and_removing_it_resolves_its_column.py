@@ -8,19 +8,18 @@ no value is left with no source. No other cell under two layers is touched.
     POST /admin/chain/formula + base      the rule saved on; R1 queued for it
     ... formula ""                        the rule gone, a backup made; R3 queued with formula_removed
     remove_chain_rule_raw                 refused by name while a run holds the rule; the file as opened
-    R3 formula_removed                    no layer -> blank, one layer -> its value, a person's stays; others untouched
+    R3 formula_removed                    no layer -> blank, one layer -> its value, a person's stays; a row it asks merged whole
     chain_rules.json changed              the grid pool started again, the walk pool not (it reads nothing of it)
     /tables/{t}/schema                    «formulas» as saved, gone when removed, absent on a table with none
 """
 import json
-from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
 
 from chain import formula, replay
 from chain import ingestion_worker as worker
-from database import models
+from database import crud, models, schemas
 from ledger import admin
 from tests.test_a_formula_on_a_column_is_a_join_onto_its_own_row import T, _put, fixture_db  # noqa: F401
 
@@ -83,11 +82,6 @@ def test_removal_is_refused_by_name_while_a_run_holds_the_rule_and_on_a_stale_ba
     assert "This file changed after you opened it" in str(stale.value.detail)
 
 
-def _layer(db, row_id, column, source, value):
-    db.add(models.CellSource(table_name=T, row_id=row_id, column_name=column, source_name=source, value=value,
-                             updated_by=source, ingested_at=datetime.now()))
-
-
 @pytest.mark.parametrize("removed, expected", [
     (["c"], {"k1": None, "k2": 100, "k3": 50}),
     ((), {"k1": 7, "k2": 100, "k3": 7}),
@@ -96,7 +90,9 @@ def test_r3_resolves_a_column_that_lost_its_formula_and_no_other_cell_under_two_
     _put(db, [{"k": "k1", "a": 1}, {"k": "k2", "a": 1, "c": 100}, {"k": "k3", "a": 1}])
     model = models.DYNAMIC_TABLES[T]
     rows = {row.k: row for row in db.query(model)}
-    _layer(db, rows["k3"].row_id, "c", "f.csv", 50)
+    crud.apply_batch_updates(db, T, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=rows["k3"].row_id, updates={"c": 50}, source_name="f.csv", updated_by="f.csv")]))   # k3's «c»: one layer
+    db.commit()
     for k in ("k1", "k3"):
         rows[k].c = 7                                       # what a formula wrote, with no layer
     rows["k1"].a = 9                                        # a one-layer cell out of step with its layer
@@ -105,7 +101,9 @@ def test_r3_resolves_a_column_that_lost_its_formula_and_no_other_cell_under_two_
     db.expire_all()
     shown = {row.k: (row.c, row.a) for row in db.query(model)}
     assert {k: c for k, (c, _a) in shown.items()} == expected
-    assert shown["k1"][1] == 9, "a one-layer cell of another column is not touched"
+    # the row is the unit (lead 11-11: row-unit merge is canonical): a row R3 asks is merged whole - k1's «a» takes
+    # its line's 1; a row it does not ask keeps t's 9
+    assert shown["k1"][1] == (1 if removed else 9)
 
 
 def test_a_rules_file_change_starts_the_grid_pool_again_and_not_the_walk_pool(monkeypatch):
