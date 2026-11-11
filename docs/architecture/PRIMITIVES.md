@@ -2130,7 +2130,7 @@
 
 ### ⭐ **요청 경로의 수는 「어떤 종류의 수인지」를 함께 답한다** (2026-07-31 등록 · `fbc1053`)
 - **무엇**: 「몇 건입니까」가 **비싼 연산 자체**인 경우가 있다(테이블 전수 + 매퍼). 그때 답은 ① 타임아웃 나는 라우트를 내놓는 것도 ② 부분 결과를 전체인 척 돌려주는 것도 아니고, **수와 함께 그 수의 종류를 반환하는 것**이다 — `exact`(값싼 질의가 전부를 답함) · `sample`(경계 있는 스캔, `scanned`+`truncated` 동반) · `upper_bound`(값싼 질의가 **상위집합**을 답함, **부족분을 말로** 설명하는 필드 동반). 그리고 **사람이 읽을 문장(`detail`)은 서버가 만들고 클라는 그대로 렌더한다.**
-- **어디**: `server/admin/retroactive.py`(`COUNT_EXACT`/`COUNT_SAMPLE`/`COUNT_UPPER_BOUND` · `count()` · `extra.why_upper_bound`) → `GET /admin/retroactive/{op}/count`. **원형은 `GET /admin/enrichment/auto-confirm/dry-run`**(F9 — 200행 표본을 보고 `truncated`를 선언하며 부분 카운트를 큐 깊이인 척하지 않았다). 운영자 관점 [BACKFILL_GUIDE §7.2](../guide/BACKFILL_GUIDE.md).
+- **어디**: `server/admin/retroactive.py`(`COUNT_EXACT`/`COUNT_SAMPLE` · `count()`) → `GET /admin/retroactive/{op}/count`. **원형은 `GET /admin/enrichment/auto-confirm/dry-run`**(F9 — 200행 표본을 보고 `truncated`를 선언하며 부분 카운트를 큐 깊이인 척하지 않았다). 운영자 관점 [BACKFILL_GUIDE §7.2](../guide/BACKFILL_GUIDE.md).
 - **언제 재사용**: 「미리보기」·「영향 범위」·「대기열 깊이」 류 전부. 판별 질문 — **「이 수를 정확히 내려면 작업 자체를 해야 하는가?」** 그렇다면 정확한 수를 약속하지 마라.
 - **함정**:
   - 🔴 **정확한 척하는 수가 이 항목이 막는 대상 전부다.** 표본 200행에서 나온 「12건」은 테이블에 대한 12건이 아닌데, 종류를 안 붙이면 읽는 사람에게 그 둘은 **같은 글자**다.

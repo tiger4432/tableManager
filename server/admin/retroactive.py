@@ -42,7 +42,6 @@ RUN_EVENT_TABLE = event_constants.RETROACTIVE_RUN_TABLE
 
 COUNT_EXACT = "exact"
 COUNT_SAMPLE = "sample"
-COUNT_UPPER_BOUND = "upper_bound"
 
 #: Scan budget for the counts that have to walk rows. Same shape and same reason
 #: as `main.ENRICHMENT_DRY_RUN_DEFAULT_LIMIT`: a request path gets a sample.
