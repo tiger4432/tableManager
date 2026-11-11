@@ -96,6 +96,7 @@
 - 한 행 = (트랜잭션, 표, 누가, 작업 종류). 바뀐 행 수는 저장하지 않고 패널이 그 트랜잭션의 줄(`_b` 인덱스)에서 센다.
 - 작업 종류: edit · new · delete · withdraw · merge · mark · copy · declare + 데이터 아닌 기록 낱말.
 - 패널 클릭 → 그 트랜잭션의 줄 → row_id → 행. 이 점프가 끊기지 않는 것이 게이트다.
+- `audit_logs` 는 «칸 아닌 사건»(원장 영수증 · set_aside · reset)만 남긴다. 칸 줄은 은퇴한다. 이력 화면의 📒 영수증과 두 라우트는 그대로다(소유자 11-11 ㄱ).
 
 ## 되돌리기
 
@@ -136,7 +137,7 @@ git grep -n -w -E "AuditLog|audit_logs" <ref> -- server ':!server/tests'
 ```bash
 git grep -c "def write_lines" <ref> -- server/database/write_lines.py
 ```
-- 기대(«감사 로그» 절 — audit_logs 는 착지 날 완전 은퇴): 읽거나 쓰는 함수 0. 남는 것은 모델 정의뿐. 그 밖이 남으면 그 이름이 관문 글에 오른다.
+- 기대(«감사 로그» 절): 칸 줄을 쓰거나 읽는 함수 0. 허용은 사건 쓰기 셋(create_audit_log · bulk_insert_audit_logs · ledger/store._insert_audit_row)과 이력 화면 라우트 둘뿐이고, 칸의 열 이름으로 부른 create_audit_log 는 허용 안에서도 센다(`cell_line_to_audit`). 그 밖이 남으면 그 이름이 관문 글에 오른다.
 - 같은 날 같은 트리에서 걸린 파일은 35 개다(카나리아 1). 역시 줄 단위로 열어 본 수가 아니다.
 
 ## 이 착지 밖
