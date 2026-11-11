@@ -628,7 +628,7 @@ def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, 
             it = items[i]
             if targets[i] != row_id:
                 continue
-            who = who or it.get("written_by")
+            who = who or it.get("acted_by") or it.get("written_by")
             if it["line_kind"] == WRITE and not it.get("respelled"):     # no new hand: names nothing
                 explicit.update(given.get(i) or {})
                 if crud.writes_as_person(it.get("source_name"), it.get("written_by")):

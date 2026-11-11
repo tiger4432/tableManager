@@ -87,3 +87,21 @@ def test_a_persons_line_the_backfill_re_spells_stays_theirs_and_is_no_new_act(en
     assert said and set(said) == {"t"}, "the re-spelled line keeps its value's author"
     assert crud.get_recorrection_stats(env, window_days=100000) == before
 
+
+def test_a_key_the_backfill_folds_onto_a_persons_row_merges_as_the_backfills_act(env, tmp_path, monkeypatch):
+    """A (9b01e1d72 review): a re-spelled key that lands on another row merges the two - the merge is the backfill's
+    act (its audit row and its lines' batch), the person's values stay theirs; the re-correction figure is unchanged."""
+    from database import crud
+
+    _declare(tmp_path, monkeypatch, {})
+    _write(env, PLAIN, [{"k": "K-01", "v": "wafer-01"}, {"k": "K.1", "v": "wafer-02"}], source=crud.USER_SOURCE)
+    _declare(tmp_path, monkeypatch, DECLARED)
+    before = crud.get_recorrection_stats(env, window_days=100000)
+    assert (before["measured_cells"], before["recorrected_cells"]) == (4, 0), before
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    env.expire_all()
+    assert [row.k for row in _rows(env, PLAIN)] == ["K-01"], "canary: the folded key merged the two rows"
+    after = crud.get_recorrection_stats(env, window_days=100000)
+    # one row now (its moved lines keep their own batch, one act): its two cells, and no new act on them
+    assert (after["measured_cells"], after["recorrected_cells"]) == (2, before["recorrected_cells"] == 0 and 0), after
+
