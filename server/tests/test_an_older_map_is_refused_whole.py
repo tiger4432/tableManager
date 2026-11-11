@@ -27,6 +27,7 @@ from database import crud, models, schemas                                 # noq
 from database.database import Base                                         # noqa: E402
 from directory_watcher import IngestionHandler                             # noqa: E402
 from test_heavy_lane import FakeLane                                       # noqa: E402
+from tests.support import line_tables                                      # noqa: E402
 
 PURGE, DIFF = "mver_purge", "mver_diff"
 COLUMNS = {"cell_key": "string", "job": "string", "cell": "string", "v": "string", "rev": "number"}
@@ -44,6 +45,7 @@ def env(db_session):
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=db_session.get_bind())
     for name in TABLES:
+        line_tables.build(db_session.get_bind(), name)    # a map's «same content» reads its lines (A 11-11)
         db_session.query(models.DYNAMIC_TABLES[name]).delete()
     for side in (models.AuditLog, models.CellSource, models.CellOverwrite):
         db_session.query(side).filter(side.table_name.in_(list(TABLES))).delete(synchronize_session=False)
@@ -77,7 +79,11 @@ def _map(db, table):
 
 
 def _layers(db, table):
-    return db.query(models.CellSource).filter(models.CellSource.table_name == table).count()
+    from sqlalchemy import text
+
+    from database import lines
+
+    return db.execute(text('SELECT count(*) FROM "%s"' % lines.lines_relation(table))).scalar()
 
 
 NEW = [("c1", "new", 2.0), ("c2", "new", 2.0)]
@@ -186,6 +192,8 @@ def fixture_watcher(tmp_path, monkeypatch):
     for name, info in TABLES.items():
         monkeypatch.setitem(crud.TABLE_CONFIG, name, dict(info))
     Base.metadata.create_all(bind=engine)
+    for name in TABLES:
+        line_tables.build(engine, name)
     models.ensure_ingestion_checkpoint_table(engine)
     monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: dict(TABLES))
     monkeypatch.setattr(directory_watcher, "SessionLocal", factory)

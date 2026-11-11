@@ -16,7 +16,7 @@ import pytest
 from database import crud, models
 from test_an_older_map_is_refused_whole import DIFF, PURGE, _map, _push, _results, env, fixture_watcher  # noqa: F401
 
-SIDES = (("cells", None), ("layers", models.CellSource), ("overwrites", models.CellOverwrite),
+SIDES = (("cells", None), ("layers", "lines"), ("overwrites", models.CellOverwrite),
          ("history", models.AuditLog), ("outbox", models.DatabaseOutbox))
 GRID = ["c%02d_%02d" % (x, y) for x in range(20) for y in range(20)]
 
@@ -25,6 +25,14 @@ def _snap(db, table):
     db.expire_all()
     out = {}
     for name, model in SIDES:
+        if model == "lines":                       # the table's line table - its layers (A 11-11)
+            from sqlalchemy import text
+
+            from database import lines
+
+            out[name] = sorted(tuple(str(v) for v in r) for r in db.execute(
+                text('SELECT * FROM "%s"' % lines.lines_relation(table))).all())
+            continue
         model = model or models.DYNAMIC_TABLES[table]
         q = db.query(model)
         if model is not models.DYNAMIC_TABLES[table]:

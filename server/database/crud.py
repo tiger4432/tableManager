@@ -538,10 +538,7 @@ def parse_version_key(raw: Any, col_type: str):
     return _parse_temporal_version(text)
 
 
-def _same_source_content_differs(db, table_name, row, update_item, config, version_col,
-                                 is_new, sources_cache, overwrites_cache,
-                                 cell_sources_to_upsert, cell_overwrites_to_upsert,
-                                 layers_read=None):
+def _same_source_content_differs(table_name, update_item, config, version_col, said):
     """Columns whose incoming value differs from what THIS SAME SOURCE last wrote.
 
     🔴 Measured against the source's own previous value, not against the displayed cell.
@@ -550,7 +547,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
     Against the source's own history the predicate is exact: same version, different
     content, same writer.
 
-    Reads come from the caches (`_load_metadata_row_cell` is cache-first) - `_map_unchanged` fills them for the whole
+    `said` {column: {source: layer}}: the row's layers (`lines.layers`) - `_map_unchanged` reads them for the whole
     map in one read. It only runs on the equal-version arm of a map's verdict, which is the re-read case.
     """
     # The same loadable answer as the write itself; the dict beside it answers a
@@ -559,7 +556,8 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
     col_types = (config or {}).get("column_types") or {}
     differing = []
     for col_name, val in update_item.updates.items():
-        if col_name == version_col or col_name not in loadable:
+        # the key column: `_map_unchanged` found the row by it - an assembled key holds no line of its own
+        if col_name in (version_col, (config or {}).get("business_key")) or col_name not in loadable:
             continue
         col_type = col_types.get(col_name, "string")
         try:
@@ -567,11 +565,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
         except ValueError:
             differing.append(col_name)
             continue
-        col_srcs, _ow = _load_metadata_row_cell(
-            db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache,
-            cell_sources_to_upsert, cell_overwrites_to_upsert, layers_read)
-        prev = next((s.value for s in col_srcs if s.source_name == update_item.source_name),
-                    None)
+        prev = ((said.get(col_name) or {}).get(update_item.source_name) or {}).get("value")
         # The source has never written this cell: that is a NEW field appearing at an
         # unchanged version, which is the same upstream defect.
         if values_differ(prev, incoming, col_type):
@@ -661,19 +655,19 @@ def map_version_verdict(config, items, stored_values, unchanged=None):
 def _map_unchanged(db, table_name, config, items, row_ids) -> bool:
     """True when a map at the stored map's version would write nothing (lead 10-26 ㄱ): the stored rows `row_ids` are
     the items' rows one for one by key, and no item's column differs from what its source last wrote there
-    (`_same_source_content_differs`). The map's layers are read once, its rows' and its sources'."""
+    (`_same_source_content_differs`). The map's layers are read once from its rows' lines (`lines.layers`)."""
+    from database import lines
+
     table_model = models.DYNAMIC_TABLES[table_name]
     rows = db.query(table_model).filter(table_model.row_id.in_(list(row_ids))).all() if row_ids else []
     if len(rows) != len(items):
         return False
     by_key = {clean_str_value(row.business_key_val): row for row in rows}
     key_col = config.get("business_key")
-    sources_cache = {}
-    for layer in db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name, models.CellSource.row_id.in_([row.row_id for row in rows]),
-            models.CellSource.source_name.in_(sorted({item.source_name for item in items}))):
-        sources_cache.setdefault((layer.row_id, layer.column_name), []).append(layer)
-    read = LayersRead([row.row_id for row in rows], {col for item in items for col in item.updates})
+    said = {}
+    for (row_id, column), named in lines.layers(db, table_name, [row.row_id for row in rows],
+                                                sorted({col for item in items for col in item.updates})).items():
+        said.setdefault(row_id, {})[column] = named
     seen = set()
     for item in items:
         assemble_composite_business_key(table_name, item)
@@ -682,8 +676,8 @@ def _map_unchanged(db, table_name, config, items, row_ids) -> bool:
         if row is None or row.row_id in seen:
             return False
         seen.add(row.row_id)
-        if _same_source_content_differs(db, table_name, row, item, config, config.get("version_column"), False,
-                                        sources_cache, {}, None, None, read):
+        if _same_source_content_differs(table_name, item, config, config.get("version_column"),
+                                        said.get(row.row_id, {})):
             return False
     return True
 
