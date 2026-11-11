@@ -275,14 +275,14 @@ NO_KEY_INDEX_OFF_LINE = ("no key index on %s - automatic join indexes are off (A
 def no_key_index_line(tables, off=None, keyless=()) -> str:
     """The word for a rule whose key index on `tables` does not stand - what happens next: the scheduler builds it, or
     `off` (the join switch's value, `rules_without_key_index`) says nothing will. `keyless`: the tables it writes whose
-    business key has no valid unique index (a new key is taken today's way, no lines - lead 11-11 ㄴ) - said by
-    `lines.key_index_next`, the one sentence the ensure refusal and the pre-check say too."""
+    business key has no valid unique index (a new key is taken today's way - lead 11-11 ㄴ) - said by
+    `lines.key_index_next`."""
     from database import lines
 
     named = ", ".join(tables)
     said = [NO_KEY_INDEX_OFF_LINE % (named, off) if off else NO_KEY_INDEX_LINE % named] if tables else []
     if keyless:
-        said.append(lines.key_index_next([(table, (lines.KEY_UNKNOWN, 0)) for table in keyless]))
+        said.append(lines.key_index_next(keyless))
     return "; ".join(said)
 
 

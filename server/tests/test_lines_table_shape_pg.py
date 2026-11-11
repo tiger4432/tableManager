@@ -1,5 +1,5 @@
-"""database.lines on PostgreSQL (scratch schema): t stays a table with won_by + t__lines; ensure refuses a table
-without a unique business key, is idempotent; column DDL lands on both; two connections claiming one new key leave
+"""database.lines on PostgreSQL (scratch schema): t stays a table with won_by + t__lines; ensure builds a table's
+lines with or without a unique business key (owner 11-11: lines are bound to row_id), is idempotent; column DDL lands on both; two connections claiming one new key leave
 one row."""
 import threading
 
@@ -34,38 +34,17 @@ def db(pg_engine):
     session.close()
 
 
-def test_ensure_refuses_a_table_without_a_unique_business_key(db):
-    make_table(db, "lt_nokey", CFG, unique_key=False)
-    with pytest.raises(ValueError, match="the scheduler builds it"):
-        lines.ensure_line_table(db, "lt_nokey", CFG)
+def test_a_table_without_the_key_index_or_with_keys_held_twice_keeps_lines(db):
+    """Lines are bound to row_id - the key index is the write's upsert's alone (owner 11-11)."""
+    from sqlalchemy import inspect
 
-
-def test_the_pre_check_lists_tables_without_the_key_index_with_the_next_action(db):
-    from database import line_migration
-
-    make_table(db, "lt", CFG)
     make_table(db, "lt_nokey", CFG, unique_key=False)
     make_table(db, "lt_dups", CFG, unique_key=False)
     db.execute(text("INSERT INTO lt_dups (row_id, business_key_val) VALUES ('a', 'K'), ('b', 'K')"))
-    assert lines.key_index_standing(db.connection(), "lt")
-    assert not lines.key_index_standing(db.connection(), "lt_nokey")
-    missing = line_migration.key_index_missing(db, ["lt", "lt_nokey", "lt_dups"])
-    assert missing == [("lt_nokey", (lines.KEY_BUILD, 0)), ("lt_dups", (lines.KEY_FOLD, 1))]
-    line = line_migration.key_index_line(missing)
-    assert line == ("Tables without a unique business key index: lt_nokey (no unique index on business_key_val yet) - "
-                    "the scheduler builds it at start, a Reload or the table's own ask; wait; lt_dups (1 business keys "
-                    "appear more than once) - in the Retroactive tab run Fold duplicate rows on lt_dups; it builds the "
-                    "index after the merge")
-    assert "add_business_key_unique_index" not in line                  # the hand command: a broken index only
-    assert line_migration.key_index_line([]) is None
-    with pytest.raises(ValueError, match="Fold duplicate rows on lt_dups"):
-        lines.ensure_line_table(db, "lt_dups", CFG)
-
-
-def test_a_broken_index_is_the_only_state_that_names_the_hand_command(db):
-    make_table(db, "lt_nokey", CFG, unique_key=False)
-    said = lines.key_index_next([("lt_nokey", (lines.KEY_INVALID, 0))])
-    assert "INVALID" in said and "add_business_key_unique_index.py" in said
+    assert not lines.key_index_standing(db.connection(), "lt_nokey")              # canary: no index stands
+    for name in ("lt_nokey", "lt_dups"):
+        lines.ensure_line_table(db, name, CFG)
+        assert inspect(db.connection()).has_table(f"{name}__lines") and lines.has_lines(db, name)
 
 
 def test_alter_columns_changes_t_and_its_lines(db):

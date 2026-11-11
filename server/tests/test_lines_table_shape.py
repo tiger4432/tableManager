@@ -252,8 +252,9 @@ def test_note_sources_keeps_one_row_per_name(db):
     assert all(rows[n] == crud.layer_ranks_as(n) for n in rows)
 
 
-def test_the_unknown_state_names_the_doors_that_exist():
-    said = lines.key_index_next([("big", (lines.KEY_UNKNOWN, 0))])
+def test_the_key_index_word_says_what_it_means_and_the_doors_that_exist():
+    said = lines.key_index_next(["big"])
+    assert said.startswith(lines.KEY_RACE + ": ")
     assert "auto_update.log" in said and "Fold duplicate rows on big" in said
     assert "add_business_key_unique_index" not in said
 

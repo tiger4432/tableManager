@@ -1,5 +1,5 @@
-"""lines.ensure_declared on PostgreSQL (scratch schema): a table without the business key index is refused with the
-pre-check's own sentence; a lock held by a long read refuses within the lock wait and the next call builds (lead
+"""lines.ensure_declared on PostgreSQL (scratch schema): a table without the business key index keeps lines all the
+same (owner 11-11); a lock held by a long read refuses within the lock wait and the next call builds (lead
 11-11 - boot and the config watcher never hang on a 70M-row table)."""
 import pytest
 from sqlalchemy import MetaData, Table, inspect, text
@@ -26,12 +26,11 @@ def engine(pg_engine, monkeypatch):
         conn.execute(text(f"DELETE FROM line_columns WHERE table_name = '{NAME}'"))
 
 
-def test_no_key_index_is_refused_with_the_pre_check_sentence(engine):
+def test_a_table_without_the_key_index_keeps_lines(engine):
     with engine.connect() as conn:
-        said = lines.key_index_refusal(conn, NAME)
-    assert said and "the scheduler builds it" in said                           # canary: there is a refusal
-    assert lines.ensure_declared(engine) == {NAME: said}
-    assert not inspect(engine).has_table(f"{NAME}__lines")
+        assert not lines.key_index_standing(conn, NAME)                          # canary: no index stands
+    assert lines.ensure_declared(engine) == {}
+    assert inspect(engine).has_table(f"{NAME}__lines")
 
 
 def test_a_held_lock_refuses_then_the_next_call_builds(engine):

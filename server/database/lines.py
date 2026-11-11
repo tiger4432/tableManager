@@ -343,11 +343,7 @@ def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
     from sqlalchemy import inspect
 
     conn = db.connection()
-    if conn.dialect.name == "postgresql":
-        refused = key_index_refusal(conn, table_name)
-        if refused:
-            raise ValueError(refused)
-    else:                                        # sqlite: no index builder, no concurrency - built here, same name
+    if conn.dialect.name != "postgresql":        # sqlite: no index builder, no concurrency - built here, same name
         import migrations.add_business_key_unique_index as bk
 
         conn.exec_driver_sql(f'CREATE UNIQUE INDEX IF NOT EXISTS "{bk.unique_index_name(table_name)}" '
@@ -384,8 +380,8 @@ def drop_every_line_table(engine) -> list:
 
 def key_index_standing(conn, table_name: str) -> bool:
     """Does a VALID unique index on exactly (business_key_val) stand on t - what INSERT ... ON CONFLICT
-    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat: ensure,
-    key_index_missing and write_lines' claim ask this."""
+    (business_key_val) needs. The catalogue only, so a write may ask it every call (A 11-11). THE seat:
+    write_lines' claim and the rules list ask this. Lines do not need it - they are bound to row_id (owner 11-11)."""
     if conn.dialect.name == "postgresql":
         import migrations.add_business_key_unique_index as bk
 
@@ -399,54 +395,17 @@ def key_index_standing(conn, table_name: str) -> bool:
     return False
 
 
-def key_index_missing(conn, table_name: str):
-    """None when t's business_key_val carries a valid unique index - what write_lines' claim (INSERT ... ON CONFLICT
-    (business_key_val)) needs; else its state (KEY_BUILD: the scheduler builds it · KEY_FOLD, n: n keys held by more
-    than one row · KEY_INVALID: a broken index holds the name). The index has one builder (ingestion_worker's,
-    CONCURRENTLY, never inside this transaction)."""
-    import migrations.add_business_key_unique_index as bk
-
-    if key_index_standing(conn, table_name):    # the catalogue only - the census below reads the whole table
-        return None
-    verdict = bk.plan_table(conn, table_name)
-    if verdict.get("verdict") == bk.OK_ALREADY:
-        return None
-    if verdict.get("verdict") == bk.REFUSED_INVALID_INDEX:
-        return (KEY_INVALID, 0)
-    dups = verdict.get("dup_keys") or 0
-    return (KEY_FOLD, dups) if dups else (KEY_BUILD, 0)
+def key_index_next(tables) -> str:
+    """The rules list's word for tables a rule writes whose business key has no valid unique index: what it means
+    (KEY_RACE) and the next action - the scheduler builds it; keys held twice wait for Fold duplicate rows."""
+    return f"{KEY_RACE}: " + "; ".join(
+        f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; if it cannot, "
+        f"auto_update.log says why (keys held by more than one row: in the Retroactive tab run Fold duplicate rows "
+        f"on {t})" for t in tables)
 
 
-KEY_BUILD, KEY_FOLD, KEY_INVALID = "build", "fold", "invalid"
-#: not read: a screen that asks on every open asks key_index_standing only - the census reads the whole table (A 11-11)
-KEY_UNKNOWN = "unknown"
-
-
-def key_index_next(missing) -> str:
-    """[(table, state)] -> per table why + the ONE next action its state calls for (lead 11-11): the scheduler builds
-    a clean table's index, Fold duplicate rows builds it after its merge, only a broken index needs the hand command.
-    The pre-check line, ensure's refusal and the rules list (its business key part) say this sentence."""
-    said = []
-    for t, (kind, n) in missing:
-        if kind == KEY_FOLD:
-            said.append(f"{t} ({n} business keys appear more than once) - in the Retroactive tab run Fold duplicate "
-                        f"rows on {t}; it builds the index after the merge")
-        elif kind == KEY_UNKNOWN:
-            said.append(f"{t} (no unique index on business_key_val) - the scheduler builds it at start or a Reload; "
-                        f"if it cannot, auto_update.log says why (keys held by more than one row: in the Retroactive "
-                        f"tab run Fold duplicate rows on {t})")
-        elif kind == KEY_INVALID:
-            said.append(f"{t} (an INVALID index holds the name) - drop it with python "
-                        f"server/migrations/add_business_key_unique_index.py, an operator watching")
-        else:
-            said.append(f"{t} (no unique index on business_key_val yet) - the scheduler builds it at start, a Reload "
-                        f"or the table's own ask; wait")
-    return "; ".join(said)
-
-
-def key_index_refusal(conn, table_name: str):
-    state = key_index_missing(conn, table_name)
-    return None if state is None else f"Cannot keep lines: {key_index_next([(table_name, state)])}"
+#: what a table without the index means (owner 11-11 «비즈니스키는 업서트 용»): its new keys are taken today's way
+KEY_RACE = "two writes of one new key at the same moment can make two rows"
 
 
 def drop_line_table(db, table_name: str) -> None:
@@ -718,7 +677,7 @@ def ensure_declared(engine, tables=None) -> dict:
             if built:
                 alter_columns(db, name, cfg, add=missing)
             else:
-                ensure_line_table(db, name, cfg)            # refuses (ValueError) a table without the key index
+                ensure_line_table(db, name, cfg)
             db.flush()
 
         try:

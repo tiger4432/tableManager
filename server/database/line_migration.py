@@ -32,21 +32,6 @@ def report_line(differences: list):
     return f"Columns migrated as stored: {listed} - retyping them is a separate step"
 
 
-def key_index_missing(db, tables) -> list:
-    """(table, state) for every table that lacks the unique business_key_val index keeping lines needs - the
-    pre-check REPORTS these before landing so the operator builds them first; ensure_line_table refuses them on the day."""
-    conn = db.connection()
-    if conn.dialect.name != "postgresql":
-        return []
-    found = ((name, lines.key_index_missing(conn, name)) for name in tables)
-    return [(name, state) for name, state in found if state is not None]
-
-
-def key_index_line(missing: list):
-    """The operator line the pre-check prints, or None."""
-    return f"Tables without a unique business key index: {lines.key_index_next(missing)}" if missing else None
-
-
 COPY_WORK = "copy"
 #: a layer value that is a JSON object: no writer is known to store one (box: 0 of 39.5M), so the copy refuses the
 #: page rather than guess how to read it (lead 11-11) - if it happens, unwrapping goes in front of line_text, once
