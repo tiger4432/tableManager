@@ -704,7 +704,7 @@ absence 낱말을 두지 않습니다 — 한 사실에 한 철자).
 
 ```
 GET /api/ledger/subgraph?…&format=rows      «같은 걷기 결과»를 TSV 로 접는다 — 라우트는 «그대로»
-행        닿은 노드 «하나»
+행        닿은 노드 × 씨앗 × 길 — 길은 그 씨앗이 닿은 최단 길 전부(PATHS_PER_SEED 까지), `paths` 칸 = «K of N» (11-11 안 2)
 열        고정 `type · depth · id · parent_id · via · seed` + «선언 열»
           (닿은 타입들의 키·수식어·속성의 «합집합» — 선언에 있는 이름만)
 머리      `# truncated=<사유> nodes=N limit=M` — 잘렸는지를 «첫 줄»이 말한다

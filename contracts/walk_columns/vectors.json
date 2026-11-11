@@ -7,7 +7,7 @@
     "returns one section PER TYPE and decorates it with fixed columns whose names are",
     "Korean display text (깊이 · 라벨 · id · 충돌); the server's `format=rows` is ONE TSV",
     "table whose fixed columns are machine names (type · depth · id · parent_id · via ·",
-    "seed · path · path_ids). Those two lists can never be equal, and a vector asserting",
+    "seed · path · path_ids · paths). Those two lists can never be equal, and a vector asserting",
     "they are would be a vector nobody can satisfy.",
     "",
     "What IS one rule, and is what these cases score: for a single type, which DECLARED",

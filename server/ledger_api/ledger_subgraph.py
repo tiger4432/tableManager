@@ -2476,6 +2476,12 @@ def _signed_seeds(start):
     return signs
 
 
+#: The paths a seed's answer keeps to one node - every shortest path it reached the node by, up to this many; past
+#: it the answer says «K of N» (lead 11-11 안 2 - the owner's «걸은 경로를 리턴»). The first value waits for the box
+#: measure (1,000 seeds · 1,000 nodes · 6,000 atoms).
+PATHS_PER_SEED = 20
+
+
 def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, fresh=None):
     """Signed reach of every walked node from the signed seeds.  Pure — no query.
 
@@ -2512,7 +2518,8 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
     and there is nothing to split.
 
     Returns `(reach, parents, kinds)`.  `reach` is `node -> [from_positive, from_negative]`,
-    `parents` is `seed -> {node: (predecessor, predicate)}` so an evidence path is rebuilt
+    `parents` is `seed -> {node: [(predecessor, predicate, between), ...]}` - every step from the level before
+    that reached the node, each a path the seed walked (lead 11-11 안 2) - so an evidence path is rebuilt
     on demand — the PREDICATE rides with the predecessor (S-183) because a path that says
     only which nodes were visited cannot say how, and the two were being read from
     different places
@@ -2554,7 +2561,9 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
             continue
         slot = 0 if sign > 0 else 1
         before = (carried or {}).get(seed) or {}
-        trail = parents.setdefault(seed, dict(before.get("parents") or {}))
+        # a carried step comes back as a list - as a tuple it is the same step this page meets again, not a second one
+        trail = parents.setdefault(seed, {node: [tuple(step) for step in steps]
+                                          for node, steps in (before.get("parents") or {}).items()})
         reached_kinds = kinds.setdefault(seed, set(before.get("kinds") or ()))
         # a node an earlier page reached goes on only along this page's edges - only those are read here (MORE: a
         # page that began from every node it carried spent 42 % of itself here, 3 of 7 s on a 20,000-atom seed)
@@ -2565,8 +2574,16 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
         seen = {seed} | set(earlier)
         for node in earlier:
             reach.setdefault(node, [0, 0])[slot] += 1
-        level = list(arrived)
-        while level:
+        # each node's level from this seed, carried page to page: the levels are walked in order, so a later page's
+        # edge that gives a node an earlier page reached another path of its length adds that path (lead 11-11 안 2 -
+        # the pages merged are the walk without caps)
+        depth = {**(before.get("depth") or {}), seed: 0}
+        buckets = defaultdict(list)
+        for node in arrived:
+            buckets[depth.get(node, 0)].append(node)
+        while buckets:
+            at = min(buckets)
+            level = buckets.pop(at)
             reached, reached_modes = defaultdict(set), {}
             for node in level:
                 between = defaultdict(set)              # once a node: a scan per next was 36M steps under 6,000 members
@@ -2574,7 +2591,8 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
                     if p:
                         between[other].add(str(p))
                 for nxt, predicate, direction in adjacency.get(node) or ():
-                    if nxt in seen:
+                    known = nxt in seen
+                    if known and depth.get(nxt) != at + 1:
                         continue
                     # a name may lead to another name and back out into the world only from the seed or a name the seed
                     # reached through names alone - and from such a name the world is reached and not walked on
@@ -2587,52 +2605,75 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
                             and _goes_back_down(arrived[node], predicate, direction,
                                                 _kind(nxt))):
                         continue
-                    if nxt not in reached:
-                        # and every predicate between the two this page draws - a later page's evidence reads it here
-                        trail[nxt] = (node, predicate, sorted(between[nxt]))
+                    # every step from the level before is a path the seed walked, with every predicate between the
+                    # two this page draws - a later page's evidence reads it here
+                    step = (node, predicate, sorted(between[nxt]))
+                    if step not in trail.setdefault(nxt, []):
+                        trail[nxt].append(step)
+                        if known and fresh is not None:
+                            fresh.add(nxt)              # an earlier page's node, reached by another path on this one
+                    if known:
+                        continue
                     reached[nxt].add((predicate, direction, _kind(node)))
                     reached_modes[nxt] = _wider(reached_modes.get(nxt), mode)
             for nxt, steps in reached.items():
                 modes[nxt] = reached_modes[nxt]
                 seen.add(nxt)
+                depth[nxt] = at + 1
                 if fresh is not None:
                     fresh.add(nxt)                      # a seed reached it on this page
                 arrived[nxt] = steps
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
-            level = [nxt for nxt in reached if modes[nxt] != STOP]
+            onward = [nxt for nxt in reached if modes[nxt] != STOP]
+            if onward:
+                buckets[at + 1].extend(onward)
         if keep is not None:
-            keep[seed] = {"parents": {node: list(step) for node, step in trail.items()},
+            keep[seed] = {"parents": {node: [list(step) for step in steps] for node, steps in trail.items()},
                           "arrived": {**earlier, **{node: sorted((list(step) for step in steps), key=str)
                                                     for node, steps in arrived.items() if node != seed}},
                           "kinds": sorted(kind for kind in reached_kinds if kind),
-                          "modes": {node: mode for node, mode in modes.items() if mode != OPEN and node != seed}}
+                          "modes": {node: mode for node, mode in modes.items() if mode != OPEN and node != seed},
+                          "depth": {node: d for node, d in depth.items() if node != seed}}
     return reach, parents, kinds
 
 
-def _trail_back(trail, node_id):
-    """`(ids, predicates)` from the seed down to `node_id`, seed first.
+def _trail_back(trail, node_id, cap=None):
+    """`(paths, total)` - the paths from the seed down to `node_id`, each `(ids, predicates)` seed first, at most
+    `cap` (PATHS_PER_SEED) of them, and how many there are.
 
     🔴 ONE SEAT (S-183). The ranking's `_evidence` and the row projection's `path` must be
     the same answer — a walk that ranks a node by one path and reports another is two
     walks wearing one name. Both call this.
 
-    ⚠️ THE FIRST PATH THAT REACHED IT, NOT EVERY PATH. `_reach` is breadth-first and writes
-    `trail[node]` once, so this is the SHORTEST path from that seed and the only one the
-    walk ever knew. Reporting all paths would be a different (and much larger) question;
-    it is not answered here and the row projection documents that.
-    """
-    ids, predicates, cursor = [], [], node_id
-    while cursor is not None:
-        ids.append(cursor)
-        step = trail.get(cursor)
-        if step is None:
-            break
-        cursor, predicate = step[0], step[1]
-        predicates.append(predicate)
-    ids.reverse()
-    predicates.reverse()
-    return ids, predicates
+    Every SHORTEST path: `_reach` is breadth-first and keeps every step from the level before (lead 11-11 안 2), so
+    the paths are acyclic and none is longer than the first."""
+    cap = PATHS_PER_SEED if cap is None else cap
+    count, paths = {}, []
+
+    def total(node):
+        if node not in count:
+            steps = trail.get(node)
+            count[node] = sum(total(step[0]) for step in steps) if steps else 1
+        return count[node]
+
+    def back(node, ids, predicates):
+        if len(paths) >= cap:
+            return
+        steps = trail.get(node)
+        if not steps:
+            paths.append(([node] + ids, predicates))
+            return
+        for step in steps:
+            back(step[0], [node] + ids, [step[1]] + predicates)
+
+    back(node_id, [], [])
+    return paths, total(node_id)
+
+
+def _paths_said(kept, total) -> str:
+    """«K of N» - the paths an answer keeps of those the seed walked; evidence and rows say it alike."""
+    return f"{kept} of {total}"
 
 
 def _predicates_between(edges):
@@ -2659,30 +2700,39 @@ def _evidence(nodes, parents, seed_signs, node_id, between):
     for seed, trail in parents.items():
         if node_id not in trail:
             continue
-        path, _predicates = _trail_back(trail, node_id)
-        # a trail of a continued walk passes nodes an earlier page drew (MORE) - read off their ids
-        held = {item: nodes.get(item) or _entity_node(decode_node_id(item)["type"], decode_node_id(item)["keys"])
-                for item in path}
-        hops = [{
-            "id": item,
-            "node_kind": held[item].get("node_kind"),
-            "label": held[item].get("label"),
-            "atom": (held[item].get("keys") or {}).get("id"),
-            "ref": (held[item].get("source_raw_ref")
-                    or held[item].get("basis")),
-        } for item in path]
-        for index in range(1, len(hops)):
-            # this page's edges between the two, and what the page that drew the hop said (MORE, 응용 18766: [] after a
-            # first page)
-            drawn = trail[path[index]][2] if len(trail[path[index]]) > 2 else ()
-            hops[index]["predicates"] = sorted(
-                set(between.get(frozenset((path[index - 1], path[index]))) or ()) | set(drawn))
-        trails.append({
-            "seed": seed,
-            "sign": "+" if seed_signs[seed] > 0 else "-",
-            "hops": hops,
-        })
+        paths, total = _trail_back(trail, node_id)
+        for path, predicates in paths:
+            trails.append(_evidence_trail(nodes, trail, seed_signs, seed, path, predicates, between,
+                                          _paths_said(len(paths), total)))
     return trails
+
+
+def _evidence_trail(nodes, trail, seed_signs, seed, path, predicates, between, said):
+    """One path of `_evidence` - its hops, each after the first with the predicates between it and the hop before."""
+    # a trail of a continued walk passes nodes an earlier page drew (MORE) - read off their ids
+    held = {item: nodes.get(item) or _entity_node(decode_node_id(item)["type"], decode_node_id(item)["keys"])
+            for item in path}
+    hops = [{
+        "id": item,
+        "node_kind": held[item].get("node_kind"),
+        "label": held[item].get("label"),
+        "atom": (held[item].get("keys") or {}).get("id"),
+        "ref": (held[item].get("source_raw_ref")
+                or held[item].get("basis")),
+    } for item in path]
+    for index in range(1, len(hops)):
+        # this page's edges between the two, and what the page that drew the hop said (MORE, 응용 18766: [] after a
+        # first page)
+        drawn = next((step[2] for step in trail[path[index]]
+                      if step[0] == path[index - 1] and step[1] == predicates[index - 1] and len(step) > 2), ())
+        hops[index]["predicates"] = sorted(
+            set(between.get(frozenset((path[index - 1], path[index]))) or ()) | set(drawn))
+    return {
+        "seed": seed,
+        "sign": "+" if seed_signs[seed] > 0 else "-",
+        "hops": hops,
+        "paths": said,
+    }
 
 
 def _rank_layers(items):
@@ -2728,7 +2778,8 @@ def _rank_layers(items):
     return layers
 
 
-def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None, deferred=None):
+def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=None, keep=None, deferred=None,
+                 held=None):
     """Rank every node this walk REACHED, by the contrast between the two signed reaches.
 
     🔴 THE POPULATION IS EVERY REACHED NODE, and that is an owner ruling
@@ -2772,6 +2823,8 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     # a continued page ranks what a seed newly reached on it; the rest stands as an earlier page ranked it (MORE)
     fresh = set() if carried is not None else None
     reach, parents, kinds = _reach(nodes, edges, seed_signs, static_types, carried, keep, fresh)
+    if held is not None:
+        held["reach"] = (reach, parents, kinds)     # the rows read this one, not a second _reach
     # 🔴 THE DENOMINATOR. A reach of zero says nothing about itself: the control may have
     # HAD the path and not carried this factor, or it may have had no path to that kind at
     # all, and those two read identically as 0. So each side is reported as a pair --
@@ -2799,8 +2852,9 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     # READS rather than re-derives -- counting one fact two ways is a place for the two to
     # disagree.
     #
-    # ⚠️ `parents` WAS THE FIRST PLAN AND IT CANNOT ANSWER THIS. Measured: it keeps ONE path
-    # per seed, so the predicate it records is whichever arrived first in that seed's walk --
+    # ⚠️ `parents` WAS THE FIRST PLAN AND IT CANNOT ANSWER THIS. Measured: it kept ONE path
+    # per seed (it keeps the shortest ones since 11-11, still not every edge), so the predicate it
+    # recorded was whichever arrived first in that seed's walk --
     # `observed` was simply missing from it. That incompleteness is invisible: the lookup just
     # quietly falls through to the type question and the number looks reasonable.
     #
@@ -2811,7 +2865,8 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     # by `observed` while a control reaches the SAME defect by something else entirely.
     #
     # 🔴 AND IT IS READ FROM THE EDGES, NOT FROM `parents`. Measured while gating this:
-    # `parents` keeps ONE path per seed (it exists to rebuild an evidence trail), so the
+    # `parents` kept ONE path per seed (it exists to rebuild an evidence trail; the shortest ones
+    # since 11-11, still not every edge between two reached nodes), so the
     # predicate it records is whichever arrived first in that seed's walk -- `observed` was
     # simply absent from it. A set built there is incomplete by construction, and the
     # incompleteness is invisible: it just quietly answers the type question instead.
@@ -2977,7 +3032,7 @@ _bare = _bare_name
 #: `depth` first because the first question about a returned node is how far it is from the
 #: seed, and `id` is long, so it sits where the eye is not.
 ROW_FIXED_COLUMNS = ("type", "depth", "id", "parent_id", "via", "seed",
-                     "path", "path_ids")
+                     "path", "path_ids", "paths")
 
 #: What separates the hops of `path` / `path_ids`. Not a comma: a predicate name cannot
 #: contain this, and a reader can see direction in it.
@@ -3067,7 +3122,7 @@ def _row_cell(value):
 
 
 def rows_projection(payload, nodes, edges, seed_signs, entities,
-                    static_types=(), carried=None):
+                    static_types=(), carried=None, reached=None):
     """The walk's answer as TSV — one row per reached node.
 
     🔴 THE TRUNCATION MARKER IS THE FIRST LINE, ALWAYS. 「끊김 ≠ 없음」: a reader who
@@ -3082,10 +3137,11 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     construction and measure nothing. Taking each from its own place makes that gate assert
     the two AGREE, so if it ever goes red it is a finding about the walk.
 
-    ⚠️ ONE PATH — the first that reached the node. `_trail_back` says why.
+    A row per path a seed reached the node by, up to PATHS_PER_SEED; `paths` says «K of N» as the evidence does.
+    `reached`: the ranking's `_reach` answer when it ran (one _reach a walk), else read here.
     """
     # a continued page's paths go on from what the pages before reached (`resume.reach`, MORE) - as its ranking does
-    reach, parents, _kinds = _reach(nodes, edges, seed_signs, static_types, carried)
+    reach, parents, _kinds = reached or _reach(nodes, edges, seed_signs, static_types, carried)
     visible = payload.get("nodes") or []
     limits = payload.get("limits") or {}
     truncation = payload.get("truncated") or {}
@@ -3117,8 +3173,11 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
         trails = [(seed, trail) for seed, trail in parents.items() if node_id in trail]
         if not trails:
             trails = [(None, {})]
-        for seed, trail in trails:
-            ids, predicates = _trail_back(trail, node_id) if trail else ([node_id], [])
+        for seed, ids, predicates, said in [
+                (seed, ids, predicates, _paths_said(len(paths), total))
+                for seed, trail in trails
+                for paths, total in [_trail_back(trail, node_id) if trail else ([([node_id], [])], 1)]
+                for ids, predicates in paths]:
             values = {
                 "type": node.get("type"),
                 "depth": node.get("depth"),
@@ -3130,6 +3189,7 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
                 "seed": seed or (node_id if node.get("depth") in (0, "0") else None),
                 "path": PATH_SEPARATOR.join(str(item) for item in predicates),
                 "path_ids": PATH_SEPARATOR.join(str(item) for item in ids),
+                "paths": said,
             }
             carried = dict(node.get("keys") or {})
             carried.update(node.get("qualifiers") or {})
@@ -4546,6 +4606,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # walk, no second pass over the store.
     _absence_verdicts(page, not reasons, reasons[0] if reasons else None)
     deferred = {"members": hub_members} if hub_steps else None
+    held = {}
     payload = {
         # 🪦 [S-13 ③] `schema_version: 3` 이 여기 있었다. 독자가 «0» 이었고(클라 소스·
         #    하니스·계약·서버 시험 전수), 「다를 때 무엇을 하나」가 «어디에도» 안 적혀 있었으며,
@@ -4598,7 +4659,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             nodes, ordered_edges, seed_signs,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
                  or seed_cut or fan_cut),
-            static_types, (resume or {}).get("reach"), reached, deferred)} if propagation else {}),
+            static_types, (resume or {}).get("reach"), reached, deferred, held)} if propagation else {}),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
             "start": {
@@ -4662,7 +4723,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # Folded at the END, from this walk's own structures (S-183). No second route, no
         # second traversal of the source data - the rows ARE this answer, read sideways.
         payload["rows"] = rows_projection(
-            payload, nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"))
+            payload, nodes, ordered_edges, seed_signs, entities, static_types or (), (resume or {}).get("reach"),
+            held.get("reach"))
     return payload
 
 
