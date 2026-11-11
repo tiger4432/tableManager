@@ -81,7 +81,8 @@ def test_every_enabled_cell_compiles(config, monkeypatch):
     assert all(gate.not_yet(*cell) == gate.PENDING_OWNER for cell in gate.CELLS if cell not in gate.ENABLED)
     reds, compared = census(config, monkeypatch)
     assert len(reds) == len(gate.CELLS), "canary: every cell compiled"
-    # attribute and both qualifiers x 10 types, the value row's compiled cells, the 3 event times read
-    assert compared >= 30 + 3, f"canary: {compared} cells compared as a value or a time"
     held = {gate.name(*cell): reds[gate.name(*cell)] for cell in sorted(gate.ENABLED)}
     assert held == {cell: [] for cell in held}, " | ".join(f"{cell}: {'; '.join(why)}" for cell, why in held.items() if why)
+    # the cells held, then the floor: attribute and both qualifiers x 10 types, the value row's compiled cells, the 3
+    # event times read
+    assert compared >= 30 + 3, f"canary: {compared} cells compared as a value or a time"
