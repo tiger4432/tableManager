@@ -11,11 +11,12 @@
 >          python migrations/add_audit_recent_groups_index.py --apply    <- missing 이 있을 때만
 > 답의 뜻  present  있다. 할 일 없음 — 그래도 패널이 오래 «Updating» 이면 api 로그의 «[Audit] recent walk cut» 줄을 보낸다
 >          missing  없다 -> --apply. 몇 분 걸릴 수 있다 (CONCURRENTLY — 그동안 쓰기는 안 막힌다)
->          invalid  지어지다 끊긴 인덱스다. 읽기에 안 쓰이고 쓰기만 무겁게 한다. 문은 아무것도 지우지 않는다 ->
->                   «!! ... is INVALID» 줄을 총괄에게 보낸다 (DROP INDEX CONCURRENTLY <이름> 뒤 --apply 다시. 끝 코드 1)
+>          invalid  지어지다 끊긴 인덱스다. 읽기에 안 쓰이고 쓰기만 무겁게 한다 -> --apply.
+>                   «<이름>: invalid» · «dropping» · «building» 을 한 줄씩 찍고 지운 뒤 다시 짓는다 (읽기에 해 없음)
+>                   --apply 뒤에도 invalid 면 그 줄을 총괄에게 보낸다 (끝 코드 1)
 >          Not PostgreSQL  SQLite 다. 할 일 없음
 > 볼 것    --apply 뒤 «=== after ===» 아래 셋이 present. 그 뒤 패널 첫 열기가 얼마나 빨라지는지는 운영에서 안 쟀다
-> 끄기     없음 — 인자 없이는 읽기만 한다. 지은 인덱스를 없애려면 DROP INDEX CONCURRENTLY <이름>
+> 끄기     없음 — 인자 없이는 읽기만 하고 아무것도 안 바꾼다
 > 다리     셀소스 갈아엎기 뒤에는 감사 패널이 audit_batches 를 읽는다. 이 문은 그때까지의 다리다
 > ```
 >

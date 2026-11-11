@@ -9,7 +9,11 @@ DEPLOY_SETUP runs the two together.
 
     python migrations/add_audit_recent_groups_index.py            read only: each index present / missing / invalid
     python migrations/add_audit_recent_groups_index.py --apply    builds the missing ones (CREATE INDEX CONCURRENTLY -
-                                                                  writes go on meanwhile), then reads them again
+                                                                  writes go on meanwhile), drops and builds again an
+                                                                  invalid one, then reads them again
+
+An invalid index is a cancelled CONCURRENTLY build: no query uses it, so dropping it costs no read (ops has no SQL
+tool to drop it by hand - lead 11-11).
 
 The statements are the SQL files' own: this script reads and runs them, so the two never say different things.
 After the cell-source overhaul the panel reads `audit_batches` - this is the bridge until then.
@@ -60,7 +64,7 @@ def say(found, title):
     for name, now in found.items():
         print("  %-28s %s" % (name, now))
         if now == INVALID:
-            print("    !! %s is INVALID - it serves nothing. DROP INDEX CONCURRENTLY %s; then run --apply" % (name, name))
+            print("    !! %s is INVALID - it serves nothing. --apply drops it and builds it again" % name)
 
 
 def run(apply: bool, url: str = None) -> dict:
@@ -82,8 +86,8 @@ def run(apply: bool, url: str = None) -> dict:
         engine.dispose()
     say(found, "audit panel indexes %s" % ("APPLY" if apply else "CHECK (read-only)"))
     if not apply:
-        if any(s == MISSING for s in found.values()):
-            print("Missing: run again with --apply (CREATE INDEX CONCURRENTLY - may take minutes, writes go on).")
+        if any(s != PRESENT for s in found.values()):
+            print("Run again with --apply (CREATE INDEX CONCURRENTLY - may take minutes, writes go on).")
         return found
     from sqlalchemy import create_engine
 
@@ -91,8 +95,12 @@ def run(apply: bool, url: str = None) -> dict:
     try:
         with writer.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for name, ddl in wanted:
-                if found[name] == MISSING:
-                    print("  building %s ..." % name, flush=True)
+                if found[name] == INVALID:
+                    print("  %s: invalid" % name)
+                    print("  %s: dropping ..." % name, flush=True)
+                    conn.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
+                if found[name] != PRESENT:
+                    print("  %s: building ..." % name, flush=True)
                     conn.execute(text(ddl))
                 found[name] = state(conn, name)
     finally:
