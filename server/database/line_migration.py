@@ -59,6 +59,22 @@ def _copyable(db, table, table_cfg):
         raise ValueError(f"{table}: not a declared table that keeps lines - nothing to copy")
     if not lines.has_lines(db, table):
         raise ValueError(f"{table}: its lines are not built yet - the schema sync builds them first")
+    from sqlalchemy import inspect
+
+    insp = inspect(db.connection())
+    if not insp.has_table(OLD_LAYERS):
+        raise ValueError(f"{table}: there is no {OLD_LAYERS} table here - nothing to copy from")
+    missing = sorted(set(OLD_COLUMNS) - {c["name"] for c in insp.get_columns(OLD_LAYERS)})
+    if missing:
+        # the old table is cold after the landing - nothing adds its columns any more (lead 11-11 ㄱ)
+        raise ValueError(f"{table}: {OLD_LAYERS} has no {', '.join(missing)} - the copy reads them; "
+                         f"this database cannot be copied")
+
+
+#: the old layer table and the columns copy_page reads from it
+OLD_LAYERS = "cell_sources"
+OLD_COLUMNS = ("table_name", "row_id", "column_name", "source_name", "value", "ingested_at", "updated_by",
+               "owner_rule", "owner_key")
 
 
 def copy_total(db, table: str) -> int:

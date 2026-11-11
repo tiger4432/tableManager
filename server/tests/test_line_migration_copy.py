@@ -156,3 +156,12 @@ def test_a_value_the_write_refuses_refuses_the_page_and_copies_nothing(db):
                                "a number is expected - nothing of this page was copied; tell the lead")
     lt = lines.shape(db, "t", CFG)["lines"]
     assert db.execute(select(lt.c.line_id)).all() == []
+
+
+@pytest.mark.parametrize("gone", ["owner_key", "owner_rule"])
+def test_an_old_table_without_a_column_the_copy_reads_is_refused_by_name(db, gone):
+    """The old table is cold after the landing - nothing adds its columns any more (lead 11-11): a database whose
+    cell_sources lacks one the copy reads is refused, the column named, before any line is written."""
+    db.execute(text(f"ALTER TABLE cell_sources DROP COLUMN {gone}"))
+    with pytest.raises(ValueError, match=f"cell_sources has no {gone} - the copy reads them"):
+        line_migration.copy_page(db, "t", CFG, None, 2, transaction_id="tx-copy")
