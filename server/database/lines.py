@@ -355,7 +355,7 @@ def shape(db, table_name: str, table_cfg: dict) -> dict:
     # «the cells these source rows fed» (cells_stamped_by) - only a line that carries its source row is in it
     Index(index_name(table_name, "i"), lines.c.input_row,
           postgresql_where=text("input_row IS NOT NULL"), sqlite_where=text("input_row IS NOT NULL"))
-    table = current_table(db, table_name, table_cfg, won_by=True)
+    table = current_table(db, table_name, table_cfg, won_by=True, stored=True)
     columns = [c.name for c in table.columns if c.name != WON_BY]
     # kinds: t's columns as stored - value_types' answer, already read by _as_stored (A 11-11: one read a write)
     return {"lines": lines, "bits": bits, "chunks": chunks, "table": table, "columns": columns, "kinds": types}
@@ -372,15 +372,16 @@ def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
     return {**table_cfg, "column_types": physical_kinds(db, table_name)}
 
 
-def current_table(db, table_name: str, table_cfg: dict, won_by=None):
+def current_table(db, table_name: str, table_cfg: dict, won_by=None, stored=False):
     """t itself as a Core Table on its own MetaData - framework and declared columns typed as stored, plus won_by
     when t carries it (won_by None: has_lines asks). THE answer to «t's columns and types»: shape and write_lines
-    (a table without lines too - no slots, no t__lines) bind to it."""
+    (a table without lines too - no slots, no t__lines) bind to it. `stored`: table_cfg is _as_stored's answer
+    already (shape - A 11-11: the stored kinds were read twice a write)."""
     from .models import sql_type_of
 
     if won_by is None:
         won_by = has_lines(db, table_name)
-    cols = _data_columns(_as_stored(db, table_name, table_cfg), sql_type_of, row_id_key=True)
+    cols = _data_columns(table_cfg if stored else _as_stored(db, table_name, table_cfg), sql_type_of, row_id_key=True)
     return Table(table_name, MetaData(), *cols, *([Column(WON_BY, won_by_type())] if won_by else []))
 
 
@@ -549,17 +550,17 @@ def _mask(bit: int) -> int:
     return m - (1 << 64) if m >= 1 << 63 else m
 
 
-def spoken(db, table_name: str, row_ids) -> dict:
+def spoken(db, table_name: str, row_ids, s: dict = None) -> dict:
     """{row_id: columns some line of that row has spoken in} - written OR withdrawn, any source. Read from the head
     lines (the head index): every column a source ever wrote or withdrew keeps that source's head bit, so the OR of
-    head bits is the OR of written bits. A column NOT here keeps t's value (owner 11-11 «끊음»)."""
+    head bits is the OR of written bits. A column NOT here keeps t's value (owner 11-11 «끊음»). `s`: the shape the
+    caller holds (a write - A 11-11), else the built table and its slots are read here."""
     row_ids = list(row_ids)
     if not row_ids:
         return {}
-    conn = db.connection()
-    chunks = _built_chunks(conn, table_name)
+    chunks = s["chunks"] if s is not None else _built_chunks(db.connection(), table_name)
     heads = bit_columns("head", chunks)
-    by_bit = {bit: col for col, bit in bit_map(db, table_name).items()}
+    by_bit = {bit: col for col, bit in (s["bits"] if s is not None else bit_map(db, table_name)).items()}
     lt = Table(lines_relation(table_name), MetaData(), Column("row_id", String), *[Column(h, BigInteger) for h in heads])
     from sqlalchemy import or_
 
@@ -585,22 +586,24 @@ def _columns_of(chunk_values, by_bit) -> set:
     return cols
 
 
-def layers(db, table_name: str, row_ids, columns=None) -> dict:
+def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
     """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by", "origin_row_id", "line_id",
     "owner_rule", "owner_key"}}} - each source's standing word on each cell: its head line, unless that line withdrew
     the column. THE layer read after the overhaul (lead 11-11): what cell_sources answered, in the same shape, from
-    t__lines; values read back as t's stored kind. Reads only - no slots, no shape."""
+    t__lines; values read back as t's stored kind. Reads only - no slots, no shape: `s` is the shape a write already
+    holds (A 11-11), else the built table, its slots and kinds are read here."""
     from sqlalchemy import inspect, or_
 
     from . import crud
 
     row_ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    if not row_ids or not has_lines(db, table_name):
+    if not row_ids or (s is None and not has_lines(db, table_name)):
         return {}
-    conn = db.connection()
-    built = {c["name"] for c in inspect(conn).get_columns(lines_relation(table_name))}       # one catalogue read
+    built = ({c.name for c in s["lines"].c} if s is not None else                         # one catalogue read
+             {c["name"] for c in inspect(db.connection()).get_columns(lines_relation(table_name))})
     chunks = sum(1 for i in range(len(built)) if f"head_{i}" in built)
-    by_bit = {bit: col for col, bit in bit_map(db, table_name).items() if columns is None or col in columns}
+    by_bit = {bit: col for col, bit in (s["bits"] if s is not None else bit_map(db, table_name)).items()
+              if columns is None or col in columns}
     cells = [c for c in by_bit.values() if value_column(c) in built]
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     own = ("line_id", "source_name", "at", "written_by", "owner_rule", "owner_key", "input_row")
@@ -608,7 +611,7 @@ def layers(db, table_name: str, row_ids, columns=None) -> dict:
                *[Column(n, BigInteger if n in ("line_id",) else (DateTime(timezone=True) if n == "at" else String))
                  for n in own],
                *[Column(n, BigInteger) for n in heads + gone], *[Column(value_column(c), String) for c in cells])
-    kinds = value_types(db, table_name)
+    kinds = s["kinds"] if s is not None else value_types(db, table_name)
     out = {}
     for i in range(0, len(row_ids), 1000):
         for r in db.execute(select(lt).where(lt.c.row_id.in_(row_ids[i:i + 1000]),

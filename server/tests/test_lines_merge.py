@@ -133,3 +133,19 @@ def test_the_rule_declared_later_wins_unless_an_unowned_chain_layer_sits_on_the_
     if unowned:
         put(db, "r1", crud.CHAIN_SOURCE, T0, "c")
     assert lines.merge(db, "t", CFG, ["r1"])["r1"]["lot"][0] == shown
+
+
+def test_a_callers_shape_gives_the_same_layers_and_spoken_and_shape_reads_kinds_once(db, monkeypatch):
+    """A write holds one shape (A 11-11): layers / spoken given it answer as they do reading for themselves, and the
+    shape reads t's stored kinds once."""
+    for row, (layers, pinned) in CELLS.items():
+        for source, minutes, value, withdrawn in layers:
+            put(db, row, source, None if minutes is None else T0 + timedelta(minutes=minutes), value, withdrawn)
+    rows = list(CELLS)
+    read = []
+    keep = lines.physical_kinds
+    monkeypatch.setattr(lines, "physical_kinds", lambda *a: read.append(a) or keep(*a))
+    s = lines.shape(db, "t", CFG)
+    assert len(read) == 1
+    assert lines.layers(db, "t", rows) and lines.layers(db, "t", rows, s=s) == lines.layers(db, "t", rows)
+    assert lines.spoken(db, "t", rows, s=s) == lines.spoken(db, "t", rows) != {}
