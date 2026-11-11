@@ -237,6 +237,23 @@ def test_at_one_instant_a_batch_s_line_ranks_after_every_stored_line(db, monkeyp
     assert crud.CHAIN_SOURCE in lines.layers(db, TABLE, [r])[(r, "a")]
 
 
+def test_a_row_merged_again_blanks_the_columns_it_names_where_no_line_speaks(db):
+    """Owner 11-11 via the lead (a removed formula's column): a mark of no column with "blank" - n, which no line
+    says (t holds 9, a formula's leftover), goes blank; a, which a line says, keeps it; a name t lacks is ignored.
+    The row is changed, n old 9 new None (R3 writes its history from it)."""
+    from sqlalchemy import update
+
+    [r] = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"})["changed"]
+    now = lines.shape(db, TABLE, CFG)["table"]
+    db.execute(update(now).where(now.c.row_id == r).values(n=9))
+    out = _write(db, {"row_id": r, "line_kind": "mark", "columns": [], "blank": ["n", "a", "zz"],
+                      "written_by": "r3"}, tx="tx2")
+    row = _now(db)[r]
+    assert (row["a"], row["n"], sorted(row["won_by"])) == ("x", None, ["a", "k"]), row
+    assert (out["changed"][r]["old"]["n"], out["changed"][r]["new"]["n"]) == (9, None)
+    assert [l["line_kind"] for l in _lines(db)] == ["write"], "no line written"
+
+
 def test_one_new_key_twice_in_a_batch_is_one_row(db):
     out = _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
                  {"key": {"k": "K1"}, "values": {"k": "K1", "a": "y"}, "source_name": "f1"})
