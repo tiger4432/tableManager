@@ -21,7 +21,7 @@ export function runLineView(row) {
   const bar = progress.mode === 'bar';
   return {
     id: String(r.id || ''),
-    title: [textOf(r.what), textOf(r.detail)].filter(Boolean).join(' · '),
+    title: [[textOf(r.what), textOf(r.retired)].filter(Boolean).join(' '), textOf(r.detail)].filter(Boolean).join(' · '),
     who: textOf(r.who),
     bar: bar ? 'known' : 'unknown',
     percent: bar ? Number(progress.percent) || 0 : null,

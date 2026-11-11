@@ -3028,7 +3028,7 @@ async function refreshRunning() {
     runsView = buildRunsView(
       { runs: (runs && runs.runs) || [], ingestions: (ingest && ingest.data) || [],
         state_names: (runs && runs.state_names) || {} },
-      Date.now(), cancellable, formParams);
+      Date.now(), retroactiveView ? cancellable : null, formParams);
     runsView.failedSources = failed;
     renderRunning();
   } finally {

@@ -5,6 +5,7 @@
 //   C  a finished run says so in the server's word, with no fade
 //   D  × only where a cancel reaches, and never on a run already stopping
 //   E  the title carries the form's params only (buildRunsView) — no path, no bare numbers
+//   G  a run of an operation the server no longer lists: «(retired)» after its name, its × asks the cancel by its id
 //   F  two instances on one page do not touch each other (조립식)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,6 +85,17 @@ async function suite(mod) {
   eq('E1 the title carries the form\'s params and not the rest',
     (cells(byId('r1'))[0] || {}).textContent, 'Recompute shown values (R3) · void_obs · slow');
 
+  // lead 11-11: fold_file_layers retired, its queued run kept the queue shut with no × to press
+  const gone = doc.createElement('div');
+  const asked = [];
+  new mod.RunLines(gone, { doc, onCancel: (id) => asked.push(id) }).render(buildRunsView({ runs: [
+    { run_id: 'q9', op: 'fold_file_layers', label: 'Fold file layers', params: {}, state: 'queued' }] }, NOW, { resolve: true }).rows);
+  const goneLine = byClass(gone, 'run-line')[0] || { children: [] };
+  const goneX = byClass(goneLine, 'running-x');
+  (goneX[0] && goneX[0].listeners.click || []).forEach((fn) => fn());
+  eq('G1 a retired operation\'s queued run: «(retired)» after its name, one ×, pressed it asks by its run id',
+    [(cells(goneLine)[0] || {}).textContent, goneX.length, asked], ['Fold file layers (retired)', 1, ['q9']]);
+
   // A `rule_rows` run's error is the chain's failure record (server 67b2e423b): drawn as the Chain
   // tab's five cells, label then value, and never as its JSON. A record cut short stays text.
   const record = { failed_at: '2026-10-06T10:00:00', reason: 'boom', rules: ['r_llm'], tables: ['notes'], rows: 6, row: null };
@@ -115,6 +127,7 @@ console.log(`  ${result.ran.length - result.failures.length} passed, ${result.fa
 result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 
 const MUTANTS = [
+  { id: 'R9', what: 'a run of a retired operation not said so', catches: ['G1'], mutate: (s) => s.replace('textOf(r.retired)', "''") },
   { id: 'R1', what: 'the empty × cell is not drawn, so a finished line has four cells', catches: ['A1'],
     mutate: (s) => s.replace("    line.appendChild(act);\n", "    if (v.cancel) line.appendChild(act);\n") },
   { id: 'R2', what: 'the result goes into the elapsed cell — the 32px defect back', catches: ['B1', 'B2'],

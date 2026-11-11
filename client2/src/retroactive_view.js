@@ -67,6 +67,8 @@ export const RETRO_CHROME = Object.freeze({
   RUN: 'run',
   // 인라인 확인의 물러나기. 표가 «하나»라야 두 자리가 서로 다른 말을 안 합니다.
   CANCEL: 'cancel',
+  // beside a run whose operation the server no longer lists (lead 11-11: fold_file_layers retired, its rows stayed)
+  RETIRED: '(retired)',
   RUNNING: 'requesting…',
   RUN_FAILED: 'run request failed',
   QUEUED: 'queued',
@@ -509,11 +511,13 @@ export function buildProgressCell(processed, total, minutes, words = '') {
  *    봐야 하나»가 생기고, 그건 「하나만 끊기」라는 이 화면의 목적과 반대입니다.
  *
  * @param payload  `{ runs, ingestions }` — 둘 다 없을 수 있고, 그때는 «빈 목록»입니다
- * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다
+ * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다 - `null`: 목록을 아직 못 읽음
  */
 export function buildRunsView(payload, now, cancellable, formParams) {
   const data = payload || {};
   const canCancel = cancellable || {};
+  // the server's list of operations no longer names this one (retired) - judged only once the list was read
+  const retiredOp = (op) => Boolean(cancellable) && !Object.prototype.hasOwnProperty.call(cancellable, op);
   const forms = formParams || {};
   const stateNames = data.state_names && typeof data.state_names === 'object' ? data.state_names : {};
   const rows = [];
@@ -547,6 +551,7 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       id: String(run.run_id || ''),
       kind: 'run',
       what: text(run.label) || text(run.op),
+      retired: retiredOp(run.op) ? chrome(RETRO_CHROME.RETIRED) : null,
       // 🔴 총괄 a274c90f0 — the FORM's params only. A run record also keeps what the form does not
       //    offer (`form=False`: ontology_root · fetch_rows · chunk_size), and those reached the title
       //    as a path and two bare numbers. The form's list is the inventory's, not a list here.
@@ -588,7 +593,10 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       summary: extras.length ? null : text(run.result_sentence),
       // its pages as the chain runs them, beside «done» (lead 11-09) - null on any other run
       chain: chainPagesLine(run.pages) ? chrome(chainPagesLine(run.pages)) : null,
-      cancel: !finished && canCancel[run.op] === true,
+      // A queued run ends at once whatever its operation (server request_cancel); a running one is asked - drawn where
+      // the declaration says it can stop, or where no declaration is left (a retired operation: the server releases
+      // its run when the process is gone, 10-11 - otherwise the row held the queue with no × at all).
+      cancel: !finished && (state === 'queued' || canCancel[run.op] === true || retiredOp(run.op)),
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
       // 🔴 «기다리는 것»은 도는 것이 아닙니다. 큐에 앉은 실행은 서버를 안 무겁게 하는데,

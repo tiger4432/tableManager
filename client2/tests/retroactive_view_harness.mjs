@@ -581,9 +581,30 @@ async function suite(source) {
 
     ok(same(rv.rows.map((r) => r.cancel), [true, true, false, false]),
       'G4: the X is drawn only where the declaration says the run can be cancelled');
-    ok(same(view.buildRunsView(payload, NOW, {}).rows.map((r) => r.cancel),
+    ok(same(view.buildRunsView(payload, NOW, { ledger_backfill: false, chain_replay: false }).rows.map((r) => r.cancel),
        [false, false, false, false]),
       'G4: an operation the declaration does not mark cancellable gets no X');
+    // A retired operation (lead 11-11): its rows stay in the run list after the server stops listing it - fold_file_layers'
+    // queued and running rows held the queue with no X. A queued run ends at once whatever its operation; a running one of
+    // an operation no longer listed is released by the server when its process is gone.
+    const retiredRuns = { runs: [
+      { run_id: 'q1', op: 'fold_file_layers', label: 'Fold file layers', params: {}, state: 'queued' },
+      { run_id: 'x1', op: 'fold_file_layers', label: 'Fold file layers', params: {}, state: 'running',
+        started_at: '2026-08-31T08:43:00+09:00' },
+      { run_id: 'q2', op: 'ledger_backfill', label: 'b', params: {}, state: 'queued' },
+      { run_id: 'x2', op: 'ledger_backfill', label: 'b', params: {}, state: 'running', started_at: '2026-08-31T08:43:00+09:00' },
+    ], ingestions: [] };
+    const listed = view.buildRunsView(retiredRuns, NOW, { ledger_backfill: false });
+    ok(same(listed.rows.map((r) => r.cancel), [true, true, true, false]),
+      'G4c: an X on a queued run of any operation and on a run of an operation no longer listed; a listed one that cannot stop, none',
+      listed.rows.map((r) => r.cancel));
+    ok(same(listed.rows.map((r) => r.retired && r.retired.text), ['(retired)', '(retired)', null, null]),
+      'G4d: a run of an operation the server no longer lists says «(retired)»; a listed one says nothing',
+      listed.rows.map((r) => r.retired));
+    const unread = view.buildRunsView(retiredRuns, NOW, null);
+    ok(same(unread.rows.map((r) => [r.cancel, r.retired]), [[true, null], [false, null], [true, null], [false, null]]),
+      'G4e: the list not read yet: no operation is called retired, a running one gets no X, a queued one does',
+      unread.rows.map((r) => [r.cancel, r.retired]));
 
     ok(rv.rows[1].stopping === true,
       'G5: a run whose cancel was requested says it is stopping');
@@ -1041,8 +1062,8 @@ const DEFECTS = [
     swap("const RUN_FINISHED = ['done', 'cancelled', 'failed'];",
       "const RUN_FINISHED = ['succeeded', 'stopped'];")],
   ['G9: a finished run keeps its x',
-    swap('      cancel: !finished && canCancel[run.op] === true,',
-      '      cancel: canCancel[run.op] === true,')],
+    swap("      cancel: !finished && (state === 'queued'",
+      "      cancel: (state === 'queued'")],
   ['G9: the count includes the rows that already finished',
     swap('    liveCount: rows.length,', '    liveCount: rows.length + recent.length,')],
   ['G9: an unrecognised state is treated as finished and disappears',
@@ -1098,6 +1119,9 @@ const DEFECTS = [
   ['F10: an undeclared parameter is still sent',
     swap('  const declared = operation ? list(operation.params).map((p) => p.key) : Object.keys(stored);',
       '  const declared = Object.keys(stored);')],
+  ['G4c: a run of a retired operation gets no X', swap("canCancel[run.op] === true || retiredOp(run.op)),", "canCancel[run.op] === true),")],
+  ['G4c: a queued run of an operation that cannot stop gets no X', swap("(state === 'queued' || canCancel", "(canCancel")],
+  ['G4e: the list not read yet calls every operation retired', swap("Boolean(cancellable) && !Object", "!Object")],
 ];
 
 const CONTROLS = [
