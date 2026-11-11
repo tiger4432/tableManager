@@ -263,7 +263,7 @@ async function crossCases(chrome, ext, cb) {
     ['X2 two areas, opens in 4 s (wait 3 s)', 4000, {}],
     ['X6 two areas, opens in 5 s (wait 3 s)', 5000, {}],
     ['X7 two areas, opens in 7 s (wait 3 s) - past twice the wait', 7000, {}],
-    ['X8 one mail (#5) opens in 4 s among ones in 0.15 s', '150&slow=5', {}],
+    ['X8 one mail (#1) opens in 4 s among ones in 0.15 s', '150&slow=1', {}],
     ['X3 one area that two mails in a row share (the title)', 150, { content: '#reader-head' }],
     ['X4 frame pattern of the same port as the page', 150, { frame: `${cb.url.replace('http://', '')}/api/v2/mail*` }],
     ['X5 no frame pattern (the top page)', 150, { frame: '' }],
@@ -290,9 +290,10 @@ async function crossCases(chrome, ext, cb) {
   eq('X1 opens in time - 36 rows, each its own mail', [got.X1.rows, got.X1.wrong], [36, 0]);
   eq('X2 X6 opens later than the wait - no row holds the mail before it; every mail kept or its own',
     [got.X2.wrong, got.X2.rows + got.X2.kept, got.X6.wrong, got.X6.rows + got.X6.kept], [0, 36, 0, 36]);
-  // a wait held after every item past the slow one costs its page's rest (7 × 3 s - the frame's next page starts clean)
-  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (within X1 + 10 s)',
-    [got.X8.kept, got.X8.rows, got.X8.wrong, got.X8.seconds < got.X1.seconds + 10], [1, 35, 0, true]);
+  // a wait held after every item past the slow one costs its page's rest - 11 × 3 s (the frame's next page starts clean);
+  // the fix costs the slow one's wait and settle, 4 to 12 s (box, quiet and beside a screen checker)
+  eq('X8 one slow mail kept, the ones after it written and their own, not each held a wait (within X1 + 20 s)',
+    [got.X8.kept, got.X8.rows, got.X8.wrong, got.X8.seconds < got.X1.seconds + 20], [1, 35, 0, true]);
 }
 
 async function frameCases(chrome, ext, ask, fb) {
