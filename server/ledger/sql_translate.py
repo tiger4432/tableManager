@@ -421,11 +421,11 @@ def _naive(plan, kinds) -> bool:
 
 
 def _missing(spec) -> str:
-    """SQL: the cell of a value `spec` is missing - NULL, an empty text, a float NaN (`roleframe._is_missing`, spaces
-    present)."""
+    """SQL: the cell of a value `spec` is missing - NULL, an empty text, a float or numeric NaN (`roleframe._is_missing`,
+    spaces present)."""
     cell = f"w.{_quoted(spec['column'])}"
-    return {_TEXT: f"({cell} IS NULL OR {cell} = '')", _FLOAT: f"({cell} IS NULL OR {cell} = 'NaN')"}.get(
-        spec["kind"], f"({cell} IS NULL)")
+    nan = f"({cell} IS NULL OR {cell} = 'NaN')"
+    return {_TEXT: f"({cell} IS NULL OR {cell} = '')", _FLOAT: nan, "numeric": nan}.get(spec["kind"], f"({cell} IS NULL)")
 
 
 def _value(kinds, binding, why) -> dict:

@@ -15,6 +15,8 @@
 > 답의 뜻   left_out 이 비거나 줄었다 -> 고쳐짐
 >          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시각 칸이거나 필수 수식어가 엔티티 속성에서 온다.
 >          그 문장의 선언(그 수식어의 칸)을 보낸다
+> 11-11f 뒤  numeric 칸 수식어 · 속성이 있으면 걷기가 «Decimal is not JSON serializable» 로 실패했다 -> 이 릴리스로 풀린다
+>          찾기  Select-String -Path server\*.log -Pattern "Decimal is not JSON"  — 재기동 뒤 새 줄이 없어야 한다
 > 남은 것   소수 칸에 NaN 이 든 행: 저장 원장은 그 행을 거절하고, 가상 걷기는 수식어 없이 그린다 (판정 대기)
 > 끄기     없음
 > ```
