@@ -6,6 +6,7 @@
 //   O  open groups: shut by default, a press opens one, kept in this browser per «group by»; a storage that throws
 //      is no storage - the page's own state, nothing breaks
 //   T  two on one page: each its own groups, filter and storage key
+//   P  the rule editor's picker (owner 11-11): the names it lists in the list's groups, by the list's key and filter
 // The subject is imported whole (no cut-out text). Run: node client2/tests/chain_rule_groups_harness.mjs
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -168,6 +169,26 @@ function suite(M, loud) {
   say('T1 a press and a filter in one leave the other as it was', x.rows().length === 2 && y.rows().join() === 'dt_log.to_map'
     && y.head('lot_event') === undefined && x.part.shown.textContent === '' && shared.getItem('y:open:trigger') === null,
     [x.rows(), y.rows()]);
+
+  if (loud) console.log('\n── P. THE EDITOR\'S PICKER ─────────────────────────────────────────');
+  const names = RULES.map((r) => r.name);
+  const flat = (gs) => gs.map((x) => `${x.label}:${x.names.join('+')}`).join(' | ');
+  const asList = (gs) => gs.map((x) => `${x.key}:${x.rules.map((r) => r.name).join('+')}`).join(' | ');
+  const pt = M.pickerGroups(RULES, names, { by: 'trigger' });
+  say('P1 by the trigger table: the list\'s groups, in its order, each with the list\'s rules',
+    flat(pt) === asList(M.chainRuleGroups(RULES, { by: 'trigger' })), flat(pt));
+  const pw = M.pickerGroups(RULES, names, { by: 'writes' });
+  say('P2 by the table written: the same as the list\'s', flat(pw) === asList(M.chainRuleGroups(RULES, { by: 'writes' })), flat(pw));
+  const pf = M.pickerGroups(RULES, names, { by: 'trigger', query: 'die_x' });
+  say('P3 under a filter: the rules the list\'s filter keeps', flat(pf) === asList(M.chainRuleGroups(RULES, { query: 'die_x' }))
+    && flat(pf) === 'dt_log:dt_log.to_map', flat(pf));
+  const odd = M.pickerGroups(RULES.slice(0, 1), ['lot_event.to_map', 'just_typed'], {});
+  say('P4 a name no rule here carries stands with the rules of no table; a rule the registry does not list is not offered',
+    flat(odd) === 'lot_event:lot_event.to_map | —:just_typed', flat(odd));
+  const b = list(M);
+  b.groupBy('writes');
+  say('P5 the list answers the key it is grouped by, and its filter says the picker\'s word',
+    b.part.groupBy() === 'writes' && b.part.filter.placeholder === M.FILTER_WORD && M.FILTER_WORD === 'Filter: rule, table, column');
   return bad;
 }
 
@@ -190,6 +211,9 @@ const DEFECTS = [
     '    if (this.store) this.store.setItem(this.storeKey(by), JSON.stringify(next));')],
   ['M8 the «—» group sorts by its glyph', swap('const last = (k) => (k === ABSENT ? 1 : 0);', 'const last = () => 0;')],
   ['M9 groups keyed by the table written whatever is picked', swap('const keyOf = (GROUP_BY[by] || GROUP_BY.trigger).of;', 'const keyOf = GROUP_BY.writes.of;')],
+  ['M10 the picker groups by the trigger table whatever the list is grouped by', swap('return chainRuleGroups(listed, { by, query })', 'return chainRuleGroups(listed, { query })')],
+  ['M11 the picker ignores the filter', swap('return chainRuleGroups(listed, { by, query })', 'return chainRuleGroups(listed, { by })')],
+  ['M12 a name no rule carries is dropped', swap('.map((name) => known.get(name) || { name });', '.map((name) => known.get(name)).filter(Boolean);')],
 ];
 const CONTROLS = [
   ['a local rename', (src) => src.replace(/\bkeyOf\b/g, 'keyFor')],

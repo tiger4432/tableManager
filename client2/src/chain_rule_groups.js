@@ -27,6 +27,9 @@ export function ruleWords(rule) {
   return out.filter((w) => typeof w === 'string' && w);
 }
 
+/** The filter box's word - the list's and the editor picker's alike. */
+export const FILTER_WORD = 'Filter: rule, table, column';
+
 export function ruleMatches(rule, query) {
   const q = String(query || '').trim().toLowerCase();
   return !q || ruleWords(rule).some((w) => w.toLowerCase().includes(q));
@@ -49,6 +52,15 @@ export function chainRuleGroups(rules, { by = 'trigger', query = '', outcomes = 
     off: list.filter((r) => !ruleStateView(r).running).length,
     failing: list.filter((r) => ruleOutcomeView(outcomes && outcomes[r.name]).failed).length,
   }));
+}
+
+/** The rule editor's picker (owner 11-11 «체인 선언 룰 편집기도 그룹 해줘야지»): the names its registry lists, in the
+ *  list's groups by the same key and filter - [{label, names}]. A name no rule here carries stands with the rules of no
+ *  table. */
+export function pickerGroups(rules, names, { by = 'trigger', query = '' } = {}) {
+  const known = new Map((Array.isArray(rules) ? rules : []).map((r) => [r && r.name, r]));
+  const listed = (Array.isArray(names) ? names : []).map((name) => known.get(name) || { name });
+  return chainRuleGroups(listed, { by, query }).map((g) => ({ label: g.key, names: g.rules.map((r) => r.name) }));
 }
 
 /** A group's head: «5 rules · 2 off · 1 failing». */
@@ -83,7 +95,7 @@ export class ChainRuleGroups {
     by.appendChild(this.by);
     this.filter = el('input', 'glass-input ctl-small chain-groups__filter');
     this.filter.type = 'search';
-    this.filter.placeholder = 'Filter: rule, table, column';
+    this.filter.placeholder = FILTER_WORD;
     this.filter.setAttribute('aria-label', 'Filter chain rules');
     this.shown = el('span', 'chain-groups__shown');
     this.root.appendChild(by);
@@ -177,4 +189,7 @@ export class ChainRuleGroups {
   }
 
   storeKey(by) { return `${this.deps.key}:open:${by}`; }
+
+  /** The key the list is grouped by now - the editor's picker groups by the same. */
+  groupBy() { return this.by.value; }
 }

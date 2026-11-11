@@ -52,7 +52,7 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView, ruleStateView } from './rule_outcome.js';
-import { ChainRuleGroups } from './chain_rule_groups.js';
+import { ChainRuleGroups, FILTER_WORD, pickerGroups } from './chain_rule_groups.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
 import { countNumberText } from './match_count.js';
@@ -1179,6 +1179,9 @@ async function refreshChainRule(name, extra = {}) {
       onOpen: (rule, extra) => refreshChainRule(rule, extra || {}),
       onSave: (payload) => saveChainRule(payload),
       onConvert: (payload) => convertChainRuleGrammar(payload),
+      // its picker in the Chain Rules list's groups, by the list's key, under the same filter (owner 11-11)
+      pickGroups: (names, query) => pickerGroups(chainData, names, { by: chainGroupsPart ? chainGroupsPart.groupBy() : 'trigger', query }),
+      pickFilter: FILTER_WORD,
     });
   }
   // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
@@ -2040,9 +2043,23 @@ function chainRuleRow(rule) {
   row.addEventListener('click', () => {
     selectChainRow(rule);
   });
-
+  // the rule into the editor below (owner 11-11); a press on the row itself still opens its details
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'admin-btn ctl-small chain-rule-edit';
+  edit.textContent = 'Edit';
+  edit.setAttribute('aria-label', `Edit ${rule.name} in the rule editor`);
+  edit.addEventListener('click', (e) => { e.stopPropagation(); editChainRule(rule.name); });
+  row.querySelector('.chain-rule-name').appendChild(edit);
 
   return row;
+}
+
+// A list row's Edit: the rule opens in the editor by the editor's own door (its picker's - unsaved text asks first).
+function editChainRule(name) {
+  const went = chainRulePanel ? chainRulePanel.pick(name) : (refreshChainRule(name), true);
+  const mount = byId('chain-rule-mount');
+  if (went && mount && mount.scrollIntoView) mount.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 // The Chain Rules list folded by a table, with its filter (owner 11-11, lead).

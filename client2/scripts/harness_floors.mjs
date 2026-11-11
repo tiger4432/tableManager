@@ -225,10 +225,10 @@ export const FLOORS = new Map([
   // does not show that value the operator reads "saved" as "running". Three states, because
   // the list response carries no `enabled` at all and drawing that as `false` would answer
   // a question nobody asked.
-  ['chain_rule_panel_harness.mjs', 67],
+  ['chain_rule_panel_harness.mjs', 77],
   // New with the owner's 11-11 «트리거표.규칙명 … 많아지니 안 보이더라» (lead): the Chain Rules list folded by a table - groups,
   // their heads' counts, the filter, open groups kept per «group by», a storage that throws, two lists, nine mutants.
-  ['chain_rule_groups_harness.mjs', 29],
+  ['chain_rule_groups_harness.mjs', 37],
   ['absent_harness.mjs', 35],
   // THE ZERO THAT LIES. Four tabs each grew their own sentence for "0 but there is work",
   // while the server has shipped a closed list of six absence words that nothing read.

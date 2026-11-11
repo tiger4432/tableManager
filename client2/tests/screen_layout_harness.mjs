@@ -4106,6 +4106,13 @@ const DRIVE = {
         q.value = 'dt_map'; q.dispatchEvent(new Event('input')); return true; })()`);
       await until(c, "/ of \\d+ rules$/.test((document.querySelector('.chain-groups__shown') || {}).textContent || '')");
     }],
+    // A list row's Edit opens that rule in the editor below (owner 11-11), its picker grouped as the list is.
+    ['Chain, a rule opened in the editor by its Edit', async (c) => {
+      await evaluate(c, `(() => { document.querySelector('#chain-list-body tr[data-name="dt_log_to_dt_map"] .chain-rule-edit').click();
+        return true; })()`);
+      await until(c, "(document.querySelector('#chain-rule-mount .chain-rule-picker') || {}).value === 'dt_log_to_dt_map'"
+        + " && document.querySelectorAll('#chain-rule-mount .chain-rule-picker optgroup').length > 0");
+    }],
     // The chain editor opened by its address (owner 11-10 «플로우 ㄱ»: the grid's Flow box opens it in a new tab), the
     // address admin_route.js builds: the rule open, nothing picked by hand.
     ["Chain, a rule opened by its address", async (c) => {

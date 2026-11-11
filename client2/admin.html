@@ -410,6 +410,7 @@
     }
     .chain-rule-add,
     .table-config-add { margin: 0; }
+    .chain-rule-pick-filter { flex: 1 1 200px; min-width: 0; max-width: 280px; }
     .chain-rule-new-name,
     .table-config-new-name {
       flex: 1 1 200px;
@@ -818,6 +819,7 @@
 
     /* Chain rules are a directed graph, not merely a source/target list. */
     .chain-rule-name { font-weight: 650; color: var(--color-primary); }
+    .chain-rule-edit { margin-left: var(--space-2); }
     /* the Chain Rules list folded by a table (chain_rule_groups.js) */
     .chain-groups { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); }
     .chain-groups__by { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-label); color: var(--text-muted); }
