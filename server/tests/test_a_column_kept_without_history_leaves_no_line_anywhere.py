@@ -15,8 +15,11 @@ import uuid
 
 import pytest
 
-from database import crud, models, schemas
+from sqlalchemy import text
+
+from database import crud, lines, models, schemas
 from database.database import Base
+from tests.support import line_tables
 
 TABLE = "gauges"
 CONFIG = {"business_key": "gauge_id", "no_history_columns": ["reading"],
@@ -29,6 +32,7 @@ def db(db_session, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CONFIG)
     models.init_dynamic_models({TABLE: CONFIG})
     Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES[TABLE].__table__])
+    line_tables.build(db_session.get_bind(), TABLE)                      # the product's shape: a table keeps lines
     _write(db_session, {"gauge_id": "G1", "note": "a", "reading": "1"}, "a.csv")
     _write(db_session, {"gauge_id": "G1", "note": "b", "reading": "2"}, "b.csv")
     return db_session
@@ -68,6 +72,7 @@ def delete(db, column):
 def merge(db, column):
     """Two rows one composite-key edit apart; the edit lands the shell on the other's key and the merge writes `bn`."""
     model = models.DYNAMIC_TABLES[MERGED]
+    line_tables.build(db.get_bind(), MERGED)
 
     def add(cx, bn):
         key = crud.compose_business_key(MERGED, ["L1", 1, cx, 1], ["lot", "slot", "cx", "cy"])
@@ -85,19 +90,32 @@ WRITERS = {"a machine's write": machine, "a person's write": person, "a priority
            "a collision merge": merge}
 
 
+def _stored(db, table, after):
+    """The cells of `table`'s lines after line `after`, each as (column, value text) - the overhaul's record (t__lines;
+    audit_logs takes no write - lead 11-11)."""
+    if db.get_bind().dialect.name != "sqlite" and not lines.has_lines(db, table):
+        return []
+    bits = lines.bit_map(db, table)
+    found = db.execute(text('SELECT * FROM "%s" WHERE line_id > :after ORDER BY line_id' % lines.lines_relation(table)),
+                       {"after": after}).mappings().all()
+    return [(c, line[lines.value_column(c)]) for line in found for c, bit in sorted(bits.items(), key=lambda cb: cb[1])
+            if (line["written_%d" % (bit // 64)] & ((1 << 64) - 1)) >> (bit % 64) & 1]
+
+
 def _lines(db, writer, column, monkeypatch):
-    """(stored, handed back) - the lines the writer left, each as (column, new value)."""
+    """(stored, handed back) of the writer's cells in `column` (the merge's: `bn`) - each as (column, new value); a
+    handed row line (ROW_UPDATE) as it is."""
     table = MERGED if writer is merge else TABLE
     if writer is merge and column == "reading":                           # the merge writes `bn`: kept or not
         monkeypatch.setitem(crud.TABLE_CONFIG[MERGED], "no_history_columns", ["bn"])
-    before = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+    after = db.execute(text('SELECT coalesce(max(line_id), 0) FROM "%s"' % lines.lines_relation(table))).scalar()         if writer is not merge else 0                                     # the merge builds its table's lines afresh
     handed = writer(db, column)
     db.expire_all()
-    stored = [(line.column_name, line.new_value) for line in db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table, models.AuditLog.id > before).order_by(models.AuditLog.id)]
+    asked = "bn" if writer is merge else column
+    stored = [cell for cell in _stored(db, table, after) if cell[0] == asked]
     handed = [(line["column_name"], line["new_value"]) for line in handed]
     if writer is merge:                                                  # the edit's own `cx` line is a plain one
-        return tuple([line for line in lines if line[0] == "bn"] for lines in (stored, handed))
+        return stored, [line for line in handed if line[0] == "bn"]
     return stored, handed
 
 
@@ -112,6 +130,13 @@ def test_a_column_kept_without_history_leaves_no_line_whoever_writes_it(db, name
 @pytest.mark.parametrize("name", WRITERS)
 def test_a_plain_column_keeps_its_line_whoever_writes_it(db, name, monkeypatch):
     stored, handed = _lines(db, WRITERS[name], "note", monkeypatch)
+    if WRITERS[name] is pin:
+        # a pin says no value: its line is a mark that names no cell (lead 11-12 ㄱ - written bits mean «this line says a
+        # value»); the pin itself is cell_overwrites', the carried line names the cell
+        marks = db.execute(text('SELECT count(*) FROM "%s" WHERE line_kind = :k' % lines.lines_relation(TABLE)),
+                           {"k": "mark"}).scalar()
+        assert (stored, bool(handed), marks) == ([], True, 1), (stored, handed, marks)
+        return
     assert stored and handed, (name, stored, handed)
     named = {column for column, _value in stored + handed}
     assert named <= {"note", "bn", "ROW_UPDATE"}, named

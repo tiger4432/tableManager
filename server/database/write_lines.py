@@ -164,7 +164,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     claimed = dict(targets)
     gated, before = _version_gate(table, cfg, items, targets, old)
     held = shape["kinds"]                          # a line's text by what t holds, not the declaration (C)
-    plain = _plain(table, cfg, items, targets, before, held, keeps)
+    plain = _plain(table, cfg, items, targets, before, held, bits if keeps else {})
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
@@ -302,7 +302,14 @@ def _open(db):
         connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
+def _lined(table, bits, columns) -> set:
+    """Of `columns`, those that get a line: a slot on the line table and a history its table keeps
+    (`crud.keeps_history`, `no_history_columns`). THE seat both write steps ask (`_plain`, `_merge_into` - lead
+    11-12); any other column goes to t as its value, no line («a column of no line is t's value»)."""
+    return {c for c in columns if c in bits and crud.keeps_history(table, c)}
+
+
+def _plain(table, cfg, items, targets, before, held, bits) -> dict:
     """A write's columns of no history (`crud.keeps_history`, `no_history_columns` - state cells written every few
     seconds; lead 11-11 ㄴ) leave no line and no audit: their value goes to t as it is - the «a column of no line is t's
     value» rule's case, no new mechanism. Taken out of the item's values here, after the claim and the version gate
@@ -312,7 +319,8 @@ def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
     for i, it in enumerate(items):
         if it["line_kind"] != WRITE or i not in targets:
             continue
-        free = {c: v for c, v in (it.get("values") or {}).items() if not keeps or not crud.keeps_history(table, c)}
+        lined = _lined(table, bits, it.get("values") or ())
+        free = {c: v for c, v in (it.get("values") or {}).items() if c not in lined}
         if not free:
             continue
         it["values"] = {c: v for c, v in it["values"].items() if c not in free}
@@ -1027,12 +1035,13 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                 and crud.values_differ(h_now.get(c), value, types.get(c, "string"))):
             chosen[c] = value
     bits = shape["bits"] if keeps else {}
-    plain = {c: v for c, v in chosen.items() if c not in bits}
+    lined = _lined(table, bits, data)
+    plain = {c: v for c, v in chosen.items() if c not in lined}
     if keeps:
         ln, chunks, held = shape["lines"], shape["chunks"], shape["kinds"]
         shell_key = shell_key if shell_key is not None else s_now.get("business_key_val")
         tag = "%s_%s" % (shell_key, shell) if shell_key else shell
-        user_cols = sorted(c for c in both if c in bits)
+        user_cols = sorted(c for c in both if c in lined)
         heads = lines.layers(db, table, [shell, holder], user_cols, s=shape) if user_cols else {}
         spoke = lines.spoken(db, table, [shell], s=shape).get(shell, set())
         talking = (WRITE, WITHDRAW)
@@ -1067,11 +1076,11 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                 db.execute(update(ln).where(ln.c.row_id == holder, ln.c.source_name == copy).values(
                     {"head_%d" % k: ln.c["head_%d" % k].op("&")(~masks[k]) for k in range(chunks)}))
         fallback = {c: s_now[c] for c in data
-                    if c in bits and c not in spoke and not crud.is_blank_value(s_now.get(c))}
+                    if c in lined and c not in spoke and not crud.is_blank_value(s_now.get(c))}
         if fallback:
             said.append({"source_name": crud.merged_layer_name(source_name or crud.USER_SOURCE, tag),
                          "written_by": written_by or "system", "values": text(fallback)})
-        wins = {c: v for c, v in chosen.items() if c in bits}
+        wins = {c: v for c, v in chosen.items() if c in lined}
         if wins:
             said.append({"source_name": crud.COLLISION_SOURCE, "written_by": written_by or "system",
                          "values": text(wins)})
