@@ -33,6 +33,9 @@ def grid(pg_engine, monkeypatch):
     models.DYNAMIC_TABLES[TABLE].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
     with pg_engine.begin() as conn:                 # s: NULL every 7th, else 13 values; n: NULL every 11th, else 5
+        # no statistics unless a test takes them: with a row_id histogram a deep page-number jump reads by key,
+        # approximately (`main.jump_boundary`), and the OFFSET pages these tests compare against would not be exact
+        conn.execute(text('ALTER TABLE "%s"."%s" SET (autovacuum_enabled = false)' % (PG_TEST_SCHEMA, TABLE)))
         conn.execute(text(
             'INSERT INTO "%s"."%s" (row_id, business_key_val, k, s, n, updated_at) '
             "SELECT 'r' || lpad(g::text, 5, '0'), 'K' || g, 'K' || g, "
