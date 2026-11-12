@@ -353,16 +353,16 @@ def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
     return line_indexes(engine, table_name, table_cfg, say=say, only={name})[name]
 
 
-def shape(db, table_name: str, table_cfg: dict) -> dict:
+def shape(db, table_name: str, table_cfg: dict, assign: bool = True) -> dict:
     """t's line table as a Core Table on a private MetaData, with the bit map it was built from. A column t already
     holds is typed as STORED (the stored kind is what line_text reads). Assigns slots to new declared columns (the
-    caller commits)."""
+    caller commits); `assign=False` reads the live slots only - a reader's shape, nothing written."""
     from .models import sql_type_of
 
     table_cfg = _as_stored(db, table_name, table_cfg)
     types = table_cfg["column_types"]
     declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
-    bits = assign_bits(db, table_name, declared)
+    bits = assign_bits(db, table_name, declared) if assign else bit_map(db, table_name)
     chunks = chunk_count(db, table_name)
     meta = MetaData()
     line_cols = [Column("line_id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
