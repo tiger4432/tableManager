@@ -20,10 +20,30 @@ with an assertion about what LANDED: row identity, the layering verdict, the
 audit trail and the outbox.
 """
 
+import re
+
 import pytest
 
-from database import crud, models, schemas
-from sql_budget import inserts_into, record_statements, selects_from
+from database import crud, lines, models, schemas
+from sql_budget import record_statements
+
+
+def _relation(sql):
+    """The relation a statement writes (INSERT INTO / UPDATE / DELETE FROM) or first reads (FROM)."""
+    text = " ".join(sql.split())
+    hit = re.match(r'(?i)(?:insert(?: or \w+)? into|update|delete from)\s+"?(\w+)"?', text)
+    if hit is None:
+        hit = re.search(r'(?i)\bfrom\s+"?(\w+)"?', text)
+    return hit.group(1) if hit else None
+
+
+def _by_relation(recorded):
+    """{(verb, relation): statements} of a recorded block - an executemany is one statement."""
+    out = {}
+    for call in recorded:
+        key = (call.sql.strip().split()[0].upper(), _relation(call.sql))
+        out[key] = out.get(key, 0) + 1
+    return out
 
 
 #: `xscope_safe_map` is the shipped map shape: business key `cell_key` assembled
@@ -83,10 +103,11 @@ def test_fresh_insert_costs_one_identity_select_for_the_whole_chunk(db_session):
     assert keys == {f"L1_01_{i}_0" for i in range(n)}, \
         "identity must still be the assembled composite key, not a fresh uuid per row"
 
-    data_selects = selects_from(recorded, TABLE)
-    assert len(data_selects) == 1, (
-        f"a fresh chunk must cost ONE prefetch SELECT on the data table, got "
-        f"{len(data_selects)}:\n" + "\n".join(s.sql[:100] for s in data_selects[:5]))
+    # per relation, a chunk's reads, never a row's (the overhaul's record - lead 11-12): t - the claim's held keys,
+    # the claimed rows, the funnel's answer rows; t__lines - the head lines (_spoken), a person's heads (_marks), the
+    # merge's
+    counts = _by_relation(recorded)
+    assert (counts.get(("SELECT", TABLE)), counts.get(("SELECT", lines.lines_relation(TABLE)))) == (3, 3), counts
 
 
 def test_fresh_insert_does_not_emit_one_insert_per_row(db_session):
@@ -110,11 +131,14 @@ def test_fresh_insert_does_not_emit_one_insert_per_row(db_session):
     with record_statements(db_session) as recorded:
         crud.apply_batch_updates(db_session, TABLE, _batch(items))
 
-    data_inserts = inserts_into(recorded, TABLE)
-    assert len(data_inserts) < n / 4, (
-        f"{n} new rows produced {len(data_inserts)} INSERT statements; the flush is "
-        f"not batching. A SQL expression (func.now()) in the parameter set is the "
-        f"usual cause.")
+    counts = _by_relation(recorded)
+    assert counts.get(("INSERT", TABLE)) == 1, (
+        f"{n} new rows must be claimed by one INSERT statement a page: {counts}")
+    # t__lines' INSERT ... RETURNING goes a row at a time on sqlite - SQLAlchemy keeps the parameter order that way,
+    # the driver, not this code; it is one statement a page on PostgreSQL and pinned there
+    # (test_a_new_rows_lines_go_in_a_statement_a_page_pg)
+    print("sqlite: %d t__lines INSERT statements, counted on PostgreSQL only"
+          % counts.get(("INSERT", lines.lines_relation(TABLE)), 0))
 
 
 def test_new_rows_still_get_an_updated_at(db_session):
@@ -439,10 +463,8 @@ def test_a_user_layer_still_beats_a_later_parser_write(db_session):
         "the parser layer overwrote the user layer - the priority computation no "
         "longer sees the stored `user` CellSource")
 
-    stored = {s.source_name: s.value for s in db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id == row.row_id,
-        models.CellSource.column_name == "bn").all()}
+    stored = {source: said["value"] for source, said in
+              lines.layers(db_session, TABLE, [row.row_id], ["bn"]).get((row.row_id, "bn"), {}).items()}
     assert stored == {"user": "USER_VALUE", "pipeline_parser": "PARSER_VALUE"}, \
         "both layers must be stored; only the resolved value is decided by priority"
 
@@ -464,14 +486,19 @@ def test_every_new_row_still_stages_an_outbox_event(db_session):
 
 
 def test_audit_trail_still_records_the_ingest(db_session):
+    """The write's own audit row and its own lines - one a row (the overhaul's record: audit_batches + the lines
+    by batch, lead 11-11)."""
+    from sqlalchemy import text
+
     n = 10
     items = [_item("AU", "01", i, 0, "1") for i in range(n)]
-    crud.apply_batch_updates(db_session, TABLE, _batch(items))
+    crud.apply_batch_updates(db_session, TABLE, _batch(items, transaction_id="au-tx"))
 
-    logs = db_session.query(models.AuditLog).filter(
-        models.AuditLog.table_name == TABLE,
-        models.AuditLog.column_name == "ROW_UPDATE").all()
-    assert len(logs) == n
+    audited = db_session.query(lines.AuditBatch).filter_by(table_name=TABLE, transaction_id="au-tx").all()
+    assert len(audited) == 1, [(a.work_kind, a.written_by) for a in audited]
+    said = db_session.execute(text('SELECT count(DISTINCT row_id), count(*) FROM "%s" WHERE batch = :tx'
+                                   % lines.lines_relation(TABLE)), {"tx": "au-tx"}).one()
+    assert tuple(said) == (n, n), "one line a row of the write"
 
 
 # ------------------------------------------------- S-83 ③: the row write is ONE statement
@@ -487,7 +514,7 @@ def _statements_for(db, table, items, tx):
 
     def before(conn, cursor, statement, params, context, executemany):
         verb = statement.strip().split()[0].upper()
-        key = f"{verb} executemany" if executemany else verb
+        key = (verb, _relation(statement))
         counts[key] = counts.get(key, 0) + 1
 
     engine = db.get_bind()
@@ -532,19 +559,15 @@ def test_editing_many_rows_sends_one_update_statement_not_one_per_row(db_session
     # measured, not assumed: the only single INSERT is the collapsed outbox event (S-82),
     # which is one per request by construction. Pinned here so a later change cannot take
     # the INSERT off its batched path the way the UPDATE was off its.
-    assert inserting.get("INSERT executemany", 0) >= 1, (
-        f"new rows must be inserted by one statement: {inserting}")
-    assert inserting.get("INSERT", 0) <= 1, (
-        f"the only unbatched INSERT is the collapsed event: {inserting}")
-    assert sum(inserting.values()) < rows, (
-        f"inserting must not scale with the row count either: {inserting}")
-
-    assert counts.get("UPDATE", 0) == 0, (
-        f"one UPDATE per row is back: {counts}")
-    assert counts.get("UPDATE executemany", 0) == 1, (
-        f"the {rows} edited rows must be written by ONE statement: {counts}")
-    assert sum(counts.values()) < rows, (
-        f"the whole request must not scale with the row count: {counts}")
+    # by relation (the overhaul's record - lead 11-12): t__lines' INSERT is a row at a time on sqlite (the driver
+    # keeping the parameter order) and pinned on PostgreSQL (test_a_new_rows_lines_go_in_a_statement_a_page_pg)
+    line_rel = lines.lines_relation(TABLE)
+    assert inserting.get(("INSERT", TABLE)) == 1, f"new rows must be claimed by one statement: {inserting}"
+    assert counts.get(("UPDATE", TABLE)) == 1, f"the {rows} edited rows must be written by ONE statement: {counts}"
+    assert counts.get(("UPDATE", line_rel)) == 1, f"the earlier lines' heads by ONE statement: {counts}"
+    for said in (inserting, counts):
+        grows = {k: v for k, v in said.items() if k[0] != "PRAGMA" and k != ("INSERT", line_rel) and v >= rows}
+        assert not grows, f"a statement a row is back: {grows}"
 
 
 def test_the_batch_instant_comes_from_the_database_rather_than_this_process(db_session):

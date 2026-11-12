@@ -2245,7 +2245,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     cells[column] = (old, new)
             written = {c for line in said.values() for c in line["values"]} | set(bare)
             plans[row.row_id] = {"row": row, "cells": cells, "lines": list(said.values()), "bare": bare,
-                                 "key": None, "remerge": bool(set(cells) - written)}
+                                 "key": None, "remerge": sorted(set(cells) - written)}
         if unknown:
             stats["time_left"][notation_norm.NO_ARRIVAL] = (stats["time_left"].get(notation_norm.NO_ARRIVAL, 0)
                                                             + len(unknown))
@@ -2335,7 +2335,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                       for row_id, plan in plans.items() if plan["bare"]]
             # a re-spelled key moves no cell: its row is re-keyed by the write all the same (owner 10-20); a cell
             # whose winning line already holds the folded spelling moves by a merge of its row - a mark asks it
-            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "rekey": bool(plan.get("respelled")),
+            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "scope": plan.get("remerge") or [],
+                       "rekey": bool(plan.get("respelled")),
                        "source_name": NOTATION_BACKFILL_SOURCE, "written_by": NOTATION_BACKFILL_SOURCE}
                       for row_id, plan in plans.items() if plan.get("respelled") or plan.get("remerge")]
             twins = sorted((row_id, plan["twin"]) for row_id, plan in plans.items() if plan.get("twin"))
@@ -2554,8 +2555,12 @@ def recompute_display_values(db, table_name: str, columns: list = None,
             # (`_merges_again` - a mark of no column; `blank` the removed formula's columns, owner 11-11 ㄱ), so the
             # merge, a declared formula, won_by, the claim's row lock and the batch audit go the way every write's go
             # (lead 11-11 ㄱ). The row is the unit (lead 11-11): every cell of it the merge moves is a change here.
+            # its scope: the cells it examined, row by row (lead 11-12 - the merge re-decides those alone, as main did)
+            asked = {}
+            for (r, col), _srcs, _row in gated:
+                asked.setdefault(r, set()).add(col)
             items = [{"row_id": r, "line_kind": "mark", "columns": [], "blank": list(formula_removed or ()),
-                      "written_by": R3_AUDIT_SOURCE} for r in sorted({c[0] for c, _, _ in gated})]
+                      "scope": sorted(cols), "written_by": R3_AUDIT_SOURCE} for r, cols in sorted(asked.items())]
             changed = {}
             if items:
                 with contextlib.nullcontext() if apply else session_contract.held(db):

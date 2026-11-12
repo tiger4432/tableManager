@@ -84,7 +84,7 @@ def test_a_ledger_build_that_waits_holds_back_neither_the_follow_up_nor_the_cens
         task = asyncio.ensure_future(ledger_worker.start_ledger_worker(None))
         for _ in range(50):
             await asyncio.sleep(0.05)
-            if len(started) == 2:
+            if len(started) == 2 and began:        # both loops up and the build begun - a state, not a time
                 break
         seen = (sorted(started), began, release.is_set())
         release.set()

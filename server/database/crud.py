@@ -255,13 +255,17 @@ def _new_drop_stats() -> dict:
     }
 
 
-def _refuse_two_values_in_one_answer(table_name, items, drop_stats):
+def _refuse_two_values_in_one_answer(table_name, items, drop_stats, owners=None):
     """The cells one owner's items give two different values in this batch, taken off every such item and counted
-    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked."""
+    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked. `owners`
+    takes each item's source's owner as read here - read once an item, the write reads it from there (lead 11-12)."""
     types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     seen = {}
     for item in items:
-        if layer_owner(item.source_name) is None:
+        owner = layer_owner(item.source_name)
+        if owners is not None:
+            owners[item.source_name] = owner
+        if owner is None:
             continue
         row = item.row_id or item.business_key_val
         for column, value in (item.updates or {}).items():
@@ -859,13 +863,17 @@ def human_source_clause():
     return text(lines.HUMAN_SOURCE_SQL)
 
 
-def layer_ranks_as(source_name):
+#: an owner not read yet - `layer_owner` reads it (a caller that read it once hands it on - lead 11-12)
+_UNREAD = object()
+
+
+def layer_ranks_as(source_name, owner=_UNREAD):
     """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
     chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
     collision-merge copy of another writer keeps today's rank) - and an owned layer as its base. The one seat that
-    asks it."""
+    asks it. `owner`: the name's `layer_owner`, when the caller read it already."""
     writer = layer_writer(source_name)
-    return writer if writer == CHAIN_SOURCE or layer_owner(source_name) else source_name
+    return writer if writer == CHAIN_SOURCE or (layer_owner(source_name) if owner is _UNREAD else owner) else source_name
 
 
 _MACHINE_LAYER_NAMES = []
@@ -2058,11 +2066,12 @@ def _formulas():
     return _FORMULAS[0]
 
 
-def formula_written(table_name: str, column: str, source_name) -> Optional[str]:
+def formula_written(table_name: str, column: str, source_name, owner=_UNREAD) -> Optional[str]:
     """The formula's name («formula T.c») when this write is a formula column's - a chain write to a column a formula
     computes, which only the formula's rule may write (`formula.second_writers`) - else None. Such a write holds no
-    layer and leaves no line of its own: the value is the declaration's, its history the batch's receipt (lead 10-28)."""
-    if layer_ranks_as(source_name) != CHAIN_SOURCE or (table_name, column) not in _formulas().columns():
+    layer and leaves no line of its own: the value is the declaration's, its history the batch's receipt (lead 10-28).
+    `owner`: as `layer_ranks_as`."""
+    if layer_ranks_as(source_name, owner) != CHAIN_SOURCE or (table_name, column) not in _formulas().columns():
         return None
     return _formulas().RULE_NAME % (table_name, column)
 
@@ -3619,7 +3628,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     cannot mean emptied are dropped and counted by reason (the funnel's drop report); a formula's
     column holds no line (its value is the merge's, its history the batch's receipt, tallied in `plan["receipts"]`).
     The item is named by its row_id or its assembled key - write_lines claims it. `plan`: what the batch works out
-    once (loadable, unmapped, refused_times, receipts, map_judged). -> (the write_lines item, the formulas whose
+    once (loadable, unmapped, refused_times, receipts, map_judged, owners). -> (the write_lines item, the formulas whose
     column it carried - their receipts name the item's row)."""
     config = TABLE_CONFIG.get(table_name, {})
     types = config.get("column_types") or {}
@@ -3629,6 +3638,9 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
                  "line_kind": "created", "source_name": update_item.source_name,
                  "written_by": update_item.updated_by}, [])   # makes (the boundary test_write_path_drop_report pins)
     values, cast, formulas = {}, {}, []
+    owner = (plan.get("owners") or {}).get(update_item.source_name, _UNREAD)    # read once an item (lead 11-12)
+    if owner is _UNREAD:
+        owner = layer_owner(update_item.source_name)
     for col_name, val in update_item.updates.items():
         reason = (DROP_SYSTEM_COLUMN if col_name in SYSTEM_COLUMNS
                   else DROP_UNDECLARED_COLUMN if col_name not in plan["loadable"] else None)
@@ -3642,7 +3654,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, reason, val)
             continue
         col_type = types.get(col_name, "string")
-        formula = formula_written(table_name, col_name, update_item.source_name)
+        formula = formula_written(table_name, col_name, update_item.source_name, owner)
         tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0, "column": col_name,
                                                        "who": update_item.updated_by}) if formula else None)
         try:
@@ -3674,11 +3686,11 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
-                 "written_by": update_item.updated_by, "work": "formula"}, formulas)
+                 "written_by": update_item.updated_by, "work": "formula", "owner": owner or (None, None)}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "cast": cast,                          # what it cast - write_lines does not cast it again (lead 11-12 c)
-             "source_name": update_item.source_name, "written_by": update_item.updated_by,
+             "source_name": update_item.source_name, "written_by": update_item.updated_by, "owner": owner or (None, None),
              "input_row": update_item.origin_row_id, "version_judged": plan.get("map_judged", False)}, formulas)
 
 
@@ -4595,9 +4607,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         drop_stats = _new_drop_stats()
         # Whole rows refused before the write, by name - not cell drops, they ride beside the cell accounting.
         drop_stats["row_refusals"] = vjoin_refusals
-        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats)
+        owners = {}
+        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats, owners)
         plan = {"loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))), "unmapped": {},
-                "map_judged": map_judged, "receipts": {}, "refused_times": refused_times}
+                "map_judged": map_judged, "receipts": {}, "refused_times": refused_times, "owners": owners}
         alignment_batch_counts.write_count("cells offered", sum(len(item.updates) for item in batch.updates),
                                            "cells offered")
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:

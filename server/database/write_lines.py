@@ -71,11 +71,6 @@ def _masks(bits: dict, chunks: int, columns) -> list:
     return [_signed(w) for w in words]
 
 
-def _bit(bits: dict, c: str):
-    """(chunk, signed mask) of one column."""
-    return bits[c] // BITS_A_CHUNK, _signed(1 << (bits[c] % BITS_A_CHUNK))
-
-
 def _data(bits: dict) -> list:
     """The declared columns of the bit map - the framework columns (row_id · business_key_val · created_at ·
     updated_at) have slots too but are the line's own, not a value it says."""
@@ -86,10 +81,13 @@ def _data(bits: dict) -> list:
 def _owner(item) -> tuple:
     """(owner_rule, owner_key) a line of `item` carries: as the item names them, else as its source's name says them
     (`crud.layer_owner` - a layer `owned_layer_name` built; (None, None) for any other) - so the rank's «declared rule
-    first» reads every chain line the funnel writes (lead 11-12 ㄱ; 83de1715e)."""
+    first» reads every chain line the funnel writes (lead 11-12 ㄱ; 83de1715e). The name is read once an item: the
+    funnel's item carries it (`owner`, crud.update_item_as_line), else it is kept there on the first read."""
     if item.get("owner_rule") is not None:
         return item.get("owner_rule"), item.get("owner_key")
-    return crud.layer_owner(item.get("source_name")) or (None, None)
+    if item.get("owner") is None:
+        item["owner"] = crud.layer_owner(item.get("source_name")) or (None, None)
+    return item["owner"]
 
 
 def _cast(table, types, item, column, value):
@@ -161,7 +159,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     claimed = dict(targets)
     gated, before = _version_gate(table, cfg, items, targets, old)
     held = shape["kinds"]                          # a line's text by what t holds, not the declaration (C)
-    plain = _plain(table, cfg, items, targets, before, held, keeps)
+    plain = _plain(table, cfg, items, targets, before, held, bits if keeps else {})
     asked = {i: set(it.get("values") or ()) for i, it in enumerate(items) if it["line_kind"] == WRITE}
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
@@ -197,10 +195,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     blank = {}
     for i in sorted(again):
         blank.setdefault(targets[i], set()).update(items[i].get("blank") or ())
-    # the columns this write touched - its kept lines' and the cells a pin came off (lead 11-12 b); a mark merges all
-    touched = None if again or any(items[i]["line_kind"] == MARK for i in kept) else (
-        {c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
-        | {c for _r, c in unpinned})
+    # the columns this write touched (lead 11-12 b): its kept lines' - a mark's the cells it names (a pin's) - the cells
+    # a pin came off, a merge-again mark's blanks, an item's `scope` (a notation fold's re-merge: the merge's scope, no
+    # line's columns); main re-decided those cells alone
+    touched = ({c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
+               | {c for _r, c in unpinned} | {c for i in again for c in items[i].get("blank") or ()}
+               | {c for i in list(kept) + sorted(again) for c in items[i].get("scope") or ()})
     new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
                      at, old, rows_plain, keeps, blank, touched)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
@@ -211,7 +211,9 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     types = cfg.get("column_types") or {}
     for i in sorted(again):                        # a row merged again changed when a shown value moved
         row_id = targets[i]
-        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], shape["columns"], types):
+        # over the columns the merge answers - t's framework columns (row_id, updated_at, ...) are not in its answer and
+        # would read as moved on every row (lead 11-12: no audit row where nothing shown moves)
+        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], list(new[row_id]), types):
             changed.setdefault(row_id, {"old": old.get(row_id), "new": new[row_id], "work": work[i]})
     said_rows = {}
     for i in sorted(again):                        # its audit row only when a shown value moved (lead 11-11)
@@ -299,7 +301,14 @@ def _open(db):
         connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
+def _lined(table, bits, columns) -> set:
+    """Of `columns`, those that get a line: a slot on the line table and a history its table keeps
+    (`crud.keeps_history`, `no_history_columns`). THE seat both write steps ask (`_plain`, `_merge_into` - lead
+    11-12); any other column goes to t as its value, no line («a column of no line is t's value»)."""
+    return {c for c in columns if c in bits and crud.keeps_history(table, c)}
+
+
+def _plain(table, cfg, items, targets, before, held, bits) -> dict:
     """A write's columns of no history (`crud.keeps_history`, `no_history_columns` - state cells written every few
     seconds; lead 11-11 ㄴ) leave no line and no audit: their value goes to t as it is - the «a column of no line is t's
     value» rule's case, no new mechanism. Taken out of the item's values here, after the claim and the version gate
@@ -309,7 +318,8 @@ def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
     for i, it in enumerate(items):
         if it["line_kind"] != WRITE or i not in targets:
             continue
-        free = {c: v for c, v in (it.get("values") or {}).items() if not keeps or not crud.keeps_history(table, c)}
+        lined = _lined(table, bits, it.get("values") or ())
+        free = {c: v for c, v in (it.get("values") or {}).items() if c not in lined}
         if not free:
             continue
         it["values"] = {c: v for c, v in it["values"].items() if c not in free}
@@ -480,9 +490,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
         items[i]["values"] = {c: crud.line_text(_cast(table, types, items[i], c, v), held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
+    asked = sorted(set(columns) | {c for i in targets if items[i]["line_kind"] == WITHDRAW
+                                   for c in items[i].get("columns") or ()})
     heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at, line_id)}}}
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
-                                                                 in (WRITE, WITHDRAW)}, columns).items():
+                                                                 in (WRITE, WITHDRAW)}, columns, asked).items():
         heads.setdefault(row_id, {})[source] = said
     asking = [i for i in writes if _asks_others(items[i], before.get(i) is not None)]   # `_version_gate`'s seat
     pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
@@ -502,12 +514,14 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
             if it.get("source_name") == "user" and not it.get("respelled"):  # takes the pin off (`_marks`) - for the items after
                 for c in it["values"]:
                     pins.pop((row_id, c), None)
+            # the head's text as stored first: a line's text is line_text's, so an equal text is the same value
+            # (lead 11-12); a differing one is read again - a column retyped since, a zone changed since
             same = {c for c, value in it["values"].items() if c in own and own[c][:2] == hand
-                    and _head_text(own[c][2], held.get(c, "string")) == value}
+                    and (own[c][2] == value or _head_text(own[c][2], held.get(c, "string")) == value)}
             folds, moves = (_others(table, it, row_id, row, held, pins, same, ranks) if i in asking else ({}, {}))
             when = it.get("at") or at
             for source, cs in sorted(moves.items()):   # its share's layer of the value, under its own source
-                kid = dict(it, source_name=source, values={c: it["values"][c] for c in cs}, of=i,
+                kid = dict(it, source_name=source, values={c: it["values"][c] for c in cs}, of=i, owner=None,
                            folds={s: f & cs for s, f in folds.items() if f & cs})
                 targets[len(items)] = row_id
                 kept.add(len(items))
@@ -547,27 +561,32 @@ def _head_text(text, kind):
     return text if kind == "string" else crud.line_text(text, kind)
 
 
-def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - the columns each source heads on the row
+def _spoken(db, ln, bits, chunks, row_ids, columns, asked) -> dict:
+    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - of the
+    `asked` columns (the write's and its withdraws' - lead 11-12: not the table's every column), those each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
-    row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
-    item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
+    row, «when» and - for `columns` - its value. One read of the rows' head lines that head one of the `asked` columns
+    (the mask, a word a chunk - owner 11-12), one statement (no literal per item, 11-11; compiled once a write -
+    lines.shape builds its Table anew); per line, the mask's bits it heads and has not withdrawn."""
+    want = _masks(bits, chunks, [c for c in asked if c in bits])
+    by_bit = {bits[c]: c for c in asked if c in bits}
+    if not by_bit:
+        return {}
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]
     src = lines.LineSource.__table__
+    meets = or_(*[heads[k].op("&")(want[k]) != 0 for k in range(chunks) if want[k]])
     out = {}
     for page in _pages(sorted(row_ids), 1):
         for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
                                      ln.c.line_id, ln.c.owner_rule, src.c.copy_of, *heads, *withdrawn, *values)
                               .select_from(ln.outerjoin(src, src.c.source_name == ln.c.source_name))
-                              .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
+                              .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE,
+                                     or_(*[h != 0 for h in heads]), meets)):    # the head index's condition, then the mask
             said = dict(zip(columns, row[8 + 2 * chunks:]))
-            for c in bits:
-                k, m = _bit(bits, c)
-                if row[8 + k] & m and not row[8 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6],
-                                                               row[7])
+            for c in lines._columns_of([row[8 + k] & ~row[8 + chunks + k] & want[k] for k in range(chunks)], by_bit):
+                out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6], row[7])
     return out
 
 
@@ -820,11 +839,12 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         return merged
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     if moved or only_won:
+        stamped = set(moved)
         db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
             {**{c: bindparam("__%d" % n) for n, c in enumerate(data)},
              **({"won_by": bindparam("__won")} if keeps else {}), "updated_at": bindparam("__at")}),
             [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
-              "__at": at if row_id in set(moved) else old[row_id].get("updated_at")}
+              "__at": at if row_id in stamped else old[row_id].get("updated_at")}
              for row_id in moved + only_won])
     return merged
 
@@ -864,8 +884,11 @@ def _merges_again(item) -> bool:
 
 
 def _moved(old, new, columns, types) -> list:
-    """The `columns` whose value moved from the row `old` to `new` - what a reader of t sees change."""
-    return [c for c in columns if crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
+    """The `columns` whose value moved from the row `old` to `new` - what a reader of t sees change. A value that is
+    still the very object `old` holds was not touched and is not compared (lead 11-12 - a merge keeps the columns it
+    did not decide as they were read)."""
+    return [c for c in columns if old.get(c) is not new.get(c)
+            and crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
 
 
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
@@ -1015,12 +1038,13 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                 and crud.values_differ(h_now.get(c), value, types.get(c, "string"))):
             chosen[c] = value
     bits = shape["bits"] if keeps else {}
-    plain = {c: v for c, v in chosen.items() if c not in bits}
+    lined = _lined(table, bits, data)
+    plain = {c: v for c, v in chosen.items() if c not in lined}
     if keeps:
         ln, chunks, held = shape["lines"], shape["chunks"], shape["kinds"]
         shell_key = shell_key if shell_key is not None else s_now.get("business_key_val")
         tag = "%s_%s" % (shell_key, shell) if shell_key else shell
-        user_cols = sorted(c for c in both if c in bits)
+        user_cols = sorted(c for c in both if c in lined)
         heads = lines.layers(db, table, [shell, holder], user_cols, s=shape) if user_cols else {}
         spoke = lines.spoken(db, table, [shell], s=shape).get(shell, set())
         talking = (WRITE, WITHDRAW)
@@ -1055,11 +1079,11 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                 db.execute(update(ln).where(ln.c.row_id == holder, ln.c.source_name == copy).values(
                     {"head_%d" % k: ln.c["head_%d" % k].op("&")(~masks[k]) for k in range(chunks)}))
         fallback = {c: s_now[c] for c in data
-                    if c in bits and c not in spoke and not crud.is_blank_value(s_now.get(c))}
+                    if c in lined and c not in spoke and not crud.is_blank_value(s_now.get(c))}
         if fallback:
             said.append({"source_name": crud.merged_layer_name(source_name or crud.USER_SOURCE, tag),
                          "written_by": written_by or "system", "values": text(fallback)})
-        wins = {c: v for c, v in chosen.items() if c in bits}
+        wins = {c: v for c, v in chosen.items() if c in lined}
         if wins:
             said.append({"source_name": crud.COLLISION_SOURCE, "written_by": written_by or "system",
                          "values": text(wins)})
@@ -1092,7 +1116,11 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                                             for c in person])
     db.execute(delete(now).where(now.c.row_id == shell))
     crud.delete_row_layers(db, table, [shell])
-    merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps)
+    # the holder's columns this merge can move (main's merge body moved only these): what the shell's lines spoke,
+    # the merge's own lines, its chosen and person cells - any other keeps its winner (lead 11-12)
+    touched = (set(spoke) | {c for it in said for c in it.get("values") or ()} | set(chosen) | set(person)) if keeps else None
+    merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps,
+                        columns=touched)
     return s_now, h_now, merged[holder]
 
 
