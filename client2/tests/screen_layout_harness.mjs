@@ -3403,20 +3403,22 @@ const DRIVE = {
       const pick = (name) => evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
         sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await evaluate(c, "window.__tabsFrom = (document.getElementById('table-select') || {}).value; true");
-      const names = await evaluate(c, "[...document.getElementById('table-select').options].map((o) => o.value).filter(Boolean).slice(0, 3)");
+      // three tables other than the open one, each opened (a table opened again after × reads: clean)
+      const names = await evaluate(c, "[...document.getElementById('table-select').options].map((o) => o.value).filter((v) => v && v !== window.__tabsFrom).slice(0, 3)");
+      const opened = (name) => `(document.getElementById('table-select') || {}).value === ${JSON.stringify(name)}
+        && ((document.querySelector('#table-tabs .table-tab.is-open .table-tab-name') || {}).textContent || '') === ${JSON.stringify(name)}`;
       for (const name of names) {
         await pick(name);
         await sleep(900);
         await settle(c, log);
-        await until(c, GRID_LOADED);
+        await until(c, opened(name));
       }
       await until(c, "document.querySelectorAll('#table-tabs .table-tab').length >= 3");
       await evaluate(c, "(() => { const b = document.getElementById('table-back'); if (!b || b.disabled) return false; b.click(); return true; })()");
       await sleep(900);
       await settle(c, log);
-      // the table before comes back from what it was left as - no read, so no «Loaded» line: the open table and its rows
-      await until(c, `(document.getElementById('table-select') || {}).value === ${JSON.stringify(names[names.length - 2])}
-        && Boolean(document.querySelector('#table-tabs .table-tab.is-open')) && document.querySelectorAll('#myGrid .ag-row').length > 0`);
+      // the table before comes back from what it was left as - no read, so no «Loaded» line: the table and its tab
+      await until(c, opened(names[names.length - 2]));
     }],
     ['Open tables, the first table again', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__tabsFrom || sel.value === window.__tabsFrom) return true;
