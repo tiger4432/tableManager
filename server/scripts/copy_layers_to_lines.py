@@ -4,6 +4,8 @@
 Usage
 -----
     python server/scripts/copy_layers_to_lines.py                       preview: per table, rows and layers to copy
+    python server/scripts/copy_layers_to_lines.py --check [--table <t> ...]   copy and roll back each page: cells
+                                                                              whose lines merge to other than t, so far
     python server/scripts/copy_layers_to_lines.py --apply [--workers 4] [--table <t> ...] [--page 1000]
 
 Per table: pages of `--page` rows, a commit each (`line_migration.copy_page`). Interrupted, run it again - each table
@@ -64,7 +66,10 @@ def plan(engine, tables: dict) -> list:
             built = lines.has_lines(db, table)
             done = built and db.execute(select(func.count()).select_from(ab).where(
                 ab.c.table_name == table, ab.c.work_kind == line_migration.COPY_WORK)).scalar() > 0
-            out.append({"table": table, "layers": layers, "rows": rows, "built": built, "copied": done})
+            names = db.execute(select(cs.c.source_name).where(cs.c.table_name == table).distinct()).scalars().all()
+            copies = sorted(n for n in names if crud.merged_layer_origin(n) is not None)
+            out.append({"table": table, "layers": layers, "rows": rows, "built": built, "copied": done,
+                        "copies": copies})
     return out
 
 
@@ -110,6 +115,36 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
                     % (table, done, rows, copied, (rows - done) / rate / 60 if rate else 0))
 
 
+def check_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
+    """The copy run page by page and rolled back each page: how many cells' lines merge to other than what t shows,
+    said after every page - so a stop at any time leaves a true sample. Nothing stays."""
+    cs = models.CellSource.__table__
+    with Session(bind=engine) as db:
+        rows = db.execute(select(func.count(func.distinct(cs.c.row_id))).where(cs.c.table_name == table)).scalar()
+        after, checked, mismatched = None, 0, []
+        while True:
+            page_mismatched = []
+            try:
+                _n, after = line_migration.copy_page(db, table, cfg, after, page, transaction_id="check_lines:%s" % table,
+                                                     mismatched=page_mismatched)
+            except line_migration.AlreadyCopied as already:
+                db.rollback()
+                say("%s: already copied (%s) - not checked" % (table, already))
+                return {"table": table, "already": True}
+            except ValueError as refused:
+                db.rollback()
+                say("REFUSED - %s" % refused)
+                return {"table": table, "refused": str(refused)}
+            db.rollback()
+            mismatched += page_mismatched
+            checked = rows if after is None else checked + page
+            first = "; ".join("%s.%s t=%r lines=%r" % m for m in mismatched[:SHOWN])
+            say("%s: %d / %d rows checked, %d mismatched so far%s" % (
+                table, checked, rows, len(mismatched), (", first: " + first) if first else ""))
+            if after is None:
+                return {"table": table, "checked": checked, "mismatched": len(mismatched)}
+
+
 def _one(args):
     """A worker process: one table, on its own engine."""
     table, page = args
@@ -125,6 +160,7 @@ def _one(args):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--check", action="store_true")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--page", type=int, default=1000)
     parser.add_argument("--table", action="append", default=[])
@@ -147,7 +183,18 @@ def main(argv=None) -> int:
         print("%-32s %10d layer(s) on %9d row(s) · %s" % (
             p["table"], p["layers"], p["rows"],
             "copied" if p["copied"] else "lines not built - start the server once" if not p["built"] else "to copy"))
+        if p["copies"]:
+            print("%-32s names read as an old key merge's copies: %d, first: %s" % (
+                "", len(p["copies"]), ", ".join(p["copies"][:SHOWN])))
     unbuilt = [p["table"] for p in todo if not p["built"] and p["layers"]]
+    if args.check:
+        print("--check: each page is copied and rolled back to count the cells whose lines merge to other than t - "
+              "needs the server stopped; Ctrl+C at any time leaves a true count so far", flush=True)
+        for p in todo:
+            if p["built"] and not p["copied"] and p["layers"]:
+                check_table(engine, p["table"], tables[p["table"]], args.page,
+                            say=lambda line: print(line, flush=True))
+        return 0
     if not args.apply:
         print("total %d layer(s) to copy · preview only - add --apply" % sum(
             p["layers"] for p in todo if p["built"] and not p["copied"]))

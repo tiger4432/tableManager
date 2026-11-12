@@ -166,6 +166,12 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def sets_at_once(db) -> bool:
+    """A step's rows in one set statement (write_lines, line_migration.copy_page's won_by): PostgreSQL (psycopg2 sends an UPDATE's parameter sets one round trip each,
+    lead 11-12 ㄴ); sqlite keeps the parameter sets - no round trips there, and no bit_or."""
+    return db.get_bind().dialect.name == "postgresql"
+
+
 def keeps_lines(table_name: str, table_cfg) -> bool:
     """Does t keep lines (`won_by` + `t__lines`) - THE answer the copy job, the catalogue and the report ask: an
     operator-declared table (kind table). Not a view, not a table the product ships (system tables), and not an
@@ -303,29 +309,48 @@ def head_index_name(table_name: str, chunks: int) -> str:
     return index_name(table_name, "h" if chunks <= 1 else f"h{chunks}")
 
 
-def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
-    """PostgreSQL: t__lines' head index for its chunks as they stand, built outside any transaction by the one
-    CONCURRENTLY builder (`models._ensure_one_index_once` - its INVALID repair, its waits, its cut) with the earlier
-    chunks' head indexes as its leftovers, taken away first: writes are never held, and head reads go by _ra while it
-    builds (lead 11-11 - a 65th column on a table of many lines). ensure_declared asks it for a table of more than
-    one chunk; sqlite builds it in alter_columns. -> the builder's answer."""
+def line_indexes(engine, table_name: str, table_cfg: dict, say=None, only=None) -> dict:
+    """PostgreSQL: every index t__lines declares (`shape` - ra, b, p, the head, i), or those named in `only`, that is
+    not there and valid, built outside any transaction by the one CONCURRENTLY builder (`models._ensure_one_index_once`
+    - its INVALID repair, its waits, its cut): writes are never held. The head index takes the earlier chunks' head
+    indexes as its leftovers, away first (lead 11-11 - a 65th column). ensure_declared asks it for every line table at
+    each start, so an index found missing - dropped by hand, or by a copy that stopped - is built before anything
+    starts (owner 11-11 «the launcher builds everything or starts nothing», lead 11-12). sqlite: create_all and
+    alter_columns build them. -> {index name: the builder's answer}."""
     import logging
+    import time
 
     from sqlalchemy.orm import Session
     from sqlalchemy.schema import CreateIndex
 
     from . import models
 
+    say = say or logging.getLogger(__name__).info
     with Session(engine) as db:
         s = shape(db, table_name, table_cfg)
         db.rollback()
-    name = head_index_name(table_name, s["chunks"])
-    head = next(i for i in s["lines"].indexes if i.name == name)
-    ddl = str(CreateIndex(head).compile(dialect=engine.dialect))
-    return models._ensure_one_index_once(
-        engine, name, ddl.replace("CREATE INDEX", "CREATE INDEX CONCURRENTLY IF NOT EXISTS", 1), "line head",
-        say=say or logging.getLogger(__name__).info, table=lines_relation(table_name),
-        leftovers=[head_index_name(table_name, n) for n in range(1, s["chunks"])])
+    head = head_index_name(table_name, s["chunks"])
+    out = {}
+    for index in sorted(s["lines"].indexes, key=lambda i: i.name):
+        if only is not None and index.name not in only:
+            continue
+        ddl = str(CreateIndex(index).compile(dialect=engine.dialect))
+        began = time.perf_counter()
+        out[index.name] = models._ensure_one_index_once(
+            engine, index.name, ddl.replace("CREATE INDEX", "CREATE INDEX CONCURRENTLY IF NOT EXISTS", 1),
+            "line head" if index.name == head else "line", say=say, table=lines_relation(table_name),
+            leftovers=[head_index_name(table_name, n) for n in range(1, s["chunks"])] if index.name == head else ())
+        if out[index.name] == models.INDEX_BUILT:
+            say("[Indexes] line index '%s' built in %.1f s" % (index.name, time.perf_counter() - began))
+    return out
+
+
+def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
+    """t__lines' head index for its chunks as they stand (`line_indexes`' head case). -> the builder's answer."""
+    with __import__("sqlalchemy.orm", fromlist=["Session"]).Session(engine) as db:
+        name = head_index_name(table_name, chunk_count(db, table_name))
+        db.rollback()
+    return line_indexes(engine, table_name, table_cfg, say=say, only={name})[name]
 
 
 def shape(db, table_name: str, table_cfg: dict, assign: bool = True) -> dict:
@@ -806,17 +831,17 @@ def ensure_declared(engine, tables=None) -> dict:
                              f"or save again" if held else f"{told(err)} - fix what it names, then start or save again")
             log.error("[Lines] %s: %s", name, refused[name], exc_info=None if held else err)
             continue
-        if not built or engine.dialect.name != "postgresql":
+        if engine.dialect.name != "postgresql":
             continue
-        try:                    # the head index is speed only: said, never a refusal - the next sync asks it again
-            wide = sum(1 for c in have if c.startswith("head_")) > 1
-            if missing:
-                with Session(engine) as db:
-                    wide = chunk_count(db, name) > 1
-            if wide:
-                head_index(engine, name, cfg, say=log.info)
-        except Exception as err:                             # noqa: BLE001
-            log.error("[Lines] %s: head index not built - %s", name, told(err))
+        try:
+            answers = line_indexes(engine, name, cfg, say=log.info)
+        except Exception as err:                             # noqa: BLE001 - said; the sync raises it with the rest
+            answers = {lines_relation(name): "%s%s" % (models.INDEX_FAILED_SAID, told(err))}
+        unbuilt = sorted(n for n, a in answers.items() if a not in (models.INDEX_BUILT, models.INDEX_PRESENT))
+        if unbuilt:
+            refused[name] = ("index %s not built (%s) - the line above says why; start again once it is free"
+                             % (", ".join(unbuilt), ", ".join(str(answers[n]) for n in unbuilt)))
+            log.error("[Lines] %s: %s", name, refused[name])
     return refused
 
 

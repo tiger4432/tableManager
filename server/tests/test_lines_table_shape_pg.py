@@ -27,7 +27,7 @@ def db(pg_engine):
     session = sessionmaker(bind=pg_engine)()
     yield session
     session.rollback()
-    for name in ("lt", "lt65", "lt_nokey", "lt_dups"):
+    for name in ("lt", "lt65", "lt_nokey", "lt_dups", "lt_ix"):
         lines.drop_line_table(session, name)
         session.execute(text(f'DROP TABLE IF EXISTS "{name}"'))
     session.commit()
@@ -151,3 +151,53 @@ def test_two_writers_noting_one_new_source_leave_one_row(pg_engine):
         assert conn.execute(text("SELECT count(*) FROM line_sources WHERE source_name = 'pg_race_source'")).scalar() == 1
         conn.execute(text("DELETE FROM line_sources WHERE source_name = 'pg_race_source'"))
     assert seen == {"second": "ok"}
+
+
+def line_index_names(db, name):
+    """{index: valid} of t__lines in this schema."""
+    return dict(db.execute(text(
+        "SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+        "JOIN pg_class t ON t.oid = i.indrelid WHERE t.relname = :t AND t.relnamespace = "
+        "(SELECT oid FROM pg_namespace WHERE nspname = current_schema())"), {"t": lines.lines_relation(name)}).all())
+
+
+@pytest.fixture()
+def lt_ix(db, monkeypatch):
+    from database import crud
+
+    make_table(db, "lt_ix", CFG)
+    lines.ensure_line_table(db, "lt_ix", CFG)
+    db.commit()
+    monkeypatch.setitem(crud.TABLE_CONFIG, "lt_ix", CFG)
+    return {i.name for i in lines.shape(db, "lt_ix", CFG)["lines"].indexes}
+
+
+def test_every_declared_line_index_dropped_is_built_again_valid_by_the_start(db, pg_engine, lt_ix, caplog):
+    """Lead 11-12: ra, b, p, h and i each dropped on a built line table - the start's ensure builds it back, valid,
+    and says the line the operator reads (RUN.md [11-12c])."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger=lines.__name__)
+    assert len(lt_ix) == 5 and set(line_index_names(db, "lt_ix")) >= lt_ix
+    for name in sorted(lt_ix):
+        db.execute(text(f'DROP INDEX "{name}"'))
+        db.commit()
+        assert name not in line_index_names(db, "lt_ix")
+        caplog.clear()
+        assert lines.ensure_declared(pg_engine, tables=["lt_ix"]) == {}
+        assert line_index_names(db, "lt_ix").get(name) is True, name
+        assert [r.getMessage().split(" built in ")[0] for r in caplog.records if " built in " in r.getMessage()] \
+            == [f"[Indexes] line index '{name}'"]
+
+
+def test_a_line_index_not_built_refuses_the_start_naming_it(db, pg_engine, lt_ix, monkeypatch):
+    from database import models
+
+    name = sorted(lt_ix)[0]
+    db.execute(text(f'DROP INDEX "{name}"'))
+    db.commit()
+    builder = models._ensure_one_index_once
+    monkeypatch.setattr(models, "_ensure_one_index_once", lambda engine, n, *a, **k: (
+        models.INDEX_DEFERRED if n == name else builder(engine, n, *a, **k)))
+    refused = lines.ensure_declared(pg_engine, tables=["lt_ix"])
+    assert list(refused) == ["lt_ix"] and f"index {name} not built (deferred)" in refused["lt_ix"]

@@ -785,6 +785,24 @@ def merged_layer_name(name: str, tag: str) -> str:
     return "%s (%s)" % (name, tag)
 
 
+def merged_layer_origin(name):
+    """The name an old collision merge's copy was made from, or None: `merged_layer_name` with the tag that merge
+    gave it (main's old write door) - «<business key>_<row_id[:6]>», «<row_id[:6]>» without a key, «merged» without
+    a row_id; a row_id is a uuid, so its head is six hex digits. Only the outer bracket is read. Not a copy: the
+    person's own value it kept («user (old_exist_<6>)»), a chain origin layer, an owned layer (`layer_owner`)."""
+    import re
+
+    text = str(name or "")
+    if not text.endswith(")") or " (" not in text:
+        return None
+    base, tag = text[:-1].rsplit(" (", 1)
+    if not base or not re.fullmatch(r"(?:.+_)?(?:[0-9a-f]{6}|merged)", tag) or layer_owner(text) is not None:
+        return None
+    if base == USER_SOURCE and re.fullmatch(r"old_exist_[0-9a-f]{6}", tag):
+        return None
+    return base
+
+
 #: What an owner's part may not hold as itself in a layer name: the escape, the parts' separator, the brackets, and
 #: control characters - each written %XX, so a part never holds a space or a bracket and `layer_writer` still reads
 #: the writer before the first « (».

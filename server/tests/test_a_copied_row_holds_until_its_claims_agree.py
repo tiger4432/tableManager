@@ -29,6 +29,7 @@ from database import crud, lines                                    # noqa: E402
 from support import hold_world as hw                                # noqa: E402
 from support import line_tables                                     # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
+from sqlalchemy import select                                       # noqa: E402
 
 pytestmark = pytest.mark.pg
 
@@ -240,6 +241,16 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
     with world["engine"].begin() as conn:               # a person's layer carrying A as its source row
         line_tables.line(conn, hw.OFFICIAL, line_tables.bits_of(hw.OFFICIAL), official_id, source="user",
                          values={"note": "x"}, input_row=a, written_by="t")
+    # the row merged once, as the door's write would leave it - a line planted alone left t's note NULL, and the
+    # withdrawal's re-merge told NULL -> 'x' as an EDIT of its own (lead 11-12)
+    config = crud.TABLE_CONFIG[hw.OFFICIAL]
+    said, now = lines.merge(db, hw.OFFICIAL, config, [official_id])[official_id], lines.current_table(
+        db, hw.OFFICIAL, config, won_by=True)
+    won = dict(db.execute(select(now.c.won_by).where(now.c.row_id == official_id)).scalar() or {})
+    db.execute(now.update().where(now.c.row_id == official_id).values(
+        **{c: value for c, (value, _line) in said.items()}, won_by={**won, **{c: line for c, (_v, line) in said.items()}}))
+    db.commit()
+    assert db.execute(select(now.c.note).where(now.c.row_id == official_id)).scalar() == "x", "canary: merged"
     last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
     worker._withdraw_what_those_rows_fed(db, hw.LOG, [a], "deleted")
     new = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last).all()
