@@ -98,6 +98,23 @@ def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
     return db.execute(select(func.max(lt.c.row_id)).where(lt.c.batch == transaction_id)).scalar()
 
 
+def take_copy_lines(db, table, cfg, rows, tx) -> int:
+    """Take these rows' copy lines (batch `tx`) out of t__lines, and the won_by entries naming them - before
+    copy_page(rows=) copies them again (copy_layers_to_lines --rows). In the caller's transaction. -> lines taken."""
+    from sqlalchemy import delete, select, update
+
+    s = lines.shape(db, table, cfg)
+    lt, t = s["lines"], lines.current_table(db, table, cfg)
+    gone = set(db.execute(select(lt.c.line_id).where(lt.c.batch == tx, lt.c.row_id.in_(rows))).scalars())
+    if gone:
+        db.execute(delete(lt).where(lt.c.line_id.in_(sorted(gone))))
+        for row_id, won_by in db.execute(select(t.c.row_id, t.c[lines.WON_BY]).where(t.c.row_id.in_(rows))).all():
+            kept = {c: lid for c, lid in (won_by or {}).items() if lid not in gone}
+            if kept != (won_by or {}):
+                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: kept or None}))
+    return len(gone)
+
+
 def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transaction_id: str,
               written_by: str = "system", mismatched: list = None, rows: list = None) -> tuple:
     """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines: one

@@ -203,7 +203,7 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
         after, copied, pages, mismatched, found = None, 0, 0, [], 0
         if rows is not None:
             path = os.path.abspath((RECORD % table)[:-4] + time.strftime(".again-%Y%m%d-%H%M%S.csv"))
-            taken = take_copy_lines(db, table, cfg, rows, tx)
+            taken = line_migration.take_copy_lines(db, table, cfg, rows, tx)
             n, _ = line_migration.copy_page(db, table, cfg, None, len(rows), transaction_id=tx,
                                             mismatched=mismatched, rows=rows)
             db.commit()
@@ -254,22 +254,6 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                 rate = done / (now - started)
                 say("%s: %d / %d rows, %d layer(s) copied, %d mismatched so far, about %.0f min left"
                     % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
-
-
-def take_copy_lines(db, table, cfg, rows, tx) -> int:
-    """Take these rows' copy lines out of t__lines, and the won_by entries naming them. -> lines taken."""
-    from sqlalchemy import delete, update
-
-    s = lines.shape(db, table, cfg)
-    lt, t = s["lines"], lines.current_table(db, table, cfg)
-    gone = set(db.execute(select(lt.c.line_id).where(lt.c.batch == tx, lt.c.row_id.in_(rows))).scalars())
-    if gone:
-        db.execute(delete(lt).where(lt.c.line_id.in_(sorted(gone))))
-        for row_id, won_by in db.execute(select(t.c.row_id, t.c[lines.WON_BY]).where(t.c.row_id.in_(rows))).all():
-            kept = {c: lid for c, lid in (won_by or {}).items() if lid not in gone}
-            if kept != (won_by or {}):
-                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: kept or None}))
-    return len(gone)
 
 
 def check_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
