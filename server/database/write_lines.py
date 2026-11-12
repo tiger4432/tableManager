@@ -30,6 +30,8 @@ An item is a dict:
     old_key       the key the item was sent with when it is not its assembled key (a raw spelling, a rename by
                   the old key): asked when the assembled key is nobody's - ruling 191, S-90 - and the row it
                   names is re-keyed
+    work          the word its audit row says for it, where the caller names one («formula» - a formula's
+                  write, owner 11-12 ㄴ); a word only, nothing runs by it
     folds         {source name: columns} whose head bits the write's line also takes off there - set by step 2 (a file's
                   layers of its share that say the same value, `crud.file_layer_fold`)
     of            the item step 2 split this one off (a column written under its share's older layer - owner 11-08)
@@ -153,7 +155,8 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
     moved = [i for i in sorted(plain) if i not in kept and i not in split]  # changed only a column of no history
     left_out -= len(moved)
-    work = {i: ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw", MARK: "mark"}.get(
+    work = {i: items[i].get("work") or ("merge" if kind == "merge" else {DELETED: "delete", WITHDRAW: "withdraw",
+                                                                         MARK: "mark"}.get(
         items[i]["line_kind"], "edit" if targets[i] in old else "new")) for i in list(kept) + moved + sorted(again)}
     unpinned, line_ids = set(), {}
     if keeps:

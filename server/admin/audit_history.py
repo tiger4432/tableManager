@@ -409,11 +409,19 @@ def deleted_line_rows(db, table_name, row_ids) -> set:
 
 def changed_rows(db, table_name, group) -> int:
     """How many rows history group `group` changed in `table_name` - its lines' distinct rows (the (batch) index;
-    owner 11-10 «바뀐 행수», counted, never stored)."""
+    owner 11-10 «바뀐 행수», counted, never stored) and the rows its receipts name with no line of the group
+    (`crud.receipt_row_ids` - a formula's write, owner 11-12 ㄴ)."""
     from admin.audit_cache import in_group
+    from database import crud
 
     t = line_table(table_name, {})
-    return db.execute(sa.select(sa.func.count(sa.distinct(t.c.row_id))).where(in_group(t.c.batch, group))).scalar()
+    n = db.execute(sa.select(sa.func.count(sa.distinct(t.c.row_id))).where(in_group(t.c.batch, group))).scalar()
+    named = list(crud.receipt_row_ids(db, table_name, group))
+    lined = set()
+    for i in range(0, len(named), 1000):
+        lined.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
+            in_group(t.c.batch, group), t.c.row_id.in_(named[i:i + 1000]))))
+    return n + len(set(named) - lined)
 
 
 def group_line_rows(table_name, group):
@@ -433,17 +441,29 @@ def group_rows(db, table_name, group, limit) -> list:
 
     t = line_table(table_name, {})
     first = sa.func.min(t.c.line_id)
+    from database import crud
+
     picked = db.execute(sa.select(t.c.row_id, first).where(in_group(t.c.batch, group))
                         .group_by(t.c.row_id).order_by(first.asc()).limit(limit)).fetchall()
-    if not picked:
-        return []
     said = {row.line_id: row for row in db.execute(sa.select(
         t.c.line_id, t.c.source_name, t.c.written_by, t.c.at, t.c.batch, t.c.business_key_val).where(
-        t.c.line_id.in_([line_id for _row, line_id in picked]))).fetchall()}
-    return [{"id": str(line_id), "table_name": table_name, "row_id": row_id,
-             "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
-             "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
-             "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
+        t.c.line_id.in_([line_id for _row, line_id in picked]))).fetchall()} if picked else {}
+    out = [{"id": str(line_id), "table_name": table_name, "row_id": row_id,
+            "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
+            "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
+            "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
+    # then the rows its receipts name and no line of the group does (a formula's write, owner 11-12 ㄴ), as named
+    lined = {row_id for row_id, _line in picked}
+    named = [(row_id, r) for row_id, r in crud.receipt_row_ids(db, table_name, group).items() if row_id not in lined]
+    named = named[:max(limit - len(out), 0)]
+    if named:
+        now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String), sa.Column("business_key_val",
+                                                                                            sa.String))
+        keys = dict(db.execute(sa.select(now.c.row_id, now.c.business_key_val).where(
+            now.c.row_id.in_([row_id for row_id, _r in named]))).fetchall())
+        out += [dict(r, id="%s:%s" % (r["id"], row_id), table_name=table_name, row_id=row_id,  # one entry, one id (D)
+                     business_key=keys.get(row_id)) for row_id, r in named]
+    return out
 
 
 def winners(db, table_name, row_ids) -> dict:

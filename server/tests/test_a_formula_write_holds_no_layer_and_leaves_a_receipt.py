@@ -119,6 +119,36 @@ def test_a_ledger_receipt_is_the_line_it_was_with_its_label(tx):
         {k: v for k, v in before.items() if k not in ("new_value", "timestamp")}
 
 
+def test_the_history_says_formula_and_the_rows_its_receipt_names(db, rules):
+    """Owner 11-12 ㄴ «영수증만, 화면은 수식 계산 · N 행»: the formula's batch says «formula», its rows are the ones its
+    receipt names (no line a row) - the panel's count and the transaction's row list (GET /audit_logs/transaction)."""
+    from sqlalchemy import select
+
+    from admin import audit_history
+    from database import lines
+
+    _put(db, [{"k": "k1", "a": 1, "b": 2}, {"k": "k2", "a": 3, "b": 0}])
+    _drain(db, rules("=[a]+[b]*3"))
+    tx = db.query(models.AuditLog.transaction_id).filter(models.AuditLog.column_name == RECEIPT_COLUMN).scalar()
+    ab = lines.AuditBatch.__table__
+    assert [(r.table_name, r.written_by, r.work_kind) for r in db.execute(select(ab).where(ab.c.transaction_id == tx))
+            ] == [(T, "formula %s.c" % T, "formula")]
+    ids = _ids(db)
+    assert audit_history.changed_rows(db, T, tx) == 2
+    entries = audit_history.group_rows(db, T, tx, 10)
+    assert [(e["row_id"], e["business_key"], e["updated_by"]) for e in entries] == [
+        (ids["k1"], "k1", "formula %s.c" % T), (ids["k2"], "k2", "formula %s.c" % T)]
+    assert len({e["id"] for e in entries}) == 2                  # one entry, one id - one receipt line names both (D)
+
+
+def test_a_receipt_names_its_rows_as_text(db):
+    """A receipt's row_ids meet a text row_id column (PG: text = integer is an error) - read as text in the one seat."""
+    db.add(models.AuditLog(table_name=T, row_id="-", column_name=RECEIPT_COLUMN, transaction_id="tx-int",
+                           new_value={"row_ids": [7, "r8"]}, source_name="s", updated_by="s"))
+    db.commit()
+    assert list(crud.receipt_row_ids(db, T, "tx-int")) == ["7", "r8"]
+
+
 def test_the_grid_and_the_export_select_the_rows_a_receipt_names(db, rules):
     import main
     from grid_read import narrowed_table_query

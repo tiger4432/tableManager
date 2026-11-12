@@ -2358,6 +2358,28 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
     return lines
 
 
+def receipt_row_ids(db, table_name, transaction_id) -> dict:
+    """{row_id: its receipt line's "id" · "source_name" · "updated_by" · "timestamp" · "transaction_id"} - the rows a
+    transaction's receipts name in `table_name` (`receipt_log`'s row_ids, as text - they meet a text row_id column),
+    in the order named. A formula's write keeps
+    its receipt and no line a row (owner 11-12 ㄴ «영수증만»), so «the rows it changed» are these - THE reader: the grid's
+    transaction filter and the history's row count and row list ask it. An event line read, not a cell's (the
+    old-table gate allows this one seat)."""
+    from admin.audit_cache import in_group
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    a = models.AuditLog
+    out = {}
+    for log in db.query(a.id, a.new_value, a.source_name, a.updated_by, a.timestamp, a.transaction_id).filter(
+            a.table_name == table_name, in_group(a.transaction_id, transaction_id), a.column_name == RECEIPT_COLUMN
+    ).order_by(a.id):
+        said = {"id": str(log.id), "source_name": log.source_name, "updated_by": log.updated_by,
+                "timestamp": log.timestamp, "transaction_id": log.transaction_id}
+        for row_id in (((log.new_value or {}).get("row_ids") or ()) if isinstance(log.new_value, dict) else ()):
+            out.setdefault(str(row_id), said)
+    return out
+
+
 def keeps_history(table_name, column_name) -> bool:
     """Whether a change of this cell leaves a history line - asked where a line is made: `create_audit_log` (a cell's
     line, whoever wrote it) and `_said_logs` (the columns a row's line names). Not when the table's entry lists
@@ -3649,7 +3671,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
-                 "written_by": update_item.updated_by}, formulas)
+                 "written_by": update_item.updated_by, "work": "formula"}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "source_name": update_item.source_name, "written_by": update_item.updated_by,
