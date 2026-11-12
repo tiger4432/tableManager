@@ -269,14 +269,19 @@ export class GalleryPart {
     const count = this.deps.count ? this.deps.count() : null;
     const whole = this.deps.whole();
     const total = count && count.total !== null && count.total !== undefined ? countNumberText(count) : null;
-    bar.append(this.el('span', 'gallery-count', whole || !total ? WORDS.rows(rows.length) : WORDS.loaded(rows.length, total)));
+    // the last pick, the count and the bar's buttons wrap as one: a button wrapped alone beside the count stood a
+    // control's height over its words (screen_layout size, 11-12)
+    const tail = this.el('span', 'gallery-bar__tail');
+    tail.append(bar.children[bar.children.length - 1]);
+    bar.append(tail);
+    tail.append(this.el('span', 'gallery-count', whole || !total ? WORDS.rows(rows.length) : WORDS.loaded(rows.length, total)));
     if (!whole) {
       const more = this.el('button', 'glass-page-btn gallery-more', WORDS.loadMore);
       more.type = 'button';
       more.addEventListener('click', () => this.deps.loadMore());
-      bar.append(more);
+      tail.append(more);
     }
-    this.zipBar(bar, () => zipBody(this.deps.rows() || [], { table: this.deps.table(), rowsBy, columnBy, image, order, valueOf: this.deps.valueOf }));
+    this.zipBar(tail, () => zipBody(this.deps.rows() || [], { table: this.deps.table(), rowsBy, columnBy, image, order, valueOf: this.deps.valueOf }));
     const body = this.el('div', 'gallery-body');
     const scroller = this.el('div', 'gallery-scroll');
     const canvas = this.el('div', 'gallery-canvas');
