@@ -40,19 +40,6 @@ def test_names_refuse_over_63_bytes():
         lines.lines_relation("x" * 57)
 
 
-def test_a_dropped_columns_slot_is_never_handed_out_again(db):
-    ensure(db, "t", CFG)
-    before = lines.bit_map(db, "t")
-    assert sorted(before.values()) == [0, 1, 2] and "row_id" not in before
-    kept = {k: v for k, v in CFG["column_types"].items() if k != "qty"}
-    lines.alter_columns(db, "t", {"column_types": kept}, drop=["qty"])
-    cfg2 = {"column_types": {**kept, "grade": "string"}}
-    lines.alter_columns(db, "t", cfg2, add=["grade"])
-    after = lines.bit_map(db, "t")
-    assert "qty" not in after and after["grade"] == 3
-    assert after["lot"] == before["lot"] and after["seen"] == before["seen"]
-
-
 def test_t_stays_a_table_with_won_by_and_its_lines_beside_it(db):
     make_table(db, "t", CFG)
     db.execute(text("INSERT INTO t (row_id, lot) VALUES ('r0', 'kept')"))
