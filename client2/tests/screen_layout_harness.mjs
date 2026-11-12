@@ -869,6 +869,16 @@ const CELLS = [
   if (getComputedStyle(log).pointerEvents === 'none') return 'the header message takes no pointer, so its title never shows';
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
 })()` },
+  // The last action's line stays in the head bar beside the status button, one line (owner 11-11).
+  { entry: 'index.html', after: 'loaded', rule: 'last line', at: 'performance-log', expr: `(() => {
+  const log = document.getElementById('performance-log');
+  if (!log) return 'no header message on the page';
+  if (log.closest('#status-panel')) return 'the last action line is inside the status panel';
+  const r = log.getBoundingClientRect();
+  if (!r.width || !r.height) return 'the last action line is not shown';
+  if (getComputedStyle(log).whiteSpace !== 'nowrap') return 'the last action line wraps';
+  return null;
+})()` },
   // A table name no wider than the audit's Table column cap is on one line (lead 11-06: «dt_log» was three lines).
   { entry: 'index.html', after: 'loaded', rule: 'short name one line', at: 'audit-tbl', expr: `(() => {
   const cap = parseFloat(getComputedStyle(document.getElementById('timeline-container')).getPropertyValue('--audit-table-max'));
@@ -4500,6 +4510,8 @@ const MUTANTS = [
       ['  min-width: 30ch;\n', '  min-width: 0;\n']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
+  { name: 'the last action line wrapping in the head bar', entry: 'index.html', rule: 'last line', at: 'performance-log',
+    file: 'src/style.css', edits: [['.status-panel__last #performance-log { flex: 0 1 auto;', '.status-panel__last #performance-log { flex: 0 1 auto; white-space: normal;']] },
   // The head bar (lead 11-05 ③, owner 11-06): the fold that does not fold · the audit's Table column at its widest piece
   // again · an open panel left where the bar was before it wrapped. (Which word the status button says is
   // status_dot_harness's - here the socket decides whether WS is offline first.)
