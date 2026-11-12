@@ -851,11 +851,13 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
             else:
                 from sqlalchemy.dialects.sqlite import insert as upsert
             statement = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
-        for page in _pages(put, len(names) + 3):
-            got = set(db.execute(statement.values([
-                {"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
-                 **({"won_by": won_by[r]} if keeps else {})} for r in page]).returning(now.c.row_id)).scalars())
-            lost.update({r: fresh.get(r) for r in page if r not in got})
+        # the rows as parameter sets of one statement (SQLAlchemy's insertmanyvalues pages them): built as
+        # .values(rows) it was compiled again every page, 0.59 s a 909-row page on sqlite (R3: _merge_now 0.48 ->
+        # 1.72 s a 1k write)
+        got = set(db.execute(statement.returning(now.c.row_id), [
+            {"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
+             **({"won_by": won_by[r]} if keeps else {})} for r in put]).scalars())
+        lost.update({r: fresh.get(r) for r in put if r not in got})
         for r in lost:
             merged.pop(r, None)
     if lines.sets_at_once(db) and all(

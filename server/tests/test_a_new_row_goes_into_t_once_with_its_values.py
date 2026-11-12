@@ -6,7 +6,8 @@ row and step 5 updated it, one dead t row a new row (the 11-13 marathon's t bloa
 the largest line_id - and t shows the merge of those heads, whichever writer committed first.
 
     case                                    sqlite              PostgreSQL
-    1,000 new rows                          t INSERT 1 · UPDATE 0
+    1,000 new rows                          t INSERT 1 · UPDATE 0, compiled for one row (R3: compiled a page of
+                                            rows, 0.59 s a page)
     two writers of one new key              -                   both commit orders: one row, no orphan, one head"""
 import threading
 import time
@@ -48,9 +49,13 @@ def fixture_db():
         retire_dynamic_model(TABLE)
 
 
-def _statements(db, run):
+def _statements(db, run, binds=None):
     seen = []
-    listen = lambda conn, cursor, statement, *a: seen.append(" ".join(statement.split()[:3]))   # noqa: E731
+
+    def listen(conn, cursor, statement, parameters, context, executemany):
+        seen.append(" ".join(statement.split()[:3]))
+        if binds is not None and context.compiled is not None:
+            binds.append((seen[-1], len(context.compiled.binds)))
     event.listen(db.get_bind(), "before_cursor_execute", listen)
     try:
         run()
@@ -60,15 +65,18 @@ def _statements(db, run):
 
 
 def test_new_rows_go_into_t_once_with_their_values(db):
+    binds = []
     said = _statements(db, lambda: (crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(business_key_val="K%04d" % i, updates={"k": "K%04d" % i, "a": "x%d" % i, "b": i},
-                                  source_name="f1.csv", updated_by="probe") for i in range(N)])), db.commit()))
+                                  source_name="f1.csv", updated_by="probe") for i in range(N)])), db.commit()), binds)
     rows = {r.k: (r.a, r.b) for r in db.query(models.DYNAMIC_TABLES[TABLE]).all()}
     assert len(rows) == N and rows["K0007"] == ("x7", 7), "CANARY: the write made its rows with their values"
     on_t = [s.split() for s in said]
     into_t = [w for w in on_t if w[:2] == ["INSERT", "INTO"] and w[2].strip('"') == TABLE]
     updates = [w for w in on_t if w[0] == "UPDATE" and w[1].strip('"') == TABLE]
     assert (len(into_t), len(updates)) == (1, 0), said
+    compiled = [n for s, n in binds if s.split()[:2] == ["INSERT", "INTO"] and s.split()[2].strip('"') == TABLE]
+    assert compiled and max(compiled) <= len(COLUMNS) + 8, compiled      # its columns' binds, not a page's rows'
 
 
 # --- PostgreSQL: two writers of one new key ---------------------------------------------------------------------
