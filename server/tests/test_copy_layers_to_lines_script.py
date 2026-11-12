@@ -55,6 +55,21 @@ def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():
     assert said == ["REFUSED - t: cell_sources has no owner_key - the copy reads them; this database cannot be copied"]
 
 
+def test_an_old_merge_copy_layer_is_noted_as_a_copy_and_the_preview_counts_it():
+    engine = build("b")
+    copy = "fileA (k9_a1b2c3)"
+    with engine.begin() as conn:
+        conn.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="lot",
+                                                          source_name=copy, value="a", ingested_at=T1,
+                                                          updated_by="seed"))
+    planned = script.plan(engine, {"t": CFG})
+    assert planned[0]["copies"] == [copy]
+    script.copy_table(engine, "t", CFG, 1, say=lambda line: None)
+    with Session(bind=engine) as db:
+        noted = dict(db.execute(select(lines.LineSource.source_name, lines.LineSource.copy_of)).all())
+    assert noted[copy] == "fileA" and noted["fileA"] is None
+
+
 def test_the_check_counts_after_every_page_and_leaves_nothing():
     engine, said = build("not b"), []
     out = script.check_table(engine, "t", CFG, 1, say=said.append)

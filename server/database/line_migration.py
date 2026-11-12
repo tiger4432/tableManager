@@ -180,7 +180,9 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
                     **{f"written_{i}": written[i] for i in range(chunks)},
                     **{f"head_{i}": written[i] & ~held[i] for i in range(chunks)}})
     if out:
-        lines.note_sources(db, sorted({o["source_name"] for o in out}))
+        names = sorted({o["source_name"] for o in out})
+        lines.note_sources(db, names, copies={n: crud.merged_layer_origin(n) for n in names
+                                              if crud.merged_layer_origin(n) is not None})
         db.execute(lt.insert(), out)
         shown = {r[0]: r for r in db.execute(select(t).where(t.c.row_id.in_(rows)))}
         named = []

@@ -66,7 +66,10 @@ def plan(engine, tables: dict) -> list:
             built = lines.has_lines(db, table)
             done = built and db.execute(select(func.count()).select_from(ab).where(
                 ab.c.table_name == table, ab.c.work_kind == line_migration.COPY_WORK)).scalar() > 0
-            out.append({"table": table, "layers": layers, "rows": rows, "built": built, "copied": done})
+            names = db.execute(select(cs.c.source_name).where(cs.c.table_name == table).distinct()).scalars().all()
+            copies = sorted(n for n in names if crud.merged_layer_origin(n) is not None)
+            out.append({"table": table, "layers": layers, "rows": rows, "built": built, "copied": done,
+                        "copies": copies})
     return out
 
 
@@ -180,6 +183,9 @@ def main(argv=None) -> int:
         print("%-32s %10d layer(s) on %9d row(s) · %s" % (
             p["table"], p["layers"], p["rows"],
             "copied" if p["copied"] else "lines not built - start the server once" if not p["built"] else "to copy"))
+        if p["copies"]:
+            print("%-32s names read as an old key merge's copies: %d, first: %s" % (
+                "", len(p["copies"]), ", ".join(p["copies"][:SHOWN])))
     unbuilt = [p["table"] for p in todo if not p["built"] and p["layers"]]
     if args.check:
         print("--check: each page is copied and rolled back to count the cells whose lines merge to other than t - "
