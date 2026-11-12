@@ -996,6 +996,39 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
     return _image_response(answer)
 
 
+class ImageZipRef(BaseModel):
+    ref: str
+    name: Optional[str] = None
+
+
+class ImageZipFolder(BaseModel):
+    path: list[str] = []
+    refs: list[ImageZipRef] = []
+
+
+class ImageZipRequest(BaseModel):
+    filename: str
+    folders: list[ImageZipFolder]
+
+
+@app.post("/api/images/zip")
+def images_zip(body: ImageZipRequest):
+    """The images named, one folder per path, as one zip streamed (`image_zip`) - refs in the body, never the URL.
+    Reads only; past `image_zip.MAX_IMAGES` refused before any read."""
+    import image_zip
+    from urllib.parse import quote
+
+    folders = [f.model_dump() for f in body.folders]
+    try:
+        image_zip.check(folders)
+    except image_zip.TooMany as too_many:
+        raise HTTPException(status_code=413, detail=str(too_many))
+    name = image_zip.safe_part(body.filename)
+    name = name if name.lower().endswith(".zip") else name + ".zip"
+    return StreamingResponse(image_zip.stream(folders), media_type="application/zip",
+                             headers={"Content-Disposition": "attachment; filename*=UTF-8''%s" % quote(name)})
+
+
 #: What a multipart body carries beside the picture (boundaries, the part's head) - a Content-Length past the receiving
 #: source's limit by more than this is refused before the body is read.
 _MULTIPART_SLACK = 64 * 1024
