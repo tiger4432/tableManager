@@ -18,10 +18,14 @@ likewise only read -- it decides WHICH relations may be offered, never what they
 """
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
+
+from runtime import behind
 
 
 #: How many columns one measurement call will scan.  The one-pass query below costs a
@@ -258,3 +262,138 @@ def ordering_candidates(db: Any, relation: str, table: Mapping[str, Any]
         "declared_keys": measured,
         "recommended": list(usable[0]["columns"]) if usable else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# The picker's answer at once, its exact counts behind it (lead 11-10 ㄱ · ㄴ · ㅈ)
+# ---------------------------------------------------------------------------
+
+def estimated_population(db: Any, relation: str) -> dict[str, Any]:
+    """`population`'s shape from what PostgreSQL already holds - no row of the table is read (owner 11-10 «4 ㄱ»): its
+    rows the planner's `reltuples`; a column's populated rows ≈ rows × (1 − null_frac), less, for a text column, its
+    most common values that trim to ''. A column with no statistics yet (never analysed) says None."""
+    physical = physical_columns(db, relation)
+    names = _checked(relation, sorted(physical), physical)
+    total = estimated_rows(db, relation)
+    schema, _, table = relation.rpartition(".")
+    stats = {str(row[0]): (float(row[1] or 0.0), float(row[2] or 0.0)) for row in db.execute(text(
+        "SELECT DISTINCT ON (attname) attname, null_frac, "
+        "       CASE WHEN attname = ANY(:texts) THEN (SELECT sum(f) FROM unnest(most_common_vals::text::text[], "
+        "            most_common_freqs) AS m(v, f) WHERE btrim(v) = '') END "
+        "FROM pg_stats WHERE schemaname = COALESCE(:schema, current_schema()) AND tablename = :table "
+        "ORDER BY attname, inherited"),
+        {"texts": [name for name in names if physical[name] in _TEXT_TYPES], "schema": schema or None,
+         "table": table}).fetchall()}
+
+    def populated(name):
+        if total is None or name not in stats:
+            return None
+        return int(round(total * max(0.0, 1.0 - sum(stats[name]))))
+
+    return {
+        "relation": relation,
+        "total_rows": total,
+        "columns": [
+            {
+                "name": name,
+                "data_type": physical[name],
+                "populated": populated(name),
+                "total_rows": total,
+                "populated_ratio": (round(populated(name) / total, 6)
+                                    if populated(name) is not None and total else None),
+                "empty": None if populated(name) is None else populated(name) == 0,
+            }
+            for name in names
+        ],
+    }
+
+
+class _Deadline:
+    """`cancel()` once `seconds` passed (None: never) - unless the block ended first; the two never cross, so a cancel
+    never reaches the connection after it was given back."""
+
+    def __init__(self, seconds, cancel):
+        self._lock, self._ended, self._cancel = threading.Lock(), False, cancel
+        self._timer = threading.Timer(seconds, self._fire) if seconds else None
+
+    def __enter__(self):
+        if self._timer is not None:
+            self._timer.daemon = True
+            self._timer.start()
+        return self
+
+    def __exit__(self, *_exc):
+        with self._lock:
+            self._ended = True
+        if self._timer is not None:
+            self._timer.cancel()
+
+    def _fire(self):
+        with self._lock:
+            if not self._ended:
+                self._cancel()
+
+
+def exact_counts(bind: Any, relation: str, table: Mapping[str, Any], combination: Sequence[str],
+                 seconds: float | None) -> dict[str, Any]:
+    """The picker's counts read whole - `population`, the declared keys' `ordering_candidates`, `combination` - on a
+    connection of their own, at most `seconds` all together (None: no limit): past them its statement is cancelled and
+    the answer is {"cut": {"seconds", "at"}} (lead 11-10 ㅈ: not counted again until a person asks)."""
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import Session
+
+    import db_waits
+
+    db = Session(bind=bind)
+    try:
+        pid = db.execute(text("SELECT pg_backend_pid()")).scalar()
+
+        def cancel():
+            with bind.connect() as other:
+                other.execute(text("SELECT pg_cancel_backend(:pid)"), {"pid": pid})
+
+        try:
+            with _Deadline(seconds, cancel):
+                return {"population": population(db, relation),
+                        "ordering": ordering_candidates(db, relation, table),
+                        "combination": (combination_uniqueness(db, relation, list(combination))
+                                        if combination else None)}
+        except OperationalError as exc:
+            if not db_waits.cancelled(exc):
+                raise
+            return {"cut": {"seconds": seconds, "at": datetime.now(timezone.utc).isoformat()}}
+    finally:
+        db.rollback()
+        db.close()
+
+
+#: The picker's exact counts, behind its answer (`runtime.behind`, lead 11-10 ㄴ): one worker; a key - the relation, the
+#: combination asked, the declared keys measured - is counted once, again only when a person asks (`recount`).
+COUNTS = behind.Behind("column-counts", lambda: 0.0, "[Columns] the exact counts of %s were not counted",
+                       named=lambda key: key[0])
+
+
+def picked(db: Any, relation: str, table: Mapping[str, Any], combination: Sequence[str], recount: bool,
+           seconds: float | None) -> dict[str, Any]:
+    """`column_picker`'s answer: the exact counts when counted (`exact`, `counted_at`), else the estimate - `ordering`
+    and `combination` then {"counting": true}, {"cut": true} past `seconds` (`count_cut`), {"failed": true} when the
+    count failed (`failed`) - and `updating` while a count runs or goes next. A count starts on the first ask of its
+    key, or when `recount`."""
+    combination = list(combination)
+    if combination:
+        _checked(relation, combination, physical_columns(db, relation))           # refused now, not behind
+    key = (relation, tuple(combination), tuple(tuple(names) for names in declared_unique_keys(table)))
+    bind = db.get_bind()
+    kept = COUNTS.ask(key, lambda: exact_counts(bind, relation, table, combination, seconds),
+                      again=lambda _kept: recount) or {}
+    if "population" in kept:
+        payload = dict(kept["population"], exact=True, counted_at=kept["at"], count_cut=None,
+                       ordering=kept["ordering"], combination=kept["combination"])
+    else:
+        state = "cut" if kept.get("cut") else "failed" if kept.get("failed") else "counting"
+        payload = dict(estimated_population(db, relation), exact=False, counted_at=None, count_cut=kept.get("cut"),
+                       ordering={state: True}, combination={state: True} if combination else None)
+    payload["estimated_rows"] = estimated_rows(db, relation)
+    payload["updating"] = COUNTS.busy(key)
+    payload["failed"] = kept.get("failed")
+    return payload

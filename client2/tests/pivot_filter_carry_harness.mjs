@@ -11,6 +11,12 @@
 //   H3 its filter in the pivot keeps its model and passes every group row (the server filtered); in the long view, today's
 //   F1 a filterChanged with the filters the last read went out with (a column swap's) reads nothing; a changed one reads
 //   F2 while a switch holds the reads, a filterChanged reads nothing; released, it reads
+//   C2 a carried column's filter is kept both ways (owner 11-11 ㄴ)
+//   K1 in the pivot a carried column is filtered and sorted, not written: its filter the column's one, told the server
+//      reads it; its order the server's (the grid keeps the rows as they came)
+//   K2 that filter passes a group row the server sent - one holding only «2 values» too; without the word, today's pass
+//   (the sort going to the server though the grid holds every group: measured on screen, not here - the handler lives
+//   in the grid's options)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeDoc } from './lib/board_dom.mjs';
@@ -36,6 +42,7 @@ globalThis.window = {
 const { state } = await import('../src/state.js');
 const log = () => document.getElementById('performance-log');
 const PIVOT = { column: 'itemid', value: 'value' };
+const PIVOT_C = { ...PIVOT, carry: ['note'] };
 const ANSWER = { pivot: { ...PIVOT, keys: ['lot'], items: ['a', 'b'], items_more: 0 },
   data: [{ lot: 'L1', cells: { a: { value: 1, row_id: 'r1' } } }], total: 1, has_more: false };
 const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0)); };
@@ -92,6 +99,39 @@ async function suite(M) {
   say('C1 keys and the item column kept; the value column\'s, another\'s and an item\'s dropped',
     JSON.stringify(Object.keys(split.keep)) === '["lot","itemid"]' && JSON.stringify(split.dropped) === '["value","note","item:a"]'
       && JSON.stringify(split.dropped.map(M.pivot.headerWord)) === '["VALUE","NOTE","a"]', JSON.stringify(split));
+
+  const carriedSplit = M.pivot.carriedFilters({ lot: f('L1'), note: f('x'), value: f('3') }, PIVOT_C, ['lot', 'itemid']);
+  say('C2 a carried column\'s filter kept with the keys\'',
+    JSON.stringify(carriedSplit) === '{"keep":{"lot":{"filterType":"text","type":"equals","filter":"L1"},"note":{"filterType":"text","type":"equals","filter":"x"}},"dropped":["value"]}',
+    JSON.stringify(carriedSplit));
+
+  console.log('\n[K] a carried column in the pivot');
+  {
+    stage(M.grid, {}, { pivotOn: true });
+    state.currentColumns = ['lot', 'itemid', 'value', 'note'];
+    state.currentColumnTypes.note = 'string';
+    state.currentPivot = PIVOT_C;
+    state.pivotView = { ...ANSWER.pivot, carry: ['note'] };
+    const defs = M.grid.buildColumnDefs();
+    const note = defOf(defs, 'note') || {};
+    const lot = defOf(defs, 'lot') || {};
+    const seen = [(note.filter || {}).name, (note.filterParams || {}).server, note.sortable !== false, Boolean(note.editable),
+      typeof note.comparator === 'function' ? note.comparator('b', 'a') : 'none', (lot.filterParams || {}).server, 'comparator' in lot];
+    say('K1 its filter the column\'s one, the server\'s to read; sorted; not written; its order as the rows came - a key column as today',
+      JSON.stringify(seen) === '["ValueFilter",true,true,false,0,null,false]', JSON.stringify(seen));
+  }
+  {
+    const passOf = (params) => {
+      const v = new M.vf.ValueFilter();
+      v.init({ kind: 'text', doc, column: { getColId: () => 'note' }, getValue: (node) => node.cell, filterChangedCallback() {},
+        readValues: async () => ({ values: [] }), ...params });
+      v.setModel(f('x'));
+      return [{ cell: null }, { cell: 'y' }, { cell: 'x' }].map((node) => v.doesFilterPass({ node }));
+    };
+    const seen = [passOf({ server: true }), passOf({})];
+    say('K2 told the server reads it: every group row it sent passes, «2 values» too; untold: today\'s pass',
+      JSON.stringify(seen) === '[[true,true,true],[false,false,true]]', JSON.stringify(seen));
+  }
 
   console.log('\n[D] the drop');
   {
@@ -211,7 +251,7 @@ async function suite(M) {
 
 const M = {
   pivot: await import('../src/grid_pivot.js'), grid: await import('../src/grid.js'),
-  api: await import('../src/api.js'), st: await import('../src/state.js'),
+  api: await import('../src/api.js'), st: await import('../src/state.js'), vf: await import('../src/value_filter.js'),
 };
 const base = await suite(M);
 let pass = base.ran - base.failures.length;
@@ -230,7 +270,20 @@ const quietly = async (fn) => {
 };
 const MUTANTS = [
   { id: 'X1', what: 'the item column\'s filter is dropped', catches: 'C1', file: 'grid_pivot.js',
-    from: 'const kept = [...pivotKeys(pivot, keySources), pivot.column];', to: 'const kept = pivotKeys(pivot, keySources);' },
+    from: 'const kept = [...pivotKeys(pivot, keySources), ...carryColumns(null, pivot), pivot.column];',
+    to: 'const kept = [...pivotKeys(pivot, keySources), ...carryColumns(null, pivot)];' },
+  { id: 'X15', what: 'a carried column\'s filter dropped on the switch, as before', catches: 'C2', file: 'grid_pivot.js',
+    from: '...carryColumns(null, pivot), pivot.column];', to: 'pivot.column];' },
+  { id: 'X16', what: 'a carried column not filtered, as before', catches: 'K1', file: 'grid.js',
+    from: "    const filterable = !isSystem || col === 'row_id';", to: "    const filterable = (!isSystem || col === 'row_id') && !isCarried;" },
+  { id: 'X17', what: 'a carried column\'s filter not told the server reads it', catches: 'K1', file: 'grid.js',
+    from: "'equals' : null, isCarried)", to: "'equals' : null, false)" },
+  { id: 'X18', what: 'the grid sorts the carried column it holds (a «2 values» group moves)', catches: 'K1', file: 'grid.js',
+    from: '        comparator: () => 0 } : {}),', to: '        } : {}),' },
+  { id: 'X19', what: 'a carried column not sorted, as before', catches: 'K1', file: 'grid.js',
+    from: '      editable: !isSystem && !viewTable && !isCarried\n', to: '      sortable: !isCarried,\n      editable: !isSystem && !viewTable && !isCarried\n' },
+  { id: 'X20', what: 'the filter told the server reads it still filters the group rows', catches: 'K2', file: 'value_filter.js',
+    from: 'return this.params.server || passes(', to: 'return passes(' },
   { id: 'X2', what: 'the drop drops all, keep or not', catches: 'D1', file: 'grid.js', from: '    api.setFilterModel(keep);', to: '    api.setFilterModel(null);' },
   { id: 'X3', what: 'nothing to drop still sets the model and waits', catches: 'D2', file: 'grid.js',
     from: 'JSON.stringify(api.getFilterModel() || {}) === JSON.stringify(keep || {})', to: '!Object.keys(api.getFilterModel() || {}).length' },
@@ -260,7 +313,7 @@ const MUTANTS = [
 const scored = await scoreMutants(MUTANTS, async (mu) => quietly(async () => {
   const mutate = (t) => swap(t, mu.from, mu.to);
   const loaded = (await loadWithProbe(SRC(mu.file), { mutate, tag: `pfc${mu.id}` })).module;
-  const key = { 'grid_pivot.js': 'pivot', 'grid.js': 'grid', 'api.js': 'api', 'state.js': 'st' }[mu.file];
+  const key = { 'grid_pivot.js': 'pivot', 'grid.js': 'grid', 'api.js': 'api', 'state.js': 'st', 'value_filter.js': 'vf' }[mu.file];
   return suite({ ...M, [key]: loaded });
 }), { baselineNames: base.names, title: '\n  [mutants] - each must be caught by the check it names.' });
 pass += MUTANTS.length - scored.wrong;

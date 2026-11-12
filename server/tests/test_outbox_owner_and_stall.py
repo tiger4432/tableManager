@@ -382,3 +382,32 @@ def test_a_refusal_names_the_run_and_the_way_out(caplog, monkeypatch):
     assert "/cancel" in line and "held-by-worker" in line.split("/cancel")[0]
     # 그리고 «내» 요청이 사라지지 않았다는 것도 말해야 한다
     assert "mine-2" in line
+
+
+RETIRED_OP = "reread_files"      # retired 10-09 - a run row of it can outlive the op (owner 10-11)
+
+
+@pytest.mark.parametrize("state, runner_alive, reaches", [
+    (retroactive.RUN_QUEUED, True, retroactive.CANCEL_RELEASES),       # the server ends a queued row on the spot
+    (retroactive.RUN_RUNNING, False, retroactive.CANCEL_RELEASES),     # nobody runs it - the × releases it
+    (retroactive.RUN_RUNNING, True, retroactive.CANCEL_NEVER),         # a live run of an op with no batch boundary
+])
+def test_a_retired_ops_row_offers_the_x_that_releases_it_unless_its_runner_lives(monkeypatch, state, runner_alive,
+                                                                                  reaches):
+    """Owner 10-11: a retired operation's running row held the queue and the screen drew no ×. Its row is offered the
+    × that releases it when it is queued or nobody runs it (`_nobody_runs`, the question request_cancel asks); a live
+    runner keeps «no batch boundary, no ×»."""
+    from runtime import running
+    from utils import heartbeat
+
+    with pytest.raises(retroactive.RetroactiveRefused):
+        retroactive.operation(RETIRED_OP)                              # canary: it is retired
+    monkeypatch.setattr(retroactive, "_runner_state", lambda runner: "alive" if runner_alive else "orphaned")
+    monkeypatch.setattr(heartbeat, "beat_holds", lambda run_id: runner_alive)
+    monkeypatch.setattr(heartbeat, "pid_here", lambda *a: True if runner_alive else None)
+    row = run_row(op=RETIRED_OP, state=state, runner="scheduler/host/123")
+    got = retroactive.in_flight(_Runs(row))
+    assert got["cancel_reaches"] == reaches
+    monkeypatch.setattr(retroactive, "in_flight_runs", lambda db, now=None: [got])
+    assert [item["cancel"] for item in running._retroactive(None, datetime.now(timezone.utc))] == [
+        None if reaches == retroactive.CANCEL_NEVER else {"run_id": row.run_id}], "the queue's × is the cancel it says"

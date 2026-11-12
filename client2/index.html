@@ -131,6 +131,9 @@
             <button id="add-row-btn" class="glass-btn" title="Add Row">
               ➕ Row
             </button>
+            <button id="add-item-btn" class="glass-btn" title="Add Item" hidden>
+              ➕ Item
+            </button>
             <button
               id="delete-row-btn"
               class="glass-btn hover-danger"
@@ -167,6 +170,13 @@
             <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
           </div>
 
+          <!-- The last action's line just before the status button, always shown (owner 11-11, out of the panel again):
+               Last · status · ⋯, so a line that holds ⋯ and these words holds the status button too. -->
+          <div class="status-panel__last">
+            <span class="status-panel__key">Last</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
+          </div>
+
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
                button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
@@ -178,10 +188,6 @@
                 <span class="status-badge" id="ws-status">WS: Connecting</span>
                 <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
                 <span class="status-badge" id="chain-status">CHAIN: Loading</span>
-              </div>
-              <div class="status-panel__last">
-                <span class="status-panel__key">Last</span>
-                <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
               </div>
               <div id="account-badge" class="acct-host"></div>
             </div>

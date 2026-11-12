@@ -29,7 +29,7 @@ an UPDATE of the identity columns, never a delete and re-insert.
       of which already canonical (slots 10..25)       768
     every other bonding_log frame (the bond axis)   2,810   NOT TOUCHED
 
-ROLLBACK - one statement, printed again at the end of every run; see ROLLBACK below.
+UNDO - don't paste SQL; ask before undoing it (printed again at the end of every run).
 
 USAGE - a dry run by default, and the owner's database needs saying out loud:
 
@@ -53,16 +53,9 @@ import seed_syn_world as world                                       # noqa: E40
 TOTAL_PREDICATE = ("target_table = 'bonding_log' "
                    "AND (map_id LIKE 'SYN-DT-%' OR map_id LIKE 'SYN-CL-%')")
 
-#: The undo, as ONE statement. Every identity column carries the id, so all three move
-#: together or the row's identity diverges from itself.
-ROLLBACK = (
-    "UPDATE wafer_map_metadata SET "
-    r"map_id = regexp_replace(map_id, '_([1-9])$', '_0\1'), "
-    r"map_pk = regexp_replace(map_pk, '_([1-9])$', '_0\1'), "
-    r"business_key_val = regexp_replace(business_key_val, '_([1-9])$', '_0\1') "
-    "WHERE target_table = 'bonding_log' "
-    "AND (map_id LIKE 'SYN-DT-%' OR map_id LIKE 'SYN-CL-%') "
-    r"AND map_id ~ '_[1-9]$';")
+#: The undo is not SQL to paste (lead 11-11): the table is rewritten by its own door, and a statement aimed at it
+#: by hand fails once a table reads through its lines.
+UNDO = "Undo: don't paste SQL - ask before undoing this re-spell."
 
 
 import product_door
@@ -141,7 +134,7 @@ def main(argv=None):
         if not args.apply:
             print("\nDRY RUN - nothing written. Add --apply "
                   "--i-accept-writing-to-owner-database")
-            print("\nrollback:\n" + ROLLBACK)
+            print("\n" + UNDO)
             return 0
         if not args.allow_owner:
             print("\n--apply needs --i-accept-writing-to-owner-database")
@@ -180,10 +173,10 @@ def main(argv=None):
         print("\nrows updated: %d" % moved)
         print("SYN DT/CL frames under bonding_log AFTER: %d" % after)
         if after != before:
-            print("\nCOUNT CHANGED %d -> %d. Roll back:\n%s" % (before, after, ROLLBACK))
+            print("\nCOUNT CHANGED %d -> %d. %s" % (before, after, UNDO))
             return 1
         print("count invariant held.")
-        print("\nrollback:\n" + ROLLBACK)
+        print("\n" + UNDO)
     return 0
 
 

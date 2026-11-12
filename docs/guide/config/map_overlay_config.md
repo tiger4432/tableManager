@@ -5,7 +5,7 @@
 
 <!-- Loader evidence (2026-07-28):
   load: server/map_overlay.py:85 load_overlay_config (missing -> {} = full default operation)
-  per-request read (no module cache)
+  held until it changes (config_watcher) - a broken file keeps the previous read
   binding auto-derivation rationale: map_overlay.py:561 / underivable-table error: :680
   paint_lock consumer: GET /api/maps/paint-rules (client applies, no hardcoding)
   [U6] default_legend / value_column_candidates: resolvers map_overlay.py
@@ -42,7 +42,7 @@
      }
    }
    ```
-4. 페인트 잠금은 `"*"` 기본 선언 + 테이블별 오버라이드가 **머지**됩니다(기본값은 `F` 잠금):
+4. 페인트 잠금은 `"*"` 기본 선언 + 테이블별 오버라이드가 **머지**됩니다(샘플은 `"*"` 에 `F` 잠금을 선언합니다 — 아무것도 선언하지 않으면 잠금 없음):
 
    ```json
    "paint_lock": {
@@ -67,7 +67,7 @@
    - `default_legend`: 레지스트리(`map_split_registry`) 행이 없는 맵이 받는 legend 행. **선언한 배열이 그대로** 쓰입니다(서버가 행을 지어내지 않음). 키가 없으면 응답에 `null` — 기본 의미론 없음.
      - ⚠️ **`default_legend: []`(키는 있고 빈 배열)는 `null`이 아니라 `[]`로 서빙**됩니다 — 클라는 빈 배열을 "선언 행 없음"으로 취급해 시드 폴백(VALUE 1 빈 행 하나)으로 갑니다. 사용자 관찰 동작은 미선언과 같지만 응답 값이 다르니, 반영 확인을 응답 필드로 할 때 혼동하지 마십시오.
    - `value_column_candidates`: 값 컬럼 자동 탐지의 **순서 있는** 후보 목록(앞선 것 우선). 미선언 시 문서화 기본 `[val, value, leg, grade, result, code, split, doe]`. 선언하면 서버의 바인딩 유도(`derive_table_binding`)도 같은 목록을 따릅니다.
-7. 저장 — 반영은 자동(**요청마다 재읽기**).
+7. 저장 — 반영은 자동(**설정 감시기가 저장을 보고 약 1 초 뒤 다시 읽음**).
 
 ## 2-bis. [F5] 로드 시 프리셋 라우팅 선언
 
@@ -182,7 +182,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_product_master_lot ON product_master
 conda run -n assy_manager python server/scripts/backup_config.py restore map_overlay_config_<yymmdd>.json.bak --yes
 ```
 
-요청마다 재읽으므로 복원 즉시 반영 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
+감시기가 보고 약 1 초 뒤 반영 → [ROLLBACK_PROCEDURE](../ROLLBACK_PROCEDURE.md).
 
 ## 5. 키 참조
 

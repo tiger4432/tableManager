@@ -10,6 +10,8 @@ in one shape:
     retroactive      the run table's in-flight row                     `admin.retroactive.in_flight`
     collectors       the scheduler's status file                       `collector_is_running`
     file ingestion   the watcher's pushed registry (this process)      `ingestion_is_running`
+    behind the reads this process's work behind its answers            `runtime.behind.running_now`
+                     (whole counts, recent history, column counts - lead 11-10)
 
 ⛔ PROCESS LIVENESS IS NOT HERE (총괄 d02b5a4f4): 「is the process alive」 and 「is work
 running」 are two questions. The supervisor's child state and the heartbeats answer the
@@ -30,6 +32,7 @@ WHERE_CHAIN_WORKER = "chain_worker"
 WHERE_OWN_PROCESS = "own_process"
 WHERE_SCHEDULER = "scheduler"
 WHERE_WATCHER = "watcher"
+WHERE_API = "api"
 
 #: A run's `runner` is `<heartbeat name>/<host>/<pid>`; the name says which process.
 _WHERE_BY_RUNNER = {"chain": WHERE_CHAIN_WORKER, "scheduler": WHERE_SCHEDULER}
@@ -319,6 +322,14 @@ def _collectors(scheduler_pid):
     return out
 
 
+def _behind():
+    """The work behind this process's answers (`runtime.behind`): «<its name> · <its key>», from when, how long so far."""
+    from runtime import behind
+
+    return [_item("%s · %s" % (name, key), WHERE_API, os.getpid(), began_at, seconds)
+            for name, key, began_at, seconds in behind.running_now()]
+
+
 def _ingestions(watcher_pid):
     from ingestion.activity import registry
 
@@ -328,7 +339,7 @@ def _ingestions(watcher_pid):
 
 
 def running_now(db, now=None, sight=None):
-    """Everything running now, one shape per item, four sources. A source that cannot be
+    """Everything running now, one shape per item, five sources. A source that cannot be
     read contributes nothing and says so in the log - it is not the others' problem."""
     import logging
 
@@ -344,7 +355,8 @@ def running_now(db, now=None, sight=None):
                        ("collectors", lambda: _collectors(
                            (beats.get("scheduler") or {}).get("pid"))),
                        ("ingestion", lambda: _ingestions(
-                           (beats.get("watcher") or {}).get("pid")))):
+                           (beats.get("watcher") or {}).get("pid"))),
+                       ("behind", _behind)):
         try:
             items.extend(read())
         except Exception as exc:                                 # noqa: BLE001

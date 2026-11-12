@@ -70,14 +70,16 @@ def _half():
     return half
 
 
-def test_a_report_with_memory_stands_the_memory_half_and_one_without_stands_none():
+def test_a_report_with_memory_stands_the_memory_half_and_one_without_stands_the_shipped_ones():
     half = _half()
     assert (half["trigger_table"], half["target_table"], half["mapper"]) == ("rm_report", "rm_memory",
                                                                             ask_rule.ASK_MAPPER)
     assert rule_shape.declaration_of(half) == "eval_summary" and half["name"] != "eval_summary"
     assert ask_rule.written_columns(half) == ["purpose", "situation", "cell", "ai", "right", "who", "at"]
     bare = {k: v for k, v in REPORT.items() if k != "memory"}
-    assert rule_shape.companion_rules(_internal(bare)) == []
+    [shipped] = rule_shape.companion_rules(_internal(bare))
+    assert (shipped["trigger_table"], shipped["target_table"]) == (
+        "rm_report", ask_rule.MEMORY_TABLE), "owner 11-10: a report without memory remembers in the shipped table"
 
 
 def test_a_corrected_text_cell_is_remembered_the_file_cell_and_an_agreeing_one_are_not(world):

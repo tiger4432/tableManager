@@ -10,6 +10,8 @@ itemid) read as one row per (lot, wafer) and one cell per itemid, through the gr
   keys     an absent key part equals an absent part - on PostgreSQL as ARRAY[a] = ARRAY[b], which hashes; every
            read answered as a Python reckoning of the same rows (총괄 11-05 ㄴ)
   sort     one item's value, a group without it last both ways; then the keys
+  carry    a carried column's filter an EXISTS of any of the group's rows - the group kept whole (소유자 11-11 ㄴ); its
+           sort the group's smallest value ascending, its largest descending, a group of none last
   items    the narrowed rows' DISTINCT itemid, up to pivot_max_columns, and how many more
   write    a cell by its row_id through the grid save door; a blank cell by its keys - the row is made
   search   a key group whose any long row matches q - the grid search's own condition - kept whole (총괄 10-22)
@@ -236,7 +238,7 @@ def test_a_declaration_that_cannot_pivot_is_refused_at_save_and_at_read(grid, pi
     ({"transaction_id": "t"}, "not transaction_id"),
     ({"after": "x"}, "not after"),
     ({"filters": json.dumps({"note": {"type": "equals", "filter": "x"}})},
-     "'note' is not a key column (lot, wafer) or the item column (itemid) of the pivot"),
+     "'note' is not a key column (lot, wafer), a carried column (none) or the item column (itemid) of the pivot"),
     ({"filters": json.dumps({"value": {"filterType": "number", "type": "greaterThan", "filter": 1}})},
      "'value' fills the pivot's cells - filter it per item inside the pivot as item:<item>"),
     ({"order_by": "note"}, "cannot sort a pivot by 'note'"),
@@ -291,6 +293,32 @@ def test_a_carried_column_shows_its_one_value_or_how_many(grid, db_session, monk
     assert {(r["lot"], r["wafer"]): r["carry"]["note"] for r in shown["data"]}[("L1", "W2")] == {"values": 2}
 
 
+def test_a_carried_column_filters_whole_groups_and_sorts_by_its_smallest_or_largest(grid):
+    """owner 11-11 «왜 피벗시 캐리컬럼은 필터 보존 안됨?» ㄴ · «정렬도 안되네»: a carried column's filter keeps a key
+    group any of whose long rows meets it - every item of it; its sort is the group's smallest value ascending, its
+    largest descending (lead), a group of no value last; its value list is the column's values."""
+    notes = {("L1", "W1", "a"): "x", ("L1", "W1", "b"): "x", ("L1", "W2", "a"): "x", ("L1", "W2", "c"): "y"}
+    put = [{"updates": {"lot": lot, "wafer": wafer, "itemid": item, "note": note}, "source_name": "file",
+            "updated_by": "probe"} for (lot, wafer, item), note in notes.items()]
+    assert grid.put("/tables/%s/data/updates" % TABLE, json={"updates": put}).status_code == 200
+    crud.TABLE_CONFIG[TABLE] = dict(ENTRY, pivot=dict(ENTRY["pivot"], carry=["note"]))
+
+    is_y = json.dumps({"note": {"filterType": "text", "type": "equals", "filter": "y"}})
+    found = _read(grid, filters=is_y)
+    assert _values(found) == {("L1", "W2"): LONG[("L1", "W2")]}, "the group whole - its «a» row's note is x"
+    assert found["total"] == 1
+    assert grid.get("/tables/%s/data/count" % TABLE, params={"pivot": "true", "filters": is_y}).json()["total"] == 1
+    assert _groups(_read(grid, filters=json.dumps({"note": {"filterType": "text", "type": "equals", "filter": "x"}}))) \
+        == [("L1", "W1"), ("L1", "W2")]
+    up = _groups(_read(grid, order_by="note"))
+    down = _groups(_read(grid, order_by="note", order_desc="true"))
+    assert up[:2] == [("L1", "W1"), ("L1", "W2")], "ascending: both smallest x - then the keys"
+    assert down[:2] == [("L1", "W2"), ("L1", "W1")], "descending: (L1, W2)'s largest y first"
+    assert set(up[2:]) == set(down[2:]) == {("L2", "W1"), ("L2", None)}, "no note: last both ways"
+    listed = grid.get("/tables/%s/data/values" % TABLE, params={"pivot": "true", "column": "note"})
+    assert listed.status_code == 200 and listed.json()["values"][:2] == ["x", "y"], listed.text
+
+
 def test_a_table_without_a_pivot_reads_as_it_did(grid):
     crud.TABLE_CONFIG[TABLE] = {key: value for key, value in ENTRY.items() if key != "pivot"}
     assert grid.get("/tables/%s/data" % TABLE, params={"pivot": "true"}).status_code == 422
@@ -341,7 +369,9 @@ def test_every_pivot_read_on_postgresql_answers_as_the_rows_reckoned(pg_session,
     rows = [("L%03d" % (g // 10), None if g % 10 == 9 else "W%02d" % (g % 10), "i%d" % i, float((g * 7 + i * 13) % 50))
             for g in range(200) for i in range(5) if (g + i) % 7]
     try:
-        db.add_all([model(row_id="r%d" % n, lot=lot, wafer=wafer, itemid=item, value=value)
+        note = {n: None if n % 4 == 0 or rows[n][0] in ("L003", "L011") else "n%02d" % (n % 23)   # a carried column
+                for n in range(len(rows))}
+        db.add_all([model(row_id="r%d" % n, lot=lot, wafer=wafer, itemid=item, value=value, note=note[n])
                     for n, (lot, wafer, item, value) in enumerate(rows)])
         db.commit()
         pivot = grid_pivot.of(TABLE)
@@ -372,6 +402,23 @@ def test_every_pivot_read_on_postgresql_answers_as_the_rows_reckoned(pg_session,
         assert read(order_by="item:i2", filters={"wafer": {"filterType": "text", "type": "blank"}}) == by_value(
             False, absent)
         assert read(q="L005") == [g for g in groups if g[0] == "L005"]
+
+        # a carried column (owner 11-11 ㄴ): its filter keeps a group any of whose rows meets it, its sort the group's
+        # smallest ascending, its largest descending, a group of none last - each against the reckoning
+        monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(ENTRY, pivot=dict(ENTRY["pivot"], carry=["note"])))
+        pivot = grid_pivot.of(TABLE)
+        notes = {}
+        for n, (lot, wafer, _item, _value) in enumerate(rows):
+            if note[n] is not None:
+                notes.setdefault((lot, wafer), []).append(note[n])
+        assert len(notes) < len(groups) and any(len(set(v)) > 1 for v in notes.values()), "CANARY: none and several"
+        assert read(filters={"note": {"filterType": "text", "type": "equals", "filter": "n07"}}) == [
+            g for g in groups if "n07" in notes.get(g, ())]
+        assert read(order_by="note") == sorted((g for g in groups if g in notes), key=lambda g: min(notes[g])) + [
+            g for g in groups if g not in notes]
+        assert read(order_by="note", desc=True) == sorted(
+            (g for g in groups if g in notes), key=lambda g: max(notes[g]), reverse=True) + [
+            g for g in groups if g not in notes]
         assert read(filters={"item:i2": {"filterType": "set", "values": [value[groups[0]], None]}}) == [
             g for g in groups if g not in value or value[g] == value[groups[0]]]
     finally:

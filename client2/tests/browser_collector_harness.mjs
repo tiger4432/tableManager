@@ -5,7 +5,8 @@
 //   V  a value: text or @attribute, the regex's first group, length 0 is no value
 //   O  opened: shown, changed from before the click, the pair equal; waiting ends in time with the reason
 //   B  a batch: a key the table has is skipped unopened · an item that does not open is kept «not_opened», never read
-//      from the previous item's content · no key is kept «no_key» with its cells · a key read after opening is asked after
+//      from the previous item's content · no key is kept «no_key» with its cells · a key read after opening is asked after ·
+//      no `existing` (a preview with no table or key): the table not asked, every item read, said unchecked
 //   R  a run: written · seen twice is skipped · the limit · a refused write named row by row · not allowed ends the run ·
 //      a page read in batches of BATCH_MOST before its next page · a pause holds between batches · a retry reads only the
 //      kept items (by the values read before opening) and ends when each is found
@@ -32,6 +33,7 @@ const load = async (dir) => ({
   extract: await import(pathToFileURL(path.join(dir, 'extract.js'))),
   batch: await import(pathToFileURL(path.join(dir, 'batch.js'))),
   run: await import(pathToFileURL(path.join(dir, 'run.js'))),
+  product: await import(pathToFileURL(path.join(dir, 'product.js'))),
 });
 
 // ── fakes ────────────────────────────────────────────────────────────────────────────────
@@ -69,11 +71,12 @@ function fakeMail(lib, items) {
   return page;
 }
 
-const existingOf = (have, t) => async (cellsList) => new Set(cellsList.map((c) => t.keys.map((k) => c[k]).join('|')).filter((k) => have.includes(k)));
+const existingOf = (have, t, tooLong = []) => async (cellsList) => ({
+  have: new Set(cellsList.map((c) => t.keys.map((k) => c[k]).join('|')).filter((k) => have.includes(k))), tooLong: new Set(tooLong) });
 
-async function batchCase(lib, items, have = [], t = T) {
+async function batchCase(lib, items, have = [], t = T, tooLong = []) {
   const page = fakeMail(lib, items);
-  const b = await lib.batch.readBatch(t, page, { room: Infinity, existing: existingOf(have, t) });
+  const b = await lib.batch.readBatch(t, page, { room: Infinity, existing: existingOf(have, t, tooLong) });
   return { b, opened: page.opened };
 }
 
@@ -111,6 +114,9 @@ async function cases(lib) {
   let looks = 0;
   out.Owait = [await lib.open.waitOpened(() => ({ isShown: true, after: ++looks > 2 ? 'new' : 'old' }), { before: 'old', limitMs: 1000, everyMs: 5 }),
     await lib.open.waitOpened(() => ({ isShown: true, after: 'old' }), { before: 'old', limitMs: 60, everyMs: 5 })];
+  // the item before's late content: a clock of our own, 100 ms a look, 3 s to wait
+  const still = (printAt) => { let ms = 0; return lib.open.waitStill(() => printAt(ms), { limitMs: 3000, now: () => ms, sleep: async (d) => { ms += d; } }); };
+  out.Ostill = [await still((ms) => (ms < 1000 ? 'item 1' : 'item 2')), await still(() => 'item 1'), await still((ms) => `tick ${Math.floor(ms / 500)}`)];
 
   const known = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two'), mail('m3', 'Three')], ['m2']);
   out.Bknown = { rows: known.b.rows.map((r) => [r.key, r.cells.subject, r.cells.unread]), skipped: known.b.skipped, opened: known.opened };
@@ -121,9 +127,47 @@ async function cases(lib) {
   const nokey = await batchCase(lib, [mail(null, 'Nameless'), mail('m9', 'Nine')]);
   out.Bnokey = { rows: nokey.b.rows.map((r) => r.key), misses: nokey.b.misses.map((m) => [m.reason, m.at, m.index, m.cells.subject]) };
 
+  const unasked = fakeMail(lib, [mail('m1', 'One'), mail('m2', 'Two')]);
+  const u = await lib.batch.readBatch(T, unasked, { room: Infinity, existing: null });
+  out.Bunasked = { rows: u.rows.map((r) => r.key), skipped: u.skipped, unchecked: [u.unchecked, known.b.unchecked], opened: unasked.opened };
+
   const after = { ...T, keys: ['subject'] };
   const late = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], ['Two'], after);
   out.Bafter = { rows: late.b.rows.map((r) => r.key), skipped: late.b.skipped, opened: late.opened };
+
+  // a key the server would not be asked about (its read address too long), read before and after opening
+  const long = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], [], T, ['m2']);
+  const longAfter = await batchCase(lib, [mail('m1', 'One'), mail('m2', 'Two')], [], after, ['Two']);
+  out.Blong = [long, longAfter].map((c) => ({ rows: c.b.rows.map((r) => r.key), misses: c.b.misses.map((m) => [m.reason, m.detail, m.cells.id]), opened: c.opened }));
+
+  // the product's read of the keys: 200 Korean titles (9 bytes a letter in the address) and one of 3,000 letters, a server
+  // that answers 414 past 8,000 bytes
+  const titles = Array.from({ length: 200 }, (_, i) => `메일 제목 ${i}`);
+  const huge = '긴'.repeat(3000);
+  const table = [...titles.filter((_, i) => i % 3 === 0), huge];
+  const urls = [];
+  const fetchOf = (pastCap) => async (url) => {
+    urls.push(url);
+    if (url.length > 8000) return pastCap();
+    const values = JSON.parse(new URL(url).searchParams.get('filters')).title.values;
+    const data = table.filter((x) => values.includes(x)).map((x) => ({ row_id: x, data: { title: { value: x }, n: { value: '1' } } }));
+    return { ok: true, status: 200, json: async () => ({ data }) };
+  };
+  const once = table.filter((x) => x !== huge).map((x) => `${x}|1`).sort();
+  const asked = async (pastCap) => {
+    urls.length = 0;
+    const product = new lib.product.Product({ server: 'http://box:8085', key: 'k' }, fetchOf(pastCap));
+    const e = await product.existing('mail', ['title', 'n'], [...titles, huge].map((title) => ({ title, n: '1' })))
+      .catch((err) => ({ have: new Set(), tooLong: new Set([err.message]) }));       // a refused read: its sentence is the answer
+    return { reads: urls.length > 2, over: urls.filter((u) => u.length > lib.product.URL_BUDGET).map((u) => JSON.parse(new URL(u).searchParams.get('filters')).title.values.length),
+      same: JSON.stringify([...e.have].sort()) === JSON.stringify(once), tooLong: [...e.tooLong].map((v) => v.length) };
+  };
+  // past the cap the server answers 414, or a proxy cuts the connection (fetch throws - status 0)
+  out.Pbudget = [await asked(() => ({ ok: false, status: 414, statusText: 'URI Too Long', json: async () => null })),
+    await asked(() => { throw new Error('Failed to fetch'); })];
+  // a read under the budget not reached is the server's absence, said - not a key too long
+  const down = new lib.product.Product({ server: 'http://box:8085', key: 'k' }, async () => { throw new Error('Failed to fetch'); });
+  out.Pdown = await down.existing('mail', ['title'], [{ title: 'one' }]).then(() => 'answered', (err) => err.message);
 
   const plain = fakeRun([got(['a', 'b']), got(['b', 'c'])]);
   const t1 = await lib.run.runTemplate({ ...T }, plain.tab, plain.product);
@@ -176,11 +220,20 @@ const real = await cases(await load(LIB));
 eq('V text, a regex group, no match, blank, none, a group of digits', real.V, ['a', 'unread', null, null, null, '42']);
 eq('O not shown · unchanged · another item (the pair) · open', real.O, ['content not shown', 'content did not change', 'content is another item', null]);
 eq('O waiting - opens on the third look; never changes -> the reason in its seconds', real.Owait, [{ opened: true }, { opened: false, detail: 'content did not change in 0 s' }]);
+eq('O after a miss - the late content came and stood 1 s: still; never came: still; still moving at the wait: not', real.Ostill, [true, true, false]);
 eq('B a key the table has is skipped unopened', real.Bknown, { rows: [['m1', 'One', null], ['m3', 'Three', null]], skipped: 1, opened: ['One', 'Three'] });
 eq('B an item that does not open is kept «not_opened» - never the previous item\'s content; «unread» read before opening',
   real.Bstale, { rows: [['m1', 'One', null], ['m3', 'Three', 'unread']], misses: [['not_opened', 'content did not change in 0 s', 1, 'm2']] });
 eq('B no key is kept «no_key» with where it was and its cells', real.Bnokey, { rows: ['m9'], misses: [['no_key', 'bench://mail/list/1', 0, 'Nameless']] });
+eq('B no existing - the table not asked, every item read and opened, said unchecked (asked: not)', real.Bunasked,
+  { rows: ['m1', 'm2'], skipped: 0, unchecked: [true, false], opened: ['One', 'Two'] });
 eq('B a key read after opening: every item opened, the one the table has skipped after', real.Bafter, { rows: ['One'], skipped: 1, opened: ['One', 'Two'] });
+eq('B a key too long to ask about is kept «refused», never written - unopened when read before opening', real.Blong, [
+  { rows: ['m1'], misses: [['refused', 'key too long to check', 'm2']], opened: ['One'] },
+  { rows: ['One'], misses: [['refused', 'key too long to check', 'm2']], opened: ['One', 'Two'] }]);
+eq('P 200 Korean titles: reads under the budget, only the 3,000-letter one past it and alone; together the one read\'s answer, the long one said too long',
+  real.Pbudget, [{ reads: true, over: [1], same: true, tooLong: [3000] }, { reads: true, over: [1], same: true, tooLong: [3000] }]);
+eq('P a read under the budget not reached throws «server not reached» - not a key too long', real.Pdown, 'server not reached - Failed to fetch');
 eq('R written, a key seen twice skipped, one write per batch, ended at the last page', real.Rplain,
   { written: 3, skipped: 1, pages: 2, ended: 'last page', writes: [['a', 'b'], ['c']] });
 eq('R the limit - 5 of max 5, ended «limit»', real.Rlimit, { read: 5, written: 5, ended: 'limit' });
@@ -197,12 +250,17 @@ eq('R not allowed - the run ends «refused» with the sentence, nothing written,
 const MUTANTS = [
   ['M1 the before/after comparison off - the item that did not open is read from the previous item', 'Bstale', 'open_check.js',
     "if (after === before) return 'content did not change';", ''],
-  ['M2 the table\'s keys not asked before opening', 'Bknown', 'batch.js', 'if (keyBefore && known.has(keyOf(t, x.cells))) { out.skipped += 1; continue; }', ''],
+  ['M2 the table\'s keys not asked before opening', 'Bknown', 'batch.js', 'if (keyBefore && known.have.has(keyOf(t, x.cells))) { out.skipped += 1; continue; }', ''],
   ['M3 the limit off', 'Rlimit', 'run.js', 'Math.min(t.max ? t.max - tally.read : Infinity, BATCH_MOST)', 'BATCH_MOST'],
   ['M4 a refused write not tried row by row', 'Rrefused', 'run.js', 'const one = rows.length === 1 ? all : await product.write([r]);', 'const one = all;'],
   ['M6 the next page asked while the page still has items', 'Rpaged', 'run.js', 'if ((b.seen ?? b.read) === room) continue;', ''],
   ['M7 the pause not held', 'Rpause', 'run.js', 'if (paused() && !stopped()) {', 'if (false) {'],
   ['M8 a retry reading every item', 'Bonly', 'batch.js', 'const listed = t.only ? taken.filter((x) => t.only.some((c) => same(c, x.cells))) : taken;', 'const listed = taken;'],
+  ['M9 a preview that did not ask the table said checked', 'Bunasked', 'batch.js', 'unchecked: !existing', 'unchecked: false'],
+  ['M10 the keys asked in one read whatever its length', 'Pbudget', 'product.js', 'if (last && fits([...last, v])) last.push(v);', 'if (last) last.push(v);'],
+  ['M12 a cut connection on one long value not taken as too long', 'Pbudget', 'product.js', "(r.status === 414 || (r.status === 0 && !fits(values)))", '(r.status === 414)'],
+  ['M13 any cut connection taken as too long', 'Pdown', 'product.js', "(r.status === 0 && !fits(values))", '(r.status === 0)'],
+  ['M11 a key too long to ask about written as a new row', 'Blong', 'batch.js', 'if (keyBefore && unasked(known, x.cells)) { keepUnasked(x); continue; }', ''],
   ['M5 no key written as a row', 'Bnokey', 'batch.js', "if (key === null) { out.misses.push({ reason: MISS.NO_KEY, detail: `${t.keys.join(', ')} has no value`, at, index: x.index, cells }); continue; }", ''],
 ];
 for (const [name, which, file, from, to] of MUTANTS) {

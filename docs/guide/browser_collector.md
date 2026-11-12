@@ -18,14 +18,21 @@
 
 패널의 **+ New template** 에서 화면을 눌러 고르고 Save 하면 아래 두 표에 적힌다. 그리드에서 바로 고쳐도 같다.
 
+- 고르는 동안 **↑** 는 강조를 부모로 한 단계 넓히고 **↓** 는 되돌린다. 클릭이나 **Enter** 로 정한다
+- 내용 영역에서 **Shift+클릭** 은 영역을 하나 더 붙인다 — 타이틀과 본문을 함께 묶는 요소가 없을 때
+- 목록이 페이지 안 프레임(iframe)에 있어도 그대로 고른다 — `frame_pattern` 이 저절로 적힌다
+- **Preview** 는 넣을 표나 키가 비어 있어도 읽은 값을 보여 준다 (`Table not set - keys not checked`)
+- 카드의 **Delete** → 확인 한 번 → 그 템플릿의 두 표 행이 지워진다. 모은 행과 실행 기록은 남는다
+
 **sys_templates** (키 `template`)
 
 | 칸 | 뜻 |
 |---|---|
 | `url_pattern` | 이 템플릿을 쓸 페이지 주소 |
+| `frame_pattern` | 목록과 내용이 페이지 안 프레임(iframe)에 있으면 그 프레임의 주소 — 고를 때 저절로 적힌다. 빈칸 = 페이지 자체 |
 | `list_area` · `list_item` | 목록 영역과 그 안의 항목 하나 (CSS 선택자) |
 | `click_target` · `open_method` | 항목에서 누를 곳 · `in_place`(그 자리에서 열림) 또는 `new_tab` |
-| `content_area` | 열린 내용 영역 — `base` 가 `content` 인 칸이 여기서 읽힌다 |
+| `content_area` | 열린 내용 영역 — `base` 가 `content` 인 칸이 여기서 읽힌다. 선택자 여럿(`a, b`)이면 보이는 것 전부가 내용 |
 | `timeout_seconds` | 누른 뒤 내용이 바뀌기를 기다리는 초 |
 | `close_element` | 열린 내용을 닫는 단추 (있으면) |
 | `next_method` · `next_element` | 다음 쪽 — `button`(누름) 또는 `scroll`(내림) |

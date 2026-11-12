@@ -201,6 +201,12 @@ def evidence_subgraph(
                            "`node_limit` 은 실어 오는 타입만 센다 — 지나는 노드는 "
                            "원자 상한(`limits.claims`)이 막는다. "
                            "이름은 선언된 엔터티 타입이다 (`@` 버전은 있어도 없어도 된다)")),
+    edge_filter: list[str] | None = Query(
+        None, description=("`술어:식` - 그 술어의 걸음 중 식이 참인 것만 걷는다. 식은 하나뿐인 식 문법, "
+                           "[이름] 은 그 술어의 수식어. 비교 · and · or · not · is null 까지 (lead 11-11)")),
+    node_filter: list[str] | None = Query(
+        None, description=("`타입:식` - 걸어서 닿은 그 타입의 노드 중 식이 참인 것만 그리고 그 너머로 걷는다. "
+                           "[이름] 은 그 타입의 키. 걷기를 시작한 노드는 다시 거르지 않는다 (lead 11-11)")),
     seed_type: str | None = Query(
         None,
         description=("씨앗을 «열거하지 않고» 말한다 — 그 타입으로 «등록된 주어 전부»가 씨앗이다. "
@@ -322,6 +328,7 @@ def evidence_subgraph(
             follow, _followable_predicates(world), reason="predicate_not_declared",
             what="predicate", world=world, argument="follow")
         follow_keys = {_bare_name(name): keys for name, keys in follow_keys.items()}
+    filters = _walk_filters(edge_filter, node_filter, world, db.connection())
     if isinstance(expand, (list, tuple)):
         expand = [_expanded_bundle(item, world) for item in expand]
     if isinstance(seed_type, str) and seed_type.strip():
@@ -410,7 +417,7 @@ def evidence_subgraph(
             db.connection(), node_id=_signed_start(node_id, positive, negative), world=world,
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-            follow_keys=follow_keys, backbone_hops=backbone_hops,
+            follow_keys=follow_keys, backbone_hops=backbone_hops, filters=filters,
             collect=collect, include_superseded=include_superseded,
             rows=(wants == "rows"),
             group_by=group_by, measure=measure,
@@ -823,7 +830,7 @@ _COMPILED = {}
 #: it does not drop them, so a served key column is not asked of the catalogue again; cleared when a declaration
 #: compiles again (lead 11-09: the catalogue was 4 of a 2-hop walk's 10 statements, 7 of its 34 ms). An index dropped
 #: by hand reads as served until then.
-_SERVED = set()
+_SERVED = {}
 
 
 def _compiled(connection, names):
@@ -853,28 +860,41 @@ def _engine_reading(connection, engine, names, leave_out=None):
     """THE one seat that asks `engine` (lead 11-06): (legs, the answer's `engine` cell) of the worlds `names` -
     (None, None) for the stored ledger. A scan is a leg's end none of whose text key columns leads an index the
     database holds (`models.auto_index_serves`, the ask's own judgment - declared, automatic or by hand); each scan's
-    first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자동», `index_wants.want`, once a
-    process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`)."""
+    first key column is asked for an automatic index (owner 11-07 «키칸 인덱스 자动», `index_wants.want`, once a
+    process). The catalogue is read only for a table with an end no index is known to serve (`_SERVED`: column ->
+    the index). Each end says what came of its first key column (lead 11-11, owner «인덱스 없어»): a scan its ask's
+    last word (`index_wants.last_word`, None while the ask waits), a served one its index, one keyed by no text column
+    that none is asked - the last two on the log once a word (`index_wants.tell`)."""
     if engine_for(engine) != "virtual":
         return None, None
     from database import models
     from runtime import index_wants
 
     legs, left_out = _compiled(connection, names)
-    legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world, ())]
-    ends = [(leg.relation, columns) for leg in legs for columns in leg.columns.values()]
-    served = lambda table, columns: any((table, column) in _SERVED for column in columns)       # noqa: E731
+    legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world_name, ())]
+    # (table, its text key columns, its first key column of any kind) of each end
+    ends = [(leg.relation, columns, next((spec["column"] for _key, spec in leg.columns_of(arm)), None))
+            for leg in legs for arm, columns in leg.columns.items()]
+    served = lambda table, columns: next((_SERVED[(table, c)] for c in columns if (table, c) in _SERVED), None)  # noqa: E731
     raw = connection.connection.dbapi_connection
-    for table in {table for table, columns in ends if columns and not served(table, columns)}:
+    for table in {table for table, columns, _first in ends if columns and not served(table, columns)}:
         held = models.catalogue_indexes(raw, table)
-        _SERVED.update((table, column) for each, columns in ends if each == table for column in columns
-                       if any(models.auto_index_serves(index, [column], models.AUTO_WALK_KEY) for index in held))
-    scans = sorted({(table, (columns or [None])[0]) for table, columns in ends if not served(table, columns)}, key=str)
-    for table, column in scans:
-        if column is not None:                          # an end keyed by no text column has none to index
+        _SERVED.update(((table, column), index["name"]) for each, columns, _first in ends if each == table
+                       for column in columns for index in held
+                       if models.auto_index_serves(index, [column], models.AUTO_WALK_KEY))
+    texts, said = {(table, columns[0]) for table, columns, _first in ends if columns}, {"scans": [], "served": []}
+    for table, column, index in sorted({(table, (columns or [first])[0], served(table, columns))
+                                        for table, columns, first in ends}, key=str):
+        # an end keyed by no text column has none to index
+        word = ("%s (%s) - served by %s" % (table, column, index) if index is not None else None
+                if (table, column) in texts else "%s (%s) - not a text key, no index asked" % (table, column))
+        if word is None:
             index_wants.want(table, [column], models.AUTO_WALK_KEY, None, connection.engine)
-    return legs, {"name": "virtual", "left_out": left_out,
-                  "scans": [{"table": table, "column": column} for table, column in scans]}
+        elif index_wants.last_word(table, column) != word:
+            index_wants.tell(table, [column], word)
+        said["served" if index is not None else "scans"].append(
+            {"table": table, "column": column, "said": index_wants.last_word(table, column)})
+    return legs, {"name": "virtual", "left_out": left_out, **said}
 
 
 def _hidden_here(names, hidden, leave_out=None):
@@ -904,7 +924,7 @@ def _walk_lookup(connection, engine, names, world, leave_out=None, **reading):
 
 
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
-                    node_limit, edge_limit, follow=None, follow_keys=None,
+                    node_limit, edge_limit, follow=None, follow_keys=None, filters=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
         # 기본은 `one` 술어의 «지금 것»(가장 늦은 occurred_at)만 가져온다. true 면 옛것도
         # 가져오되 엣지에 `not_current` 표지 (총괄 22ebdd153, 판정 256 뒤집음).
@@ -919,7 +939,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     leave_out = schema.first_read(names, _source_names) if read == "first" else None
     hidden, leave_out = _hidden_here(names, hidden, leave_out)
     lookup, said = _walk_lookup(connection, engine, names, world, leave_out, since=since, until=until,
-                                one=ledger_subgraph.one_predicates(cardinalities),
+                                one=ledger_subgraph.one_predicates(cardinalities), filters=filters,
                                 # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
                                 current_only=not (include_superseded or page is not None))
     if page is not None:
@@ -1007,8 +1027,9 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
         raise HTTPException(status_code=422, detail={"reason": "filter_refused", "message": str(refused)}) from None
     rows = [row for (row,) in connection.execute(select(model.row_id).where(kept))]
     compared, number = column_filter.filter_column(model, column)
-    there = set(connection.execute(select(compared).where(kept).distinct()).scalars())
-    gone = [value for value in values if value is not None and (float(value) if number else value) not in there]
+    there = set(column_filter.set_values(connection.execute(select(compared).where(kept).distinct()).scalars(),
+                                         number, column))
+    gone = [value for value in column_filter.set_values(values, number, column) if value not in there]
     if gone:
         left_out.append({"why": "not in the table", "table": table, "values": len(gone)})
 
@@ -1239,6 +1260,40 @@ def _declared_keys(bare_type: str, world=None) -> set:
         if _bare_name(name) == bare_type:
             return {str(k) for k in ((spec or {}).get("keys") or [])}
     return set()
+
+
+def _walk_filters(edge_filter, node_filter, world, connection=None):
+    """{"edge": {bare predicate: [compiled]}, "node": {bare type: [compiled]}} of a walk's value filters (lead 11-11,
+    `walk_filter`): each name through `_declared_or_refused`, each expression read once and refused by name when a
+    filter does not read it or it reads a name the predicate (its qualifiers) or the type (its keys) does not carry,
+    or a time qualifier (the declaration's compile, `_compiled`: its spec reads a time) - «not yet». {} when none - a
+    direct call leaves the Query sentinel."""
+    from ledger import walk_filter
+
+    times = set()
+    if connection is not None and isinstance(edge_filter, (list, tuple)) and edge_filter:
+        times = {(leg.predicate, name) for leg in _compiled(connection, _worlds(world))[0]
+                 for name, spec in leg.qualifiers.items() if spec.get("time") is not None}
+    out = {}
+    for argument, entries, kind, declared, reason, what, readable in (
+            ("edge_filter", edge_filter, "edge", _followable_predicates, "predicate_not_declared", "predicate",
+             lambda name: _predicate_qualifiers(world).get(name) or []),
+            ("node_filter", node_filter, "node", _collectable_types, "node_type_not_declared", "type",
+             lambda name: sorted(_declared_keys(name, world)))):
+        if not isinstance(entries, (list, tuple)):
+            continue
+        for name, texts in walk_filter.split(entries).items():
+            (bare,) = _declared_or_refused([name], declared(world), reason=reason, what=what, world=world,
+                                           argument=argument)
+            try:
+                out.setdefault(kind, {}).setdefault(bare, []).extend(
+                    walk_filter.compiled(argument, bare, text, readable(bare),
+                                         {name for predicate, name in times if predicate == bare and kind == "edge"})
+                    for text in texts)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail={
+                    "reason": "filter_not_read", "argument": argument, "message": str(exc)})
+    return out
 
 
 def _declared_or_refused(names, declared, *, reason, what, world, argument):

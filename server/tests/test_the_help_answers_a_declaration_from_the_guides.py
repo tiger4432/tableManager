@@ -100,6 +100,15 @@ def test_the_owners_question_finds_the_pair_and_every_prompt_stays_under_its_cap
     assert worst <= 5000, worst
 
 
+def test_the_operators_guides_are_read_and_a_collector_search_finds_how_to_make_one(guides):
+    """Lead 11-11: the guides an operator works from are in the list - 21 (chain_ingestion_guide and BACKFILL
+    came back once their stale sentences were fixed); a collector search picks the collector guide's «make one» section first."""
+    assert len(help_guides.GUIDES) == 21
+    picked, how = help_guides.nearest("수집기 하나 만들기")
+    assert how == "bm25" and picked[0]["file"] == "AUTO_UPDATE_GUIDE.md"
+    assert "수집기 하나 만들기" in picked[0]["name"]
+
+
 def test_the_first_ask_grows_by_the_declaration_entry_only():
     prompt = admin_help.prompt_of("q")
     mine = [line for line in prompt.split("\n") if line.startswith("- declaration:") or "디사이드 키" in line]
@@ -451,3 +460,50 @@ def test_embed_refuses_by_name_without_a_model_and_asks_nothing(gateway):
     with pytest.raises(llm.LlmRefused, match="no embedding_model in config/llm_config.json"):
         llm.embed(["x"])
     assert gateway.made == []
+
+
+#: Owner 11-10 «헬퍼 llm 은 물어봐도 왜 join 만 대답함, 매번 derive 라고 하는데도» - derive is every unified rule's cell, and
+#: the only whole examples carrying it were joins; the decide one is enrichment_rules.md §0.
+DERIVE_QUESTIONS = ["derive 로 stack_height 를 UniqueCount 로 모으는 규칙",
+                    "derive 로 lot 마다 파생 행을 만들고 wafer 수를 세는 선언",
+                    "dt_log 를 dt_job 별로 묶어서 derive 파생 표에 행 만드는 규칙 써줘"]
+
+
+@pytest.mark.parametrize("question", DERIVE_QUESTIONS)
+def test_a_derive_question_is_handed_the_decide_example_first(guides, question):
+    picked, how = help_guides.nearest(question, retrieval="bm25")
+    assert how == "bm25" and '"kind": "decide"' in picked[0]["text"], [p["name"] for p in picked]
+
+
+def test_the_guides_decide_example_passes_the_save(config_files, guides, monkeypatch):
+    from tests.support.declaration import use_committed_catalogue
+
+    use_committed_catalogue(monkeypatch)
+    [piece] = [p for p in help_guides.index().pieces if "0. derive" in p["name"] and "```json" in p["text"]]
+    rule = json.loads(piece["text"].split("```json", 1)[1].split("```", 1)[0])
+    assert rule["derive"]["kind"] == "decide" and "=UniqueCount(" in json.dumps(rule)
+    assert help_guides.check("chain_rule", rule["name"], rule) == {"ok": True, "said": None}
+
+
+#: Lead 11-10: a memory · comment question is answered from ai_ask_tables.md's A-3 section - its heading carries the
+#: words an operator asks with, and the section a whole report rule with memory and comment.
+MEMORY_WORDS = "리포트 메모리 · 코멘트"
+
+
+def _memory_section(pieces):
+    return [p["name"] for p in pieces if p["file"] == "ai_ask_tables.md" and "(A-3)" in p["name"]]
+
+
+def test_the_memory_section_heading_carries_the_operators_words(guides):
+    names = _memory_section(help_guides.index().pieces)
+    assert names and all(MEMORY_WORDS in name for name in names), names
+
+
+def test_the_guides_memory_example_passes_the_save(config_files, guides, monkeypatch):
+    from tests.support.declaration import use_committed_catalogue
+
+    use_committed_catalogue(monkeypatch)
+    [piece] = [p for p in help_guides.index().pieces if _memory_section([p]) and "```json" in p["text"]]
+    rule = json.loads(piece["text"].split("```json", 1)[1].split("```", 1)[0])
+    assert rule["derive"]["kind"] == "report" and rule["derive"]["report"]["memory"]["comment"]
+    assert help_guides.check("chain_rule", rule["name"], rule)["ok"] is True

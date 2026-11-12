@@ -61,10 +61,11 @@ function mountPanel(M, declaration, storage = null) {
     && n.attrs['data-value'] === value);
   const click = (action, value) => { const b = btn(action, value); if (b) b.dispatch('click'); return !!b; };
   const boxAt = (p) => find((n) => n.attrs && n.attrs['data-path'] === p);
-  const inputAt = (p) => find((n) => n.tagName === 'INPUT' && n.attrs && n.attrs['data-value'] === p);
+  // a formula cell's box is a textarea (many lines, owner 11-11): a value's box is either
+  const inputAt = (p) => find((n) => (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA') && n.attrs && n.attrs['data-value'] === p);
   const chipsAt = (p) => { const b = boxAt(p); return b ? walk(b).filter((n) => cls(n).includes('chip')).map((n) => n.textContent) : []; };
   const raw = () => {
-    const area = find((n) => n.tagName === 'TEXTAREA');
+    const area = find((n) => n.tagName === 'TEXTAREA' && !cls(n).includes('formula-input__input'));
     try { return JSON.parse(area.value); } catch (e) { return null; }
   };
   return { host, panel, btn, click, boxAt, inputAt, chipsAt, raw, find };

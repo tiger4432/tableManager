@@ -2,7 +2,7 @@
 // server's declaration has them (server/declarations/table_config.json - that file is the canon; a rename there is a
 // rename here). Everything else in the extension reads a template as the object below.
 //
-//   template  { name, address, listArea, item, clickTarget, opens, content, waitSeconds, close, next: {how, selector},
+//   template  { name, address, frame, listArea, item, clickTarget, opens, content, waitSeconds, close, next: {how, selector},
 //               endSeconds, max, pair: {item, content} | null, keys: [column], table, fields: [field] }
 //   field     { column, base: 'item' | 'content', selector, read: 'text' | '@attr', regex }
 
@@ -22,7 +22,7 @@ export function templateOf(row, fieldRows) {
   const pair = itemCol && contentCol && byName(itemCol, 'item') && byName(contentCol, 'content')
     ? { item: byName(itemCol, 'item'), content: byName(contentCol, 'content') } : null;
   return {
-    name: text(row.template), address: text(row.url_pattern), listArea: text(row.list_area), item: text(row.list_item),
+    name: text(row.template), address: text(row.url_pattern), frame: text(row.frame_pattern), listArea: text(row.list_area), item: text(row.list_item),
     clickTarget: text(row.click_target), opens: row.open_method === 'new_tab' ? 'new_tab' : 'in_place',
     content: text(row.content_area), waitSeconds: num(row.timeout_seconds, 10), close: text(row.close_element),
     next: { how: row.next_method === 'scroll' ? 'scroll' : 'button', selector: text(row.next_element) },
@@ -37,7 +37,7 @@ export function templateOf(row, fieldRows) {
 export function rowsOf(t) {
   return {
     template: {
-      template: t.name, url_pattern: t.address, list_area: t.listArea, list_item: t.item, click_target: t.clickTarget,
+      template: t.name, url_pattern: t.address, frame_pattern: t.frame || null, list_area: t.listArea, list_item: t.item, click_target: t.clickTarget,
       open_method: t.opens, content_area: t.content, timeout_seconds: t.waitSeconds, close_element: t.close,
       next_method: t.next.how, next_element: t.next.selector, scroll_end_seconds: t.endSeconds, max_items: t.max || null,
       ready_match: t.pairText || null, key_columns: t.keys.join(SPLIT), target_table: t.table,
