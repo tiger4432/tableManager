@@ -31,6 +31,8 @@
 //   Z3 a board: a folder a cell with an image, its path [its line, its column]
 //   Z4 the button: its title the images it holds; none - off, its reason said
 //   Z5 pressed: the folders of the rows drawn sent, the zip saved under its file name; a refusal said as the server says it
+//   Z6 the path (save_file.js): a picked file asked before the request and streamed into; no picker - asked first with
+//      the image count, «no» sends nothing; a closed dialog sends and says nothing
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -473,17 +475,47 @@ async function suite(M) {
   const saved = [];
   const made = zs.doc.createElement.bind(zs.doc);
   zs.doc.createElement = (tag) => { const n = made(tag); if (tag === 'a') n.click = () => saved.push(n.download); return n; };
-  zs.part.deps.fetch = async (url, init) => { sent.push([url, JSON.parse(init.body)]); return { ok: true, status: 200, blob: async () => new Blob(['zip']) }; };
+  const asks = [];
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
+  zs.part.deps.confirm = (text) => { asks.push(text); return true; };
+  zs.part.deps.fetch = async (url, init) => { sent.push([url, JSON.parse(init.body)]); return new Response('zip'); };
   zipOf(zs.mount).dispatch('click');
-  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  await settle();
   const body = sent[0] && sent[0][1];
   zs.part.deps.fetch = async () => ({ ok: false, status: 413, json: async () => ({ detail: 'Over the zip cap: 5,000 images' }) });
   zipOf(zs.mount).dispatch('click');
-  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  await settle();
   ok('Z5 pressed: the rows\' folders sent to the zip route, saved under its file name; a refusal said as the server says it',
     !!body && sent[0][0].endsWith('/api/images/zip') && JSON.stringify(body.folders.map((f) => [f.path, f.refs.length])) === JSON.stringify([[['B'], 3], [['C'], 3]])
       && saved[0] === body.filename && textOf(byClass(zs.mount, 'gallery-zip__say')[0]) === 'Over the zip cap: 5,000 images' && !zipOf(zs.mount).disabled,
     `${JSON.stringify(body && body.folders.map((f) => [f.path, f.refs.length]))} · saved ${saved[0]} · said ${textOf(byClass(zs.mount, 'gallery-zip__say')[0])}`);
+  // Z6 - the path: a picked file streamed (asked before the request), none - asked first with the count, a closed dialog nothing
+  const steps = [];
+  const written = { bytes: '', closed: false };
+  const sentBefore = sent.length;
+  saved.length = 0;
+  asks.length = 0;
+  zs.part.deps.fetch = async (url, init) => { steps.push('fetch'); sent.push([url, JSON.parse(init.body)]); return new Response('zipbytes'); };
+  zs.part.deps.picker = async (o) => { steps.push(`pick ${o.suggestedName}`); return { name: o.suggestedName, createWritable: async () => ({
+    write: async (v) => { written.bytes += new TextDecoder().decode(v); }, close: async () => { written.closed = true; }, abort: async () => {} }) }; };
+  zipOf(zs.mount).dispatch('click');
+  await settle();
+  const streamed = sent[sentBefore] && sent[sentBefore][1];
+  const pickedOk = !!streamed && JSON.stringify(steps) === JSON.stringify([`pick ${streamed.filename}`, 'fetch'])
+    && written.bytes === 'zipbytes' && written.closed && saved.length === 0 && asks.length === 0;
+  const pickedSaw = `${JSON.stringify(steps)} · ${JSON.stringify(written)} · links ${saved.length} · asked ${asks.length}`;
+  zs.part.deps.picker = null;
+  zs.part.deps.confirm = (text) => { asks.push(text); return false; };
+  const sentHeld = sent.length;
+  zipOf(zs.mount).dispatch('click');
+  await settle();
+  const heldOk = asks.length === 1 && asks[0].includes('6 images') && sent.length === sentHeld && saved.length === 0;
+  zs.part.deps.picker = async () => { throw Object.assign(new Error('closed'), { name: 'AbortError' }); };
+  zipOf(zs.mount).dispatch('click');
+  await settle();
+  const cancelOk = sent.length === sentHeld && asks.length === 1 && textOf(byClass(zs.mount, 'gallery-zip__say')[0]) === '' && !zipOf(zs.mount).disabled;
+  ok('Z6 the path: a picked file asked before the request and streamed, no link; none - asked first with the count, no - nothing sent; a closed dialog nothing',
+    pickedOk && heldOk && cancelOk, `${pickedSaw} · held ${JSON.stringify(asks)} sent ${sent.length - sentHeld} · cancel said «${textOf(byClass(zs.mount, 'gallery-zip__say')[0])}»`);
   return { ran, failed: failed.slice() };
 }
 
@@ -532,9 +564,13 @@ const MUTANTS = [
   { name: 'a board cell foldered under its column alone', catches: ['Z3'], mutate: swap('folders.push({ path: [line.label, board.columns[k].label], refs: refsOf(cell) })', 'folders.push({ path: [board.columns[k].label], refs: refsOf(cell) })') },
   { name: 'a group with no image still a folder', catches: ['Z1'], mutate: swap('      if (group.tiles.length) folders.push', '      folders.push') },
   { name: 'a name keeps its query', catches: ['Z1'], mutate: swap("const s = String(ref ?? '').split(/[?#]/)[0];", "const s = String(ref ?? '');") },
-  { name: 'the title counts the rows, not their images', catches: ['Z4'], mutate: swap('const images = body().folders.reduce((n, f) => n + f.refs.length, 0);', 'const images = (this.deps.rows() || []).length;') },
+  { name: 'the title counts the rows, not their images', catches: ['Z4'], mutate: swap('const images = imagesOf(body());', 'const images = (this.deps.rows() || []).length;') },
   { name: 'a refusal said in the screen\'s words', catches: ['Z5'], mutate: swap('say.textContent = await refusalText(res, WORDS.zipFailed);', 'say.textContent = WORDS.zipFailed;') },
-  { name: 'the zip saved under no name', catches: ['Z5'], mutate: swap('        a.download = asked.filename;\n', '') },
+  { name: 'the zip saved under no name', catches: ['Z5'], mutate: swap('filename: asked.filename, type:', 'filename: undefined, type:') },
+  { name: 'a picked file not written - held in memory', catches: ['Z6'], mutate: swap('saveBody(res, { handle: file.handle,', 'saveBody(res, { handle: null,') },
+  { name: 'no picker and not asked', catches: ['Z6'], mutate: swap('if (!file.handle && !confirmImpl(', 'if (false && !confirmImpl(') },
+  { name: 'the ask without the image count', catches: ['Z6'], mutate: swap('WORDS.zipHeld(imagesOf(asked))', 'WORDS.zipHeld(0)') },
+  { name: 'a closed dialog goes on', catches: ['Z6'], mutate: swap('        if (file.cancelled) return;\n', '') },
   { name: 'the side panel shows every column', catches: ['G12'], mutate: swap('(this.deps.shown ? this.deps.shown() : (this.deps.columns() || []).map((c) => c.name))', '(this.deps.columns() || []).map((c) => c.name)') },
 ];
 

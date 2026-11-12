@@ -13,6 +13,7 @@ import { narrowingTail } from './narrowing.js';
 import { FlowStrip, FLOW_FOLLOW, FLOW_HOPS } from './flow_strip.js';
 import { fetchSubgraph, entitySeedId, refusalSentence } from './rnd_board/api.js';
 import { localStamp } from './server_time.js';
+import { pickFile, saveBody, savePicker } from './save_file.js';
 import { openInTables } from './tables/handoff.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
@@ -1297,35 +1298,19 @@ function setupEventListeners() {
       const timestamp = localStamp(new Date()).replace(/[-:]/g, '').replace(' ', '_');
       const defaultFilename = `${state.currentTable}_extract_${timestamp}.csv`;
 
-      let fileHandle = null;
-      let writableStream = null;
-      let useFileSystemAccess = !state.isDesktop && (typeof window.showSaveFilePicker === 'function');
-
-      if (useFileSystemAccess) {
-        try {
-          fileHandle = await window.showSaveFilePicker({
-            suggestedName: defaultFilename,
-            types: [{
-              description: 'CSV Files (*.csv)',
-              accept: {
-                'text/csv': ['.csv']
-              }
-            }]
-          });
-        } catch (err) {
-          // If user cancels the picker, abort the download completely
-          if (err.name === 'AbortError') {
-            console.log('[CSV Export] User cancelled file dialog picker.');
-            return;
-          }
-          // For security or other errors in wrapping environment, fallback to standard prompt
-          console.warn('[CSV Export] File System Access API failed, falling back to prompt:', err);
-          useFileSystemAccess = false;
-        }
+      const file = await pickFile(savePicker({ isDesktop: state.isDesktop }), {
+        suggestedName: defaultFilename,
+        types: [{ description: 'CSV Files (*.csv)', accept: { 'text/csv': ['.csv'] } }],
+      });
+      if (file.cancelled) {
+        console.log('[CSV Export] User cancelled file dialog picker.');
+        return;
       }
+      // For security or other errors in wrapping environment, fallback to standard prompt
+      if (file.failed) console.warn('[CSV Export] File System Access API failed, falling back to prompt:', file.failed);
 
       let finalFilename = defaultFilename;
-      if (!state.isDesktop && !useFileSystemAccess) {
+      if (!state.isDesktop && !file.handle) {
         const filenameInput = prompt('CSV file name:', defaultFilename);
         if (filenameInput === null) return; // Cancelled by user
 
@@ -1368,28 +1353,7 @@ function setupEventListeners() {
         const totalBytesHeader = response.headers.get('X-Estimated-Content-Length') || response.headers.get('Content-Length');
         const totalBytes = totalBytesHeader ? parseInt(totalBytesHeader, 10) : 0;
 
-        const reader = response.body.getReader();
-        let receivedBytes = 0;
-
-        if (useFileSystemAccess && fileHandle) {
-          writableStream = await fileHandle.createWritable();
-        }
-
-        const chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          if (useFileSystemAccess && writableStream) {
-            await writableStream.write(value);
-          } else {
-            chunks.push(value);
-          }
-          receivedBytes += value.length;
-
+        const saved = await saveBody(response, { handle: file.handle, filename: finalFilename, type: 'text/csv;charset=utf-8;', onBytes: (receivedBytes) => {
           if (totalBytes > 0) {
             let percent = Math.floor((receivedBytes / totalBytes) * 100);
             if (percent > 99) percent = 99;
@@ -1401,36 +1365,17 @@ function setupEventListeners() {
             const kbReceived = (receivedBytes / 1024).toFixed(0);
             elements.performanceLog.textContent = `Downloading: ${kbReceived}KB`;
           }
-        }
+        } });
 
-        elements.performanceLog.textContent = 'Processing...';
-
-        if (useFileSystemAccess && writableStream) {
-          await writableStream.close();
-          const savedName = fileHandle.name;
-          elements.performanceLog.textContent = `CSV Saved: ${savedName}`;
-          showToast(`📄 CSV saved (${savedName})`, 'success');
+        if (saved.picked) {
+          elements.performanceLog.textContent = `CSV Saved: ${saved.name}`;
+          showToast(`📄 CSV saved (${saved.name})`, 'success');
         } else {
-          // Assemble chunks into a Blob
-          const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
-          const blobUrl = URL.createObjectURL(blob);
-
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = finalFilename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(blobUrl);
-
-          elements.performanceLog.textContent = `CSV Downloaded: ${finalFilename}`;
-          showToast(`📄 CSV downloaded (${finalFilename})`, 'success');
+          elements.performanceLog.textContent = `CSV Downloaded: ${saved.name}`;
+          showToast(`📄 CSV downloaded (${saved.name})`, 'success');
         }
       } catch (err) {
         console.error('Failed to download CSV', err);
-        if (writableStream) {
-          try { await writableStream.abort(); } catch (e) { }
-        }
         sayStopped('❌ CSV download failed');
       }
     });

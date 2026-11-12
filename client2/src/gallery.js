@@ -11,6 +11,7 @@ import { countNumberText } from './match_count.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { refusalText } from './refusal.js';
 import { localMinute } from './server_time.js';
+import { pickFile, saveBody } from './save_file.js';
 
 /** A tile's picture side (the server's /api/image px) - the token --gallery-tile says the same to the CSS. */
 export const TILE_PX = 160;
@@ -37,6 +38,7 @@ export const WORDS = Object.freeze({
   groupCount: (n) => n.toLocaleString('en-US'),
   zip: 'Download zip', zipping: 'Preparing zip…', zipNone: 'No image in the rows shown', zipFailed: 'Zip failed',
   zipTitle: (n) => `Download ${n.toLocaleString('en-US')} image${n === 1 ? '' : 's'} (zip)`,
+  zipHeld: (n) => `This browser cannot save straight to a file: the zip of ${n.toLocaleString('en-US')} image${n === 1 ? '' : 's'} is held in memory until it is saved. Continue?`,
 });
 
 /** The bulk image download (owner 11-12, lead; the server's zip C's): POST it the folders, the zip comes back. */
@@ -316,12 +318,14 @@ export class GalleryPart {
   }
 
   /** «Download zip» and what it says: the images it holds in its title, off with its reason when none; pressed - the
-   *  folders sent (`body` - zipBody of the rows as drawn now), the zip saved, a refusal said as the server says it. */
+   *  folders sent (`body` - zipBody of the rows as drawn now), the zip saved through the save door (`deps.picker` -
+   *  save_file.js; none - held in memory, asked first with its image count), a refusal said as the server says it. */
   zipBar(bar, body) {
     const button = this.el('button', 'glass-page-btn gallery-zip', WORDS.zip);
     button.type = 'button';
     const say = this.el('span', 'gallery-zip__say');
-    const images = body().folders.reduce((n, f) => n + f.refs.length, 0);
+    const imagesOf = (b) => b.folders.reduce((n, f) => n + f.refs.length, 0);
+    const images = imagesOf(body());
     if (images) button.setAttribute('title', WORDS.zipTitle(images));
     setDisabledReason(button, images ? '' : WORDS.zipNone);
     button.addEventListener('click', async () => {
@@ -329,15 +333,14 @@ export class GalleryPart {
       setDisabledReason(button, WORDS.zipping);
       say.textContent = '';
       try {
+        const file = await pickFile(this.deps.picker || null, { suggestedName: asked.filename, types: [{ description: 'Zip (*.zip)', accept: { 'application/zip': ['.zip'] } }] });
+        if (file.cancelled) return;
+        const confirmImpl = this.deps.confirm || ((text) => globalThis.confirm(text));
+        if (!file.handle && !confirmImpl(WORDS.zipHeld(imagesOf(asked)))) return;
         const fetchImpl = this.deps.fetch || ((url, init) => globalThis.fetch(url, init));
         const res = await fetchImpl(`${this.deps.base || ''}${ZIP_ROUTE}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(asked) });
         if (!res.ok) { say.textContent = await refusalText(res, WORDS.zipFailed); return; }
-        const url = URL.createObjectURL(await res.blob());
-        const a = this.el('a');
-        a.href = url;
-        a.download = asked.filename;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        await saveBody(res, { handle: file.handle, filename: asked.filename, type: 'application/zip', doc: this.doc });
       } catch (err) {
         say.textContent = `${WORDS.zipFailed} · ${err && err.message}`;
       } finally {
