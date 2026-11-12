@@ -220,7 +220,7 @@ def shells(db, table_name: str, row_ids) -> list:
     (`person_rows` - a person's part, a writer not the chain, a chain that made it; a chain that only attached values
     keeps nothing, lead 11-10), and it shows nothing outside its keys that no layer carries - a value no layer carries
     is not taken for nothing. The chain's write seat and the sweep ask this one."""
-    from database import crud, models
+    from database import crud, lines, models
 
     model = models.DYNAMIC_TABLES.get(table_name)
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
@@ -238,11 +238,17 @@ def shells(db, table_name: str, row_ids) -> list:
         for (row_id, column), named in layers.items():
             by_row.setdefault(row_id, []).extend((column, name, entry["value"]) for name, entry in named.items())
         kept = person_rows(db, table_name, chunk)
+        # what a row shows is lines.merge's answer; a column it leaves out keeps t's value. t alone lags a withdraw
+        # until the merge rewrites it (lead 11-12: shells kept a row by a value its withdrawn line had carried)
+        merged = (lines.merge(db, table_name, crud.TABLE_CONFIG.get(table_name) or {}, chunk)
+                  if lines.has_lines(db, table_name) else {})
         for row in db.query(model).filter(model.row_id.in_(chunk)).all():
             layered = {column for column, _name, _value in by_row.get(row.row_id, ())}
+            said = merged.get(row.row_id, {})
             # a shown value no layer carries is not taken for nothing; one a layer carries, person_rows judged
-            if row.row_id in kept or any(not crud.is_blank_value(getattr(row, column, None))
-                                         for column in shown if column not in layered):
+            if row.row_id in kept or any(
+                    not crud.is_blank_value(said[column][0] if column in said else getattr(row, column, None))
+                    for column in shown if column not in layered):
                 continue
             found.append(row.row_id)
     return found
