@@ -335,6 +335,26 @@ def test_a_receipt_is_its_transactions_line_beside_its_tables_and_a_cells_line_i
     assert "ab-r" not in said and said["ab-c"][3] == [], "a receipt of a table the reader may not read"
 
 
+def test_a_formulas_transaction_is_one_table_line_and_no_event_line(panel):
+    """Lead 11-12 ㄱ: a formula's write is its batch (work «formula») and a receipt naming its rows (no line a row) -
+    the panel draws it once, the table's line «formula · 2 rows»; its receipt is no event line of its own."""
+    from database import crud
+
+    client, engine, bits = panel
+    _seed(engine, bits)
+    who = "formula %s.c" % TABLE
+    with engine.begin() as conn:
+        line_tables.audit_batch(conn, "ab-f", TABLE, written_by=who, kind="formula", at=T0 + timedelta(minutes=5))
+    _events(engine, crud.receipt_log(None, TABLE, "batch-ab-f", who, {"blank": 0, "refused": 0}, crud.CHAIN_SOURCE,
+                                     who, "ab-f", row_ids=["r1", "r2"]))
+    _load(engine)
+    groups = client.get(URL).json()["groups"]
+    assert [_said(g) for g in groups[:1]] == [("ab-f", 0, [], [(TABLE, 2, ["formula"], [who])])], groups[:1]
+    route = client.get("/audit_logs/transaction/ab-f").json()["logs"]
+    assert sorted((e["table_name"], e["row_id"], e["column_name"]) for e in route) == [
+        (TABLE, "r1", None), (TABLE, "r2", None)], "its rows, and its receipt is no event among them"
+
+
 def test_a_later_receipt_reaches_the_top_and_its_transaction_route_lists_it(panel):
     from ledger.runtime_v2 import RECEIPT_COLUMN
 

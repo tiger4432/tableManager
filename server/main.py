@@ -1628,7 +1628,7 @@ def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get
 
     person = access.person(request)
     named = db.query(lines.AuditBatch.table_name).filter(in_group(lines.AuditBatch.transaction_id, tx_id))
-    said = db.query(models.AuditLog).filter(recent.is_event(models.AuditLog.column_name),
+    said = db.query(models.AuditLog).filter(recent.is_event(),
                                             in_group(models.AuditLog.transaction_id, tx_id))
     if table is not None:
         named = named.filter(lines.AuditBatch.table_name == table)

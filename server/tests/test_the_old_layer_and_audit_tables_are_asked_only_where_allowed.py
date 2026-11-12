@@ -48,7 +48,11 @@ AUDIT_EVENTS_ALLOWED = {"database/crud.py:create_audit_log", "database/crud.py:b
                         "chain/replay.py:_write_resolved",
                         # a receipt's row_ids - the rows a formula's write changed (owner 11-12 ㄴ «영수증만»: no line a
                         # row); an event line read, the grid's transaction filter asks it (A)
-                        "database/crud.py:receipt_row_ids"}
+                        "database/crud.py:receipt_row_ids",
+                        # the history panel's events (owner 11-11 ㄱ «이력 화면에 보인다»): the one seat that asks which
+                        # row is one (is_event - a ledger receipt, a «*» record) and the three reads through it (D)
+                        "admin/audit_cache.py:is_event", "admin/audit_cache.py:_events",
+                        "admin/audit_cache.py:_newest_ids", "admin/audit_cache.py:_event_facts"}
 #: who hands rows to the event writers (bulk_insert_audit_logs · _insert_audit_row): each builds them with
 #: crud.receipt_log - RECEIPT_COLUMN lines, whose create_audit_log call `cell_line_to_audit` reads - and
 #: store.write_batch writes what its `receipt` callable returns, which only execute_scoped_batch passes

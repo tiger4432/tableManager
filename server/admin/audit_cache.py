@@ -1,5 +1,5 @@
 """The in-memory projection behind `GET /audit_logs/recent` - the newest transaction groups of `audit_batches` (a
-cell's lines) and of the `audit_logs` rows that are no cell's change (`is_event`: a ledger or formula receipt, a
+cell's lines) and of the `audit_logs` rows that are no cell's change (`is_event`: a ledger receipt, a
 table-wide record - owner 11-11 ㄱ «audit_logs 는 셀 아닌 사건의 표로 남고, 이력 화면에 보인다»).
 
 A group is a transaction (`group_of` - a replay's pages are one group). Per table it shows the kinds and the writers
@@ -51,17 +51,20 @@ LIVE_GROUPS = 100
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
-def is_event(column):
-    """SQL: an `audit_logs` row is no cell's change - its column is a receipt's (`crud.receipt_log`: a ledger or formula
-    batch) or "*" (a table-wide record: set_aside's skips, replay's full reset). The one seat that asks it.
+def is_event():
+    """SQL: an `audit_logs` row is an event of its own on the panel - a ledger batch's receipt (`crud.receipt_log` under
+    `runtime_v2.RECEIPT_SOURCE`) or "*" (a table-wide record: set_aside's skips, replay's full reset). The one seat that
+    asks it. A formula's receipt is not one: its write is a batch of work «formula» (A c3fd6977a), whose table line says
+    «formula · N rows» - the same write drawn twice is two doors (lead 11-12 ㄱ).
 
     ⚠️ A row's table would say it alone once audit_logs holds no cell's line. Five writers still write one there -
     replay._write_resolved · _fold_units_page · crud.row_update_line, apply_row_update_internal · _merge_into_key_holder
     (the 11-14 count gate asks 0 of them, A · B). When they are gone, every audit_logs row is an event: this function
     goes and the walk reads the table (lead 11-11 ㄱ)."""
-    from ledger.runtime_v2 import RECEIPT_COLUMN
+    from ledger.runtime_v2 import RECEIPT_COLUMN, RECEIPT_SOURCE
 
-    return column.in_((RECEIPT_COLUMN, "*"))
+    e = models.AuditLog
+    return sa.or_(sa.and_(e.column_name == RECEIPT_COLUMN, e.source_name == RECEIPT_SOURCE), e.column_name == "*")
 
 
 def _batches():
@@ -73,7 +76,7 @@ def _batches():
 def _events():
     """The events' walk (`is_event`): (group label, time, id, which)."""
     e = models.AuditLog
-    return e.transaction_id, e.timestamp, e.id, is_event(e.column_name)
+    return e.transaction_id, e.timestamp, e.id, is_event()
 
 
 def resolve_recent_settings(config: dict = None) -> dict:
@@ -449,7 +452,7 @@ def _event_facts(db: Session, keys) -> Dict[str, dict]:
         return {}
     e = models.AuditLog
     facts = {}
-    for log in db.query(e).filter(is_event(e.column_name), sa.or_(*[in_group(e.transaction_id, key) for key in keys])
+    for log in db.query(e).filter(is_event(), sa.or_(*[in_group(e.transaction_id, key) for key in keys])
                                   ).order_by(e.timestamp.asc(), e.id.asc()):
         one = facts.setdefault(group_of(log.transaction_id), {"count": 0, "columns": []})
         one["count"] += 1
