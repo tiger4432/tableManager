@@ -34,7 +34,7 @@
   - 비트: «write» 는 말한 칸을 written_bits 에 적고 head_bits 도 그것으로 시작한다. «withdraw» 는 거둔 칸을 written_bits 와 withdrawn_bits 에 같이 적고 head_bits 도 그것으로 시작한다(그 원천의 그 칸 머리가 «말 없음» 줄이 된다 — 앞선 머리는 «쓰기» 4 가 내린다). «mark» · «deleted» 는 세 비트가 모두 0 이고 «쓰기» 4 를 건너뛴다 — 고정을 거는 mark 줄이 사람의 머리 비트를 내리지 않는다.
   - 쓰기 하나 = 줄 하나. 칸마다가 아니라 «행 × 쓰기»마다 한 줄이고, written_bits 가 어느 칸을 말했는지 적는다.
   - 층은 줄 그 자체다. 그 칸의 head_bits 가 선 줄 = 오늘의 cell_sources 한 칸 층.
-- 물리 이름 고정 (C 11-10 — D 가 lines.py 전에 가짜 데이터로 읽기를 시작할 수 있게): `t__lines` = line_id · line_kind · source_name · at · written_by · batch · input_row · owner_rule · owner_key · confirmed · written_N · head_N · withdrawn_N + t 의 칸(row_id · business_key_val · created_at · updated_at · 선언 칸). 인덱스 (row_id, at) · (batch) · 머리 줄 (row_id, source_name) WHERE head ≠ 0. `t__now` = t 의 칸 + won_by(JSON 칸 → line_id), row_id PK · business_key_val UNIQUE. 함수: `now_relation(t)` · `lines_relation(t)` · `shape(db, t, table_cfg)` · `ensure_line_table` · `drop_line_table` · `alter_columns(db, t, table_cfg, add, drop, retype)`. 파이썬 합치기 함수의 시그니처는 정렬 키 생성기와 같이 11-11 에 고정한다(아직 아님).
+- 물리 이름 고정 (C 11-10 — D 가 lines.py 전에 가짜 데이터로 읽기를 시작할 수 있게): `t__lines` = line_id · line_kind · source_name · at · written_by · batch · input_row · owner_rule · owner_key · confirmed · written_N · head_N · withdrawn_N + t 의 칸(row_id · business_key_val · created_at · updated_at · 선언 칸). 인덱스 (row_id, at) · (batch) · 머리 줄 (row_id, source_name) WHERE head ≠ 0. `t__now` = t 의 칸 + won_by(JSON 칸 → line_id), row_id PK · business_key_val UNIQUE. 함수: `now_relation(t)` · `lines_relation(t)` · `shape(db, t, table_cfg)` · `ensure_line_table` · `drop_line_table` · `alter_columns(db, t, table_cfg, add) - drop and retype retired 11-13 (owner)`. 파이썬 합치기 함수의 시그니처는 정렬 키 생성기와 같이 11-11 에 고정한다(아직 아님).
 - `t__now`: t 의 칸 + won_by(jsonb 한 칸: 칸 → 이긴 line_id). 개체마다 한 줄.
 - 이름 t = `t__now` 의 칸을 읽는 보기 — 오늘 t 의 칸 전부(row_id · business_key_val · updated_at 같은 시스템 칸 포함)이고 won_by 만 뺀다. 쓰기는 거절한다(«보기» 절).
 - 오늘 t 의 인덱스는 `t__now` 에 그대로 짓는다. 그리드 정렬 · 필터 · 개수 · 쪽 넘김이 오늘 인덱스 모양을 그대로 탄다.
@@ -121,6 +121,7 @@
 
 ## 칸 DDL — 한 함수
 
+- (11-13 소유자 ㄱ: 지우기 · 이름 바꾸기 길은 없다 — 선언에서 뺀 칸은 살아 있고, 이름 바꾸기는 새 칸. 아래 «지우기 · 이름 바꾸기» 는 당시 설계)
 - `lines.alter_columns(db, table_name, changes)`(C 몫 · 총괄 11-10): 한 트랜잭션에서 «보기 t · 트리거 지움 → 두 표에 같은 칸 DDL(더하기 · 타입 바꾸기 · 지우기 · 이름 바꾸기) → 보기 t · 트리거 다시 지음». PG 는 보기가 기대는 칸의 타입 바꾸기 · 지우기를 거부하고, 더한 칸은 보기에 안 나타나기 때문이다(PG 일반 동작 — 짓는 날 버리는 DB 시험으로 확인).
 - 표 만들기는 `lines.ensure_line_table`(두 표 · 보기 · 트리거 · 인덱스). 표 지우기는 `lines.drop_line_table`(보기 · 두 표 · 있으면 `t__old`).
 - 운영자에게 «손으로 돌릴 줄»로 보여 주는 DDL 문장(schema_drift · list_undeclared_tables)도 이 함수가 낸 문장을 그대로 보인다.

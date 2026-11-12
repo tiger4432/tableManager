@@ -38,8 +38,9 @@ FRAMEWORK = (("row_id", String), ("business_key_val", String), ("created_at", Da
 
 
 class LineColumn(Base):
-    """Column -> bit slot of a table's lines. Append-only: a dropped column keeps its row (retired_at set) and its
-    slot is never handed out again - an old line's bit would otherwise name another column."""
+    """Column -> bit slot of a table's lines. Append-only: a slot is never handed out again - an old line's bit would
+    otherwise name another column. A column taken out of the declaration stays live (owner 11-13: data and writes as
+    today, as main); retired_at is set by nothing now."""
 
     __tablename__ = "line_columns"
 
@@ -393,13 +394,6 @@ def assign_bits(db, table_name: str, columns) -> dict:
     return live
 
 
-def retire_bits(db, table_name: str, columns) -> None:
-    """Mark dropped columns' slots retired; the slots stay taken."""
-    db.query(LineColumn).filter(LineColumn.table_name == table_name, LineColumn.column_name.in_(list(columns)),
-                                LineColumn.retired_at.is_(None)).update({LineColumn.retired_at: func.now()},
-                                                                        synchronize_session=False)
-
-
 def chunk_count(db, table_name: str) -> int:
     """How many bigint chunks each bit family takes - from every slot t ever had, retired ones included."""
     top = db.execute(select(func.max(LineColumn.bit)).where(LineColumn.table_name == table_name)).scalar()
@@ -685,26 +679,24 @@ def _built_chunks(conn, table_name: str) -> int:
     return sum(1 for i in range(len(names)) if f"head_{i}" in names)
 
 
-def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=None) -> list:
+def alter_columns(db, table_name: str, table_cfg: dict, add=()) -> list:
     """Column DDL in the caller's transaction: t and `t__lines` get the same column names in the same order.
-    `t__lines` value cells are text, so retype changes t only.
-    add: column names in table_cfg's column_types (the cfg AFTER the change); drop: column names; retype: {column:
-    USING expression} from admin/retype.using - the cast has one author there, and sqlite skips it as today's
-    retype does. A rename is a drop + a new column (a new bit).
+    add: column names in table_cfg's column_types (the cfg AFTER the change). Nothing else: a retype is admin/retype's
+    own ALTER on t alone (`t__lines` value cells are text); nothing drops a column - one taken out of the declaration
+    stays live, and a rename is a new column (a new bit) beside the old one, its history under the old name (owner
+    11-13).
     -> the statements run (the same text an operator is shown)."""
     from .models import sql_type_of
 
     conn = db.connection()
     dialect = conn.dialect.name
     types = table_cfg.get("column_types") or {}
-    for name in [*add, *drop, *(retype or {})]:
+    for name in add:
         _checked(name)
     statements = []
     before = _built_chunks(conn, table_name)
     if add:
         assign_bits(db, table_name, list(add))
-    if drop:
-        retire_bits(db, table_name, list(drop))
     after = chunk_count(db, table_name)
     from sqlalchemy import inspect
 
@@ -717,12 +709,6 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
             type_sql = (sql_type_of(types[name]) if rel == table_name else String()).compile(
                 dialect=conn.dialect)
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{cell(name)}" {type_sql}')
-        for name in drop:
-            statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{cell(name)}"')
-        for name, using in (retype or {}).items():
-            if dialect == "postgresql" and rel == table_name:
-                type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
-                statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING {using}')
     for family in BIT_FAMILIES:
         for name in bit_columns(family, after)[before:]:
             statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
