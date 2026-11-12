@@ -13,7 +13,7 @@ import { fetchDeclaration } from '../rnd_board/api.js';
 import { withWorld } from '../world.js';
 import { handoffRead } from './handoff.js';
 import { TableBox, PAGE_ROWS } from './table_box.js';
-import { rowNodeId, rowOfNodeId, routesBetween, routeWords, keepRows, reachRows } from './chain.js';
+import { rowNodeId, rowOfNodeId, routesBetween, routeWords, keepRows, reachRows, rowsOf } from './chain.js';
 import { AxisCompare, SIDE_WORDS } from './axis_compare.js';
 
 const doc = document;
@@ -203,20 +203,6 @@ async function walk(k) {
   await readCompare(ticket);
 }
 
-/** Every row of a kept marking, page by page - the compare folds them all. */
-async function rowsOf(table, kept) {
-  const out = [];
-  for (let skip = 0; ; skip += PAGE_ROWS) {
-    const p = new URLSearchParams({ marking: kept, skip: String(skip), limit: String(PAGE_ROWS), order_by: 'row_id', order_desc: 'false', defer_total: 'true' });
-    if (asked.world) p.set('world', asked.world);
-    const res = await fetchImpl(`${API_BASE}/tables/${encodeURIComponent(table)}/data?${p}`);
-    if (!res.ok) throw new Error(`Rows read failed (${res.status})`);
-    const got = (await res.json()).data || [];
-    out.push(...got);
-    if (got.length < PAGE_ROWS) return out;
-  }
-}
-
 /** The last step's + and − rows into the compare, as flat rows of the table's columns, with the query's picks. */
 async function readCompare(ticket) {
   compareEl.hidden = chain.length < 2;
@@ -229,7 +215,8 @@ async function readCompare(ticket) {
   const kinds = Object.fromEntries(columns.map((c) => [c, types[c] === 'number' ? 'number' : 'text']));
   const flat = (row) => Object.fromEntries(columns.map((c) => [c, row.data && row.data[c] ? row.data[c].value : (row[c] ?? null)]));
   const sides = [];
-  for (const side of step.sides) sides.push({ sign: side.sign, rows: side.kept ? (await rowsOf(step.table, side.kept)).map(flat) : [] });
+  // every row of each side - the compare folds them all
+  for (const side of step.sides) sides.push({ sign: side.sign, rows: side.kept ? (await rowsOf({ ...deps, world: asked.world }, step.table, side.kept, PAGE_ROWS)).map(flat) : [] });
   if (ticket !== asking) return;
   compare.show({ title: step.table, sides, columns, kinds, axes: query.axes, shown: query.columns, only: query.only });
 }

@@ -204,6 +204,7 @@ const REAL = {
   rows: await import('../src/source_rows.js'),
   timeline: await import('../src/timeline.js'),
   ws: await import('../src/websocket.js'),
+  keys: await import('../src/rows_key.js'),
 };
 const realState = REAL.state.state;
 
@@ -729,6 +730,61 @@ async function suite(M) {
       ok(JSON.stringify(reads) === JSON.stringify([[0, null, null], [1000, 'p0-last', null], [2000, 'p1-last', null],
         [1000, null, 'p2-first'], [4000, null, null], [5000, null, null]]),
         `K13 Next asks after the shown page's last row, Prev before its first, skip beside it; a page jump and an uncached page by skip alone [${JSON.stringify(reads)}]`);
+      // The two sequential readers by key too (lead 11-13: OFFSET 1.86 M sorted the table on disk): the infinite view's
+      // next page after the last read's last row and Load All's next chunk after the rows so far, skip beside each as the server's way back; the writers of a chunk asked at its own
+      // URL, key and all.
+      reads.length = 0;
+      realState.viewMode = 'infinite';
+      realState.isLoadingMore = false;
+      await M.api.fetchData(true);
+      for (let i = 0; i < 2; i += 1) {
+        realState.hasMoreData = true;   // a two-row page reads as the end; the scroll is asked on regardless
+        M.grid.appendNextRows();
+        await new Promise((r) => savedK.setTimeout(r, 0));
+      }
+      realState.hasMoreData = true;
+      await M.api.nextPage();   // the step itself, in the module under test (grid.js above imports the real one)
+      const scrolled = reads.slice();
+      reads.length = 0;
+      const chunkOf = (skip) => [{ ...rowData(), row_id: `c${skip}-a` }, { ...rowData(), row_id: `c${skip}-b` }].slice(0, skip >= 4 ? 1 : 2);
+      const chunkUrls = [];
+      globalThis.fetch = async (url) => {
+        chunkUrls.push(String(url));
+        const u = new URL(String(url), 'http://x');
+        const skip = Number(u.searchParams.get('skip'));
+        reads.push([skip, u.searchParams.get('after')]);
+        return answer({ data: chunkOf(skip), total: skip ? null : 5, looks: skip === 2 ? { updating: true } : null });
+      };
+      const heldTimer = globalThis.setTimeout;
+      globalThis.setTimeout = savedK.setTimeout;   // Load All yields a frame between chunks
+      const loaded = await M.api.fetchAllRows('/tables/t/data', 'order_by=row_id&order_desc=false', 2, () => {});
+      globalThis.setTimeout = heldTimer;
+      const writerUrl = loaded.writers[0] && new URL(loaded.writers[0].url, 'http://x');
+      realState.viewMode = 'pagination';
+      ok(JSON.stringify(scrolled) === JSON.stringify([[0, null, null], [1000, 'p0-last', null], [2000, 'p1-last', null], [3000, 'p2-last', null]])
+        && JSON.stringify(reads) === JSON.stringify([[0, null], [2, 'c0-b'], [4, 'c2-b']]) && loaded.rows.length === 5
+        && !!writerUrl && loaded.writers[0].skip === 2 && writerUrl.searchParams.get('after') === 'c0-b',
+        `K14 the infinite view's next page after the last read's last row, Load All's next chunk after the rows so far, skip beside; a chunk's writers at its own URL [${JSON.stringify([scrolled, reads, loaded.writers])}]`);
+      // A pivot group's long rows read before a delete, 1,000 a read to the end - each read after the last row read.
+      const heldView = realState.pivotView;
+      realState.pivotView = { column: 'itemid', value: 'value', keys: ['lot', 'wafer'], items: ['a'] };
+      const longs = (n, from) => Array.from({ length: n }, (_, k) => ({ row_id: `g${from + k}`, data: { lot: { value: 'L1' }, wafer: { value: 'W1' } } }));
+      reads.length = 0;
+      globalThis.fetch = async (url) => {
+        const u = new URL(String(url), 'http://x');
+        const skip = Number(u.searchParams.get('skip'));
+        reads.push([skip, u.searchParams.get('after')]);
+        return answer({ data: skip ? longs(1, 1000) : longs(1000, 0), total: null });
+      };
+      const groupIds = await M.api.groupLongIds([{ data: { data: { lot: { value: 'L1' }, wafer: { value: 'W1' } } } }]);
+      realState.pivotView = heldView;
+      ok(JSON.stringify(reads) === JSON.stringify([[0, null], [1000, 'g999']]) && groupIds.length === 1001,
+        `K15 a pivot group's rows before a delete: the next read after the last row read, skip beside [${JSON.stringify(reads)} ${groupIds.length}]`);
+      // the one key every reader asks (rows_key.js): the last row going on, the first going back, none without row_id
+      const keyed = [M.keys.rowsKey([{ row_id: 'a' }, { row_id: 'b' }], 'after'), M.keys.rowsKey([{ row_id: 'a' }, { row_id: 'b' }], 'before'),
+        M.keys.rowsKey([{ lot: 'L1' }], 'after'), M.keys.rowsKey([], 'after')];
+      ok(JSON.stringify(keyed) === JSON.stringify([{ after: 'b' }, { before: 'a' }, null, null]),
+        `K16 the key: after the last row, before the first, none without a row_id or a row [${JSON.stringify(keyed)}]`);
       // A count the server could not make (lead 0fd18ae19 6): its `failed` field, or a refused /data/count, is said -
       // not «Counting rows…» for ever - and not asked again by the screen (the server keeps the pace).
       let countReply = () => answer(COUNTED);
@@ -1096,6 +1152,16 @@ await suite(REAL);
 // -- mutants ---------------------------------------------------------------------------
 // Each names the FILE it edits; the rest of the bundle stays real.
 const DEFECTS = [
+  ['api.js: the infinite view\'s next page goes by skip alone (OFFSET however deep)', 'api',
+    s => s.replace("  if (state.viewMode === 'infinite') return side === 'after' ? state.readAfter : null;", "  if (state.viewMode === 'infinite') return null;")],
+  ['grid.js: the scroll\'s next page is its own read again, by skip', 'grid',
+    s => s.replace('  nextPage();   // Next', '  state.currentSkip += pageLimit; fetchData(false);   // Next')],
+  ['api.js: Load All\'s chunks go by skip alone', 'api',
+    s => s.replace("read(rows.length, true, rowsKey(rows, 'after'))", 'read(rows.length, true)')],
+  ['api.js: a pivot group\'s next read by skip alone', 'api',
+    s => s.replace("      key = rowsKey(rows, 'after');", '')],
+  ['api.js: a chunk\'s writers asked without its key', 'api',
+    s => s.replace('writers.push({ url, skip })', 'writers.push({ url: `${baseUrl}?skip=${skip}&limit=${chunkLimit}&${queryParams}`, skip })')],
   ['grid.js: the offscreen badge is written on every scroll frame again', 'grid',
     s => s.replace("  if (badge && badge.dataset.count !== String(count)) {", '  if (badge) {')],
   ['state.js: any announced kind counts as a view', 'state',
@@ -1204,7 +1270,7 @@ const DEFECTS = [
   ['api.js: Load All keeps the page place - «4001 - 4003» for every row from the first', 'api',
     s => s.replace('  state.hasMoreData = false;\n  state.currentSkip = 0;\n', '  state.hasMoreData = false;\n')],
   ['api.js: Load All counts every chunk', 'api',
-    s => s.replace('const chunk = rowsOf(await read(rows.length, true));', 'const chunk = rowsOf(await read(rows.length, false));')],
+    s => s.replace("const chunk = rowsOf(await read(rows.length, true, rowsKey(rows, 'after')));", "const chunk = rowsOf(await read(rows.length, false, rowsKey(rows, 'after')));")],
   ['api.js: Load All says a percent against 10,000+', 'api',
     s => s.replace('const exact = count.total !== null && !count.capped ? count.total : null;', 'const exact = count.total;')],
   ['api.js: the export refusal is today\'s generic line', 'api',
@@ -1220,7 +1286,7 @@ const DEFECTS = [
     s => s.replace('    state.pageCache.clear();\n    askMatchCount();\n', '    state.pageCache.clear();\n')],
   ['api.js: Next and Prev ask by skip alone again (OFFSET however deep - the code before)', 'api',
     s => s.replace('  if (key) url += `&${new URLSearchParams(key)}`;\n', '')],
-  ['api.js: Next asks after the page\'s first row', 'api',
+  ['rows_key.js: Next asks after the page\'s first row', 'keys',
     s => s.replace("  const row = side === 'after' ? rows[rows.length - 1] : rows[0];", '  const row = rows[0];')],
   ['api.js: the key is read after the page moved - the page it lands on, not the one shown', 'api',
     s => s.replace("  const key = pageKey('after');\n  state.currentSkip += pageLimit;", "  state.currentSkip += pageLimit;\n  const key = pageKey('after');")],
@@ -1281,7 +1347,7 @@ const CONTROLS = [
 ];
 
 const FILES = { state: 'state.js', api: 'api.js', refusal: 'refusal.js', grid: 'grid.js', clipboard: 'clipboard.js',
-                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js', ws: 'websocket.js' };
+                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js', ws: 'websocket.js', keys: 'rows_key.js' };
 
 async function scoreMutant(key, mutate, tag) {
   try {

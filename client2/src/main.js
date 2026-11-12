@@ -1267,7 +1267,7 @@ function setupEventListeners() {
         if (writers.length) {
           const ticket = state.gridReads.begin();
           (async () => {
-            for (const skip of writers) await fillWriters(`${baseApiUrl}?limit=${chunkLimit}&${queryParams}`, skip, ticket);
+            for (const { url, skip } of writers) await fillWriters(url, skip, ticket);
           })();
         }
 

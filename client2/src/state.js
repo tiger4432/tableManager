@@ -176,6 +176,8 @@ export const state = {
   currentTransactionId: null,
   colIdToIndexMap: {},
   currentSkip: 0,
+  // the last page read's last row ({after: row_id} | null) - the infinite view's next page goes on from it (api.js pageKey)
+  readAfter: null,
   isLoadingMore: false,
   // a0ae05b60. A row delete is in flight. The context menu calls the same funnel as the button,
   // so switching the button off alone would let a second delete go out through the menu.
