@@ -453,7 +453,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 접기    답을 다 지은 뒤(aux 판정 뒤) `_fold_hubs` — 구성원은 nodes 에서 빠지고 걸음 · 값마다 허브 하나
         값 = 대조의 reach(대조 걷기일 때) · aux 판정(물었을 때). 10-12 결정 «값마다 허브 하나» · «aux 도 허브를 나눈다»
 허브    nodes 의 노드 하나: id `hub|<가까운 끝>|<술어>|<방향>|<먼 타입>|<값>`(오른쪽부터 읽음, `hub_cells` 하나) · type = 구성원의
-        도메인 타입 · node_kind hub · label «<먼 타입> × N via <술어>» · hub 칸 {near, predicate, direction, far_type, value,
+        도메인 타입 · 허브인 것은 «hub» 칸이 말함(⚰️ node_kind 11-13 은퇴) · label «<먼 타입> × N via <술어>» · hub 칸 {near, predicate, direction, far_type, value,
         count, in_ledger, sample}. 같은 걸음 · 같은 값이면 다시 걸어도 같은 id
 수      count = 그 허브의 구성원. in_ledger = 그 걸음의 먼 끝을 원장에서 센 수(`count_far_ends`, 걸음마다 한 번 — 읽기의
         구간 · as of · 지금 사실만, 걷기의 걸음 가드는 안 씀). 걸음이 닿은 수보다 크면 label 에 «(of N in the ledger)»

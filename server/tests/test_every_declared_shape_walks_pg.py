@@ -98,7 +98,7 @@ def census(board):
         nodes = {node["id"]: node for node in answer["nodes"]}
         want = gate.expected(seat, kind, ledger_subgraph._instant)
         if seat == "value":                                         # no node, so no edge to it (gate.VALUE_IS_A_QUALIFIER)
-            drawn = [node["id"] for node in answer["nodes"] if node.get("node_kind") == "value" or node["type"] == "Value"]
+            drawn = [node["id"] for node in answer["nodes"] if node["type"] == "Value"]
             out[cell] = red + ([f"{len(drawn)} value node(s) - {gate.VALUE_IS_A_QUALIFIER}"] if drawn else [])
             continue
         for row in gate.ROWS:

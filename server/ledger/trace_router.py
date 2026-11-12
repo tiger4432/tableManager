@@ -160,7 +160,7 @@ def _subgraph_contract_state(connection, relation):
 # POST as well: a continued page hands back its `resume` in the body (MORE, 총괄 ad3c03e71)
 def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
-                         description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
+                         description="opaque id of a declared entity node (ledger-entity:v1:) - one node kind"),
     world: list[str] | None = Query(
         None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
     hops: int = Query(ledger_subgraph.DEFAULT_HOPS, ge=0, le=ledger_subgraph.MAX_HOPS,
