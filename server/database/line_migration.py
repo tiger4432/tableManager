@@ -183,6 +183,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         lines.note_sources(db, sorted({o["source_name"] for o in out}))
         db.execute(lt.insert(), out)
         shown = {r[0]: r for r in db.execute(select(t).where(t.c.row_id.in_(rows)))}
+        named = []
         for row_id, cols in lines.merge(db, table, table_cfg, sorted(rows)).items():
             now = shown[row_id]._mapping
             won = {c: lid for c, (v, lid) in cols.items() if lid is not None and c in t.c
@@ -191,7 +192,12 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
                 mismatched.extend((row_id, c, now[c], v) for c, (v, lid) in sorted(cols.items())
                                   if lid is not None and c in t.c and c not in won)
             if won:
-                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: {**(now[lines.WON_BY] or {}), **won}}))
+                named.append([row_id, {**(now[lines.WON_BY] or {}), **won}])
+        if named and lines.sets_at_once(db):             # one set statement for the page (lead 11-12)
+            crud.update_by_arrays(db, t, [lines.WON_BY], named, None)
+        else:
+            for row_id, won_by in named:
+                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: won_by}))
     if next_after is None:
         db.execute(ab.insert().values(transaction_id=transaction_id, table_name=table, written_by=written_by,
                                       work_kind=COPY_WORK, at=func.now()))

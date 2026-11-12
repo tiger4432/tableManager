@@ -82,12 +82,6 @@ def _data(bits: dict) -> list:
     return [c for c in bits if c not in framework]
 
 
-def _sets_at_once(db) -> bool:
-    """A step's rows in one set statement: PostgreSQL (psycopg2 sends an UPDATE's parameter sets one round trip each,
-    lead 11-12 ㄴ); sqlite keeps the parameter sets - no round trips there, and no bit_or."""
-    return db.get_bind().dialect.name == "postgresql"
-
-
 def _owner(item) -> tuple:
     """(owner_rule, owner_key) a line of `item` carries: as the item names them, else as its source's name says them
     (`crud.layer_owner` - a layer `owned_layer_name` built; (None, None) for any other) - so the rank's «declared rule
@@ -665,7 +659,7 @@ def _heads(db, ln, chunks, written):
               for line_id, row_id, sources in written for source, masks in sources]
     if not params:
         return
-    if _sets_at_once(db):
+    if lines.sets_at_once(db):
         # one statement: each earlier line's masks gathered by bit_or first - UPDATE ... FROM changes a line two of
         # the batch's lines reach once, where the parameter sets took both masks off in turn (lead 11-12 ㄴ)
         heads = ["head_%d" % k for k in range(chunks)]
@@ -786,7 +780,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         elif keeps and (old[row_id].get("won_by") or {}) != won_by[row_id]:
             only_won.append(row_id)
     names = data + (["won_by"] if keeps else [])
-    if _sets_at_once(db) and all(
+    if lines.sets_at_once(db) and all(
             crud.one_kind([merged[r][c] for r in moved + only_won]) for c in data):
         # one statement a page (crud.update_by_arrays, the set door - lead 11-12 ㄴ): psycopg2 sends an UPDATE's
         # parameter sets one round trip each

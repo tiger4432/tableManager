@@ -161,6 +161,12 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def sets_at_once(db) -> bool:
+    """A step's rows in one set statement (write_lines, line_migration.copy_page's won_by): PostgreSQL (psycopg2 sends an UPDATE's parameter sets one round trip each,
+    lead 11-12 ㄴ); sqlite keeps the parameter sets - no round trips there, and no bit_or."""
+    return db.get_bind().dialect.name == "postgresql"
+
+
 def keeps_lines(table_name: str, table_cfg) -> bool:
     """Does t keep lines (`won_by` + `t__lines`) - THE answer the copy job, the catalogue and the report ask: an
     operator-declared table (kind table). Not a view, not a table the product ships (system tables), and not an

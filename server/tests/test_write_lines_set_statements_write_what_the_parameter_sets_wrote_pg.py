@@ -1,7 +1,7 @@
 """On PostgreSQL write_lines takes a step's rows in one set statement (lead 11-12 ㄴ: psycopg2 sends an UPDATE's
 parameter sets one round trip each) - _heads by the earlier lines' masks gathered with bit_or, _merge_now through
 crud.update_by_arrays. Gate: the same writes on one fixture leave the same lines and the same t as the parameter sets
-(`write_lines._sets_at_once` off), write by write.
+(`lines.sets_at_once` off), write by write.
 
     write                                                    what it reaches
     two new rows from a file                                 _merge_now's moved rows (new)
@@ -60,7 +60,7 @@ def _run(db):
 
 def test_the_set_statements_write_what_the_parameter_sets_wrote(pg_session, monkeypatch):
     at_once = _run(pg_session)
-    monkeypatch.setattr(write_lines, "_sets_at_once", lambda db: False)
+    monkeypatch.setattr(lines, "sets_at_once", lambda db: False)
     one_by_one = _run(pg_session)
     assert at_once == one_by_one
     # the fixture reaches what it is for: two f2.csv lines of one batch take the earlier f2 line's two columns off
