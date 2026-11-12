@@ -25,28 +25,29 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-P4OPbGPY.js"></script>
+    <script type="module" crossorigin src="/assets/main-BchR-HI6.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/absent-Bu8hqJql.js">
     <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
     <link rel="modulepreload" crossorigin href="/assets/dropdown-ffa53XA6.js">
     <link rel="modulepreload" crossorigin href="/assets/account_boot-CtlXZ_iP.js">
-    <link rel="modulepreload" crossorigin href="/assets/utils-Cr0z19TG.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-DpYEFP7k.js">
     <link rel="modulepreload" crossorigin href="/assets/ui_words-BVFm74iY.js">
-    <link rel="modulepreload" crossorigin href="/assets/match_count-DMGK6MtD.js">
+    <link rel="modulepreload" crossorigin href="/assets/match_count-n_2ZIDw6.js">
     <link rel="modulepreload" crossorigin href="/assets/count_with_absence-BnZl0AUO.js">
-    <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-DQAB3EDZ.js">
+    <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-Bj87CyKZ.js">
     <link rel="modulepreload" crossorigin href="/assets/chunk-CEoa-xHZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-DjICxqKX.js">
     <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BCuzM_C1.js">
     <link rel="modulepreload" crossorigin href="/assets/effort_meter-Bc8Jp4Oh.js">
     <link rel="modulepreload" crossorigin href="/assets/reach_table-CQ7scXWt.js">
-    <link rel="modulepreload" crossorigin href="/assets/expression-Dc9BsN4l.js">
+    <link rel="modulepreload" crossorigin href="/assets/expression-DauI-WBY.js">
     <link rel="modulepreload" crossorigin href="/assets/option_list-DltCJEe_.js">
-    <link rel="modulepreload" crossorigin href="/assets/formula_input-CzF_mf8X.js">
+    <link rel="modulepreload" crossorigin href="/assets/formula_input-CPydrw7r.js">
     <link rel="modulepreload" crossorigin href="/assets/image_thumb-FWnLUjrZ.js">
-    <link rel="modulepreload" crossorigin href="/assets/refusal-CYywjebn.js">
+    <link rel="modulepreload" crossorigin href="/assets/list_field--_h4461v.js">
+    <link rel="modulepreload" crossorigin href="/assets/refusal-B6Gi1CPq.js">
     <link rel="modulepreload" crossorigin href="/assets/map_key-BcsLXUDF.js">
-    <link rel="modulepreload" crossorigin href="/assets/api-mhbgvrBp.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-DSWYbn33.js">
     <link rel="modulepreload" crossorigin href="/assets/slow_reason-Dlrtc_AN.js">
     <link rel="modulepreload" crossorigin href="/assets/palette-ClAItWRM.js">
     <link rel="modulepreload" crossorigin href="/assets/truncation-D5dATse0.js">
@@ -54,10 +55,10 @@
     <link rel="modulepreload" crossorigin href="/assets/world-pS1gg4ou.js">
     <link rel="stylesheet" crossorigin href="/assets/absent-DBMX_g2q.css">
     <link rel="stylesheet" crossorigin href="/assets/account_boot-Dn-l1TZG.css">
-    <link rel="stylesheet" crossorigin href="/assets/match_count-CRiMSnL4.css">
+    <link rel="stylesheet" crossorigin href="/assets/match_count-6B83Musa.css">
     <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-NZpIpU28.css">
     <link rel="stylesheet" crossorigin href="/assets/main-BfPgcUrR.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-BrxVlqID.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-BYeMu42q.css">
   </head>
 
   <body>
@@ -164,6 +165,9 @@
             <button id="add-row-btn" class="glass-btn" title="Add Row">
               ➕ Row
             </button>
+            <button id="add-item-btn" class="glass-btn" title="Add Item" hidden>
+              ➕ Item
+            </button>
             <button
               id="delete-row-btn"
               class="glass-btn hover-danger"
@@ -200,6 +204,13 @@
             <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
           </div>
 
+          <!-- The last action's line just before the status button, always shown (owner 11-11, out of the panel again):
+               Last · status · ⋯, so a line that holds ⋯ and these words holds the status button too. -->
+          <div class="status-panel__last">
+            <span class="status-panel__key">Last</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
+          </div>
+
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
                button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
@@ -211,10 +222,6 @@
                 <span class="status-badge" id="ws-status">WS: Connecting</span>
                 <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
                 <span class="status-badge" id="chain-status">CHAIN: Loading</span>
-              </div>
-              <div class="status-panel__last">
-                <span class="status-panel__key">Last</span>
-                <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
               </div>
               <div id="account-badge" class="acct-host"></div>
             </div>

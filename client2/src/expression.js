@@ -599,6 +599,7 @@ const IMPL = {
   Mod: num2((a, b) => (b === 0 ? null : a - b * Math.floor(a / b))),
   Power: num2((a, b) => a ** b),
   PI: row(() => Math.PI),
+  SN: row((v, instead) => (isBlank(v) ? instead : v)),
   Sin: num1(Math.sin),
   Cos: num1(Math.cos),
   Tan: num1(Math.tan),
@@ -805,14 +806,14 @@ function parse(text, nodes = {}) {
 
 function arity({ name, fn, args, distinct }) {
   const n = args.length;
-  const fits = fn.kind === 'mark' ? n === 1 || n === 2 : fn.kind === 'if' ? n === 3
-    : fn.kind === 'row' ? n >= (fn.least ?? fn.arity) && n <= fn.arity
+  const fits = fn.kind === 'mark' ? n === 1 || n === 2
+    : fn.kind === 'row' || fn.kind === 'if' ? n >= (fn.least ?? fn.arity) && n <= fn.arity
       : fn.pair ? n === 2
         : fn.params ? n === 1 + fn.params
           : fn.rowwise ? n >= 1
             : fn.none ? n <= 1 : n === 1;
   const counts = (from, to) => Array.from({ length: to - from + 1 }, (_, k) => from + k).join(' or ');
-  const want = fn.kind === 'mark' ? '1 or 2' : fn.kind === 'if' ? '3' : fn.kind === 'row' ? counts(fn.least ?? fn.arity, fn.arity) : fn.pair ? '2' : fn.params ? String(1 + fn.params)
+  const want = fn.kind === 'mark' ? '1 or 2' : fn.kind === 'row' || fn.kind === 'if' ? counts(fn.least ?? fn.arity, fn.arity) : fn.pair ? '2' : fn.params ? String(1 + fn.params)
     : fn.rowwise ? '1 or more' : fn.none ? '0 or 1' : '1';
   if (!fits) throw new ExpressionError(say('takes', { name, want, s: want === '1' ? '' : 's', n }));
   if (fn.check) fn.check(args);
@@ -1027,12 +1028,17 @@ function foldValue(node, ctx) {
 
 // An If's branches fold only the rows their condition sends them (Logic «More about using if»).
 function ifValue(node, ctx) {
-  const [c, a, b] = node.args;
-  if (!ctx.row) { const cv = bool(value(c, ctx)); return cv === true ? value(a, ctx) : cv === false ? value(b, ctx) : null; }
+  const [c, a, b = null] = node.args;   // no else: empty (owner 11-10 ㄱ)
+  if (!ctx.row) {
+    const cv = bool(value(c, ctx));
+    const branch = cv === true ? a : cv === false ? b : null;
+    return branch === null ? null : value(branch, ctx);
+  }
   const conds = columnOf(c, ctx, (one) => bool(value(c, one)));
   const cv = conds[indexOfRow(ctx)];
-  if (cv === null) return null;
-  return value(cv ? a : b, { ...ctx, rows: ctx.rows.filter((_, i) => conds[i] === cv) });
+  const branch = cv === null ? null : cv ? a : b;
+  if (branch === null) return null;
+  return value(branch, { ...ctx, rows: ctx.rows.filter((_, i) => conds[i] === cv) });
 }
 
 // A when is judged on the whole column; its then folds the rows it and no earlier when takes (Logic «More about using

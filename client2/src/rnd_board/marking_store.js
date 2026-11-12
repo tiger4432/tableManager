@@ -49,6 +49,22 @@ export function seedsOf(entries, open = (id) => [id]) {
   return { positive: of(SIGN.CASE), negative: of(SIGN.CONTROL) };
 }
 
+/** THE one maker of a marking's name (lead 11-11): the smallest `marking:N` the store holds no name of - marked or not -
+ *  held from here on (an empty marking), so two made in one tick differ. Gone again by `clear(name, {drop: true})`. */
+export function nextName(store) {
+  let n = 1;
+  while (store._marks.has(`marking:${n}`)) n += 1;
+  const name = `marking:${n}`;
+  store._marks.set(name, new Map());
+  return name;
+}
+
+/** A marking's label by default, read from its name: `marking:3` -> «#3»; a name of another spelling as it is. */
+export function labelOf(name) {
+  const m = /^marking:(\d+)$/.exec(String(name || ''));
+  return m ? `#${m[1]}` : String(name || '');
+}
+
 function normaliseSign(sign) {
   if (sign === SIGN.CASE || sign === SIGN.CONTROL) return sign;
   if (sign === SIGN.ABSENT || sign === null || sign === undefined) return SIGN.ABSENT;
@@ -152,9 +168,11 @@ export class MarkingStore {
     this._emit(name);
   }
 
-  /** Drop every mark under one name. Other names are untouched -- see the harness §A. */
-  clear(name) {
+  /** Drop every mark under one name. Other names are untouched -- see the harness §A. `drop`: the name goes too, so
+   *  `nextName` may give it again; its version stays, so a reader keyed by it never reads an old answer as new. */
+  clear(name, { drop = false } = {}) {
     const set = this._marks.get(name);
+    if (drop) this._marks.delete(name);
     if (!set || !set.size) return;
     set.clear();
     this._emit(name);

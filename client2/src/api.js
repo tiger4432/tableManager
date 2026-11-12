@@ -2,7 +2,7 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
 import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows, newPivotRows, isNewPivotRow,
-  groupFilters, strayLongRow, carriedFilters, headerWord } from './grid_pivot.js';
+  groupFilters, strayLongRow, carriedFilters, headerWord, withItem } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
 import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped, sayLine } from './write_guard.js';
@@ -325,6 +325,7 @@ export function drawPivot() {
     button.title = state.currentPivot ? `by ${state.currentPivot.column}` : '';
   }
   if (elements.totalRowsCount) elements.totalRowsCount.dataset.unit = rowUnit();
+  if (elements.addItemBtn) elements.addItemBtn.hidden = !pivotShown();
   const line = elements.pivotMoreLine;
   if (line) {
     const more = pivotShown() && state.pivotView ? state.pivotView.items_more : 0;
@@ -1407,6 +1408,21 @@ export async function writeLook(updates, stopped) {
     sayStopped(`${stopped}: ${err.message}`);
     return false;
   }
+}
+
+/** «+ Item» in pivot view (owner 11-11): the item's column on the screen alone, typed as the value column - its first
+ *  value written makes its long row (`withItem`); a read before that shows the table as the server holds it. */
+export function addPivotItem(name) {
+  if (!pivotShown() || !state.pivotView) return;
+  if (refuseWrite()) return;
+  const { view, item, refusal } = withItem(state.pivotView, name);
+  if (refuseWrite(refusal)) return;
+  state.pivotView = view;
+  const types = state.currentColumnTypes || {};
+  types[itemColId(item)] = types[view.value] || 'string';
+  state.gridApi.setGridOption('columnDefs', buildColumnDefs());
+  state.gridApi.ensureColumnVisible(itemColId(item));
+  setBadge(elements.performanceLog, `«${item}» added · saved with its first value`);
 }
 
 // Add Empty Rows

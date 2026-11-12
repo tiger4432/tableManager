@@ -80,15 +80,24 @@ async function suite({ status: S, board: B }) {
   eq('H2 NEGATIVE CONTROL: none failed is OK', r(S.chainRow({ outbox: { total: 0 } })).tone, 'ok');
   eq('H3 a body with no total is unread, not 0', r(S.chainRow({ outbox: { data: [] } })).tone, 'unknown');
 
-  // ── N Enrichment ──
-  eq('N1 no rules is grey, not OK', said(r(S.enrichmentRow({ rules: [], totalMissing: 0 }))), 'unknown|No rules');
-  eq('N2 missing values are Warning', r(S.enrichmentRow({ rules: [{}], totalMissing: 3 })).tone, 'warn');
-  eq('N3 NEGATIVE CONTROL: nothing missing is OK', r(S.enrichmentRow({ rules: [{}], totalMissing: 0 })).tone, 'ok');
-  // A rule's read counts up to 10,000 (ㄱ-1, lead 10-13): past it the sum is «at least» that.
-  eq('N4 a missing count past the cap says 10,000+', said(r(S.enrichmentRow({ rules: [{}, {}], totalMissing: 10050, missingCapped: true }))),
+  // ── N Enrichment ── the missing count the server holds (owner 11-10 «1 ㄱ», D): GET /enrichment/rules' `missing`
+  const missing = (m) => ({ rules: [{}], missing: m });
+  eq('N1 no rules is grey, not OK', said(r(S.enrichmentRow({ rules: [], missing: null }))), 'unknown|No rules');
+  eq('N2 missing values are Warning', r(S.enrichmentRow(missing({ total: 3, counted_at: null, updating: false, unknown: [] }))).tone, 'warn');
+  eq('N3 NEGATIVE CONTROL: nothing missing is OK', r(S.enrichmentRow(missing({ total: 0, unknown: [] }))).tone, 'ok');
+  // A rule's count stops at 10,000 (ㄱ-1, owner 10-16): past it the sum is «at least» that.
+  eq('N4 a missing count past the cap says 10,000+', said(r(S.enrichmentRow({ rules: [{}, {}], missing: { total: 10050, capped: true, unknown: [] } }))),
     'warn|2 rules · missing 10,050+');
-  eq('N5 NEGATIVE CONTROL: under the cap the number as it is', said(r(S.enrichmentRow({ rules: [{}], totalMissing: 1234, missingCapped: false }))),
+  eq('N5 NEGATIVE CONTROL: under the cap the number as it is', said(r(S.enrichmentRow(missing({ total: 1234, capped: false, unknown: [] })))),
     'warn|1 rule · missing 1,234');
+  eq('N6 a rule not counted: the sum is not said - Unknown, and how many rules', said(r(S.enrichmentRow({ rules: [{}, {}],
+    missing: { total: 5, unknown: ['r2'] } }))), 'unknown|2 rules · missing Unknown · 1 rule not counted');
+  eq('N7 while the server counts behind its answer the row says Updating',
+    said(r(S.enrichmentRow(missing({ total: 3, updating: true, unknown: [] })))), 'warn|1 rule · missing 3 · Updating');
+  eq('N8 when it was counted, as the grid says it', / · missing 3 · \d+\w* ago$/.test(said(r(S.enrichmentRow(
+    missing({ total: 3, counted_at: new Date(Date.now() - 12000).toISOString(), unknown: [] }))))), true);
+  eq('N9 an answer without the held count (an older server) is Unknown, not 0', said(r(S.enrichmentRow(missing(undefined)))),
+    'unknown|1 rule · missing Unknown');
 
   // ── L Ledger ──
   eq('L1 sources by the server\'s own state words', said(r(S.ledgerRow(LEDGER(0)))), 'ok|ran_and_wrote 1 · never_ran 1');
@@ -207,7 +216,13 @@ const MUTANTS = [
   { id: 'S4', what: 'an unread chain total is OK', catches: ['H3'],
     load: onStatus((s) => s.replace('const tone = !failed.read ? TONE.UNKNOWN : failed.total > 0', 'const tone = !failed.read ? TONE.OK : failed.total > 0')) },
   { id: 'S5b', what: 'a missing count past the cap is said as exact', catches: ['N4'],
-    load: onStatus((s) => s.replace('capped: enrich.missingCapped === true', 'capped: false')) },
+    load: onStatus((s) => s.replace('`missing ${countNumberText(m)}${countedAgo(m)}`', '`missing ${countNumberText({ total: m.total })}${countedAgo(m)}`')) },
+  { id: 'S5c', what: 'a rule not counted is left out of the sum', catches: ['N6'],
+    load: onStatus((s) => s.replace('if (!m || unknown || !isCount(m.total)) {', 'if (!m || !isCount(m.total)) {')) },
+  { id: 'S5d', what: 'a count running behind the answer is not said', catches: ['N7'],
+    load: onStatus((s) => s.replace("const busy = m && m.updating === true ? [UPDATING] : [];", 'const busy = [];')) },
+  { id: 'S5e', what: 'when it was counted is dropped', catches: ['N8'],
+    load: onStatus((s) => s.replace('${countNumberText(m)}${countedAgo(m)}`', '${countNumberText(m)}`')) },
   { id: 'S5', what: 'no enrichment rules is OK', catches: ['N1'],
     load: onStatus((s) => s.replace("['No rules'], TONE.UNKNOWN)", "['No rules'], TONE.OK)")) },
   { id: 'S6', what: 'refused molecules are ignored', catches: ['L2'],

@@ -33,6 +33,38 @@
   worked example source: server/config/sample/chain_rules.json.sample - the four derive.decide rules dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log (moved 10-01 from the flat sample deleted 2026-09-24; two alignment_rule cells name them)
 -->
 
+## 0. derive 로 파생 행 만들기 — `derive: {kind: "decide"}` 통합 문법 예시 (소유자 11-10)
+
+```
+행을 «새로 만들면» decide — 원천 표의 행을 key 로 묶어 파생 표(into.table)에 행 하나씩, 묶인 행들의 값을 모아 그 행의 칸에
+«있는 행의 칸에» 모아 쓰면 join 의 take fn — chain_rules §5-B-bis
+derive 는 모든 통합 규칙의 칸 이름이고 종류는 kind 가 정한다: join · decide · mapper
+```
+
+`chain_rules.json` 의 `rules` 에 이 선언 하나(체인 탭 저장도 같은 판정):
+
+```json
+{
+  "name": "dt_job_count",
+  "enabled": true,
+  "on": {"table": "dt_log"},
+  "into": {"table": "dt_job_rollup"},
+  "derive": {"kind": "decide", "decide": {
+    "key": ["dt_job"],
+    "fields": [],
+    "aggregations": {
+      "netdie_count": "=UniqueCount([dt_cell_key])",
+      "event_time": "=Max([event_time])"
+    }
+  }}
+}
+```
+
+- `aggregations` — 파생 칸 이름 → 식. 대괄호 안은 «원천 표»의 칸. 예: `"stack_height": "=UniqueCount([stack_height])"` (같은 key 의 서로 다른 stack_height 수). `lot` 마다 파생 행을 만들고 그 lot 의 `wafer` 수를 세려면 key `["lot"]` · `"wafer_count": "=UniqueCount([wafer])"`
+- `key` — 파생 행 하나를 정하는 칸. 원천 · 파생 표 양쪽에 같은 이름, 다르면 짝 — §2
+- `fields` — 사람이 확인해 채울 칸. 없으면 `[]`(확인 큐 없음)
+- 두 표는 `table_config.json` 에 선언되어 있어야 한다 — 파생 칸은 파생 표의 `column_types` 에
+
 ## 1. 언제 이 파일을 만지는가
 
 - **대량 원본 테이블의 결손 필드(사람이 판단해 채우는 값)를 워크리스트로 만들 때** — 규칙 하나가 ① 워크리스트/참조뷰 API ② 체인 dedup 투영(판단키당 1행 upsert) ③ 온톨로지 `RESOLVED_AS` 승격을 동시에 켭니다
@@ -208,7 +240,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 > | 인리치 결과를 «원장 사실»로 만든다 | 상설 「표에 원천 데이터를 넣고 그걸로 원장」 — 결과를 **표**에 쓰고 그 표를 `ontology/ledger_config.json` 의 **소스**로 선언한다 |
 > | 「이 결손을 채워야 한다」를 찾는다 | **`GET /api/ledger/gaps`** — 선언된 술어 × 엔터티를 «순회해» 답한다. 노드를 세우지 않는다 |
 > | 후보를 골라 «확정»한다 | **`server/chain/enrichment/candidates.py`** (`resolve_target_candidate` · `confirm_keys`) — 부르는 쪽은 `declared:decide`(체인) · 소급 `enrichment_confirm` · dry-run 라우트 | ⚰️ **[판정 600] 이름이 바뀌었습니다** — 옛 `builtin:join_into`·`builtin:auto_confirm`·`builtin:join` 은 오늘 `declared:join`·`declared:decide`·`declared:virtual_join` 입니다. 접두 `declared:` 는 「선언에서 «제품이 만든» 맵퍼」를 뜻하고, 뒤는 선언이 쓰는 낱말입니다. 옛 접두로 로그를 찾으면 «안 나옵니다»(RUN.md 의 환산표).
-> | 사람이 그것을 본다 | **`client2/src/enrichment_queue.js`** + `enrichment_reference_view.js`. 아래 §7 `candidate_for`·`auto_confirm` 은 **살아 있다** |
+> | 사람이 그것을 본다 | `enrichment_reference_view.js` · Overview 의 Enrichment 줄(서버가 쥔 결손 수, `GET /enrichment/rules` 의 `missing` — ⚰️ `enrichment_queue.js` 은퇴 2026-11-10). 아래 §7 `candidate_for`·`auto_confirm` 은 **살아 있다** |
 >
 > 🔴 **후계 없음이 하나 있다** — walk 의 «노드»로서의 `Enrich Action`. 2026-08-28 「엔티티·어휘·walk 이게 끝」이 노드 종류를 하나로 접었고, **그 능력은 지금 없다**. 결손은 노드가 아니라 위 `gaps` 가 답한다.
 

@@ -440,7 +440,7 @@ def column_values(db, table_name, table_model, column, *, search=None, filters=N
         query, _ = narrowed_table_query(db, table_name, table_model, filters=filters, pivot=pivot, **narrowing)
         if item is not None:
             absent = not search and db.query(grid_pivot.narrow(
-                query, table_model, pivot, {item: {"filterType": SET, "values": [None]}}).exists()).scalar()
+                query, table_model, pivot, {column: {"filterType": SET, "values": [None]}}).exists()).scalar()
             query = query.filter(getattr(table_model, pivot.column) == item)
         text = models.search_text(expr) if is_numeric else expr
         if search:

@@ -36,6 +36,7 @@ from utils.time_format import to_local_str
 
 # [C-5 확장] 통지 동봉 created_logs 상한 — 워처(directory_watcher)와 공유하는 공용 상수.
 from maps import alignment_batch_counts
+from runtime.stages import stage
 import event_constants
 from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
                             OUTBOX_GROUP_MAX_ROWS, trim_events_to_row_budget)
@@ -1589,6 +1590,7 @@ def _rule_outcome_before_running(rule, events):
         # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게. 묶음마다 한 번, 실제로 안 돌 때만.
         logger.info("[Chain] rule %s skipped: none of %s changed",
                     rule.get("name") or rule.get("target_table"), sorted(wake_columns(rule)))
+        return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, FIRE_REFUSED_COLUMNS
     return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, None
 
 
@@ -1597,8 +1599,12 @@ def _record_pre_run_outcomes(rules, events):
 
     🔴 걸린 것만 남기면, «평가돼서 할 일이 없던» 규칙이 영원히 `never_evaluated` 로 남는다.
        그건 이 라운드가 없애려는 그 침묵이고, 부재는 「옛 서버」 «하나»만 뜻해야 한다.
+    🔴 «평가된» = 이 묶음이 그 규칙의 표를 건드렸다(`watches_table`) 또는 꺼져 있다. 안 건드린 규칙에
+       「not triggered」를 쓰면 상관없는 쓰기가 모든 규칙의 마지막 결과를 덮는다(총괄 11-10 D1).
     """
     for rule in rules or ():
+        if not (rule_shape.is_switched_off(rule) or any(watches_table(rule, e.table_name) for e in events)):
+            continue
         outcome, reason = _rule_outcome_before_running(rule, events)
         if outcome is not None:
             activity.registry.record_outcome(
@@ -1734,7 +1740,7 @@ def _in_rule_order(table_updates):
             while more is not None:
                 page += 1
                 try:
-                    with alignment_batch_counts.stage("mapper"):
+                    with stage("mapper"):
                         result = without_missing(more()) or {}
                 except Exception as exc:
                     raise RuntimeError("[rule=%s target=%s] page %d: %s: %s" % (
@@ -1877,7 +1883,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # writing it into `updates[key_col]` before `derive_replace_map_scope`
                 # runs inside `apply_batch_updates` would narrow a whole-map purge to a
                 # single die.
-                with alignment_batch_counts.stage("key gate"):
+                with stage("key gate"):
                     kept, key_gate_report = key_gate.screen(
                         target_table, batch_data.updates,
                         rule_names=rules_by_target.get(target_table, ()),
@@ -1937,7 +1943,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 results, changed_cells, created_logs, deleted_row_ids = [], [], [], []
                 deleted_edits = {}                        # what each row the write deletes was an edit of (③)
                 if batch_data.updates or replace_map:
-                    with (alignment_batch_counts.stage("write:%s" % target_table, said=page_said),
+                    with (stage("write:%s" % target_table, said=page_said),
                           outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
                           written_by((declarations_by_target or {}).get(target_table, ()))):
                         results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
@@ -2005,7 +2011,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # Contained, and for the reason the note above gives - except that a
                 # failure HERE leaves STALE ROWS, which is the conservative direction.
                 # It never leaves a hole.
-                with alignment_batch_counts.stage("retraction"):
+                with stage("retraction"):
                     if retract:
                         try:
                             source_column, source_value = retract
@@ -2050,7 +2056,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # 🔴 [owner 11-06 step 2] SETTLE, THE ROWS THIS BATCH ANSWERED: what its rules owned there and left out
                 #    goes - before the shells below ask the rows it left, so the grid hears them with this batch. What
                 #    the rules' handed rows fed is settled after every page (below). A failure fails the group.
-                with alignment_batch_counts.stage("settle rows"):
+                with stage("settle rows"):
                     _taken, withdrawn, settled_away = _settle_or_fail(db, chain_tx_id, target_table, (),
                                                                       batch_data.updates, batch_covers, ask_shells=False)
                     if settled_away:
@@ -2067,7 +2073,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 #    not written there yet. A row the write only keyed is not asked, nor one it created - a new row was
                 #    never emptied (총괄 10-12: a decide's row whose aggregation is blank was deleted by the write
                 #    that made it, and made again by the next trigger).
-                with alignment_batch_counts.stage("shells"):
+                with stage("shells"):
                     from sqlalchemy import inspect as identity_of
 
                     from chain import cell_layer
@@ -2128,7 +2134,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
 
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
-                with alignment_batch_counts.stage("broadcast build"):
+                with stage("broadcast build"):
                     try:
                         cfg = crud.TABLE_CONFIG.get(target_table, {})
                         col_types = cfg.get("column_types", {})
@@ -2239,7 +2245,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             #    the next writes. A failure fails the group (it is retried, and its rules answer again) - never a hole,
             #    never a stale value left beside a success.
             for target_table in sorted(set(settles or {}) | set(later_covers)):
-                with alignment_batch_counts.stage("settle:%s" % target_table):
+                with stage("settle:%s" % target_table):
                     _settle_or_fail(db, chain_tx_id, target_table, (settles or {}).get(target_table, ()),
                                     written.get(target_table, ()), later_covers.get(target_table, ()),
                                     rows_too=False)
@@ -2325,7 +2331,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # Named for the same reason as `mark processed`: it walks every event against every
     # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
     # said whether that mattered.
-    with alignment_batch_counts.stage("trigger filter"):
+    with stage("trigger filter"):
         valid_events = [e for e in events if any(wakes(r, e) for r in rules)]
     if not valid_events:
         return True, None, broadcast_messages
@@ -2337,7 +2343,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # used to build for itself, and this is the only place that builds it now. Per-row
     # events pass through untouched, so a batch with no
     # collapsed event in it issues no query here at all.
-    with alignment_batch_counts.stage("outbox read"):
+    with stage("outbox read"):
         expanded = outbox_expand.expand_events(db, valid_events)
 
     # 🔴 ZERO LOADED IS NOT "NOTHING TO DO" - IT IS A READ THAT FAILED (S-158).
@@ -2453,7 +2459,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     #    means the expander and this loop disagree about the batch, and deriving nothing silently is the failure
     #    mode to avoid.
     prepared = []
-    with alignment_batch_counts.stage("fetch"):
+    with stage("fetch"):
         for _table_name, rule, trigger_events in woken:
             try:
                 payloads = [p for e in trigger_events for p in expanded[outbox_expand.event_key(e)]]
@@ -2811,11 +2817,11 @@ def _claimed_group_sync(tx_id, events, db, rules):
                     #    first, `apply_chain_writes`), a replay page's run cursor, what its deleted rows fed and the
                     #    processed mark - all or none, and no other slot's group on these tables between.
                     deleted = _deleted_rows_of(events)
-                    with alignment_batch_counts.stage("replay cursor"):
+                    with stage("replay cursor"):
                         from chain import replay as _replay
                         _replay.advance_cursors(db, events)
                     _withdraw_unanswered_deletions(db, deleted, "unanswered")
-                    with alignment_batch_counts.stage("mark processed"):
+                    with stage("mark processed"):
                         # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
                         _ran_though_set_aside(db, tx_id, events)
                         for event in events:
@@ -2824,7 +2830,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
                             # 그룹은 broadcast_at 을 NULL 로 두고, 통지 성공 시 _dispatch_broadcasts 가 스탬프한다.
                             if not answer[2]:
                                 event.broadcast_at = func.now()
-                    with alignment_batch_counts.stage("commit"):
+                    with stage("commit"):
                         db.commit()
         except table_locks.NotHeld as not_held:
             # a table not got within the limit comes back as the group's answer, for the batch to rewind (④)
@@ -3307,7 +3313,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             #   before the failure path, so no retry is charged and no table is held: its events
             #   stay queued exactly as they were, and Resume runs them.
             if not success and chain_control.paused() is not None:
-                with alignment_batch_counts.stage("rollback"):
+                with stage("rollback"):
                     db.rollback()
                 logger.warning("[Chain] paused - tx '%s' was rewound at a stage boundary; its "
                                "%d event(s) stay queued until Resume",
@@ -3316,7 +3322,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             # 🔴 A TABLE NOT HELD WITHIN THE LIMIT IS REWOUND, NOT FAILED (총괄 1ff4dcc6c ④) - no attempt charged,
             #    nothing set aside; the rest of this batch waits too, so a line keeps its order and the slot is free.
             if not success and table_locks.rewinds(error_reason):
-                with alignment_batch_counts.stage("rollback"):
+                with stage("rollback"):
                     db.rollback()
                 if not str(error_reason or "").startswith(table_locks.NOT_HELD):
                     # a deadlock with a save, again and again, is seen on the line - not an endless quiet loop (총괄)
@@ -3358,7 +3364,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # 실패한 묶음이 «이미 쓴 표»는 남는다 — 표마다(쪽으로 나눈 제안은 쪽마다) 쓰기가 스스로
                 # 커밋한다(crud.apply_batch_updates). 이 롤백은 실패 자리의 남은 쓰기만 버린다.
                 # 재시도·리플레이가 안전한 것은 «같은 값 업서트는 헛쓰기»라서다(총괄 e10c58e5e).
-                with alignment_batch_counts.stage("rollback"):
+                with stage("rollback"):
                     db.rollback()
                 # 🔴 A ROW SET ASIDE WHILE THE GROUP RAN IS NOT FAILED OR RETRIED (소유자 10-08). A ×
                 #    on a running line marks its rows, then cancels the query that fails it here -
@@ -3448,7 +3454,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                                                                              None)})
                         retrying_count += 1
 
-                with alignment_batch_counts.stage("commit"):
+                with stage("commit"):
                     await _step_beating(db, "failure marks", db.commit)
 
                 if failed_permanently_count > 0:

@@ -36,7 +36,7 @@ import { isBlank } from './absent.js';
  *    새 컨트롤이 이 규칙 안으로 들어옵니다.
  */
 const WRITE_CONTROLS = [
-  'addRowBtn', 'deleteRowBtn', 'txApplyBtn',
+  'addRowBtn', 'addItemBtn', 'deleteRowBtn', 'txApplyBtn',
   'ingestFileBtn', 'folderUploadBtn',
 ];
 

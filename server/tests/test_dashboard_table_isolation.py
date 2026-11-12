@@ -55,7 +55,7 @@ def one_broken_table(monkeypatch, db_session):
     _drifted(db_session, broken)
     monkeypatch.setitem(crud.TABLE_CONFIG, broken, {"columns": {}})
     monkeypatch.setitem(models.DYNAMIC_TABLES, broken, _BrokenModel(broken))
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
     yield broken
     _gone(db_session, broken)
 
@@ -72,7 +72,7 @@ def two_broken_tables(monkeypatch, db_session):
         _drifted(db_session, name)
         monkeypatch.setitem(crud.TABLE_CONFIG, name, {"columns": {}})
         monkeypatch.setitem(models.DYNAMIC_TABLES, name, _BrokenModel(name))
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
     yield names
     for name in names:
         _gone(db_session, name)
@@ -142,7 +142,7 @@ def test_a_failure_does_not_end_the_walk_so_a_LATER_table_is_still_examined(
 def test_a_healthy_dashboard_lists_nothing_as_uncounted(client):
     """The empty list is the normal answer, and it has to be distinguishable from the
     field being absent."""
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
     body = client.get("/dashboard/summary").json()
     assert body["uncounted_tables"] == []
 
@@ -170,7 +170,7 @@ def test_the_summary_does_not_go_to_the_database_once_per_table(client, db_sessi
         listen = lambda conn, cursor, statement, *a: None if statement.lstrip().upper().startswith("PRAGMA")             else seen.append(statement)                                # noqa: E731
         event.listen(db_session.get_bind(), "before_cursor_execute", listen)
         try:
-            main.RECORRECTION_CACHE["value"] = None
+            main.FIGURES.forget()
             body = client.get("/dashboard/summary").json()
         finally:
             event.remove(db_session.get_bind(), "before_cursor_execute", listen)

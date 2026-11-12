@@ -223,20 +223,22 @@ def explorer_view(
 def column_picker(
     relation: str = Query(...),
     combination: list[str] | None = Query(default=None),
+    recount: bool = Query(default=False),
     db: Session = Depends(get_db),
     world: str | None = Query(default=None)):
     """Candidate columns for `relation`, each with how many rows actually carry a value.
 
-    A read, and an EXPENSIVE one by design: the population counts are exact and cost one
-    table scan. `estimated_rows` comes back with them so a caller can see what it asked
-    for. Nothing is written and no cursor moves.
+    A read that answers at once (owner 11-10): the planner's estimate (`exact` false) until the exact counts - one
+    table scan and one per declared key, on their own worker - are counted (`exact`, `counted_at`); `updating` while
+    they run. `recount=true` counts again (a person's press - a count cut at column_count_seconds is not counted
+    again by itself). Nothing is written and no cursor moves.
 
     `combination` may be repeated to measure one ordering's real uniqueness on the same
     call -- the question that is otherwise answered mid-backfill.
     """
     try:
         return _service_for(world).column_picker(
-            db, relation=relation, combination=combination or [])
+            db, relation=relation, combination=combination or [], recount=recount)
     except (ColumnStatsError, ConfigExplorerError) as exc:
         raise _refusal(exc) from exc
 

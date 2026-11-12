@@ -202,7 +202,8 @@ def test_a_fixed_plugin_leaves_its_failed_files_to_retry(tmp_path):
         assert watcher.until(lambda s: False, 1)["ta"] == {"FAILED": 2}
 
         _plugin(data, "tb", FIXED)
-        line = "[Watcher] tb: its reading changed (scripts\\p.py) - 0 read file(s) unchecked, " + NOT_AGAIN
+        line = ("[Watcher] tb: its reading changed (scripts\\p.py) - 0 read file(s) kept as read (Read all again on "
+                "the file page applies the change to them), " + NOT_AGAIN)
         assert watcher.until(lambda s: line in watcher.text(), 60) is not None and line in watcher.text()
         time.sleep(5)
         assert watcher.until(lambda s: False, 1)["tb"] == {"FAILED": 1}, "a fixed plugin read its failed file"
@@ -230,7 +231,8 @@ def test_a_fixed_plugin_leaves_its_failed_files_to_retry(tmp_path):
 
     watcher = _Watcher(tmp_path, db)
     try:
-        line = "[Watcher] td: its reading changed (scripts\\p.py) - 0 read file(s) unchecked, " + NOT_AGAIN
+        line = ("[Watcher] td: its reading changed (scripts\\p.py) - 0 read file(s) kept as read (Read all again on "
+                "the file page applies the change to them), " + NOT_AGAIN)
         assert watcher.until(lambda s: line in watcher.text(), 60) is not None and line in watcher.text()
         time.sleep(8)
         states = watcher.until(lambda s: False, 1)

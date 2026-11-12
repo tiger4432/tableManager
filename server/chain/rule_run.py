@@ -959,7 +959,8 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     answer = _uniform()
 
     from chain import activity
-    from chain.mapper_call import stage_timing, without_missing
+    from chain.mapper_call import without_missing
+    from runtime.stages import stage
 
     prepared = prepared or prepare(db, rule, payloads, row_ids)
     bound, handed, offered = prepared.bound, prepared.handed, prepared.offered
@@ -1017,7 +1018,7 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             reads = [0]
             token = _READS.set(reads)
             try:
-                with stage_timing():
+                with stage("mapper"):
                     for one, got in zip(prepared.units, prepared.fetched):
                         rows = one if isinstance(one, list) else [one]
                         kwargs = dict({"rule": rule} if bound.accepts_rule else {},

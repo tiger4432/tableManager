@@ -263,7 +263,7 @@ def preview_cursor_batch(
 ) -> CursorBatchPreview:
     """Compile the exact candidates execute will use, without gate/store writes. `translate`: "sql" or "python";
     absent, the switch's answer for this source (`sql_translate.translate_path`) - the one seat the two paths part."""
-    from chain.keyset_scan import stage
+    from runtime.stages import stage
     from . import sql_translate
 
     source_plan = _source_plan(snapshot, source_id)
@@ -396,7 +396,7 @@ def execute_scoped_batch(
         preview = preview_cursor_batch(
             snapshot, source_id, base_rows, unwritten_cursor, mappers,
             known_registrations=known_registrations)
-    from chain.keyset_scan import stage
+    from runtime.stages import stage
 
     with stage("screen atoms", len(preview.event_results)) as said:
         kept_all = _screened_atoms(snapshot, source_id, preview)

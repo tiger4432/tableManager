@@ -84,6 +84,10 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
                 db.rollback()
                 say("%s: already copied (%s) - skipped" % (table, already))
                 return {"table": table, "already": True}
+            except ValueError as refused:                 # line_migration._copyable: this database cannot be copied
+                db.rollback()
+                say("REFUSED - %s" % refused)
+                return {"table": table, "stopped": True, "refused": str(refused), "copied": copied}
             if mismatched:
                 db.rollback()
                 shown = "; ".join("%s.%s t=%r lines=%r" % m for m in mismatched[:SHOWN])

@@ -65,11 +65,11 @@ _dumps = functools.partial(json.dumps, ensure_ascii=False, allow_nan=False, inde
 
 
 def encode(answer) -> _Encoded:
-    """`answer` as JSONResponse would write it, here - the request's «serialize» stage (`request_timing.stage`)."""
-    from runtime import request_timing
+    """`answer` as JSONResponse would write it, here - the request's «serialize» stage (`runtime.stages.stage`)."""
+    from runtime.stages import stage
 
     encoded = _Encoded("")
-    with request_timing.stage("serialize"):
+    with stage("serialize"):
         try:
             text = _dumps(answer, default=jsonable_encoder)
         except TypeError:

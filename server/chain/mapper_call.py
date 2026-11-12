@@ -13,26 +13,11 @@
 ⚠️ 트랜잭션은 여기 없습니다. 재생의 «청크 커밋»과 워커의 «표마다 커밋»은 이 실행기 «밖»의
    성질이고, 이동이 그것을 건드리지 않습니다 — 옮긴 것은 「맵퍼를 어떻게 부르나」뿐입니다.
 """
-import contextlib
 import inspect
 import math
 
 import numpy as np
 import pandas as pd
-
-from maps import alignment_batch_counts
-
-#: 🔴 [판정 498 ③] THE STAGE STAYS, THE TAG DOES NOT. `alignment_batch_counts` wants to
-#: know how much of a group's wall clock the mapper took, and that is a fact about the call
-#: rather than about the door - so the seat opens it. `LOG_FILENAME`, `MAPPER_LOG_TAG` and
-#: this module's logger left with `execute_custom_mapper`: they were the SECOND execution
-#: vocabulary, and an operator grepping 「did this rule run」 had to know the kind before they
-#: could pick the words.
-@contextlib.contextmanager
-def stage_timing():
-    """Time the mapper call the way the group line reports it."""
-    with alignment_batch_counts.stage("mapper"):
-        yield
 
 
 def mapper_accepts_rule(mapper_func) -> bool:

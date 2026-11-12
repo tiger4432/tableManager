@@ -9,10 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from declaration_names import bare_name as _bare_name, fold_versions
 
-from .column_stats import (
-    ColumnStatsError, combination_uniqueness, estimated_rows, ordering_candidates,
-    population,
-)
+from .column_stats import ColumnStatsError, picked
 from .config_authoring import authoring_plan, closed_lists
 from .config_drafts import OntologyDraftStore, with_unsaved_body
 from .config_explorer import (
@@ -628,6 +625,7 @@ class OntologyExplorerService:
         *,
         relation: str,
         combination: Sequence[str] = (),
+        recount: bool = False,
     ) -> dict[str, Any]:
         """Candidate columns WITH the numbers that decide between them.
 
@@ -654,13 +652,11 @@ class OntologyExplorerService:
                 f"relation {relation!r} is not declared in table_config.json; declare it "
                 f"there first -- an undeclared table has no keys, no ingestion and no "
                 f"chains, so the ledger cannot address its rows")
-        payload = population(db, relation)
-        payload["estimated_rows"] = estimated_rows(db, relation)
-        payload["ordering"] = ordering_candidates(db, relation, catalog[relation])
-        payload["combination"] = (
-            combination_uniqueness(db, relation, list(combination))
-            if combination else None)
-        return payload
+        # 🔴 AT ONCE, THE EXACT COUNTS BEHIND (owner 11-10 «4 ㄱ»: one picker read held 6.5 min in a file load) - the
+        #    estimate now, the counts on their worker, at most column_count_seconds together (`column_stats.picked`)
+        from parsers.directory_watcher import column_count_timeout
+
+        return picked(db, relation, catalog[relation], combination, recount, column_count_timeout())
 
     # ------------------------------------------------------------------ the test run
     #
@@ -1044,12 +1040,12 @@ class OntologyExplorerService:
         payload["vocabulary"] = {}
         for name, item in vocabulary.items():
             try:
-                roles = predicate_claim(name, item, entities)["roles"]
+                claim = predicate_claim(name, item, entities)
             except Exception:                          # noqa: BLE001 - a broken entry is the validator's to name
                 continue
             spoken = item.get("object") if isinstance(item.get("object"), Mapping) else {}
             payload["vocabulary"][name] = {
-                "qualifiers": [role for role, spec in roles.items() if spec.get("kind") == "attribute"],
+                "qualifiers": list(claim["emit"]["object"].get("qualifiers") or ()),
                 # what a sentence's far end is - a node of these types, a value, or nothing (총괄 10-14)
                 "object": {"kind": spoken.get("kind") or "none", "types": list(spoken.get("types") or ())}}
         # the names a `ref` leaf's `section` picks from (총괄 f3639d4a2) - a `columns` section reads `tables` above

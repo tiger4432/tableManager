@@ -84,15 +84,11 @@ prints and is safe::
     # then, to extend the DT transfer chain onto the new lots (idempotent for the rest):
     ... seed_syn_process_ledger.py --apply --i-accept-writing-to-owner-database
 
-ROLLBACK
---------
-    DELETE FROM void_obs       WHERE base_wafer_id LIKE 'SYN-BW-1__-%';
-    DELETE FROM inspection_run WHERE base_wafer_id LIKE 'SYN-BW-1__-%';
-    DELETE FROM bonding_log    WHERE bond_lot IN ('SYN-VOID-101','SYN-VOID-102','SYN-VOID-103');
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
+    The ledger atoms it writes straight into the ledger, not through a source - as before:
     DELETE FROM ledger_events  WHERE source_translator_ver LIKE 'syn_lot_excursion/%';
-    DELETE FROM cell_sources    WHERE updated_by = 'seed_syn_lot_excursion';
-    DELETE FROM cell_overwrites WHERE updated_by = 'seed_syn_lot_excursion';
-    -- wafer_map_metadata rows for the three lots' maps carry the same updated_by.
 """
 from __future__ import annotations
 
@@ -288,6 +284,7 @@ def _write(db, table: str, rows: list) -> int:
     for start in range(0, len(rows), base.CHUNK):
         chunk = rows[start:start + base.CHUNK]
         batch = schemas.GeneralUpdateBatch(
+        transaction_id=RUN_TX,
             updates=[schemas.GeneralUpdateItem(updates=row, source_name=SOURCE_NAME,
                                                updated_by=UPDATED_BY) for row in chunk],
             replace_map=False, scope=None)
@@ -335,7 +332,7 @@ def guard_database(db, allow_owner: bool, writing: bool) -> str:
             "run and --prove need no flag." % name)
     print("database: %s" % name)
     if writing:
-        print("!! rollback (rdb):    updated_by = '%s'" % UPDATED_BY)
+        print("!! undo (tables): %s (transaction_id above)" % "don't paste SQL - ask before undoing a seed")
         print("!! rollback (ledger): source_translator_ver LIKE '%s%%'"
               % TRANSLATOR_BASE.split("rules:")[0])
     return name
@@ -439,6 +436,10 @@ def prove_cause_connects(db, kind: str = None):
 # ---------------------------------------------------------------------------
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true")
@@ -532,4 +533,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     main()

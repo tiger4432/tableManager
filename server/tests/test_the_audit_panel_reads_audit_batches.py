@@ -90,7 +90,7 @@ def _load(engine, limit_groups=100, cache=None):
         cache.load_initial(session, limit_groups)
     finally:
         session.close()
-    cache._behind_ended = float("inf")                         # no catch-up behind the reads below
+    cache._behind.ask(audit_cache.RECENT, lambda: None, wait=5)   # a catch-up just ran: the pacing (CATCH_UP_GAP_SECONDS) holds the next one behind the reads below
     return cache
 
 
@@ -207,7 +207,9 @@ def test_the_read_answers_at_once_and_walks_behind(panel, monkeypatch):
     assert time.monotonic() - began < 1.0, "the read did not wait for the walk"
     assert (first["groups"], first["updating"]) == ([], True), first
     go.set()
-    audit_cache.audit_cache._behind.join(30)
+    deadline = time.monotonic() + 30                              # the work behind (runtime.behind) ends
+    while audit_cache.audit_cache._behind.busy(audit_cache.RECENT) and time.monotonic() < deadline:
+        time.sleep(0.05)
     second = client.get(URL).json()
     assert (_keys(second["groups"]), second["updating"]) == (["ab-c", "ab-a", "ab-b"], False), second
 

@@ -1954,14 +1954,13 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     into write_lines - collapsed, so the page stages one outbox row (lead 11-11 ㄱ: the old set-based page wrote
     cell_sources and audit_logs by hand through the old door). The worker's layer naming runs first, as the chain's
     write names it. A row the answer named that is no longer there is not written (the door would make a row of a
-    mark). The preview writes inside `session_contract.held` and rolls the page back. `on_fold` is called once the
-    page is judged. Counted from the mark's layers before and after (lines.layers) and t's shown mark.
+    mark). The preview writes nothing: what the write would leave is judged read-only (`_fold_units_judged`, lead
+    11-12: a preview must not contend with live writes). `on_fold` is called once the page is judged. Counted from
+    the mark's layers before and after (lines.layers) and t's shown mark - the preview's «after» is the judged one.
     -> (counts, the page's items)"""
-    import contextlib
     from collections import Counter
 
     import event_constants
-    import session_contract
     from chain import rule_run
     from database import crud, lines, schemas
     from database.context import outbox_mode
@@ -1978,14 +1977,16 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     counts["rows_gone"] += len(batch.updates) - len(judged)
     before = lines.layers(db, table_name, sorted(there), [mark])
     report = {}
-    if judged:
-        with contextlib.nullcontext() if apply else session_contract.held(db), \
-                outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+    if not apply:                                  # the one place the preview stops before the write (lead 11-12)
+        after, shown = _fold_units_judged(db, table_name, model, mark, judged, before, report)
+    elif judged:
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             crud.apply_batch_updates(db, table_name, schemas.GeneralUpdateBatch(updates=judged, transaction_id=tx_id),
                                      drop_report=report)
     on_fold()
-    after = lines.layers(db, table_name, sorted(there), [mark])
-    shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
+    if apply:
+        after = lines.layers(db, table_name, sorted(there), [mark])
+        shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
     for item in judged:
         clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
         said = lambda layers: (layers.get((item.row_id, mark)) or {}).get(item.source_name)   # noqa: E731
@@ -2005,6 +2006,52 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     db.commit()
     counts["rows_marked"] += counts["rows_to_mark"]
     return counts, batch.updates
+
+
+def _fold_units_judged(db, table_name, model, mark, judged, before, report):
+    """The page's write judged read-only, for the preview (lead 11-12, after the R2 preview: «the judgement is
+    read-only, and only apply writes»): the door's own judges in the door's order - the notation fold and the join's
+    uniqueness (`crud.apply_batch_updates`), the version gate (`crud.version_gate_verdict`, write_lines step 1), a
+    chain write left out when no chain layer sits on the cell and the cell already shows its value (write_lines
+    `_others`), then the merge's rank (`crud.compute_priority_value`; a pin with no head line keeps t's value, as
+    `lines.merge`). Fills `report` as the write would; -> (the mark's layers after, t's mark after). Not judged: a cell
+    the funnel drops (an undeclared, unmapped or formula mark, a blank) - fold_unit marks are declared text.
+    The gate: test_the_fold_units_preview_writes_nothing_and_counts_what_apply_counts."""
+    from collections import Counter
+
+    from database import crud, schemas, write_lines
+
+    if not judged:
+        return before, {}
+    cfg = crud.TABLE_CONFIG.get(table_name) or {}
+    col_type = (cfg.get("column_types") or {}).get(mark, "string")
+    batch = schemas.GeneralUpdateBatch(updates=list(judged))
+    crud._fold_written_notation(db, table_name, batch)
+    refused = crud.refuse_virtual_join_duplicates(db, table_name, batch)
+    ids = sorted({item.row_id for item in judged})
+    version = cfg.get("version_column")
+    rows = {r.row_id: r for r in db.query(model.row_id, getattr(model, mark), *(
+        [getattr(model, version)] if version else [])).filter(model.row_id.in_(ids))}
+    shown = {row_id: getattr(row, mark) for row_id, row in rows.items()}
+    pins = {cell: was[2] for cell, was in write_lines._overwrites(db, table_name, ids, [mark]).items()}
+    at = crud.batch_write_instant(db)
+    gated, after = Counter(), {cell: dict(said) for cell, said in before.items()}
+    for n, item in enumerate(batch.updates):
+        applied, reason = crud.version_gate_verdict(table_name, cfg, rows.get(item.row_id), False, item)
+        if reason is not None and reason not in crud.VERSION_NOTES_APPLIED:
+            gated[reason] += 1
+        if not applied:
+            continue
+        cell, clean = (item.row_id, mark), crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
+        layers, pin = after.setdefault(cell, {}), pins.get(cell)
+        if (not any(crud.layer_ranks_as(s) == crud.layer_ranks_as(item.source_name) for s in layers)
+                and not crud.values_differ(crud.compute_priority_value(layers, pin, table_name)[0], clean, col_type)):
+            continue                               # another source shows it already - no line (write_lines `_others`)
+        layers[item.source_name] = {"value": clean, "ingested_at": at, "line_id": write_lines.UNNUMBERED + n}
+        if pin is None or pin in layers:
+            shown[item.row_id] = crud.compute_priority_value(layers, pin, table_name)[0]
+    report["rows_refused"] = dict(gated, **({crud.DROP_UNIQUE_VIOLATED: len(refused)} if refused else {}))
+    return after, shown
 
 
 #: The writer of the history line a notation backfill leaves on each cell it folds.

@@ -283,17 +283,7 @@ class Report:
         unit of no value keeps its rows."""
         for column in [c for c in self.keys if report_shape.KEY_LATEST in self.key_words.get(c, ())]:
             at, unit = self.keys.index(column), [self.keys.index(c) for c in self.picked_by]
-            said = {}
-            for wafer, _row in read:
-                if wafer[at] is not None:
-                    said.setdefault(tuple(wafer[i] for i in unit), set()).add(wafer[at])
-            best = {}
-            for mine, values in said.items():
-                order = _instant if all(_instant(v) is not None for v in values) else str
-                best[mine] = (order, max(order(v) for v in values))
-            read = [(wafer, row) for wafer, row in read if tuple(wafer[i] for i in unit) not in best
-                    or wafer[at] is not None and best[tuple(wafer[i] for i in unit)][0](wafer[at]) == best[
-                        tuple(wafer[i] for i in unit)][1]]
+            read = _keep_latest(read, lambda pair: pair[0][at], lambda pair: tuple(pair[0][i] for i in unit))
         return read
 
     def _matched(self, role, columns, wafers, capped=False, where=None):
@@ -311,6 +301,12 @@ class Report:
         for row in _rows(self.db, role, shared + columns + beyond, list(by), where=where, keys=shared, capped=capped):
             for wafer in by.get(_parts(row[:len(shared)]), ()):
                 out.append((wafer, row[len(shared):]))
+        # a `keys` latest column beyond the wafer key: of the rows that differ only there, the latest (owner 11-11
+        # «마지막 마킹 시간해소») - the same fold as the wafer key's (`_latest`); two rows of it still say «twice»
+        latest = [len(columns) + at for at, c in enumerate(beyond) if report_shape.KEY_LATEST in self.key_words.get(c, ())]
+        for at in latest:
+            rest = [len(columns) + i for i in range(len(beyond)) if len(columns) + i not in latest]
+            out = _keep_latest(out, lambda pair: pair[1][at], lambda pair: (pair[0], tuple(pair[1][i] for i in rest)))
         return out
 
     def _long_conditions(self, wafers, only_time=False):
@@ -515,23 +511,51 @@ class Report:
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture
-        embedded (or why not), any other column (a condition value's: `[]`) «—», a wafer with no row a blank - and
-        the pairs left out."""
+        embedded (or why not), any other column (a condition value's: `[]`) «—», a wafer of no picture why (`_unpaired`)
+        - and the pairs left out."""
         rows, left_out = [], []
         for role in self.spec.get(report_shape.PICTURE_ROWS) or ():
             name = str(role["label"])
             # a picture table of many rows (chip patches) is read to its cap, never refused (owner 10-24 «컴페어 patches
             # 1만개 이상이라고 멈추네»)
-            found, twice = self._pairs(role, [role["image"]], [members[0] for members in columns
-                                                                if len(members) == 1], name=name, capped=True)
+            singles = [members[0] for members in columns if len(members) == 1]
+            found, twice = self._pairs(role, [role["image"]], singles, name=name, capped=True)
             px = role.get("px") or report_shape.PICTURE_PX
             source = role.get(report_shape.IMAGE_SOURCE)
+            why = self._unpaired(role, name, [w for w in singles if not found.get((w, name), (None,))[0]])
             cells = [{"text": "—"} if len(members) != 1 else
                      _picture(_ref(source, found[(members[0], name)][0]), px) if found.get((members[0], name), (None,))[0]
-                     else {"text": ""} for members in columns]
+                     else {"refused": why[members[0]]} for members in columns]
             rows.append((name, cells))
             left_out += twice
         return rows, left_out
+
+    def _unpaired(self, role, name, wafers):
+        """{wafer: why it has no picture of `role`} - its row is not there, two rows say it, or its picture is blank;
+        a row not there names the picture table's nearest key - the most parts equal, then the closest spelled - so a
+        spelling apart shows (owner 11-10: the cell was blank, no reason). The table read again by the first key column
+        alone."""
+        import difflib
+
+        shared = [c for c in report_shape.wafer_columns(role["wafer"]) if c in self.keys]
+        at = [self.keys.index(c) for c in shared]
+        firsts = sorted({_part(w[at[0]]) for w in wafers}, key=lambda v: (v is not None, v or "")) if wafers else []
+        rows = _rows(self.db, role, shared + [role["image"]], [(part,) for part in firsts], keys=shared[:1],
+                     capped=True) if firsts else []
+        spelled = lambda row: " · ".join("%s %s" % (report_shape.column_word(self.spec, c), v)
+                                         for c, v in zip(shared, row))
+        out = {}
+        for wafer in wafers:
+            want = tuple(_part(wafer[i]) for i in at)
+            near = [row for row in rows if _part(row[0]) == want[0]]
+            same = [row for row in near if _parts(row[:len(shared)]) == want]
+            close = lambda row: (sum(a == b for a, b in zip(_parts(row[:len(shared)]), want)), sum(
+                difflib.SequenceMatcher(None, a or "", b or "").ratio() for a, b in zip(_parts(row[:len(shared)]), want)))
+            out[wafer] = ("%d %s rows for %s" % (len(same), name, self.said(wafer)) if len(same) > 1 else
+                          "%s row of %s has no %s" % (name, self.said(wafer), role["image"]) if same else
+                          "no %s row for %s%s" % (name, self.said(wafer),
+                                                 " - nearest: %s" % spelled(max(near, key=close)) if near else ""))
+        return out
 
     def _cell(self, row):
         """A table cell: its text, and the numbers a format holds it by - its share, its F and N."""
@@ -814,17 +838,23 @@ class Report:
         fold = [beyond.index(c) for c in self.key_words if c in beyond
                 and report_shape.KEY_FOLD in self.key_words[c]]
         chip = [at for at, c in enumerate(beyond) if at not in fold]
-        rows = self._matched(role, [role["item"], role["image"]], picked, capped=True)   # capped, not refused
+        first = role.get(report_shape.FIRST_LAYER)
+        # images.by: a defect's pictures a gallery each value of these key columns (owner 11-11 «leg별로 나눠서»)
+        by = [(True, self.keys.index(c)) if c in self.keys else (False, beyond.index(c))
+              for c in report_shape.wafer_columns(role.get(report_shape.IMAGE_BY))]
+        rows = self._matched(role, [role["item"], role["image"]] + ([first] if first else []), picked,
+                             capped=True)                                       # capped, not refused
+        lead = 3 if first else 2
         # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
-        rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
+        rows.sort(key=lambda pair: [_ordinal(pair[1][lead + at]) for at in fold])
         # images.match: an image kind is its summary item's picture; with match declared, a kind it pairs with nothing
         # and no summary item is named shows under itself, after a line naming it (lead 10-24: no silent drop)
         match, items = report_shape.image_match(self.spec), {report_shape.name(item) for _w, item in found}
         unpaired = {}
-        chosen, counts, stacks = {}, {}, {}
+        chosen, counts, stacks, opens, named = {}, {}, {}, {}, {}
         for wafer, row in rows:
             ref = _ref(source, row[1])
-            whose = (wafer, tuple(row[2 + at] for at in chip))
+            whose = (wafer, tuple(row[lead + at] for at in chip))
             for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [report_shape.name(row[0])]):
                 item = match.get(kind, kind)
                 alone = bool(match) and kind not in match and kind not in items and kind != "None"
@@ -832,25 +862,39 @@ class Report:
                     continue
                 if alone:
                     unpaired.setdefault(kind, [])
-                layer = "/".join(str(row[2 + at]) for at in fold) if fold else None
+                layer = "/".join(str(row[lead + at]) for at in fold) if fold else None
+                if first and fold and _part(row[2]) is not None:
+                    opens.setdefault((item, whose), row[2])
                 if fold and (item, whose) in stacks:
                     # every layer of a chip and defect, one stack the wheel turns (owner 10-24 «디펙별 이미지 모든 레이어
                     # · 마우스 휠로 레이어 바꿔 볼 수 있게»)
                     picture = _picture(ref, px)
                     if "src" in picture:
                         stacks[(item, whose)]["layers"].append(dict(picture, layer=layer))
+                        named[(item, whose)].append(tuple(_part(row[lead + at]) for at in fold))
                     continue
                 # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
                 if counts.get((item, wafer), 0) >= per_item:
                     continue
                 picture = _picture(ref, px)
                 entry = dict(picture, wafer=self.said(wafer))
+                if by:
+                    entry["by"] = " · ".join(str(wafer[at] if own else row[lead + at]) for own, at in by)
                 if fold:
                     entry["layers"] = [dict(picture, layer=layer)] if "src" in picture else []
+                    named[(item, whose)] = [tuple(_part(row[lead + at]) for at in fold)] if "src" in picture else []
                     stacks[(item, whose)] = entry
                 (unpaired[kind] if alone else chosen.setdefault(item, [])).append(entry)
                 if "src" in picture:
                     counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
+        for at, said in opens.items():
+            # images.first_layer: the chip's layers turned to open on it, the wheel's order kept - «1,2» its first
+            said = said.split(",")[0] if isinstance(said, str) else said
+            want = tuple(_part(part) for part in str(said).split("/")) if len(fold) > 1 else (_part(said),)
+            if at in stacks and want in named[at]:
+                k = named[at].index(want)
+                stacks[at]["layers"] = stacks[at]["layers"][k:] + stacks[at]["layers"][:k]
+                stacks[at]["layers"][0]["first"] = True
         if unpaired:
             # the line, then each unpaired kind under itself - after the paired items
             chosen[report_shape.word(self.spec, "unpaired") % ", ".join(sorted(unpaired))] = []
@@ -1613,6 +1657,22 @@ def _walk(db, cell, **asked):
 
 
 READS = report_shape.READS
+
+
+def _keep_latest(read, value_of, group_of) -> list:
+    """`read` with each group's rows of its latest value only - read as a time by the one reader, or as its text when
+    one of the group's values is not a time the reader knows (lead 10-24: 20261001123000 · 2026/10/01 · 2026.10.01
+    sort as text); a group of no value keeps its rows. The one fold `keys` latest is (the wafer key's and beyond)."""
+    said = {}
+    for each in read:
+        if value_of(each) is not None:
+            said.setdefault(group_of(each), set()).add(value_of(each))
+    best = {}
+    for group, values in said.items():
+        order = _instant if all(_instant(v) is not None for v in values) else str
+        best[group] = (order, max(order(v) for v in values))
+    return [each for each in read if group_of(each) not in best or value_of(each) is not None
+            and best[group_of(each)][0](value_of(each)) == best[group_of(each)][1]]
 
 
 def _instant(value):

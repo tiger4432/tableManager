@@ -68,16 +68,14 @@ Usage::
     ... seed_syn_process_ledger.py --prove
     ... seed_syn_process_ledger.py --prove --finding delam
 
-ROLLBACK
---------
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
+    The ledger atoms it writes straight into the ledger, not through a source - as before:
     DELETE FROM ledger_events            WHERE source_translator_ver LIKE 'syn_process_ledger/%';
     DELETE FROM ledger_translator_cursor WHERE source = 'syn_process_ledger';
-    DELETE FROM delam_obs                WHERE run_uid LIKE 'scat|%';
-    DELETE FROM inspection_run           WHERE method = 'scat';
-    -- and the lines those two RDB tables wrote:
-    DELETE FROM delam_obs__lines      WHERE written_by = 'seed_syn_process_ledger';
-    DELETE FROM inspection_run__lines WHERE written_by = 'seed_syn_process_ledger';
-    DELETE FROM cell_overwrites WHERE updated_by = 'seed_syn_process_ledger';
+    Its table writes are rows of delam_obs / inspection_run and their lines (<table>__lines, written_by
+    'seed_syn_process_ledger').
 """
 from __future__ import annotations
 
@@ -853,6 +851,7 @@ def _batch(rows):
     from database import schemas
 
     return schemas.GeneralUpdateBatch(
+        transaction_id=RUN_TX,
         updates=[schemas.GeneralUpdateItem(updates=row, source_name=SOURCE_NAME,
                                            updated_by=UPDATED_BY) for row in rows],
         replace_map=False, scope=None)
@@ -909,8 +908,8 @@ def guard_database(db, allow_owner: bool, writing: bool = True) -> str:
     print("database: %s" % name)
     print("!! rollback (ledger): DELETE FROM ledger_events WHERE "
           "source_translator_ver LIKE '%s%%'" % (TRANSLATOR_BASE.split("rules:")[0]))
-    print("!! rollback (rdb):    DELETE FROM <delam_obs|inspection_run>__lines WHERE written_by = '%s'"
-          % UPDATED_BY)
+    print("!! undo (tables): %s - its rows are in <delam_obs|inspection_run>__lines, written_by = '%s' "
+          "(transaction_id above)" % ("don't paste SQL - ask before undoing a seed", UPDATED_BY))
     return name
 
 
@@ -1127,6 +1126,10 @@ def prove_class_decides(db, sample: int = 200):
 # --------------------------------------------------------------------------
 
 
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apply", action="store_true")
@@ -1291,4 +1294,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     main()

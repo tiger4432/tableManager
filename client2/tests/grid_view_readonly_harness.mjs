@@ -1125,7 +1125,7 @@ const DEFECTS = [
   ['the rule stops refusing, so no control is armed and nothing says why', 'guard',
     s => s.replace("  return tableIsView() ? VIEW_READ_ONLY_NOTE : '';", "  return '';")],
   ['the control list loses a seat, which is how the seventh went missing', 'guard',
-    s => s.replace("  'addRowBtn', 'deleteRowBtn', 'txApplyBtn',", "  'deleteRowBtn', 'txApplyBtn',")],
+    s => s.replace("  'addRowBtn', 'addItemBtn', 'deleteRowBtn', 'txApplyBtn',", "  'addItemBtn', 'deleteRowBtn', 'txApplyBtn',")],
   ['the table never says what it is', 'guard',
     s => s.replace('  badge.textContent = why;\n  badge.hidden = !why;', '')],
   // 🔴 C-105. The read path, which is where the owner's 422 arrived as an exception.
@@ -1138,7 +1138,7 @@ const DEFECTS = [
     s => s.replace("  if (state.gridApi) state.gridApi.setGridOption('rowData', []);\n", '')],
   // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
   ['api.js: the add-row funnel is unguarded again', 'api',
-    s => s.replace('  if (refuseWrite()) return;\n', '')],
+    s => s.replace(/(export async function addRows[\s\S]*?)  if \(refuseWrite\(\)\) return;\n/, '$1')],
   ['api.js: the controls are never told the table changed', 'api',
     s => s.replace('  applyWriteGuards();\n', '')],
   // ⚰️ C-120. TWO MUTANTS MOVED, THEY DID NOT DIE. 「the guard eats the words the markup

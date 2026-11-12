@@ -990,6 +990,16 @@ async function xSuite(m, say) {
     m.chainStateWhy({ state: 'failed', why: { stage: null, failure: 'Y' } })];
   say('W3 a retry and a failure say the stage they broke in, before the sentence', same(staged,
     ['attempt 1/2 · mapper · X', 'write · Y', 'Y']), JSON.stringify(staged));
+  const building = { rule: 'wafer_report', table: 'dt_wafer', wafer: 'L1/W1', step: 3, cap: 12, doing: 'asking the model',
+    queued: [{ lot: 'L1', wafer: 'W2' }, { lot: 'L1', wafer: 'W3' }], queued_more: 5, elapsed_seconds: 42 };
+  const reports = [m.chainStateWhy({ state: 'running', why: { stage: 'mapper', moved_seconds: 2, elapsed_seconds: 42, report: building } }),
+    m.chainStateWhy({ state: 'running', why: { stage: 'mapper', elapsed_seconds: 42,
+      report: { ...building, step: null, doing: null, cap: null, queued: [], queued_more: 0 } } }),
+    m.chainStateWhy({ state: 'running', why: { stage: 'mapper', elapsed_seconds: 42, report: null } })];
+  say('W7 a running line building an AI report says its rule, wafer, step of its cap, what it does and the wafers after it;'
+    + ' before its first step, its rule and wafer; none built, today\'s line', same(reports,
+    ['mapper · moved 2s ago · 42s · report wafer_report · wafer L1/W1 · step 3/12 · asking the model · 7 queued',
+      'mapper · 42s · report wafer_report · wafer L1/W1', 'mapper · 42s']), JSON.stringify(reports));
   const FAILED = [{ transaction_id: 'tx-timeout-0000-0000', rules: ['lot_slot_join'], tables: ['dt_wafer'], stage: 'write',
     rows_in: 19000, rows_out: 20000, rows: 19000, failure: 'statement timeout · 600 s · stage write', failed_at: '2026-10-21 17:00:00' },
   { transaction_id: 'single_e-2', rules: null, tables: null, stage: null, rows_in: null, rows_out: null, rows: null,
@@ -1101,7 +1111,7 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
       mutate: swap('    if (!view.available) {\n      this.root.appendChild', '    if (!view.available) {\n      this.root.textContent = \'\';\n      this.root.appendChild') },
     { id: 'SM1', what: 'running does not say when it last moved', catches: 'S1',
-      mutate: swap('    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],', '    running: [w.stage, formatAge(w.elapsed_seconds)],') },
+      mutate: swap('    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), r.rule', '    running: [w.stage, formatAge(w.elapsed_seconds), r.rule') },
     { id: 'SM2', what: 'a null field is drawn', catches: 'S2',
       mutate: swap("parts.filter((p) => p !== null && p !== undefined && p !== '')", "parts.filter((p) => p !== undefined && p !== '')") },
     { id: 'SM3', what: 'stalled loses its tone', catches: 'S3', mutate: swap(" stalled: 'warn',", '') },
@@ -1111,7 +1121,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'SM6', what: 'the admin line draws no state', catches: 'S6',
       mutate: swap('      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState, r.slotPid));\n', '') },
     { id: 'SM7', what: 'waiting for a table says nothing of the table', catches: 'S1',
-      mutate: swap('    waiting_for_table: [w.table && `waiting for ${w.table}`],\n', '') },
+      mutate: swap('    waiting_for_table: [w.table && `waiting for ${w.table}`, w.held_by && `held by ${w.held_by}`],\n', '') },
+    { id: 'SM7b', what: 'waiting for a table says nothing of who holds it (B held_by, lead 11-10)', catches: 'S1',
+      mutate: swap(', w.held_by && `held by ${w.held_by}`]', ']') },
     { id: 'SM8', what: 'the slot pid is not drawn', catches: 'S7',
       mutate: swap("    cell.appendChild(line(doc, 'meta queue-line-slot-pid', `slot pid ${slotPid}`));\n", '') },
     { id: 'SM9', what: 'the admin line does not hand over its slot pid', catches: 'S7',
@@ -1144,6 +1156,12 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
       mutate: swap("go.addEventListener('click', () => this.onResume(r.resume));", '') },
     { id: 'ZM5', what: 'a cut run of any op matches the count', catches: 'Z4',
       mutate: swap('c && c.op != null && String(c.op) === String(op) && ', 'c && ') },
+    { id: 'WM13', what: 'a report building is not said', catches: 'W7',
+      mutate: swap("  const r = w.report && typeof w.report === 'object' ? w.report : {};", '  const r = {};') },
+    { id: 'WM14', what: 'the wafers past the 200 shown are not counted', catches: 'W7',
+      mutate: swap(' + (isCount(r.queued_more) ? Number(r.queued_more) : 0);', ';') },
+    { id: 'WM15', what: 'a step says no cap', catches: 'W7',
+      mutate: swap("`step ${r.step}${isCount(r.cap) ? `/${r.cap}` : ''}`", '`step ${r.step}`') },
     { id: 'WM12', what: 'a capped failure list says nothing', catches: 'W6',
       mutate: swap('    if (view.recentCut) box.appendChild(this._line(\'chain-queue-truncated\', view.recentCut));\n', '') },
   ];

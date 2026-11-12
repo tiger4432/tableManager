@@ -57,14 +57,19 @@ export function countNumberText(x) {
   return c.total === null ? COUNTING : `${c.total.toLocaleString('en-US')}${c.capped ? '+' : ''}`;
 }
 
+/** «· 10s ago» after a count from its counted_at — '' when capped, not counted or not timed. */
+export function countedAgo(x, now = Date.now()) {
+  const c = countOf(x);
+  const at = c.capped ? null : parseServerInstant(c.countedAt);
+  return at ? ` · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : '';
+}
+
 /** 바닥줄 한 줄 — «4,012,334 rows · 10s ago» · «10,000+ rows» · «Counting rows…» · «Count failed (<reason>)». 나이는 `now` 에서 센 시각까지. */
 export function matchCountText(x, now = Date.now(), unit = 'row') {
   const c = countOf(x);
   if (c.failed) return c.failed.reason ? `${COUNT_FAILED} (${c.failed.reason})` : COUNT_FAILED;
   if (c.total === null) return c.counting ? countingText(unit) : COUNTING;
-  const rows = unitText(countNumberText(c), unit);
-  const at = c.capped ? null : parseServerInstant(c.countedAt);
-  return at ? `${rows} · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : rows;
+  return unitText(countNumberText(c), unit) + countedAgo(c, now);
 }
 
 /** 마우스를 올리면 — 센 시각(보는 쪽 zone)과 센 데 걸린 초. 못 센 수는 그 줄 전부와 그 시각(좁은 바닥줄은 사유를 자릅니다). */

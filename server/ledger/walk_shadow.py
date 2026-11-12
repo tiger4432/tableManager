@@ -32,7 +32,7 @@ CELLS = ("subject_type", "subject_keys", "predicate", "object_payload", "occurre
 
 
 def _edge(key) -> tuple:
-    payload = json.loads(key[3])
+    payload = json.loads(key[3]) or {}          # a registration has no object payload
     return key[0], key[1], key[2], payload.get("type"), json.dumps(payload.get("keys"), sort_keys=True)
 
 

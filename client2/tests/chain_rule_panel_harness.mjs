@@ -22,6 +22,7 @@ import {
   MAPPER_GROUPS, mapperChoices, mapperNotes, splitMapper, joinMapper,
 } from '../src/chain_rule_panel.js';
 import { TABLE_REGISTRY } from '../src/table_config_panel.js';
+import { pickerGroups, chainRuleGroups, FILTER_WORD } from '../src/chain_rule_groups.js';
 import { ABSENT } from '../src/absent.js';
 
 let pass = 0;
@@ -307,6 +308,58 @@ console.log('\n[5] the mapper candidates, and the translation between the two sp
   eq('...and one that would not import says why',
     mapperNotes({ refused: [{ module: 'mappers.x', why: 'ImportError: no pandas' }] }),
     [{ kind: 'refused', text: 'mappers.x · ImportError: no pandas' }]);
+}
+
+// ═══ ⑨ the editor's picker in the list's groups (owner 11-11 «체인 선언 룰 편집기도 그룹 해줘야지») ════════════════
+console.log('\n[9] the editor\'s picker: the list\'s groups, its filter, one way to open a rule');
+{
+  const RULES = [
+    { name: 'lot_to_wafer', trigger_table: 'lot_event', target_table: 'wafer' },
+    { name: 'wafer_to_die', trigger_table: 'wafer', target_table: 'die' },
+  ];
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  let opened = [];
+  let answer = true;
+  const asked = [];
+  let by = 'trigger';
+  const panel = new ChainRulePanel(host, { doc, onOpen: (n) => { opened.push(n); },
+    confirm: (q) => { asked.push(q); return answer; },
+    pickGroups: (names, query) => pickerGroups(RULES, names, { by, query }), pickFilter: FILTER_WORD });
+  panel.render(PAYLOAD);
+  const picker = () => byClass(host, 'chain-rule-picker')[0];
+  const groups = () => byTag(picker(), 'OPTGROUP').map((g) => `${g.getAttribute('label')}:${byTag(g, 'OPTION').map((o) => o.value).join('+')}`);
+  const list = (q = '') => chainRuleGroups(RULES, { by, query: q }).map((g) => `${g.key}:${g.rules.map((r) => r.name).join('+')}`);
+  eq('G1 the picker\'s groups are the list\'s, by the list\'s key', groups(), list());
+  const filter = byClass(host, 'chain-rule-pick-filter')[0];
+  ok('G2 a filter box beside it, in the list\'s word', Boolean(filter) && filter.placeholder === FILTER_WORD
+    && host.children.length > 0);
+  filter.value = 'die';
+  filter._on.input();
+  eq('G3 typed: the groups the list\'s filter keeps', groups(), list('die'));
+  const loose = picker().children.filter((c) => c.tagName === 'OPTION').map((o) => o.value);
+  eq('G4 the open rule stays named though the filter leaves it out - first, outside the groups', loose, ['lot_to_wafer']);
+  filter.value = '';
+  filter._on.input();
+  by = 'writes';
+  filter._on.input();
+  eq('G5 grouped by the table written, the picker follows', groups(), list());
+  eq('G6 with no groups handed (the table registry, any registry), one flat list and no filter box',
+    [byTag(byClass(draw(PAYLOAD), 'chain-rule-picker')[0], 'OPTGROUP').length, byClass(draw(PAYLOAD), 'chain-rule-pick-filter').length],
+    [0, 0]);
+  ok('G7 nothing unsaved: pick opens the rule, asks nothing', panel.pick('wafer_to_die') === true
+    && opened.join() === 'wafer_to_die' && asked.length === 0, JSON.stringify([opened, asked]));
+  panel.draft = '{"edited": true}';
+  answer = false;
+  const kept = panel.pick('lot_to_wafer');
+  ok('G8 unsaved text: pick asks, and kept, opens nothing and the picker says what is open', kept === false
+    && opened.length === 1 && asked.length === 1 && picker().value === 'lot_to_wafer', JSON.stringify([opened, asked, picker().value]));
+  answer = true;
+  ok('G9 ...let go, it opens', panel.pick('lot_to_wafer') === true && opened.join() === 'wafer_to_die,lot_to_wafer');
+  opened = [];
+  picker()._on.change({ target: { value: 'wafer_to_die' } });
+  ok('G10 the picker opens by the same door - it asks too', asked.length === 3 && opened.join() === 'wafer_to_die',
+    JSON.stringify([asked.length, opened]));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
