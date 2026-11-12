@@ -195,10 +195,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     blank = {}
     for i in sorted(again):
         blank.setdefault(targets[i], set()).update(items[i].get("blank") or ())
-    # the columns this write touched - its kept lines' and the cells a pin came off (lead 11-12 b); a mark merges all
-    touched = None if again or any(items[i]["line_kind"] == MARK for i in kept) else (
-        {c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
-        | {c for _r, c in unpinned})
+    # the columns this write touched (lead 11-12 b): its kept lines' - a mark's the cells it names (a pin's) - the cells
+    # a pin came off, a merge-again mark's blanks, an item's `scope` (a notation fold's re-merge: the merge's scope, no
+    # line's columns); main re-decided those cells alone
+    touched = ({c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
+               | {c for _r, c in unpinned} | {c for i in again for c in items[i].get("blank") or ()}
+               | {c for i in list(kept) + sorted(again) for c in items[i].get("scope") or ()})
     new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
                      at, old, rows_plain, keeps, blank, touched)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
@@ -209,7 +211,9 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     types = cfg.get("column_types") or {}
     for i in sorted(again):                        # a row merged again changed when a shown value moved
         row_id = targets[i]
-        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], shape["columns"], types):
+        # over the columns the merge answers - t's framework columns (row_id, updated_at, ...) are not in its answer and
+        # would read as moved on every row (lead 11-12: no audit row where nothing shown moves)
+        if row_id in new and _moved(old.get(row_id) or {}, new[row_id], list(new[row_id]), types):
             changed.setdefault(row_id, {"old": old.get(row_id), "new": new[row_id], "work": work[i]})
     said_rows = {}
     for i in sorted(again):                        # its audit row only when a shown value moved (lead 11-11)
@@ -1112,7 +1116,11 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
                                             for c in person])
     db.execute(delete(now).where(now.c.row_id == shell))
     crud.delete_row_layers(db, table, [shell])
-    merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps)
+    # the holder's columns this merge can move (main's merge body moved only these): what the shell's lines spoke,
+    # the merge's own lines, its chosen and person cells - any other keeps its winner (lead 11-12)
+    touched = (set(spoke) | {c for it in said for c in it.get("values") or ()} | set(chosen) | set(person)) if keeps else None
+    merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps,
+                        columns=touched)
     return s_now, h_now, merged[holder]
 
 
