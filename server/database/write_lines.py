@@ -506,12 +506,14 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                 kept.add(len(items))
                 items.append(kid)
                 same |= cs
+                rule = _owner(kid)[0]
                 for c in cs:
-                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i, _owner(kid)[0])
+                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i, rule, None)
             it["folds"] = {s: f - same for s, f in folds.items() if f - same}
             it["values"] = {c: value for c, value in it["values"].items() if c not in same}
+            rule = _owner(it)[0]
             for c, value in it["values"].items():
-                own[c] = hand + (value, when, UNNUMBERED + i, _owner(it)[0])
+                own[c] = hand + (value, when, UNNUMBERED + i, rule, None)
             for s, f in folds.items():             # a folded source no longer heads the column, whichever line took it
                 for c in f:
                     row.get(s, {}).pop(c, None)
@@ -539,23 +541,26 @@ def _head_text(text, kind):
 
 
 def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule)}} - the columns each source heads on the row
+    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - the columns each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
     row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
     item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]
+    src = lines.LineSource.__table__
     out = {}
     for page in _pages(sorted(row_ids), 1):
         for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
-                                     ln.c.line_id, ln.c.owner_rule, *heads, *withdrawn, *values)
+                                     ln.c.line_id, ln.c.owner_rule, src.c.copy_of, *heads, *withdrawn, *values)
+                              .select_from(ln.outerjoin(src, src.c.source_name == ln.c.source_name))
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
-            said = dict(zip(columns, row[7 + 2 * chunks:]))
+            said = dict(zip(columns, row[8 + 2 * chunks:]))
             for c in bits:
                 k, m = _bit(bits, c)
-                if row[7 + k] & m and not row[7 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6])
+                if row[8 + k] & m and not row[8 + chunks + k] & m:
+                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6],
+                                                               row[7])
     return out
 
 
@@ -584,7 +589,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
             continue
         kind, pin = held.get(c, "string"), pins.get((row_id, c))
         layers = [SimpleNamespace(source_name=s, value=crud.line_value(said[c][2], kind), ingested_at=said[c][3],
-                                  line_id=said[c][4], owner_rule=said[c][5]) for s, said in row.items() if c in said]
+                                  line_id=said[c][4], owner_rule=said[c][5], copy_of=said[c][6])
+                  for s, said in row.items() if c in said]
         if crud.is_file_layer(source):
             repeat, folded, moved = crud.file_layer_fold(layers, source, value, kind, table, pin, ranks)
             if repeat:
@@ -595,7 +601,8 @@ def _others(table, item, row_id, row, held, pins, same, ranks):
                 moves.setdefault(moved.source_name, set()).add(c)
         elif not any(crud.layer_ranks_as(s.source_name) == crud.layer_ranks_as(source) for s in layers):
             shown = crud.compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at,
-                                                                 "line_id": s.line_id, "owner_rule": s.owner_rule}
+                                                                 "line_id": s.line_id, "owner_rule": s.owner_rule,
+                                                                 "copy_of": s.copy_of}
                                                  for s in layers}, pin, table, ranks=ranks)[0]
             if not crud.values_differ(shown, value, kind):
                 same.add(c)
@@ -632,9 +639,10 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
         it = items[i]
         said = it.get("values") if it["line_kind"] == WRITE else it.get("columns") if it["line_kind"] == WITHDRAW else ()
         masks = _masks(bits, chunks, said or ())
+        rule, key = _owner(it)
         row = {"line_kind": it["line_kind"], "source_name": it.get("source_name"), "at": it.get("at") or at,
                "written_by": it.get("written_by"), "batch": transaction_id, "input_row": it.get("input_row"),
-               "owner_rule": _owner(it)[0], "owner_key": _owner(it)[1], "confirmed": it.get("confirmed"),
+               "owner_rule": rule, "owner_key": key, "confirmed": it.get("confirmed"),
                "row_id": targets[i], "business_key_val": keys.get(targets[i])}
         for k in range(chunks):
             row["written_%d" % k] = masks[k]
@@ -1045,7 +1053,12 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
         # one mark line on the holder, always: the merge's own new line - the migration's write_back finds a row by a
         # line newer than the copy, and moved lines keep their old line_id (C · lead 11-11)
         said.append({"line_kind": MARK, "source_name": crud.COLLISION_SOURCE, "written_by": written_by or "system"})
-        lines.note_sources(db, set(renamed.values()) | {it["source_name"] for it in said})
+        # a copy of the shell's - its moved lines and a shell value no line said - ranks behind the holder's own
+        # (lead 11-12 ㄴ); the holder's own person value kept as «old_exist» is the holder's, not a copy
+        copies = {name: src for src, name in renamed.items()}
+        if fallback:
+            copies[crud.merged_layer_name(source_name or crud.USER_SOURCE, tag)] = source_name or crud.USER_SOURCE
+        lines.note_sources(db, set(renamed.values()) | {it["source_name"] for it in said}, copies)
         if said:
             every = set(range(len(said)))
             written, _ids = _lines(db, ln, bits, chunks, said, every, {i: holder for i in every},

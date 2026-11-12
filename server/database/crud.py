@@ -1002,7 +1002,8 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
 
     def newest(layers):
         name = compute_priority_value({s.source_name: {"value": s.value, "ingested_at": s.ingested_at,
-                                                       "line_id": getattr(s, "line_id", None)}
+                                                       "line_id": getattr(s, "line_id", None),
+                                                       "copy_of": getattr(s, "copy_of", None)}
                                        for s in layers}, None, table_name, ranks=ranks)[1]
         return next(s for s in layers if s.source_name == name)
     top = newest(same_class)
@@ -2049,11 +2050,12 @@ def formula_written(table_name: str, column: str, source_name) -> Optional[str]:
 
 
 _TERMS_MEMO = ("rank_terms",)
+_NAMES_MEMO = ("layer_names",)
 
 
 def rank_terms(table_name: str = None):
     """THE layer order, as one list of terms - each term(line, unowned) - that `compute_priority_value` and
-    `lines.merge` both walk, so the two cannot drift (C 11-11). A line is {"ranks_as", "owner_rule", "at" (POSIX
+    `lines.merge` both walk, so the two cannot drift (C 11-11). A line is {"ranks_as", "copy_of", "owner_rule", "at" (POSIX
     seconds or None), "source_name"}. `unowned`: a chain layer no rule owns sits on the cell.
     Smaller sorts first; the pin is not a term (it wins before the order is asked)."""
     priority_map = resolve_priority_map(table_name)
@@ -2063,6 +2065,8 @@ def rank_terms(table_name: str = None):
     return [
         # 1. declared ranking
         lambda ln, u: priority_map.get(ln["ranks_as"], 99),
+        # 1a. the row's own layers before a copy a key merge brought onto it (lead 11-12 ㄴ)
+        lambda ln, u: 1 if ln.get("copy_of") else 0,
         # 1b. a rule that says its priority before one that does not
         lambda ln, u: 0 if ln["owner_rule"] in said else 1,
         # 1c. the smaller priority
@@ -2146,18 +2150,28 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     if terms is None:
         terms = ranks[_TERMS_MEMO] = rank_terms(table_name)
 
+    names = ranks.setdefault(_NAMES_MEMO, {})
+
+    def _named(name):
+        # (ranks_as, owner_rule) the name says - read once a batch, not once a cell (lead 11-12)
+        got = names.get(name)
+        if got is None:
+            owner = layer_owner(name)
+            got = names[name] = (layer_ranks_as(name), owner[0] if owner else None)
+        return got
+
     def _owner_rule(name, entry):
         # a line's own owner_rule where the entry carries it (the line's - lead 11-12 ㄴ), else the name's
         if isinstance(entry, dict) and "owner_rule" in entry:
             return entry["owner_rule"]
-        owner = layer_owner(name)
-        return owner[0] if owner else None
+        return _named(name)[1]
 
     # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
     # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
-    said = {name: {"ranks_as": layer_ranks_as(name), "owner_rule": _owner_rule(name, entry),
+    said = {name: {"ranks_as": _named(name)[0], "owner_rule": _owner_rule(name, entry),
                    "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
-                   "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
+                   "line_id": entry.get("line_id") if isinstance(entry, dict) else None,
+                   "copy_of": entry.get("copy_of") if isinstance(entry, dict) else None}
             for name, entry in sources.items()}
     # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
     # one sits on the cell, the chain's layers there order by time as before
