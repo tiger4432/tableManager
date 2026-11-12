@@ -238,16 +238,22 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
             after = after_next
             now = time.perf_counter()
             if after is None:
-                began = time.perf_counter()          # a migrated t__lines has no statistics: its first reads plan blind
+                # the copy wrote won_by on every row of t - a dead row each, t twice its size until vacuumed (lead 11-13);
+                # a migrated t__lines has no statistics, its first reads would plan blind
+                took = {}
                 with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
-                    c.execute(text('ANALYZE "%s"' % lines.lines_relation(table)))
-                say("%s: done - %d layer(s) copied in %.0f s - analyzed %s in %.0f s%s" % (
-                    table, copied, now - started, lines.lines_relation(table), time.perf_counter() - began,
+                    for rel in (table, lines.lines_relation(table)):
+                        began = time.perf_counter()
+                        c.execute(text(('VACUUM (ANALYZE) "%s"' if engine.dialect.name == "postgresql"
+                                        else 'ANALYZE "%s"') % rel))
+                        took[rel] = time.perf_counter() - began
+                say("%s: done - %d layer(s) copied in %.0f s - vacuumed %s%s" % (
+                    table, copied, now - started, " · ".join("%s in %.0f s" % kv for kv in took.items()),
                     (" - %d cell(s) do not match, listed in %s: each shows t's value until its column is written, "
                      "then its lines' winner; to copy those rows again: python server/scripts/copy_layers_to_lines.py "
                      "--apply --rows %s" % (found, path, path)) if found else ""))
                 return {"table": table, "copied": copied, "seconds": now - started, "mismatched": found,
-                        "record": path if found else None}
+                        "record": path if found else None, "vacuumed": took}
             if now - said >= SAY_EVERY:
                 said = now
                 done = min(pages * page, rows)
