@@ -68,6 +68,26 @@ def test_a_page_writes_the_rules_mark_as_its_layer_and_stages_one_row(db):
     assert _page(db, _proposed(db, ["r1"]), apply=True)["rows_already_marked"] == 1, "a re-run writes nothing"
 
 
+def test_a_page_checks_out_one_connection_and_takes_what_shows_from_the_writes_answer(db):
+    """A read after the door's commit is a second checkout a page - on the board's NullPool a fresh connect, 0.25 s
+    (lead 11-12). What shows after the write is the write's answer (items_report «new»), or what was read before."""
+    from sqlalchemy import event
+
+    crud.apply_batch_updates(db, LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=_ids(db)["r2"], updates={MARK: "MINE"}, source_name=crud.USER_SOURCE, updated_by="t")], silent=True))
+    db.commit()
+    pool, checkouts = db.get_bind().pool, []
+    listen = lambda *_a: checkouts.append(1)                       # noqa: E731
+    event.listen(pool, "checkout", listen)
+    try:
+        counts = _page(db, _proposed(db, ["r1", "r2"]), apply=True)
+    finally:
+        event.remove(pool, "checkout", listen)
+
+    assert (counts["rows_to_mark"], counts["rows_higher_layer"]) == (2, 1), "r2 shows the person's MINE"
+    assert len(checkouts) == 1
+
+
 def test_the_preview_counts_the_page_and_leaves_t_the_lines_and_the_outbox_as_they_were(db):
     before = _state(db)
 

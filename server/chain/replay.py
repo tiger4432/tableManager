@@ -1972,7 +1972,10 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     col_type = ((crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}).get(mark, "string")
     counts = Counter()
     ids = list(dict.fromkeys(item.row_id for item in batch.updates if item.row_id))
-    there = {r for (r,) in db.query(model.row_id).filter(model.row_id.in_(ids))} if ids else set()
+    # the rows still there and the mark they show before the write - the write's answer gives the rows it changed, so
+    # nothing is read after the door's commit (a second checkout a page - lead 11-12)
+    was = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(ids))) if ids else {}
+    there = set(was)
     judged = [item for item in batch.updates if item.row_id in there]
     counts["rows_gone"] += len(batch.updates) - len(judged)
     before = lines.layers(db, table_name, sorted(there), [mark])
@@ -1992,7 +1995,9 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
             if item.row_id in wrote:
                 after.setdefault((item.row_id, mark), {})[item.source_name] = {
                     "value": crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)}
-        shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
+        shown = dict(was)
+        shown.update({got["row_id"]: got["new"][mark] for got in (work if judged else ())
+                      if got["new"] is not None and mark in got["new"]})
     for item in judged:
         clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
         said = lambda layers: (layers.get((item.row_id, mark)) or {}).get(item.source_name)   # noqa: E731
