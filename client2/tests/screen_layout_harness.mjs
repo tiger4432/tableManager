@@ -2559,8 +2559,10 @@ function screensLib(TOL) {
       const at = lineOf(b, r);
       if (!at) continue;
       const near = at.near;
-      // The other controls of the line when it has any; its text when the button stands alone among words.
-      const line = near.some((x) => x.control) ? near.filter((x) => x.control) : near;
+      // The other boxed controls of the line when it has any (a word-like × in a chip shows no height - boxed, lead 11-12 ㄱ);
+      // its text when the button stands alone among words.
+      const sized = (x) => x.control && boxed(x.el);
+      const line = near.some(sized) ? near.filter(sized) : near;
       if (!line.length) continue;
       const h = median(line.map((x) => x.box.height));
       const f = median(line.map((x) => x.font));
@@ -4508,6 +4510,9 @@ const MUTANTS = [
   { name: 'the status bar on one line again - its counts 0 wide at 1024', entry: 'index.html', rule: 'counts reachable', at: 'status-left',
     file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  align-items: center;\n  justify-content: space-between;', '  align-items: center;\n  justify-content: space-between;'],
       ['  min-width: 30ch;\n', '  min-width: 0;\n']] },
+  // The size rule's line counts boxed controls only (lead 11-12 ㄱ): a head bar button past them is still red.
+  { name: 'the ⋯ button boxed past the head bar controls', entry: 'index.html', rule: 'size', at: 'nav-menu-btn',
+    file: 'src/style.css', edits: [['.more-btn { font-size: var(--fs-h5); }', '.more-btn { font-size: var(--fs-h5); } .app-header #nav-menu-btn { height: 60px; }']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
   { name: 'the last action line wrapping in the head bar', entry: 'index.html', rule: 'last line', at: 'performance-log',
