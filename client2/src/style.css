@@ -3537,7 +3537,6 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
   white-space: nowrap;
   cursor: pointer;
 }
-.table-steps { gap: var(--space-1); }
 /* ← → stand on the head bar's line beside its 36 px controls: the one control height */
 .table-step {
   height: var(--control-h);

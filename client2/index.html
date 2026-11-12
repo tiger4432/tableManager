@@ -37,11 +37,10 @@
         </div>
 
         <div class="controls-area">
-          <div class="control-group table-steps">
+          <div class="control-group">
+            <!-- ← → in the table's own group: a wrapped bar takes them with the search box, never alone beside the logo -->
             <button id="table-back" type="button" class="table-step" aria-label="Back" title="Back" disabled>←</button>
             <button id="table-forward" type="button" class="table-step" aria-label="Forward" title="Forward" disabled>→</button>
-          </div>
-          <div class="control-group">
             <label for="table-select">Table</label>
             <input id="table-search" type="search" class="glass-input" placeholder="Search tables"
                    aria-label="Search tables" autocomplete="off" spellcheck="false">
