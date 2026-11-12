@@ -97,6 +97,10 @@ def census(board):
         red = [item["why"] for item in answer["engine"]["left_out"] if item["source"] == cell]
         nodes = {node["id"]: node for node in answer["nodes"]}
         want = gate.expected(seat, kind, ledger_subgraph._instant)
+        if seat == "value":                                         # no node, so no edge to it (gate.VALUE_IS_A_QUALIFIER)
+            drawn = [node["id"] for node in answer["nodes"] if node.get("node_kind") == "value" or node["type"] == "Value"]
+            out[cell] = red + ([f"{len(drawn)} value node(s) - {gate.VALUE_IS_A_QUALIFIER}"] if drawn else [])
+            continue
         for row in gate.ROWS:
             said = not roleframe._is_missing(gate.cell_of_row(kind, row)) or seat == "key_constant"
             subject = explorer.entity_id(cell if seat == "qualifier_required_attribute" else "subj", {"sid": row})
@@ -145,7 +149,7 @@ def test_every_cell_walks(board):
     """Every cell is walked and its reds collected; the ENABLED cells are held (none red), every other one carries
     the reason it is not held yet (`gate.not_yet`)."""
     assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 94
-    assert len(gate.ENABLED) == 83 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - a bound formatted time
+    assert len(gate.ENABLED) == 93 and gate.ENABLED <= set(gate.CELLS)      # 94 - a bound formatted time
     assert all(gate.not_yet(*cell) for cell in gate.CELLS if cell not in gate.ENABLED)
     reds = census(board)
     assert len(reds) == len(gate.CELLS), "canary: every cell walked"

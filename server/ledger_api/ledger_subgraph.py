@@ -4220,10 +4220,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # and measurement-value branches that used to mint nodes here retired 2026-08-28,
         # with the id builders behind them.
         #
-        # ⚠️ SAID PLAINLY: findings therefore do not appear in the walk. Making a
-        # finding a place again means declaring `defect@1` and re-emitting `observed@1` with
-        # an entity_ref object - a reload of 103,841 atoms, and the owner's call. The day that
-        # lands, this function needs no branch: the entity_ref arm above already draws it.
+        # A finding is a node: the sample declaration has `defect@1` as an entity and `observed@1` as an entity_ref
+        # to it, so the arm above draws it. Only a value object ends here (owner 11-11: a value is a Quantity edge's qualifier).
         return True
 
     # 🔴 `_link_containers` REMOVED 2026-08-28. It composed the declared
