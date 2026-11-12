@@ -1213,7 +1213,8 @@ TABLE_CONFIG = sys._table_config_singleton
 
 
 class ReadOnlyRelation(ValueError):
-    """⛔ THIS RELATION DOES NOT ACCEPT WRITES — a REFUSAL, not a fault.
+    """⛔ THIS RELATION DOES NOT ACCEPT WRITES — a REFUSAL, not a fault. Also a pin or a layer removal on a column
+    that keeps no layers (`refuse_layers_of_no_history`).
 
     A `ValueError` still, because that is what the sentence was raised as before it moved
     here and callers already catch it that way; a NAME so the route can answer 422 with the
@@ -1246,6 +1247,16 @@ def refuse_write_to_view(table_name):
     if catalog_kind(TABLE_CONFIG.get(table_name)) == "view":
         raise ReadOnlyRelation(
             "'%s' is read-only (kind: view) - the catalogue declares it a view, so it takes no writes." % table_name)
+
+
+def refuse_layers_of_no_history(table_name, columns, asked):
+    """A pin or a layer removal (`asked`, what it does, and what to do instead) on a column of no history refused by
+    name - it keeps no layers, its value is t's, the last write's (`keeps_history`; lead 11-12 안 1). THE seat both
+    ask (`set_cell_manual_priority_batch`, `delete_cell_source_batch`)."""
+    kept = [c for c in dict.fromkeys(columns) if not keeps_history(table_name, c)]
+    if kept:
+        raise ReadOnlyRelation("%s of '%s' keep%s no history - %s" % (
+            ", ".join("'%s'" % c for c in kept), table_name, "s" if len(kept) == 1 else "", asked))
 
 
 def normalize_stored_text(value: Any) -> Any:
@@ -3677,7 +3688,8 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             tally["blank"] += val is None
             formulas.append(formula)
             continue                                # a formula's column: no line
-        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map) \
+                and keeps_history(table_name, col_name):     # no history: last write wins, a blank too (lead 11-12 안 1)
             _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, DROP_ABSENT_NOT_WRITTEN,
                                  clean_val)
             continue
@@ -4956,6 +4968,8 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     # ⛔ A VIEW FIRST. `delete_cell_source` delegates here, so the single-cell control is
     # gated by this one line too (S-224).
     refuse_write_to_view(table_name)
+    refuse_layers_of_no_history(table_name, [item["column_name"] for item in cells],
+                                "no layers to take a source off; write a blank to clear it.")
     from database.write_lines import write_lines
 
     if not cells:
@@ -5023,6 +5037,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     entry a cell whose shown value moved - no before value; the rows merged away)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
+    refuse_layers_of_no_history(table_name, [item["column_name"] for item in updates],
+                                "no layers to pin; its value is the last one written.")
     from database import lines
     from database.write_lines import write_lines
 

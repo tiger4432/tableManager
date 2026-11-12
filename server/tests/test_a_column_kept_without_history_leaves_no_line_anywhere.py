@@ -6,11 +6,15 @@ its line there.
     writer × column        stored · handed back
     a machine's write      state: none         plain: the row's line naming it alone
     a person's write       state: none         plain: the cell's line
-    a priority pin         state: none         plain: the cell's line
-    a layer deleted        state: none         plain: the cell's line
+    a priority pin         state: refused      plain: the cell's line
+    a layer deleted        state: refused      plain: the cell's line
     a collision merge      state: none         plain: the cell's line
+    a file's blank         state: t blank      plain: dropped, as any machine's blank
     a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)
-    the replay's lines     test_fold_units_leaves_what_the_chain_leaves_pg"""
+    the replay's lines     test_fold_units_leaves_what_the_chain_leaves_pg
+
+A no-history column keeps no layers: its value is t's, the last write's, a blank included; a pin or a layer removal
+on it is refused by name (lead 11-12 안 1)."""
 import uuid
 
 import pytest
@@ -119,7 +123,7 @@ def _lines(db, writer, column, monkeypatch):
     return stored, handed
 
 
-@pytest.mark.parametrize("name", WRITERS)
+@pytest.mark.parametrize("name", [name for name, writer in WRITERS.items() if writer not in (pin, delete)])
 def test_a_column_kept_without_history_leaves_no_line_whoever_writes_it(db, name, monkeypatch):
     shown = _row(db).reading
     assert _lines(db, WRITERS[name], "reading", monkeypatch) == ([], [])
@@ -141,3 +145,23 @@ def test_a_plain_column_keeps_its_line_whoever_writes_it(db, name, monkeypatch):
     named = {column for column, _value in stored + handed}
     assert named <= {"note", "bn", "ROW_UPDATE"}, named
     assert not [value for _c, value in stored + handed if "reading" in str(value)]
+
+
+@pytest.mark.parametrize("name, said", [("a priority pin", "no layers to pin"),
+                                        ("a layer deleted", "no layers to take a source off")])
+def test_a_pin_or_a_layer_removal_on_a_column_of_no_history_is_refused_by_name(db, name, said):
+    table = lines.lines_relation(TABLE)
+    before = (_row(db).reading, db.execute(text('SELECT count(*) FROM "%s"' % table)).scalar())
+    with pytest.raises(crud.ReadOnlyRelation) as refused:                # the route answers it 422 with its reason
+        WRITERS[name](db, "reading")
+    db.rollback()
+    assert "'reading' of 'gauges' keeps no history - " + said in str(refused.value), str(refused.value)
+    assert (_row(db).reading, db.execute(text('SELECT count(*) FROM "%s"' % table)).scalar()) == before == ("2", 2)
+
+
+@pytest.mark.parametrize("column, shown", [("reading", None), ("note", "b")])
+def test_a_files_blank_clears_a_column_of_no_history_and_is_dropped_on_one_that_keeps_it(db, column, shown):
+    assert getattr(_row(db), column) == ("2" if column == "reading" else "b"), "CANARY: the fixture wrote the cell"
+    _write(db, {"gauge_id": "G1", column: ""}, "c.csv")
+    db.expire_all()
+    assert getattr(_row(db), column) == shown
