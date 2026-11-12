@@ -1484,9 +1484,10 @@ const MUTANTS = [
     find: '      state.globalHistoryLoaded = page.logs.length;',
     repl: '      state.globalHistoryLoaded = 0;' },
 
-  { name: 'a live redraw draws an unfolded transaction without its «more»', defect: true,
-    find: '        renderSubDetails(detailsContainer, group.logs, transactionPane(group, log.transaction_id, detailsContainer));',
-    repl: '        renderSubDetails(detailsContainer, group.logs);' },
+  { name: 'a line drawn open from what it holds draws it without its «more»', defect: true,
+    // re-anchored 11-13: the live redraw draws an open line through createGlobalTimelineItemDom's drawOpen
+    find: '        renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));\n      }\n    };',
+    repl: '        renderSubDetails(detailsContainer, group.logs);\n      }\n    };' },
   { name: 'unfolded again, a paged transaction reads its first page again', defect: true,
     find: "  return !(group && 'nextCursor' in group) && !holdsAll(group);",
     repl: '  const logs = group && Array.isArray(group.logs) ? group.logs : [];\n  return logs.length < Number(group && group.total_count);' },
@@ -1496,6 +1497,9 @@ const MUTANTS = [
   { name: 'a paged transaction redrawn past 500 rows hides the rest behind «Show remaining»', defect: true,
     find: '  const renderLimit = pane ? Infinity : 500;',
     repl: '  const renderLimit = 500;' },
+  { name: 'a line drawn again ignores the open state (the old redraw)', defect: true,
+    find: '    if (state.expandedTransactions.has(txId)) drawOpen();\n',
+    repl: '' },
   { name: 'the capped count drops its «+»', defect: true,
     find: "tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''",
     repl: "''" },
@@ -1644,8 +1648,10 @@ async function sectionP() {
   state.fetchingTransactions = new Set();
   const settle = async () => { for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r)); };
   const rowsOf = (from, n) => Array.from({ length: n }, (_, i) => ({ ...log(from + i, `ROW-${from + i}`), transaction_id: 'TX-P' }));
-  const capped = { ...group('TX-P', [{ ...log(1, 'ROW-1'), transaction_id: 'TX-P' }], 4200),
-    changed: [{ table_name: 't1', changed_rows: 1000, changed_rows_truncated: true }] };
+  // a fresh object each answer: the client keeps the one it read and writes its pages and cursor onto it
+  const listed = () => ({ ...group('TX-P', [{ ...log(1, 'ROW-1'), transaction_id: 'TX-P' }], 4200),
+    changed: [{ table_name: 't1', changed_rows: 1000, changed_rows_truncated: true }] });
+  const capped = listed();
   S.responses.push({ status: 200, body: recentPage([capped]) });
   await S.ctx.loadHistory();
   check('P1 the capped count says the floor: «1,000+ rows», not the 4,200 lines', entryHtml(S.timeline, 0).includes('1,000+ rows'), true);
@@ -1692,6 +1698,25 @@ async function sectionP() {
   await settle();
   check('P9 past 500 rows a redraw draws every page read, «more» after them',
     [list() ? list().children.length : null, moreBtn() ? moreBtn().textContent : null], [552, 'Partial (552) · more']);
+
+  // open or shut is state.expandedTransactions alone (lead 11-13): a line drawn again - by a live log, by the list read
+  // again - is drawn as that state says, and one press does what the screen shows
+  const shown = () => { const li = lineOf(); if (!li) return null;
+    return [li.querySelector('.tx-details-container').style.display, li.querySelector('.expand-indicator').textContent]; };
+  try { S.ctx.appendHistoryLocally({ ...log(997, 'ROW-997'), transaction_id: 'TX-P' }); } catch { /* P6a says a throw */ }
+  await settle();
+  check('P10 a live log redraws an open line open', shown(), ['block', '▼']);
+  await unfold();
+  check('P10b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
+  await unfold();   // open again: it holds its pages, no read
+  S.responses.push({ status: 200, body: recentPage([listed()]) });
+  S.responses.push({ status: 200, body: { ...page(rowsOf(1, 200), 'P2'), total_count: 1000, total_truncated: true } });
+  await S.ctx.rereadHistory();
+  await settle();
+  check('P11 the list read again draws the open line open - its first page again (known: the pages «more» read are re-read)',
+    [shown(), list() ? list().children.length : null], [['block', '▼'], 200]);
+  await unfold();
+  check('P11b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
   state.expandedTransactions = new Set();
   resetState();
 }

@@ -642,51 +642,57 @@ export function createGlobalTimelineItemDom(group) {
     const detailsContainer = li.querySelector('.tx-details-container');
     const indicator = li.querySelector('.expand-indicator');
 
-    const toggleExpand = async () => {
-      const isExpanded = state.expandedTransactions.has(txId);
-      if (isExpanded) {
-        state.expandedTransactions.delete(txId);
-        detailsContainer.style.display = 'none';
-        indicator.style.transform = 'rotate(0deg)';
-        indicator.textContent = '▶';
-      } else {
-        state.expandedTransactions.add(txId);
-        detailsContainer.style.display = 'block';
-        indicator.style.transform = 'rotate(90deg)';
-        indicator.textContent = '▼';
+    // Open or shut is state.expandedTransactions alone (lead 11-13): a line drawn again - the list read again, a live log -
+    // is drawn as that state says, so the next press does what the screen shows.
+    const drawShut = () => {
+      detailsContainer.style.display = 'none';
+      indicator.style.transform = 'rotate(0deg)';
+      indicator.textContent = '▶';
+    };
+    const drawOpen = async () => {
+      detailsContainer.style.display = 'block';
+      indicator.style.transform = 'rotate(90deg)';
+      indicator.textContent = '▼';
+      if (needsTransactionRead(group)) {
+        if (state.fetchingTransactions.has(txId)) return;
+        state.fetchingTransactions.add(txId);
+        detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
 
-        if (needsTransactionRead(group)) {
-          if (state.fetchingTransactions.has(txId)) return;
-          state.fetchingTransactions.add(txId);
-          detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
-
-          try {
-            // 🔴 Unchecked, `txDetail.logs` is undefined on a failure body and the group
-            //    renders as though the transaction has no rows. The catch below already
-            //    says 「Failed to load details.」 and releases `fetchingTransactions`, so a
-            //    throw both tells the truth and leaves the group retryable.
-            const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
-            if (!res.ok) throw new Error(`transaction ${res.status}`);
-            // a page and its cursor (lead 11-12 ㄴ) - the rest by the «more» at its end
-            const page = readHistoryPage(await res.json(), 'logs');
-            group.logs = page.logs;
-            group.nextCursor = page.truncated ? page.nextCursor : null;
-            state.fetchingTransactions.delete(txId);
-            // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다:
-            // 줄을 통째로 다시 그리면 방금 펼친 것이 접힙니다.
-            const keyEl = li.querySelector('.audit-target-table');
-            if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
-            renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
-          } catch (err) {
-            console.error('Failed to load transaction details', err);
-            detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
-            state.fetchingTransactions.delete(txId);
-          }
-        } else {
+        try {
+          // 🔴 Unchecked, `txDetail.logs` is undefined on a failure body and the group
+          //    renders as though the transaction has no rows. The catch below already
+          //    says 「Failed to load details.」 and releases `fetchingTransactions`, so a
+          //    throw both tells the truth and leaves the group retryable.
+          const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
+          if (!res.ok) throw new Error(`transaction ${res.status}`);
+          // a page and its cursor (lead 11-12 ㄴ) - the rest by the «more» at its end
+          const page = readHistoryPage(await res.json(), 'logs');
+          group.logs = page.logs;
+          group.nextCursor = page.truncated ? page.nextCursor : null;
+          state.fetchingTransactions.delete(txId);
+          // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다.
+          const keyEl = li.querySelector('.audit-target-table');
+          if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
           renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
+        } catch (err) {
+          console.error('Failed to load transaction details', err);
+          detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
+          state.fetchingTransactions.delete(txId);
         }
+      } else {
+        renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
       }
     };
+    const toggleExpand = () => {
+      if (state.expandedTransactions.has(txId)) {
+        state.expandedTransactions.delete(txId);
+        drawShut();
+      } else {
+        state.expandedTransactions.add(txId);
+        drawOpen();
+      }
+    };
+    if (state.expandedTransactions.has(txId)) drawOpen();
 
     card.addEventListener('click', (e) => {
       if (e.target.closest('.filter-tx-btn')) {
@@ -815,21 +821,8 @@ export function renderGlobalTimelineIncremental(log) {
   const newLi = createGlobalTimelineItemDom(group);
   if (!newLi) return;
 
+  // open or shut as state.expandedTransactions says - createGlobalTimelineItemDom draws it so (lead 11-13)
   if (oldLi) {
-    const isExpanded = state.expandedTransactions.has(log.transaction_id);
-    if (isExpanded) {
-      const detailsContainer = newLi.querySelector('.tx-details-container');
-      const indicator = newLi.querySelector('.expand-indicator');
-      if (detailsContainer) {
-        detailsContainer.style.display = 'block';
-        renderSubDetails(detailsContainer, group.logs, transactionPane(group, log.transaction_id, detailsContainer));
-      }
-      if (indicator) {
-        indicator.style.transform = 'rotate(90deg)';
-        indicator.textContent = '▼';
-      }
-    }
-
     elements.timeline.replaceChild(newLi, oldLi);
   } else {
     elements.timeline.insertBefore(newLi, elements.timeline.firstChild);
