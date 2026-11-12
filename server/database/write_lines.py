@@ -71,11 +71,6 @@ def _masks(bits: dict, chunks: int, columns) -> list:
     return [_signed(w) for w in words]
 
 
-def _bit(bits: dict, c: str):
-    """(chunk, signed mask) of one column."""
-    return bits[c] // BITS_A_CHUNK, _signed(1 << (bits[c] % BITS_A_CHUNK))
-
-
 def _data(bits: dict) -> list:
     """The declared columns of the bit map - the framework columns (row_id · business_key_val · created_at ·
     updated_at) have slots too but are the line's own, not a value it says."""
@@ -566,24 +561,28 @@ def _spoken(db, ln, bits, chunks, row_ids, columns, asked) -> dict:
     """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - of the
     `asked` columns (the write's and its withdraws' - lead 11-12: not the table's every column), those each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
-    row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
-    item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
+    row, «when» and - for `columns` - its value. One read of the rows' head lines that head one of the `asked` columns
+    (the mask, a word a chunk - owner 11-12), one statement (no literal per item, 11-11; compiled once a write -
+    lines.shape builds its Table anew); per line, the mask's bits it heads and has not withdrawn."""
+    want = _masks(bits, chunks, [c for c in asked if c in bits])
+    by_bit = {bits[c]: c for c in asked if c in bits}
+    if not by_bit:
+        return {}
     heads = [ln.c["head_%d" % k] for k in range(chunks)]
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]
     src = lines.LineSource.__table__
-    masks = [(c,) + _bit(bits, c) for c in asked if c in bits]
+    meets = or_(*[heads[k].op("&")(want[k]) != 0 for k in range(chunks) if want[k]])
     out = {}
     for page in _pages(sorted(row_ids), 1):
         for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
                                      ln.c.line_id, ln.c.owner_rule, src.c.copy_of, *heads, *withdrawn, *values)
                               .select_from(ln.outerjoin(src, src.c.source_name == ln.c.source_name))
-                              .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
+                              .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE,
+                                     or_(*[h != 0 for h in heads]), meets)):    # the head index's condition, then the mask
             said = dict(zip(columns, row[8 + 2 * chunks:]))
-            for c, k, m in masks:
-                if row[8 + k] & m and not row[8 + chunks + k] & m:
-                    out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6],
-                                                               row[7])
+            for c in lines._columns_of([row[8 + k] & ~row[8 + chunks + k] & want[k] for k in range(chunks)], by_bit):
+                out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6], row[7])
     return out
 
 

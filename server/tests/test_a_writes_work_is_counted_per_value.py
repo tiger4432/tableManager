@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from conftest import retire_dynamic_model
-from database import crud, models, schemas, write_lines
+from database import crud, lines, models, schemas, write_lines
 from database.database import Base
 
 TABLE = "zz_per_value"
@@ -21,7 +21,7 @@ COLUMNS = {"k": "string", **WRITTEN, **{"x%d" % i: "string" for i in range(8)}} 
 CONFIG = {TABLE: {"business_key": "k", "column_types": COLUMNS, "display_columns": list(COLUMNS)}}
 C = len(WRITTEN)
 COUNTED = [(crud, "cast_value_by_type"), (crud, "line_text"), (crud, "values_differ"), (crud, "layer_owner"),
-           (write_lines, "_head_text"), (write_lines, "_bit")]
+           (write_lines, "_head_text"), (lines, "_columns_of")]
 
 
 @pytest.fixture(name="db")
@@ -76,13 +76,18 @@ def _lines(db):
 
 def test_a_same_value_reingest_costs_one_of_each_a_value(db, monkeypatch):
     _write(db, "a", 1)
+    crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[    # another source on columns not written
+        schemas.GeneralUpdateItem(business_key_val="K%03d" % i, source_name="f2.csv", updated_by="probe",
+                                  updates={"x0": "o%d" % i}) for i in range(N)]))
+    db.commit()
     written = _lines(db)
-    assert written == N, "CANARY: one line a row"
+    assert written == 2 * N, "CANARY: one line a row a source"
     calls = _counted(monkeypatch)
     _write(db, "a", 1.0)                           # the same values - the number re-spelled 1.0
     assert _lines(db) == written, "a repeat writes no line"
+    # the head lines read are the ones heading a written column - f1's, not f2's (owner 11-12: the mask) - one bit walk each
     assert calls == {"cast_value_by_type": N * C, "line_text": N * C, "values_differ": 0, "_head_text": 0,
-                     "layer_owner": N, "_bit": C}, str(sorted(calls.items()))
+                     "layer_owner": N, "_columns_of": N}, str(sorted(calls.items()))
 
 
 def test_a_changed_value_write_adds_the_merges_compare_a_value(db, monkeypatch):
@@ -95,8 +100,9 @@ def test_a_changed_value_write_adds_the_merges_compare_a_value(db, monkeypatch):
     # per value: cast, line text, the head's text read again (a number head as its line text - one more line_text
     # a number value), the merge's «moved» and the outbox's (`_stage`); per row: the owner, the re-key's key part
     numbers = sum(1 for kind in WRITTEN.values() if kind == "number")
+    calls.pop("_columns_of")                       # the merge walks head bits too - step 2's walk is the test above
     assert calls == {"cast_value_by_type": N * C, "line_text": N * C + N * numbers, "values_differ": 2 * N * C + N,
-                     "_head_text": N * C, "layer_owner": N, "_bit": C}, str(sorted(calls.items()))
+                     "_head_text": N * C, "layer_owner": N}, str(sorted(calls.items()))
 
 
 def test_a_number_the_merge_respells_is_still_compared_and_a_kept_value_is_not(db, monkeypatch):
