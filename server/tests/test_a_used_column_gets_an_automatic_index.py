@@ -165,8 +165,9 @@ def test_a_refused_ask_is_asked_again_after_its_wait_and_a_written_one_never(mon
     monkeypatch.setattr(index_wants, "_ASKED", {})
     monkeypatch.setattr(index_wants.time, "monotonic", lambda: now[0])
     assert index_wants._first("refused") and index_wants._first("written")
-    index_wants._written("refused", False)
-    index_wants._written("written", True)
+    monkeypatch.setattr(index_wants, "ask", lambda table, *rest: table == "written")
+    index_wants._asked("refused", "refused", ["c"], None, 0, None)        # the asking thread's (`want`'s queue)
+    index_wants._asked("written", "written", ["c"], None, 0, None)
     now[0] += index_wants.ASK_AGAIN_SECONDS - 1
     assert not index_wants._first("refused") and not index_wants._first("written")
     now[0] += 2

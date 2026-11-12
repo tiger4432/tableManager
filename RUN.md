@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11i] **표 걷기(Tables 화면) — 행을 + / − 로 찍어 다음 표로 걷고, 마지막 표를 축 하나로 «축 | + | −» 표로 접는다** — 번들 적용 · api 재기동
+>
+> ```
+> 무엇     Tables 화면(source_tables.html): 표를 고르고 검색 -> 행을 눌러 + (Shift 는 −) -> 다음 표 막대에서 길을 골라 걷기
+>          -> 마지막 표의 + 행과 − 행이 고른 축으로 한 표에 접힌다. 글자는 UniqueConcatenate, 수는 Avg
+>          마킹 값: 숫자 칸은 숫자로, 글자 칸은 온 글자 그대로(숫자는 그 숫자를 적은 글자)로 견준다
+>          (전: 화면이 행 번호를 숫자로 보내면 PostgreSQL 이 «character varying = integer» 로 거절해 첫 걸음에서 멈췄다)
+>          걷기 값 필터: 걷기 API 에 edge_filter · node_filter 가 생겼다. 화면 손잡이는 아직 없다
+>          헤드 바: Last 줄이 상태 버튼 바로 앞에 한 줄 (Last · 상태 · ⋯)
+> 돌릴 것   번들 적용 -> api 재기동 -> Tables 화면에서 행 몇 개 찍고 다음 표로 한 걸음
+> 답의 뜻   다음 표에 행이 나온다 -> 됨
+>          «character varying = integer» 가 보인다 -> 옛 api 가 돌고 있다(재기동이 안 됨)
+>          «... is not a list of numbers for '<칸>'» -> 숫자 칸에 숫자 아닌 값을 찍었다. 그 문장을 보낸다
+> 끄기     없음 (화면을 안 쓰면 아무것도 안 바뀐다)
+> ```
+>
+> ---
+>
 > ## [11-11c] **가상 걷기가 소수(number) 칸 수식어 때문에 소스를 통째로 빼던 것 — 이제 수식어로 읽는다. 못 읽는 수식어는 그 문장만 뺀다** — git pull · api 재기동
 >
 > ```
@@ -16,7 +34,7 @@
 >          시각 · 참거짓 칸 속성과 수식어, 참거짓 · 날짜 칸 키, 날짜 칸 이벤트 시각도 이제 읽힌다 (전엔 «not read»)
 >          전처럼 «...: a qualifier read from a float column» 줄이 보이면 -> 옛 api 가 돌고 있다(재기동이 안 됨)
 > 답의 뜻   left_out 이 비거나 줄었다 -> 고쳐짐
->          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시각 칸이거나 필수 수식어가 엔티티 속성에서 온다.
+>          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시간대를 안 적은 zone 없는 시각 칸이다.
 >          그 문장의 선언(그 수식어의 칸)을 보낸다
 > 11-11f 뒤  numeric 칸 수식어 · 속성이 있으면 걷기가 «Decimal is not JSON serializable» 로 실패했다 -> 이 릴리스로 풀린다
 >          찾기  Select-String -Path server\*.log -Pattern "Decimal is not JSON"  — 재기동 뒤 새 줄이 없어야 한다

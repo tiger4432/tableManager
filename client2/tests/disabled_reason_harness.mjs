@@ -224,6 +224,8 @@ async function walkPageSuite(boot) {
 //    🔴 UNRULED   읽어서 못 가렸습니다 -> 정직하게 «모른다»로 둡니다
 // ⛔ `SILENT`(말 없이 꺼짐, 변명 없음)은 이 표에 «있으면 안 됩니다». 있으면 고칠 자리입니다.
 const CENSUS_TABLE = new Map([
+  ['tables/main.js :: open.disabled = !route', ['STATED', 'Tables 의 Next table · Open — 같은 줄이 «Pick a table» · «Pick a path (n)» · «No path between these tables» 를 그립니다 (owner 11-11)']],
+  ['tables/main.js :: open.disabled = true', ['BUSY', 'Open 을 누른 뒤 걷는 중 — 페이지 머리에 «Reaching…», 끝나면 바가 다시 그려집니다']],
   ['file_ingestion/parts.js :: b.disabled = off', ['END', 'Pick files 목록의 Prev · Next — 쪽의 끝, 옆에 «page 1 of 50» (소유자 10-26)']],
   ['file_ingestion/parts.js :: go.disabled = true', ['STATED', 'Pick files 의 Read these — 패턴에 맞는 파일 0: 같은 렌더가 «0 files» 와 «Read these (0)» 을 그립니다']],
   ['gallery.js :: b.disabled = true', ['STATED', 'the gallery board\'s empty cell - the cell itself says 0 and «none»; it has no rows to open (lead 3589216b9)']],

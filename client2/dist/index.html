@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-CMozklsS.js"></script>
+    <script type="module" crossorigin src="/assets/main-BchR-HI6.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/absent-Bu8hqJql.js">
     <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
     <link rel="modulepreload" crossorigin href="/assets/dropdown-ffa53XA6.js">
@@ -47,7 +47,7 @@
     <link rel="modulepreload" crossorigin href="/assets/list_field--_h4461v.js">
     <link rel="modulepreload" crossorigin href="/assets/refusal-B6Gi1CPq.js">
     <link rel="modulepreload" crossorigin href="/assets/map_key-BcsLXUDF.js">
-    <link rel="modulepreload" crossorigin href="/assets/api-CBq3YZAL.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-DSWYbn33.js">
     <link rel="modulepreload" crossorigin href="/assets/slow_reason-Dlrtc_AN.js">
     <link rel="modulepreload" crossorigin href="/assets/palette-ClAItWRM.js">
     <link rel="modulepreload" crossorigin href="/assets/truncation-D5dATse0.js">
@@ -58,7 +58,7 @@
     <link rel="stylesheet" crossorigin href="/assets/match_count-6B83Musa.css">
     <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-NZpIpU28.css">
     <link rel="stylesheet" crossorigin href="/assets/main-BfPgcUrR.css">
-    <link rel="stylesheet" crossorigin href="/assets/style-BvcSh3Dg.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-BYeMu42q.css">
   </head>
 
   <body>
@@ -204,6 +204,13 @@
             <button id="flow-toggle-btn" class="glass-btn" type="button" aria-pressed="false" data-no-panel>Flow</button>
           </div>
 
+          <!-- The last action's line just before the status button, always shown (owner 11-11, out of the panel again):
+               Last · status · ⋯, so a line that holds ⋯ and these words holds the status button too. -->
+          <div class="status-panel__last">
+            <span class="status-panel__key">Last</span>
+            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
+          </div>
+
           <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
                button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
@@ -215,10 +222,6 @@
                 <span class="status-badge" id="ws-status">WS: Connecting</span>
                 <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
                 <span class="status-badge" id="chain-status">CHAIN: Loading</span>
-              </div>
-              <div class="status-panel__last">
-                <span class="status-panel__key">Last</span>
-                <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
               </div>
               <div id="account-badge" class="acct-host"></div>
             </div>

@@ -11,6 +11,14 @@
 //   B1-B7 the box: unnarrowed it reads no row and says so; narrowed it reads the first page and counts; a page of exactly
 //         the count says all; scrolled near the end it reads the next; a head pressed orders by the server; a chip's
 //         remove reads again without it; a refusal is the server's sentence; two boxes on one page do not meet
+//   K1-K2 a box's rows marked + and − (Shift) under its name, a press again takes one out; a box opened by a server
+//         marking reads its rows without a narrowing, the marking in its page and its count
+//   R1-R4 the walk between tables (chain.js): a row's node id, the types a table names, the paths through a predicate the
+//         next table emits, a hop's two calls
+//   F1-F2 the compare (axis_compare.js): folded by the axis - text UniqueConcatenate, number Avg - differing lines up, one
+//         side's lines «−»; Differs only; the picks told to the page
+//   S1    the marking store's names (owner 11-11): nextName holds what it gives, two in one tick differ, a dropped one is
+//         given again, its version kept; labelOf «#N»
 //
 // Run: node client2/tests/tables_harness.mjs
 import path from 'node:path';
@@ -22,7 +30,8 @@ import * as handoff from '../src/tables/handoff.js';
 import { narrowingParams } from '../src/narrowing.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SUBJECT = path.join(HERE, '..', 'src', 'tables', 'table_box.js');
+const SUBJECTS = { box: path.join(HERE, '..', 'src', 'tables', 'table_box.js'), chain: path.join(HERE, '..', 'src', 'tables', 'chain.js'),
+  compare: path.join(HERE, '..', 'src', 'tables', 'axis_compare.js'), store: path.join(HERE, '..', 'src', 'rnd_board', 'marking_store.js') };
 const walk = (n) => [n, ...(n.children || []).flatMap(walk)];
 const byClass = (n, cls) => walk(n).filter((c) => String(c.className || '').split(/\s+/).includes(cls));
 const textOf = (n) => (n ? n.textContent : '');
@@ -49,6 +58,8 @@ function server(total, { refuse = null } = {}) {
     const [route, query] = url.split('?');
     const q = new URLSearchParams(query || '');
     if (route.endsWith('/schema')) return json({ columns: COLUMNS });
+    if (route.endsWith('/data/count') && q.get('marking')) return json({ total: 3, capped: false });
+    if (route.endsWith('/data') && q.get('marking')) return json({ data: Array.from({ length: 3 }, (_, k) => rowOf(k)), total: null });
     if (route.endsWith('/data/count')) return json({ total: q.toString() ? total : 9999, capped: false });
     if (route.endsWith('/data')) {
       if (refuse) return json({ detail: refuse }, 422);
@@ -61,9 +72,11 @@ function server(total, { refuse = null } = {}) {
   return { fetch, asked, pages: () => asked.filter((u) => u.split('?')[0].endsWith('/data')) };
 }
 
+const R3_WANT = ['wafer · processed_with', 'die · inspected · processed_with', 'die · in_container · processed_with'];
 const NARROW = `filters=${encodeURIComponent(JSON.stringify({ dt_lot: { filterType: 'text', type: 'contains', filter: 'LOT-10' } }))}`;
 
-async function suite(m) {
+async function suite(mods) {
+  const m = mods.box;
   const ran = [];
   const failures = [];
   const eq = (name, got, want) => {
@@ -171,18 +184,107 @@ async function suite(m) {
   await settle();
   eq('B8 two boxes on one page: each its table, its rows, its words', [s1.asked.every((u) => u.includes('/tables/t1')), s2.asked.every((u) => u.includes('/tables/t2')),
     textOf(byClass(h1, 'tables-box__foot')[0]), textOf(byClass(h2, 'tables-box__foot')[0])], [true, true, 'rows 1–500 of 700 · next page on scroll', 'all 20 rows']);
+  // ── marking rows; a box opened by a server marking ──
+  const store = new mods.store.MarkingStore();
+  const name = mods.store.nextName(store);
+  const md = makeDoc('light');
+  const mh = md.createElement('div');
+  const ms = server(30);
+  const mb = new m.TableBox(mh, { doc: md, fetch: ms.fetch, apiBase: 'a', table: 'dt_log', narrowing: NARROW, markings: store, writes: name });
+  await mb.open();
+  await settle();
+  const press = (k, extra = {}) => {
+    const line = walk(mh).filter((n) => n.tagName === 'TR' && !String(n.className).includes('tb-table__pad') && n.parentNode && n.parentNode.tagName === 'TBODY')[k];
+    line.dispatch('click', { stopPropagation() {}, ...extra });
+  };
+  press(0);
+  press(1, { shiftKey: true });
+  press(2);
+  press(2);
+  eq('K1 a press marks its row + under the box\'s name, Shift −, a press again takes it out; the head counts them',
+    [store.entries(name), textOf(byClass(mh, 'tables-box__marks')[0]), byClass(mh, 'is-marked').length],
+    [[['dt_log:r00000', 1], ['dt_log:r00001', -1]], '+ 1 · − 1 marked', 2]);
+  const kd = makeDoc('light');
+  const kh = kd.createElement('div');
+  const ks = server(30);
+  await new m.TableBox(kh, { doc: kd, fetch: ks.fetch, apiBase: 'a', table: 'dt_log', marking: 'mk7', title: '#2 + · 1 → 3 rows' }).open();
+  await settle();
+  const counted = ks.asked.filter((u) => u.includes('/data/count')).map((u) => new URLSearchParams(u.split('?')[1] || '').get('marking'));
+  eq('K2 a box opened by a server marking reads its rows unnarrowed - the marking in its page and its count; its title said',
+    [new URLSearchParams((ks.pages()[0] || '?').split('?')[1]).get('marking'), counted, textOf(byClass(kh, 'tables-box__foot')[0]), textOf(byClass(kh, 'tables-box__title')[0])],
+    ['mk7', ['mk7', null], 'all 3 rows', '#2 + · 1 → 3 rows']);
+
+  // ── the walk between tables ──
+  const ch = mods.chain;
+  eq('R1 a row\'s node id is the server\'s «relation:row id», and back - a row id of digits its number; no table, none',
+    [ch.rowNodeId('lots', 'u-1'), ch.rowOfNodeId('lots:u-1'), ch.rowOfNodeId('lots:12'), ch.rowOfNodeId('nope')],
+    ['lots:u-1', { table: 'lots', rowId: 'u-1' }, { table: 'lots', rowId: 12 }, null]);
+  const DECL = { predicates: [
+    { name: 'processed_with', subjects: ['wafer'], object: { types: ['recipe'] } },
+    { name: 'inspected', subjects: ['wafer'], object: { types: ['die'] } },
+    { name: 'in_container', subjects: ['die'], object: { types: ['wafer'] } }],
+  sources: [
+    { relation: 'insp', emits: ['inspected', 'in_container'], columns: [{ role: 'key', entity: 'wafer' }, { role: 'key', entity: 'die' }, { role: 'time', predicate: 'inspected' }] },
+    { relation: 'proc', emits: ['processed_with'], columns: [{ role: 'key', entity: 'wafer' }, { role: 'qualifier', predicate: 'processed_with' }, { role: 'key', entity: 'recipe' }] }] };
+  eq('R2 the types a table names are its sources\' key columns\' entities', [ch.typesOfTable(DECL, 'insp'), ch.typesOfTable(DECL, 'proc')], [['wafer', 'die'], ['wafer', 'recipe']]);
+  eq('R3 the paths to a table go through a predicate it emits, one a type and its follow, the shortest first',
+    ch.routesBetween(DECL, 'insp', 'proc').map(ch.routeWords), R3_WANT);
+  const calls = [];
+  const cfetch = async (url, init) => { calls.push([url, JSON.parse(init.body)]); return { ok: true, status: 200, json: async () => ({ id: 'k1', rev: 1, rows: [5] }) }; };
+  await ch.keepRows({ fetch: cfetch, apiBase: 'a', world: 'w2' }, 'insp', ['u-1', 7]);
+  await ch.reachRows({ fetch: cfetch, apiBase: 'a', world: 'w2' }, 'k1', { type: 'wafer', follow: ['processed_with'] }, 'proc');
+  eq('R4 a hop: the rows kept by row_id in a body (no world - a marking is the reader\'s), then the reach by the marking in the world',
+    calls, [['a/markings', { table: 'insp', column: 'row_id', values: ['u-1', 7] }],
+      ['a/api/ledger/subgraph?world=w2', { reach: { marking: 'k1', type: 'wafer', follow: ['processed_with'], to: 'proc' } }]]);
+
+  // ── the compare ──
+  const cm = mods.compare;
+  const SIDES = [
+    { sign: 1, rows: [{ step: 'A', r: 'w', n: 1 }, { step: 'B', r: 'y', n: 1 }, { step: 'B', r: 'x', n: 3 }, { step: 'C', r: 'z', n: 2 }] },
+    { sign: -1, rows: [{ step: 'A', r: 'w', n: 1 }, { step: 'B', r: 'x', n: 2 }, { step: 'D', r: 'q', n: 5 }] }];
+  const folded = cm.foldSides({ sides: SIDES, axes: ['step'], columns: ['r', 'n'], kinds: { n: 'number' } });
+  eq('F1 a line an axis value: text UniqueConcatenate, number Avg; differing and one-sided lines first; a side without the value null',
+    folded.map((l) => [l.axis, l.cells[1], l.cells[-1], l.differs, l.one]),
+    [[['B'], { r: 'x, y', n: 2 }, { r: 'x', n: 2 }, ['r'], false], [['C'], { r: 'z', n: 2 }, null, [], true],
+      [['D'], null, { r: 'q', n: 5 }, [], true], [['A'], { r: 'w', n: 1 }, { r: 'w', n: 1 }, [], false]]);
+  const cd = makeDoc('light');
+  const chost = cd.createElement('div');
+  const told = [];
+  const part = new cm.AxisCompare(chost, { doc: cd, onPick: (p) => told.push(p) });
+  part.show({ title: 'proc', sides: SIDES, columns: ['step', 'r', 'n'], kinds: { n: 'number' }, axes: ['step'], shown: ['r', 'n'] });
+  const bodyRows = () => walk(chost).filter((n) => n.tagName === 'TR' && n.parentNode && n.parentNode.tagName === 'TBODY');
+  const all = bodyRows().map((tr) => tr.children.map((td) => td.textContent).join('|'));
+  const onlyBox = byClass(chost, 'tables-compare__only')[0].children[0];
+  onlyBox.checked = true;
+  onlyBox.dispatch('change', {});
+  const only = bodyRows().length;
+  eq('F2 one table «axis | + | −», a missing side «−»; Differs only keeps the differing lines; each pick told to the page',
+    [all, textOf(byClass(chost, 'tables-box__count')[0]), only, told.at(-1)],
+    [['B|x, y|2|x|2', 'C|z|2|−|−', 'D|−|−|q|5', 'A|w|1|w|1'], '4 rows · 3 differ', 3, { axes: ['step'], columns: ['r', 'n'], only: true }]);
+
+  // ── the store's names ──
+  const st = new mods.store.MarkingStore();
+  const [n1, n2] = [mods.store.nextName(st), mods.store.nextName(st)];
+  st.set(n1, 'a', 1);
+  const v = st.version(n1);
+  st.clear(n1, { drop: true });
+  const reGiven = mods.store.nextName(st);
+  eq('S1 nextName holds what it gives - two in one tick differ, though empty; a dropped one is given again, its version kept; labelOf «#N»',
+    [n1, n2, st.names(), reGiven, st.version(reGiven) >= v && v > 0, mods.store.labelOf('marking:3'), mods.store.labelOf('walk-reach')],
+    ['marking:1', 'marking:2', [], 'marking:1', true, '#3', 'walk-reach']);
   return { ran: ran.length, names: ran, failures };
 }
 
-const real = await import('../src/tables/table_box.js');
-const base = await suite(real);
+const REAL = { box: await import('../src/tables/table_box.js'), chain: await import('../src/tables/chain.js'),
+  compare: await import('../src/tables/axis_compare.js'), store: await import('../src/rnd_board/marking_store.js') };
+const base = await suite(REAL);
 for (const name of base.names) console.log(`  ${base.failures.some((f) => f.startsWith(name + ':')) ? 'FAIL' : 'PASS'} ${name}`);
 base.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 
 const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`); return t.split(from).join(to); };
 const MUTANTS = [
   { id: 'XT1', what: 'the first table opens whole', catches: ['N1', 'B1'], mutate: swap('return Boolean(n.q || n.tx || Object.keys(n.filters).length);', 'return true;') },
-  { id: 'XT2', what: 'a page asks without the narrowing', catches: ['N5', 'B2'], mutate: swap("  const p = new URLSearchParams(text || '');\n  p.set('skip'", "  const p = new URLSearchParams('');\n  p.set('skip'") },
+  { id: 'XT2', what: 'a page asks without the narrowing', catches: ['N5', 'B2'], mutate: swap("  const p = new URLSearchParams(text || '');\n  if (marking) p.set('marking', marking);\n  p.set('skip'", "  const p = new URLSearchParams('');\n  if (marking) p.set('marking', marking);\n  p.set('skip'") },
   { id: 'XT3', what: 'no order means latest first, not entered order', catches: ['N5'], mutate: swap("order ? order.column : 'row_id'", "order ? order.column : 'updated_at'") },
   { id: 'XT4', what: 'a full page always says more, past an exact count', catches: ['P1', 'B3'],
     mutate: swap('return lastPage === PAGE_ROWS && !(c.total !== null && !c.capped && read >= c.total);', 'return lastPage === PAGE_ROWS;') },
@@ -192,9 +294,20 @@ const MUTANTS = [
   { id: 'XT8', what: 'a scroll near the end reads nothing', catches: ['B4'], mutate: swap('if (left < MORE_WITHIN_LINES) this.page();', 'if (false) this.page();') },
   { id: 'XT9', what: 'a head pressed sorts the page in the browser', catches: ['B5'],
     mutate: swap('declare: ({ sort }) => this.orderBy(this.columns[Number(sort.key.slice(3)) - 1], sort.desc),', 'declare: () => {},') },
+  { id: 'XT10', what: 'Shift marks + too', catches: ['K1'], mutate: swap('const { sign } = markingIntent(event);', 'const sign = SIGN.CASE;') },
+  { id: 'XT11', what: 'a box opened by a marking asks without it', catches: ['K2'], mutate: swap("  if (marking) p.set('marking', marking);\n", '') },
+  { id: 'XT12', what: 'a box opened by a marking waits for a search', catches: ['K2'], mutate: swap('narrows(this.narrowing) || Boolean(this.marking)', 'narrows(this.narrowing)') },
+  { id: 'XC1', what: 'a path through no predicate the next table emits is offered', catches: ['R3'], key: 'chain',
+    mutate: swap('if (!route.follow.some((p) => emitted.has(p))) continue;', '') },
+  { id: 'XC2', what: 'the rows kept by another column', catches: ['R4'], key: 'chain', mutate: swap("column: 'row_id'", "column: 'id'") },
+  { id: 'XF1', what: 'a number column folded as text', catches: ['F1'], key: 'compare', mutate: swap("kinds[column] === 'number' ? FOLD_NUMBER : FOLD_TEXT", 'FOLD_TEXT') },
+  { id: 'XF2', what: 'the differing lines not first', catches: ['F1'], key: 'compare', mutate: swap('return lines.sort((a, b) => up(a) - up(b) || order(a, b));', 'return lines.sort((a, b) => order(a, b));') },
+  { id: 'XF3', what: 'Differs only keeps every line', catches: ['F2'], key: 'compare', mutate: swap('const kept = this.only ? lines.filter((l) => l.differs.length || l.one) : lines;', 'const kept = lines;') },
+  { id: 'XS1', what: 'nextName does not hold what it gives', catches: ['S1'], key: 'store', mutate: swap('  store._marks.set(name, new Map());\n  return name;', '  return name;') },
+  { id: 'XS2', what: 'a dropped name stays held', catches: ['S1'], key: 'store', mutate: swap('if (drop) this._marks.delete(name);', '') },
 ];
 console.log('');
-const { wrong } = await scoreMutants(MUTANTS, async (mu) => suite((await loadWithProbe(SUBJECT, { mutate: mu.mutate })).module),
+const { wrong } = await scoreMutants(MUTANTS, async (mu) => suite({ ...REAL, [mu.key || 'box']: (await loadWithProbe(SUBJECTS[mu.key || 'box'], { mutate: mu.mutate })).module }),
   { baselineRan: base.ran, baselineNames: base.names, title: '-- defect mutants (each must be CAUGHT by its named line) -----------' });
 const failed = base.failures.length + wrong;
 console.log(`\n${base.ran - base.failures.length} passed, ${base.failures.length} failed; ${MUTANTS.length - wrong}/${MUTANTS.length} defects caught, ${wrong} escaped.`);

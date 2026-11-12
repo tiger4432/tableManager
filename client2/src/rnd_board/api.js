@@ -372,7 +372,9 @@ export async function fetchSubgraph(params) {
           // a caller that drops a walk it no longer wants (a part's newer ask, owner 10-14 «연달아 찍는 건 앞 요청 취소»)
           signal,
           // the walk's ranking not computed (lead 10-14, B 9166099d4) - false only; a resumed page carries it too
-          propagation } = params || {};
+          propagation,
+          // the walk's value filters (lead 11-11): ["<predicate>:<expression>"], ["<type>:<expression>"] - none, nothing sent
+          edge_filter: edgeFilter, node_filter: nodeFilter } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -466,6 +468,8 @@ export async function fetchSubgraph(params) {
   //    싣던 것을 «정본 생성기»로 올립니다: 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
   for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t));
   for (const id of Array.isArray(aux) ? aux : []) query.append('aux', String(id));
+  for (const f of Array.isArray(edgeFilter) ? edgeFilter : []) query.append('edge_filter', String(f));
+  for (const f of Array.isArray(nodeFilter) ? nodeFilter : []) query.append('node_filter', String(f));
   if (direction) query.set('direction', direction);
   if (resumable === true) query.set('resumable', 'true');
   if (propagation === false) query.set('propagation', 'false');
@@ -1865,6 +1869,9 @@ export async function fetchDeclaration(params) {
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
              worlds: body.worlds || [],
+             // each source's relation, the types its columns key and the predicates it emits - the Tables page's paths
+             // between two tables; absent (null) when the setup would not compile, as the server omits it
+             sources: Array.isArray(body.sources) ? body.sources : null,
              operating: typeof body.operating === 'string' ? body.operating : null,
              // the zone the calculators cut dates in - the server's setting (expression.useZone)
              zone: typeof body.expression_time_zone === 'string' ? body.expression_time_zone : null };
