@@ -335,8 +335,8 @@ def _plain(table, cfg, items, targets, before, held, bits) -> dict:
 
 def _claim(db, table, cfg, now, items):
     """Step 1 - lock the entities' current lines in row_id order. A new key is put in its current line first (keys
-    sorted, ON CONFLICT DO NOTHING) and read back under the same lock, so two writers of one new key end on one row_id
-    and no line is orphaned. Returns ({item index: row_id}, {row_id: its current line before}, {row_id: its business
+    sorted, ON CONFLICT DO NOTHING, the put answering its rows); a key another writer took meanwhile is read under
+    lock, so two writers of one new key end on one row_id and no line is orphaned. Returns ({item index: row_id}, {row_id: its current line before}, {row_id: its business
     key}). An item naming no current line is left out unless it writes a value - a write to a gone row_id makes it
     again, as the old write door did."""
     targets, old = {}, {}
@@ -374,28 +374,30 @@ def _claim(db, table, cfg, now, items):
             by_key[i] = bk
     _by_old_key(db, now, items, targets, old, wanted, by_key)
     keys = {row_id: row.get("business_key_val") for row_id, row in old.items()}
-    if wanted:
-        # the keys that have rows read first, so an unchanged re-push writes nothing (lead 11-12); only the rest are
-        # put. With the key's unique index: a plain read, the rest ON CONFLICT DO NOTHING - a writer of the same new
-        # key meanwhile still ends on one row (11-11 ㄹ). Without it (lines.key_index_next says why - the rules list
-        # shows it): read under lock, the rest inserted, with its race window - two writers of one new key in the same
-        # instant can make two rows (D3, as before; lead 11-11 ㄴ - collection never stops)
-        standing = lines.key_index_standing(db.connection(), table)
-        held = set()
-        for page in _pages(sorted(wanted), 1):
-            read = select(now.c.business_key_val).where(now.c.business_key_val.in_(page))
-            held.update(db.execute(read if standing else read.with_for_update()).scalars())
-        put = insert(now)
-        if standing:
-            if db.get_bind().dialect.name == "postgresql":
-                from sqlalchemy.dialects.postgresql import insert as upsert
-            else:
-                from sqlalchemy.dialects.sqlite import insert as upsert
-            put = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
-        for page in _pages(sorted(set(wanted) - held), 2):
-            db.execute(put.values([{"row_id": wanted[bk], "business_key_val": bk} for bk in page]))   # one statement a page
     if wanted or looked:
+        # every key asked read once, under lock - a key that has a row is not put, so an unchanged re-push writes
+        # nothing (lead 11-12); the rest are put, each answering its row (RETURNING), one statement a page. With the
+        # key's unique index ON CONFLICT DO NOTHING - a writer of the same new key meanwhile still ends on one row
+        # (11-11 ㄹ): the key it took answers nothing here and is read again. Without it (lines.key_index_next says
+        # why - the rules list shows it): inserted, with its race window - two writers of one new key in the same
+        # instant can make two rows (D3, as before; lead 11-11 ㄴ - collection never stops)
         holder = key_owners(db, now, set(wanted) | set(looked.values()), lock=True, read=list(now.c))
+        missing = sorted(set(wanted) - set(holder))
+        if missing:
+            put = insert(now)
+            if lines.key_index_standing(db.connection(), table):
+                if db.get_bind().dialect.name == "postgresql":
+                    from sqlalchemy.dialects.postgresql import insert as upsert
+                else:
+                    from sqlalchemy.dialects.sqlite import insert as upsert
+                put = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
+            for page in _pages(missing, 2):
+                for row_id, bk in db.execute(put.values([{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
+                                             .returning(now.c.row_id, now.c.business_key_val)):
+                    holder[bk] = {"row_id": row_id, "business_key_val": bk}
+            taken = [bk for bk in missing if bk not in holder]     # put by another writer meanwhile
+            if taken:
+                holder.update(key_owners(db, now, taken, lock=True, read=list(now.c)))
         for bk, row in holder.items():
             keys[row["row_id"]] = bk
             if row["row_id"] != wanted.get(bk):

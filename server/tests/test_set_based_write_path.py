@@ -103,11 +103,11 @@ def test_fresh_insert_costs_one_identity_select_for_the_whole_chunk(db_session):
     assert keys == {f"L1_01_{i}_0" for i in range(n)}, \
         "identity must still be the assembled composite key, not a fresh uuid per row"
 
-    # per relation, a chunk's reads, never a row's (the overhaul's record - lead 11-12): t - the claim's held keys,
-    # the claimed rows, the funnel's answer rows; t__lines - the head lines (_spoken), a person's heads (_marks), the
-    # merge's
+    # per relation, a chunk's reads, never a row's (the overhaul's record - lead 11-12): t - the claim's keys, read
+    # once under lock (a key put answers its row), the funnel's answer rows; t__lines - the head lines (_spoken), a
+    # person's heads (_marks), the merge's
     counts = _by_relation(recorded)
-    assert (counts.get(("SELECT", TABLE)), counts.get(("SELECT", lines.lines_relation(TABLE)))) == (3, 3), counts
+    assert (counts.get(("SELECT", TABLE)), counts.get(("SELECT", lines.lines_relation(TABLE)))) == (2, 3), counts
 
 
 def test_fresh_insert_does_not_emit_one_insert_per_row(db_session):
