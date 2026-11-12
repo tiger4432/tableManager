@@ -1969,7 +1969,8 @@ def resolve_sort(query, table_model, table_name, order_by, order_desc):
 def key_page(query, keys, final_sort, boundary, limit, backward=False):
     """🔴 A PAGE READ BY KEY, NOT BY OFFSET (총괄 e570dcda5 ㄱ): the `limit` rows of `query` in `final_sort` after the row
     `boundary` names (`backward`: before it, in order) - a page costs its own rows however deep (400만 판: OFFSET 의 가운데
-    쪽 724 ms · 마지막 1,345 ms, 열쇠 0.5~0.8 ms). None when that row is gone - the caller pages by OFFSET.
+    쪽 724 ms · 마지막 1,345 ms, 열쇠 0.5~0.8 ms). With a sort column, None when that row is gone - the caller pages by
+    OFFSET; by the key alone a gone row still bounds the page.
     The sort column's NULLs are a run of their own in PostgreSQL's order - ascending after the rest, descending before -
     and a row comparison never matches them, so the run is read on its own, by the keys."""
     from sqlalchemy import and_, tuple_
@@ -1978,10 +1979,15 @@ def key_page(query, keys, final_sort, boundary, limit, backward=False):
     terms = [clause.element for clause in final_sort]
     expr = terms[0] if len(terms) > len(keys) else None
     down = (final_sort[0].modifier is operators.desc_op) != backward          # the direction this read walks
-    held = query.session.query(*([expr] if expr is not None else []), *keys).filter(keys[0] == boundary).first()
-    if held is None:
-        return None
-    value, ids = (held[0], tuple(held[1:])) if expr is not None else (None, tuple(held))
+    if expr is None and len(keys) == 1:
+        # the order is the key alone: the boundary bounds the page by itself - a deleted boundary row no longer drops
+        # this read into a deep OFFSET (lead 11-13, marathon: 5 ms by key vs 3.2 s by OFFSET at 1.86 M rows)
+        value, ids = None, (boundary,)
+    else:
+        held = query.session.query(*([expr] if expr is not None else []), *keys).filter(keys[0] == boundary).first()
+        if held is None:
+            return None
+        value, ids = (held[0], tuple(held[1:])) if expr is not None else (None, tuple(held))
     by_keys = [key.desc() if down else key.asc() for key in keys]
     past_keys = tuple_(*keys) < ids if down else tuple_(*keys) > ids
 

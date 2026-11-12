@@ -125,6 +125,34 @@ def test_a_row_gone_pages_by_offset(grid, pg_engine):
 
 
 @pytest.mark.pg
+@pytest.mark.parametrize("desc", [False, True], ids=["asc", "desc"])
+def test_in_row_id_order_a_gone_boundary_row_still_pages_by_key(grid, pg_engine, desc):
+    """Lead 11-13 (marathon: by key 5 ms, by OFFSET 3.2 s at 1.86 M rows): ordered by the key alone, the boundary bounds
+    the page by itself - the row it names being deleted does not drop the read into OFFSET."""
+    from sqlalchemy import event, text
+
+    from conftest import PG_TEST_SCHEMA
+
+    gone = _ids(_page(grid, "row_id", desc))[-1]
+    with pg_engine.begin() as conn:
+        conn.execute(text('DELETE FROM "%s"."%s" WHERE row_id = :r' % (PG_TEST_SCHEMA, TABLE)), {"r": gone})
+    sent = []
+
+    def caught(_conn, _cursor, statement, _parameters, _context, _many):
+        if TABLE in statement and "ORDER BY" in statement and "count(" not in statement:
+            sent.append(statement)
+
+    event.listen(pg_engine, "before_cursor_execute", caught)
+    try:
+        by_key = _page(grid, "row_id", desc, LIMIT, after=gone)
+    finally:
+        event.remove(pg_engine, "before_cursor_execute", caught)
+    assert sent and not any("OFFSET" in statement for statement in sent), sent
+    assert by_key["data"] == _page(grid, "row_id", desc, LIMIT - 1)["data"]    # one row fewer before it now
+    assert len(by_key["data"]) == LIMIT
+
+
+@pytest.mark.pg
 def test_a_page_by_key_reads_no_offset_and_a_page_number_does(grid, pg_engine):
     from sqlalchemy import event
 
