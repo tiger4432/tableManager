@@ -84,7 +84,11 @@ def test_the_count_is_the_floor_past_the_cap_on_the_route_and_the_recent_list(pa
     [group] = client.get("/audit_logs/recent?limit_groups=100").json()["groups"]
     assert [(c["changed_rows"], c["changed_rows_truncated"]) for c in group["changed"]] == [(100, True)]
     monkeypatch.setattr(audit_history, "ROW_TOTAL_PROBE_CAP", 1000)
-    assert audit_history.changed_rows(_session(engine), TABLE, TX) == (LINED + RECEIPT_ONLY, False)
+    session = _session(engine)
+    try:                                        # closed before the fixture drops the table - PG waits on an open read
+        assert audit_history.changed_rows(session, TABLE, TX) == (LINED + RECEIPT_ONLY, False)
+    finally:
+        session.close()
 
 
 def test_a_cursor_it_cannot_read_is_a_400(panel):
