@@ -407,8 +407,7 @@ def test_a_failing_chunk_leaves_the_whole_batch_unwritten(pg_session):
     `db.commit()` injected into the chunk loop left it green. Found by that
     mutation; the padding is what makes the docstring true.
     """
-    # `cell_overwrites.updated_by` is the NOT NULL column on these two tables
-    # (`cell_sources.updated_by` is nullable), so the poison goes there.
+    # `cell_overwrites.updated_by` is NOT NULL (models.CellOverwrite), so the poison goes there.
     n = crud.BULK_CHUNK_SIZE + 5
     ids = [f"AB_{i:06d}" for i in range(n)]
     mappings = [_overwrite("", row_prefix=rid) for rid in ids[:-1]]

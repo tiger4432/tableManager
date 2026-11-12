@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 import db_safety
 from chain import ingestion_worker as worker
 from chain import set_aside, table_locks
-from database import crud, models
+from database import crud, lines, models
 from support import hold_world as hw
 from utils import heartbeat
 from utils.payload_helper import get_payload_dict
@@ -53,8 +53,7 @@ def _deleted(world):
 
 
 def _fed(world, ids):
-    return world["db"].execute(text("SELECT count(*) FROM cell_sources WHERE table_name = :t AND origin_row_id = ANY(:i)"),
-                               {"t": hw.OFFICIAL, "i": ids}).scalar()
+    return len(lines.stamped_by(world["db"], [hw.OFFICIAL], ids))
 
 
 def test_lost_once_it_is_raised_and_the_cells_stay_for_the_next_try(world, monkeypatch):

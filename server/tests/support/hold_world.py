@@ -94,8 +94,6 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False, exclude=()):
             for name in TABLES:
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, lines.lines_relation(name))))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
-            conn.execute(text('DELETE FROM "%s".cell_sources WHERE table_name IN (:a, :b)' % PG_TEST_SCHEMA),
-                         {"a": LOG, "b": OFFICIAL})
             # the whole queue: a cell here reads «the queue's next waiting events» (the withdrawal fold) or every event
             # up to its batch (the ledger follow-up) - an event another test left waiting moved its pages (10-22)
             assert PG_TEST_SCHEMA != "public", "the whole queue is emptied in the tests' own schema only"

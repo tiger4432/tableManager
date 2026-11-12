@@ -1,7 +1,6 @@
 from sqlalchemy import Float
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Any, Optional
 from . import models, schemas
@@ -20,7 +19,6 @@ def transaction_context(user: str, tx_id: str, source: str):
         request_transaction_id.reset(token_tx)
         request_source.reset(token_src)
 import hashlib
-import io
 import uuid
 import uuid6
 import codecs
@@ -2739,13 +2737,8 @@ def _warn_upsert_fastpath_declined_once(table_name: str, reason: str, detail: st
 
 def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
                         conflict_cols: list[str], update_cols: list[str],
-                        chunk_size: int, copy: bool = False) -> bool:
+                        chunk_size: int) -> bool:
     """Send `mappings` as one MULTI-ROW `VALUES` statement per chunk. `False` = declined.
-
-    `copy=True` sends them as ONE `COPY ... FROM STDIN` instead - only for rows NO stored row can share a conflict
-    key with (the caller's to prove; no product caller passes it since 11-11). Same declines, same bind processors; a
-    database error is translated by SQLAlchemy's own `DBAPIError.instance`, so a unique or NOT NULL failure still
-    arrives as `IntegrityError` at the three sites below (lead 11-07: 1,000 new rows x 120 columns, 6.18 -> 3.68 s).
 
     🔴 WHY THIS EXISTS: `db.execute(stmt, list_of_dicts)` DOES NOT BATCH THIS STATEMENT.
     It reads like a batched send and it is not. SQLAlchemy 2.0 routes a parameter list
@@ -2774,8 +2767,8 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
 
       - "`apply_batch_updates`' business-key recovery would stop seeing the exceptions it
         classifies" - IT CANNOT BE BLINDED FROM HERE. This helper only ever writes
-        `cell_sources` and `cell_overwrites`, and NEITHER TABLE HAS A `business_key_val`
-        COLUMN (0 rows in `information_schema.columns`). The `uq_bk_*` violation is raised
+        `cell_overwrites`, which HAS NO `business_key_val` COLUMN (0 rows in
+        `information_schema.columns`). The `uq_bk_*` violation is raised
         by the ORM flush of the DATA row, which happens after this function has returned.
       - "the Session would not know its transaction had gone bad" - it does not know on
         the chosen path either. Measured on all three arms after one identical NOT NULL
@@ -2787,7 +2780,7 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
     `apply_batch_updates`, and `main.py`'s batch-update endpoint, which is the one this
     helper can actually feed and which turns that class into a 409 instead of a 500. A
     raw cursor raises `psycopg2.errors.NotNullViolation`; measured, `except IntegrityError`
-    DOES NOT CATCH IT, so a `cell_sources` NOT NULL or unique failure would sail past all
+    DOES NOT CATCH IT, so a `cell_overwrites` NOT NULL or unique failure would sail past all
     three. `exec_driver_sql` goes through the same error translation and connection
     bookkeeping every other statement here uses, for the same measured cost.
 
@@ -2831,8 +2824,8 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
          executemany send this replaced TOLERATED duplicates silently (last value won), so
          this precondition is newly load-bearing and a caller written against the old
          behaviour fails in production and nowhere else.
-         Both current callers rebuild a dict keyed on exactly `conflict_cols` before
-         dispatching; a third caller must do the same. Splitting duplicates across chunks
+         The one caller (`bulk_upsert_cell_overwrites`) rebuilds a dict keyed on exactly
+         `conflict_cols` before dispatching; another caller must do the same. Splitting duplicates across chunks
          does NOT help by accident - it happens to work, because the violation is
          per-statement, but nothing orders the list to make that true.
     """
@@ -2915,27 +2908,6 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
         db.flush()
 
     conn = db.connection()
-    if copy:
-        import time
-
-        from runtime import request_timing
-
-        statement = f"COPY {prep.format_table(table)} ({col_list}) FROM STDIN"
-        dbapi = dialect.loaded_dbapi
-        for chunk in _chunks(mappings, chunk_size):            # the chunking stays (QA 11-08: one COPY took all)
-            buf = io.StringIO()
-            for m in chunk:
-                buf.write("\t".join(_copy_field(p(m[k]) if p is not None else m[k]) for k, p in zip(keys, procs)))
-                buf.write("\n")
-            buf.seek(0)
-            started = time.perf_counter()
-            try:
-                with conn.connection.dbapi_connection.cursor() as cursor:
-                    cursor.copy_expert(statement, buf)
-            except dbapi.Error as orig:
-                raise DBAPIError.instance(statement, None, orig, dbapi.Error, dialect=dialect) from orig
-            request_timing.add(time.perf_counter() - started, 1)
-        return True
     one_row = "(" + ",".join(["%s"] * len(keys)) + ")"
     row_sql_cache: dict[int, str] = {}
     for chunk in _chunks(mappings, chunk_size):
@@ -2951,22 +2923,6 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
                 flat.append(p(v) if p is not None else v)
         conn.exec_driver_sql(sql, tuple(flat))
     return True
-
-
-def _copy_field(value) -> str:
-    """One value in COPY's text format: NULL is \\N; tab, newline, carriage return and backslash escaped."""
-    if value is None:
-        return "\\N"
-    if isinstance(value, bool):
-        return "t" if value else "f"
-    if hasattr(value, "isoformat"):
-        value = value.isoformat()
-    return (str(value).replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
-            .replace("\r", "\\r"))
-
-
-CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
-CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id', 'owner_rule', 'owner_key')
 
 
 def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
