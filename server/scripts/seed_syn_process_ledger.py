@@ -74,8 +74,9 @@ ROLLBACK
     DELETE FROM ledger_translator_cursor WHERE source = 'syn_process_ledger';
     DELETE FROM delam_obs                WHERE run_uid LIKE 'scat|%';
     DELETE FROM inspection_run           WHERE method = 'scat';
-    -- and the cell layers those two RDB tables wrote:
-    DELETE FROM cell_sources    WHERE updated_by = 'seed_syn_process_ledger';
+    -- and the lines those two RDB tables wrote:
+    DELETE FROM delam_obs__lines      WHERE written_by = 'seed_syn_process_ledger';
+    DELETE FROM inspection_run__lines WHERE written_by = 'seed_syn_process_ledger';
     DELETE FROM cell_overwrites WHERE updated_by = 'seed_syn_process_ledger';
 """
 from __future__ import annotations
@@ -908,7 +909,7 @@ def guard_database(db, allow_owner: bool, writing: bool = True) -> str:
     print("database: %s" % name)
     print("!! rollback (ledger): DELETE FROM ledger_events WHERE "
           "source_translator_ver LIKE '%s%%'" % (TRANSLATOR_BASE.split("rules:")[0]))
-    print("!! rollback (rdb):    DELETE FROM cell_sources WHERE updated_by = '%s'"
+    print("!! rollback (rdb):    DELETE FROM <delam_obs|inspection_run>__lines WHERE written_by = '%s'"
           % UPDATED_BY)
     return name
 

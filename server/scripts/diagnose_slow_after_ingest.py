@@ -1792,132 +1792,44 @@ def _time_http(base, tables):
 def section_audit_first_call(p):
     """How expensive is the FIRST `/audit_logs/recent` after a bulk ingestion.
 
-    This section exists because it is the one thing that reproduced the report.
-    Measured on the isolated dev box, 2026-08-11, after ingesting 100,000 rows:
-
-        GET /audit_logs/recent?limit_groups=100   ->  31,737 ms   (66,793 bytes)
-        the same call again                       ->     243 ms
-        and again                                 ->     130 ms
-
-    A 65 KB response that costs half a minute once and then nothing is not a slow
-    query - it is a cache being built, and the cost is proportional to what the
-    ingestion just wrote. Two places pay it, both in server/audit_cache.py, both
-    reached from the sync `def` at server/main.py:924-931:
-
-      `load_initial` (audit_cache.py:25-66) - pages audit_logs newest-first in
-      5,000-row chunks with a GROWING OFFSET until it has collected 100 DISTINCT
-      transaction_ids. A bulk ingestion writes one transaction_id per FILE, so
-      100,000 fresh rows are ONE group: the scan has to walk past all of them
-      before it can find group #2. Paid once per web-server process.
-
-      `refresh_if_stale` (audit_cache.py:69-117) - `MAX(id)` advanced, so it
-      fetches EVERY audit row above its watermark with no LIMIT and runs a
-      pydantic `model_validate` plus a linear group scan per row. Paid after
-      every bulk write by another process (i.e. after every file the watcher
-      ingests).
-
-    🔴 The `/internal/events/batch-refresh` path does NOT prevent this. It calls
-    `add_logs_batch`, and `add_logs_batch` never advances `_db_max_id` (grep:
-    the watermark is written only at audit_cache.py:67 and :116). So the rows the
-    event already merged are read and validated a SECOND time by the next
-    `refresh_if_stale`.
-
-    What this section can measure from the database alone is the SHAPE that drives
-    both costs: how few distinct transactions the newest audit rows belong to.
+    Before the cell-source overhaul the route paged audit_logs - one row per changed cell - newest first until it had
+    100 distinct transactions; a bulk ingestion is one transaction per file, so 100,000 fresh rows were one group
+    and the first call walked all of them (31,737 ms on the dev box, 2026-08-11). It now reads audit_batches - one
+    row per (transaction, table, work kind, who) - newest first by (at, id) on `ix_audit_batches_at_id`. What this
+    section measures: how many distinct transactions the newest rows hold, and whether the planner uses the index.
     """
     head("5b", "감사 이력 «첫 호출» 비용 (AUDIT HISTORY FIRST CALL)")
-    if not p.has_relation("audit_logs"):
-        print("     audit_logs 테이블이 없다.")
+    if not p.has_relation("audit_batches"):
+        print("     audit_batches 테이블이 없다.")
         return
-    print("  그리드 화면은 테이블을 열 때마다 /audit_logs/recent 를 부른다")
-    print("  (client2/src/api.js switchTable -> loadHistory). 이 라우트는 «서로 다른")
-    print("  트랜잭션 100개»를 모을 때까지 audit_logs를 최신순으로 훑는다")
-    print("  (server/audit_cache.py:25-66). 그런데 대량 인제션은 파일 하나가 트랜잭션")
-    print("  하나이므로, 방금 넣은 10만 행이 전부 «한 그룹»이다 — 두 번째 그룹을 찾으려면")
-    print("  그 10만 행을 전부 지나가야 한다.")
-
     SAMPLE = 200000
     rows, to = p.bounded(f"""
         SELECT count(*), count(DISTINCT transaction_id)
-        FROM (SELECT transaction_id FROM audit_logs
-              ORDER BY id DESC LIMIT {SAMPLE}) s
+        FROM (SELECT transaction_id FROM audit_batches
+              ORDER BY at DESC, id DESC LIMIT {SAMPLE}) s
     """, ms=15000)
     if to or not rows:
-        print(f"\n     [최신 {SAMPLE:,}행을 15초 안에 훑지 못했다 — 그 자체가 이 라우트가 "
-              f"느리다는 뜻이다]")
-        note("audit_logs의 최신 20만 행을 15초 안에 읽지 못했다. /audit_logs/recent 의 "
-             "첫 호출은 이보다 더 많은 행을 훑는다 — 화면이 그만큼 기다린다.")
+        print(f"\n     [최신 {SAMPLE:,}행을 15초 안에 훑지 못했다]")
+        note("audit_batches의 최신 20만 행을 15초 안에 읽지 못했다 - /audit_logs/recent 의 첫 호출이 "
+             "그만큼 기다린다.")
         return
     scanned, distinct_tx = rows[0]
     print(f"\n     최신 {scanned:,}행이 담고 있는 서로 다른 트랜잭션: {distinct_tx}개")
     snapshot["audit_recent_shape"] = {"sampled": scanned, "distinct_tx": distinct_tx}
-    if distinct_tx < 100:
-        note(f"최신 audit_logs {scanned:,}행 안에 트랜잭션이 {distinct_tx}개뿐이다. "
-             f"/audit_logs/recent 는 100개를 모아야 하므로 이 {scanned:,}행을 «전부» 지나간 "
-             f"뒤에도 계속 훑는다. 이것이 «적재 직후 화면이 안 뜨다가 조금 있으면 "
-             f"괜찮아지는» 증상의 직접 원인이다(웹서버 기동 후 첫 1회, 그리고 다른 "
-             f"프로세스가 대량 기록할 때마다 1회).")
-    else:
-        print("     100개 이상 — 이 축에서는 첫 호출이 얕게 끝난다.")
-
-    sub("가장 큰 최근 트랜잭션 (한 그룹이 얼마나 큰가)")
-    rows, to = p.bounded(f"""
-        SELECT transaction_id, count(*) AS n, min(timestamp), max(timestamp)
-        FROM (SELECT transaction_id, timestamp FROM audit_logs
-              ORDER BY id DESC LIMIT {SAMPLE}) s
-        GROUP BY transaction_id ORDER BY n DESC LIMIT 8
-    """, ms=15000)
-    if to:
-        print("     [시간 내 집계하지 못했다]")
-        return
-    for tx, n, t0, t1 in rows:
-        print(f"     {str(tx)[:40]:40} {n:>10,}행   {t0} ~ {t1}")
-    # -----------------------------------------------------------------------
-    # Why each of those chunk reads is expensive, from the catalogue and the
-    # PLANNER only - no EXPLAIN ANALYZE, because that would EXECUTE the full scan
-    # this section is warning about and a diagnostic must not become the outage.
-    #
-    # Measured on the dev box (233,206 audit rows) with EXPLAIN ANALYZE, for the
-    # record - do not re-run this on a busy box:
-    #   Parallel Seq Scan on audit_logs, then
-    #   Sort  Sort Key: "timestamp" DESC, id DESC
-    #         Sort Method: external merge  Disk: 46,216 kB
-    #   OFFSET 0 -> 427 ms, OFFSET 100,000 -> 491 ms, OFFSET 200,000 -> 543 ms
-    # i.e. every chunk re-scans and re-sorts THE WHOLE TABLE, and the cost grows
-    # with the offset. `load_initial` issues one of these per 5,000 rows.
-    # -----------------------------------------------------------------------
-    sub("그 훑기 한 번의 비용 — 정렬을 도울 인덱스가 있는가")
-    idx = p.rows("""
-        SELECT indexname, indexdef FROM pg_indexes
-        WHERE tablename = 'audit_logs' ORDER BY indexname
-    """)
-    leading_ts = [n for n, d in idx
-                  if "USING btree (\"timestamp\"" in d or "USING btree (timestamp" in d]
-    for name, d in idx:
-        marker = "  ← timestamp 선두" if name in leading_ts else ""
-        print(f"     {name:34} {d[d.find('USING'):][:80]}{marker}")
-    if not leading_ts:
-        print()
-        print("     🔴 timestamp로 시작하는 인덱스가 없다. 그런데 이 라우트의 훑기는")
-        print("        ORDER BY timestamp DESC, id DESC 이다 → 매 청크마다 테이블 전체를")
-        print("        읽고 전체를 정렬한다(대개 디스크로 넘친다). 청크가 수십 개면")
-        print("        그 전량 정렬을 수십 번 한다.")
-        note("audit_logs에 timestamp 선두 인덱스가 없어서 /audit_logs/recent의 첫 호출은 "
-             "5,000행 청크마다 «테이블 전체 스캔 + 전체 정렬»을 한다. 테이블이 커질수록 "
-             "청크 하나가 비싸지고, 대량 적재는 청크 «개수»까지 늘린다 — 두 배로 나빠진다.")
-    plan = p.rows("EXPLAIN SELECT * FROM audit_logs "
-                  "ORDER BY timestamp DESC, id DESC OFFSET 0 LIMIT 5000")
+    sub("훑기 한 번의 방법 - (at, id) 인덱스를 쓰는가")
+    idx = p.rows("SELECT indexname FROM pg_indexes WHERE tablename = 'audit_batches' "
+                 "AND indexname = 'ix_audit_batches_at_id'")
+    print("     ix_audit_batches_at_id:", "있음" if idx else "없음")
+    if not idx:
+        note("audit_batches에 ix_audit_batches_at_id 가 없다 - /audit_logs/recent 는 매번 표 전체를 정렬한다. "
+             "서버를 한 번 재기동하면 선언된 인덱스를 짓는다.")
+    plan = p.rows("EXPLAIN SELECT * FROM audit_batches ORDER BY at DESC, id DESC LIMIT 5000")
     if plan:
-        print("\n     플래너가 고른 방법 (EXPLAIN — 실행하지 않는다):")
+        print("\n     플래너가 고른 방법 (EXPLAIN - 실행하지 않는다):")
         for (line,) in plan[:8]:
             print(f"       {line[:120]}")
 
-    biggest = rows[0][1] if rows else 0
-    if biggest > 20000:
-        note(f"가장 큰 단일 트랜잭션이 감사 로그 {biggest:,}행이다. 캐시 갱신은 이 행들을 "
-             f"«한 건씩» pydantic 검증한다(audit_cache.py:87-95) — 이 박스 실측으로 "
-             f"10만 행에 31.7초였다. 그동안 그 요청은 스레드풀 슬롯 1개와 DB 커넥션 "
-             f"1개를 붙잡고 있으므로, 같은 순간 정적 문서(/)도 같이 밀린다.")
+
 def section_statements(p, limit=12):
     head(6, "pg_stat_statements (있으면)")
     installed = p.one("SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'")
