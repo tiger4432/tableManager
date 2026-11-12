@@ -7,6 +7,10 @@ Usage
     python server/scripts/copy_layers_to_lines.py --check [--table <t> ...]   copy and roll back each page: cells
                                                                               whose lines merge to other than t, so far
     python server/scripts/copy_layers_to_lines.py --apply [--workers 4] [--table <t> ...] [--page 1000]
+    python server/scripts/copy_layers_to_lines.py --estimate [--workers 4] [--analyze] [--sample]   per table, layers
+                                         from the database's statistics (nothing read) and hours; --analyze makes them
+                                         first; --sample copies the biggest table for SAMPLE_SECONDS and rolls it back
+                                         - this disk's rate (it loads the disk: run it off-hours)
 
 Per table: pages of `--page` rows, a commit each (`line_migration.copy_page`). Interrupted, run it again - each table
 resumes after its last committed page (`copied_through`); a table already copied says so and is skipped.
@@ -35,6 +39,12 @@ from database import crud, line_migration, lines, models             # noqa: E40
 SHOWN = 5
 #: seconds between a table's progress lines
 SAY_EVERY = 10.0
+#: layers a second --estimate counts hours at: a quiet box, one 30-column table, one process (C, lead 11-12)
+BOX_RATE = 25000
+#: --sample: the schema it copies in (gone with its rollback), how long it copies, rows of t it brings in at a time
+SAMPLE_SCHEMA = "c_copy_sample"
+SAMPLE_SECONDS = 90.0
+SAMPLE_AHEAD = 10
 
 
 def declared(only=()) -> dict:
@@ -52,6 +62,85 @@ def servers_on(engine) -> list:
             "SELECT pid, application_name FROM pg_stat_activity WHERE datname = current_database() "
             "AND application_name LIKE 'assy\\_%' AND application_name <> :mine AND pid <> pg_backend_pid()"),
             {"mine": mine})]
+
+
+def estimate(engine) -> tuple:
+    """cell_sources' layers per table from the catalogue's own statistics (pg_class.reltuples, pg_stats' common
+    values of table_name) - no row of it read. -> ({table: layers}, layers of the tables the statistics' common list
+    leaves out, all layers). LookupError where cell_sources has no statistics yet."""
+    where = ("schemaname = current_schema() AND tablename = '%s' AND attname = 'table_name'"
+             % line_migration.OLD_LAYERS)
+    with engine.connect() as c:
+        total = c.execute(text("SELECT reltuples FROM pg_class WHERE relname = :t AND relnamespace = "
+                               "(SELECT oid FROM pg_namespace WHERE nspname = current_schema())"),
+                          {"t": line_migration.OLD_LAYERS}).scalar()
+        common = c.execute(text("SELECT u.v, u.f FROM pg_stats, unnest(most_common_vals::text::text[], "
+                                "most_common_freqs) AS u(v, f) WHERE " + where)).all()
+        known = c.execute(text("SELECT count(*) FROM pg_stats WHERE " + where)).scalar()
+    if not total or total < 0 or not known:
+        raise LookupError("no statistics for %s - run again with --analyze (reads a sample, takes about a minute)"
+                          % line_migration.OLD_LAYERS)
+    per = {t: round(f * total) for t, f in common}
+    return per, max(0, round(total) - sum(per.values())), round(total)
+
+
+def sample(engine, table: str, cfg: dict, seconds: float = SAMPLE_SECONDS, page: int = 1000, during=None) -> dict:
+    """This disk's copy rate: `line_migration.copy_page` as it is, page after page for `seconds`, on SAMPLE_SCHEMA -
+    made inside one transaction, first on the search path (SET LOCAL): t's rows a page needs copied into it ahead of
+    the page (not timed), the ledger tables and t__lines built there; cell_sources and the pins read where they are.
+    The transaction is rolled back - the schema and all it held go; t is only read (ACCESS SHARE). Refused where the
+    lines are built already (it is for before the window). `during(conn)`: called after the first page, inside.
+    -> {"pages", "rows", "layers", "seconds", "rate"} (layers a second)."""
+    from sqlalchemy import MetaData, Table
+
+    with engine.connect() as conn:
+        home = conn.execute(text("SELECT current_schema()")).scalar()
+        names = set(lines.base_tables(conn, lines=True, schema=home))
+        built = sorted(names & {lines.lines_relation(table), lines.LineColumn.__tablename__,
+                                lines.AuditBatch.__tablename__, lines.LineSource.__tablename__})
+        if built:
+            raise ValueError("%s is built here already - the sample is for a database before the window" % built[0])
+        conn.rollback()                                # the look above autobegan
+        tx = conn.begin()
+        try:
+            conn.execute(text('CREATE SCHEMA "%s"' % SAMPLE_SCHEMA))
+            conn.execute(text('SET LOCAL search_path = "%s", "%s"' % (SAMPLE_SCHEMA, home)))
+            conn.execute(text('CREATE TABLE "%s"."%s" (LIKE "%s"."%s" INCLUDING ALL)' % (SAMPLE_SCHEMA, table, home, table)))
+            for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource):
+                model.__table__.to_metadata(MetaData(), schema=SAMPLE_SCHEMA).create(conn)
+            db = Session(bind=conn)
+            lines.ensure_line_table(db, table, cfg)
+            here = Table(table, MetaData(), schema=SAMPLE_SCHEMA, autoload_with=conn)
+            there = Table(table, MetaData(), schema=home, autoload_with=conn)
+            cs = models.CellSource.__table__
+            ahead, after, out = None, None, {"pages": 0, "rows": 0, "layers": 0, "seconds": 0.0}
+            while out["seconds"] < seconds:
+                if ahead is None or after == ahead:                 # the next page's rows of t brought in, untimed
+                    q = (select(cs.c.row_id).where(cs.c.table_name == table).group_by(cs.c.row_id)
+                         .order_by(cs.c.row_id).limit(page * SAMPLE_AHEAD))
+                    if ahead is not None:
+                        q = q.where(cs.c.row_id > ahead)
+                    wanted = conn.execute(q).scalars().all()
+                    if not wanted:
+                        break
+                    conn.execute(here.insert().from_select([c.name for c in there.columns],
+                                                           select(there).where(there.c.row_id.in_(wanted))))
+                    ahead = wanted[-1]
+                began = time.perf_counter()
+                n, after = line_migration.copy_page(db, table, cfg, after, page, transaction_id="copy_sample")
+                out["seconds"] += time.perf_counter() - began
+                out["pages"] += 1
+                out["layers"] += n
+                out["rows"] += page if after is not None else 0
+                if out["pages"] == 1 and during is not None:
+                    during(conn)
+                if after is None:
+                    break
+            db.close()
+        finally:
+            tx.rollback()
+    out["rate"] = out["layers"] / out["seconds"] if out["seconds"] else 0.0
+    return out
 
 
 def plan(engine, tables: dict) -> list:
@@ -105,7 +194,11 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
             after = after_next
             now = time.perf_counter()
             if after is None:
-                say("%s: done - %d layer(s) copied in %.0f s" % (table, copied, now - started))
+                began = time.perf_counter()          # a migrated t__lines has no statistics: its first reads plan blind
+                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
+                    c.execute(text('ANALYZE "%s"' % lines.lines_relation(table)))
+                say("%s: done - %d layer(s) copied in %.0f s - analyzed %s in %.0f s" % (
+                    table, copied, now - started, lines.lines_relation(table), time.perf_counter() - began))
                 return {"table": table, "copied": copied, "seconds": now - started}
             if now - said >= SAY_EVERY:
                 said = now
@@ -161,6 +254,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--estimate", action="store_true")
+    parser.add_argument("--analyze", action="store_true")
+    parser.add_argument("--sample", action="store_true")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--page", type=int, default=1000)
     parser.add_argument("--table", action="append", default=[])
@@ -173,6 +269,41 @@ def main(argv=None) -> int:
     if missing:
         print("not a declared table that keeps lines: %s" % ", ".join(missing))
         return 2
+    if args.estimate:
+        if args.analyze:
+            began = time.perf_counter()
+            with engine.begin() as c:
+                c.execute(text("ANALYZE %s" % line_migration.OLD_LAYERS))
+            print("ANALYZE %s done in %.0f s - its statistics are made" % (line_migration.OLD_LAYERS,
+                                                                         time.perf_counter() - began))
+        try:
+            per, rest, total = estimate(engine)
+        except LookupError as none:
+            print("refused: %s" % none)
+            return 2
+        shown = {t: n for t, n in per.items() if t in tables}
+        rate, whose = BOX_RATE, "a quiet box's rate; this disk's own is not measured - add --sample"
+        if args.sample and shown:
+            biggest_table = max(shown, key=shown.get)
+            print("sample: copying %s for %.0f s and rolling it back ..." % (biggest_table, SAMPLE_SECONDS), flush=True)
+            try:
+                got = sample(engine, biggest_table, tables[biggest_table], page=args.page)
+            except ValueError as refused:
+                print("refused: %s" % refused)
+                return 2
+            print("sample %s: %d page(s), %d layer(s) in %.1f s - %.0f layers/s on this disk; rolled back, nothing kept"
+                  % (biggest_table, got["pages"], got["layers"], got["seconds"], got["rate"]))
+            if got["rate"]:
+                rate, whose = got["rate"], "this disk's rate, from the sample"
+        for t in sorted(shown, key=lambda t: -shown[t]):
+            print("%-32s about %12d layer(s)  %6.2f h" % (t, shown[t], shown[t] / rate / 3600))
+        print("%-32s about %12d layer(s) in tables too small for the statistics' list" % ("(the rest)", rest))
+        biggest = max(shown.values(), default=0)
+        print("total about %d layer(s): %.1f h with 1 process, at least %.1f h with %d (the biggest table alone %.1f h)"
+              " - at %.0f layers/s, %s"
+              % (total, total / rate / 3600, max(biggest, total / max(1, args.workers)) / rate / 3600,
+                 args.workers, biggest / rate / 3600, rate, whose))
+        return 0
     running = servers_on(engine)
     if running:
         print("refused: the server is running - %s. Stop it first; the copy runs with nothing writing"

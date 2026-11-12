@@ -273,13 +273,14 @@ def load_physical(engine, label):
     snap = PhysicalSchema(label)
     conn = readonly_connection(engine)
     try:
-        snap.tables = {r[0] for r in conn.execute(text("""
-            SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"""))}
+        from database.lines import base_tables     # line tables are engine machinery, not schema (lead 11-12)
+
+        snap.tables = set(base_tables(conn, schema="public"))
 
         for t, c, dt, dflt, nul in conn.execute(text("""
             SELECT table_name, column_name, data_type, column_default, is_nullable
-            FROM information_schema.columns WHERE table_schema = 'public'""")):
+            FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ANY(:names)"""),
+                {"names": sorted(snap.tables)}):
             snap.columns[(t, c)] = {"data_type": dt, "column_default": dflt,
                                     "is_nullable": nul == "YES"}
 

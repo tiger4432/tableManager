@@ -584,7 +584,7 @@ def _relation_exists(engine, name):
     """
     try:
         insp = inspect(engine)
-        if name in set(insp.get_table_names()) | set(insp.get_view_names()):
+        if insp.has_table(name) or name in set(insp.get_view_names()):      # one name asked, none listed
             return True
     except Exception:
         pass
