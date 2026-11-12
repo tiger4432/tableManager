@@ -6,7 +6,8 @@ the reach's «not in the table». The screen sends a row id of digits as a numbe
 
   row ids     a text row_id table and an integer row_id table (the same rows, the column altered) × the values sent as
               numbers and as texts: the reach reaches the same rows, says none «not in the table», and the grid pages
-              the marking's rows (the integer table's page waits on the lead - its xfail says where)
+              the marking's rows - but the integer table's page, an xfail: the product makes no integer row_id
+              table, and the grid's metadata read moves to lines in the overhaul (lead 11-12 ㄴ)
   grid        a text column keeps a text as it came - '007' is not '7', '3.0' is not '3' - a number sent there meets
               the text that spells it; a number column takes numbers and texts that read as numbers, and refuses one
               that does not, by name
@@ -107,7 +108,8 @@ def test_a_row_id_marking_reaches_the_same_rows_sent_as_numbers_or_texts(numbere
 
 @pytest.mark.parametrize("integer", [False, pytest.param(True, marks=pytest.mark.xfail(
     strict=True, reason="the grid's metadata read (grid_read.fetch_and_merge_metadata) asks cell_overwrites' text "
-                        "row_id with the table's integers - not the marking's seat; asked of the lead 11-12"))],
+                        "row_id with the table's integers - not the marking's seat; no product table has one "
+                        "(lead 11-12 ㄴ)"))],
     ids=["text row_id", "integer row_id"])
 def test_a_row_id_marking_pages_the_same_rows_sent_as_numbers_or_texts(numbered, client, integer):
     if integer:
