@@ -164,9 +164,10 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     given = {i: dict(it.get("values") or {}) for i, it in enumerate(items) if it["line_kind"] == WRITE}  # before 2
     # a table with no lines: a delete still takes its row out and a create still makes it, with no line (lead 11-11 2);
     # a mark still merges its row again (a re-key it asks for)
-    kept, left_out = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at) if keeps
-                      else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
-                            sum(1 for i in targets if i not in plain and items[i]["line_kind"] not in (DELETED, CREATED, MARK))))
+    kept, left_out, marked = (_leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, at) if keeps
+                              else ({i for i in targets if items[i]["line_kind"] in (DELETED, CREATED, MARK)},
+                                    sum(1 for i in targets if i not in plain
+                                        and items[i]["line_kind"] not in (DELETED, CREATED, MARK)), None))
     again = {i for i in kept if _merges_again(items[i])}   # its row merged again, no line
     kept -= again
     split = {items[k]["of"] for k in kept if "of" in items[k]} - kept   # its columns all went to items split off it
@@ -180,7 +181,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         lines.note_sources(db, {items[i].get("source_name") for i in kept})   # the rank reads a line's source's row
         written, line_ids = _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
         _heads(db, ln, chunks, written)
-        unpinned = _marks(db, table, shape, items, kept, targets, asked)
+        unpinned = _marks(db, table, shape, items, kept, targets, asked, marked)
     for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
         if targets[i] in {r for r, _c in unpinned} and i not in work and i not in split:
             work[i] = "edit"
@@ -485,7 +486,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
     says it already (`_others`); the write when no column is left. A withdraw keeps the columns its source still
     speaks in and is left out when none - never by comparing values (a NULL head withdrawn by NULL = NULL would speak
     on). All ask one read of the head lines (`_spoken`). Deletes and marks are kept. Returns (kept indexes, how many
-    left)."""
+    left, the cell_overwrites read - (rows, columns, {cell: row}) - for step 4½, None when none was read)."""
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
@@ -499,9 +500,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                                                                  in (WRITE, WITHDRAW)}, columns, asked).items():
         heads.setdefault(row_id, {})[source] = said
     asking = [i for i in writes if _asks_others(items[i], before.get(i) is not None)]   # `_version_gate`'s seat
-    pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
-                                                       {c for i in asking for c in items[i]["values"]}).items()}
-            if asking else {})
+    marked = None
+    if asking:
+        marked = ({targets[i] for i in asking}, {c for i in asking for c in items[i]["values"]})
+        marked += (_overwrites(db, table, *marked),)
+    pins = {cell: was[2] for cell, was in marked[2].items()} if marked else {}
     kept, left_out, ranks = set(), 0, {}
     for i in sorted(targets):
         it, row_id = items[i], targets[i]
@@ -546,7 +549,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
             left_out += 1
         else:
             kept.add(i)
-    return kept, left_out
+    return kept, left_out, marked
 
 
 #: the line_id step 2 ranks a batch line by before step 3 numbers it (rank 2c): after every stored line, in the
@@ -727,13 +730,14 @@ def _heads(db, ln, chunks, written):
     db.execute(statement, params)
 
 
-def _marks(db, table, shape, items, kept, targets, asked):
+def _marks(db, table, shape, items, kept, targets, asked, marked=None):
     """Step 4½ - the overwrite mark and the pin of each written cell, in cell_overwrites as today (pins are outside
     this landing - design «셀소스 · 감사 이력 · 고정이 어디로»; lead 11-11), before step 5's merge reads the pins: a
     person's write ("user") takes its cells' pin off, the cells it repeats included; a cell a person's head line or a
     pin sits on is marked (is_overwrite, by the writer), any other cell's mark goes. A mark already saying exactly that
     on a cell whose line did not move is left - the old write door's rule, cell for cell. -> the cells (row_id,
-    column) a pin was taken off - their merge moves though no line did."""
+    column) a pin was taken off - their merge moves though no line did. `marked`: step 2's cell_overwrites read, used
+    when it covers every cell asked here (nothing writes cell_overwrites between the two)."""
     from datetime import datetime
 
     cells, freed = {}, set()                       # (row_id, column) -> (item, its line moved); a person's cells
@@ -750,7 +754,8 @@ def _marks(db, table, shape, items, kept, targets, asked):
         return set()
     row_ids = sorted({r for r, _c in cells})
     columns = sorted({c for _r, c in cells})
-    held = _overwrites(db, table, row_ids, columns)
+    held = (marked[2] if marked and marked[0].issuperset(row_ids) and marked[1].issuperset(columns)
+            else _overwrites(db, table, row_ids, columns))
     ln, bits, chunks = shape["lines"], shape["bits"], shape["chunks"]
     person = set()                                 # (row_id, column) a person's head line says
     heads, gone = lines.bit_columns("head", chunks), lines.bit_columns("withdrawn", chunks)
@@ -1141,22 +1146,25 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
     shown = [c for c in view_columns if c not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS]
     collapsed = request_outbox_mode.get() == OUTBOX_MODE_COLLAPSED
     table_shape = SimpleNamespace(columns=[SimpleNamespace(name=c) for c in view_columns])
+
+    def as_row(row_id, old, new):                  # the event's row - built only where events are staged a row
+        return SimpleNamespace(__table__=table_shape, row_id=row_id,
+                               business_key_val=keys.get(row_id, old.get("business_key_val")),
+                               **{c: new.get(c) for c in shown})
+
     events = {"CREATE": [], "EDIT": [], "DELETE": []}
     for row_id, change in changed.items():
         old, new = change["old"] or {}, change["new"]
         if new is None:
-            events["DELETE"].append((row_id, None, {c: json_value(old.get(c)) for c in shown}, old))
+            events["DELETE"].append((row_id, None, {c: json_value(old.get(c)) for c in shown}, None))
             continue
-        row = SimpleNamespace(__table__=table_shape, row_id=row_id,
-                              business_key_val=keys.get(row_id, old.get("business_key_val")),
-                              **{c: new.get(c) for c in shown})
         if change["old"] is None:
             events["CREATE"].append((row_id, sorted(wrote.get(row_id, set()) | {"row_id", "business_key_val"}),
-                                     None, row))
+                                     None, (old, new)))
             continue
         moved = _moved(old, new, shown, types)
         if moved:
-            events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, row))
+            events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, (old, new)))
     for event_type, rows in events.items():
         if not rows:
             continue
@@ -1165,8 +1173,8 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
                                   sorted({c for r in rows for c in r[1] or ()}) or None,
                                   old=[r[2] or {} for r in rows] if event_type != "CREATE" else None)
         else:
-            for _row_id, _columns, old, row in rows:
-                stage_event(db, event_type, table, row, old=old)
+            for row_id, _columns, old, (was, new) in rows:
+                stage_event(db, event_type, table, as_row(row_id, was, new), old=old)
 
 
 def _audit(db, table, said, transaction_id, at):
