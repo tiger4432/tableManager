@@ -99,7 +99,7 @@ def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
 
 
 def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transaction_id: str,
-              written_by: str = "system", mismatched: list = None) -> tuple:
+              written_by: str = "system", mismatched: list = None, rows: list = None) -> tuple:
     """Copy the old layers (cell_sources) of the next `page_size` rows of t after row id `after` into t__lines: one
     «write» line per (row, source, ingested_at, updated_by, owner), each value the one today's write would have stored
     (`crud.cast_value_by_type` on the declared type, then `crud.line_text` - lead 11-11) - so each cell keeps its own time
@@ -109,7 +109,8 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     The last page (next_after None) writes the «copy» audit row; a first page (after None) on a copied table
     raises AlreadyCopied, on a table an earlier run left half copied resumes after copied_through.
     `mismatched`: filled with (row_id, column, t's value, the lines' winner) where the copied lines merged again do not
-    give what t shows - the migration's gate (owner 11-11); the caller rolls the page back.
+    give what t shows - the migration's gate (owner 11-11); the caller records them (owner ㄴ).
+    `rows`: these rows only, as a page - `--rows` copying a record's rows again; no resume, no «copy» audit row.
     -> (cells copied, next_after or None)."""
     from sqlalchemy import func, select, update
 
@@ -118,7 +119,8 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
 
     _copyable(db, table, table_cfg)
     ab = lines.AuditBatch.__table__
-    if after is None:
+    only = rows                                        # `rows` is t's rows of the page below
+    if only is None and after is None:
         done = db.execute(select(ab.c.transaction_id).where(ab.c.table_name == table, ab.c.work_kind == COPY_WORK)
                           .limit(1)).scalar()
         if done is not None:
@@ -129,11 +131,13 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         after = copied_through(db, table, table_cfg, transaction_id)
     cs = CellSource.__table__
     t = lines.current_table(db, table, table_cfg)
-    q = select(cs.c.row_id).where(cs.c.table_name == table).group_by(cs.c.row_id).order_by(cs.c.row_id).limit(page_size)
-    if after is not None:
-        q = q.where(cs.c.row_id > after)
-    page = db.execute(q).scalars().all()
-    next_after = page[-1] if len(page) == page_size else None
+    q = select(cs.c.row_id).where(cs.c.table_name == table).group_by(cs.c.row_id).order_by(cs.c.row_id)
+    if only is not None:
+        page, next_after = db.execute(q.where(cs.c.row_id.in_(sorted(only)))).scalars().all(), None
+    else:
+        q = q.limit(page_size) if after is None else q.where(cs.c.row_id > after).limit(page_size)
+        page = db.execute(q).scalars().all()
+        next_after = page[-1] if len(page) == page_size else None
     rows = set(db.execute(select(t.c.row_id).where(t.c.row_id.in_(page))).scalars()) if page else set()
     s = lines.shape(db, table, table_cfg)
     lt, bits, chunks = s["lines"], s["bits"], s["chunks"]
@@ -200,7 +204,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         else:
             for row_id, won_by in named:
                 db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: won_by}))
-    if next_after is None:
+    if next_after is None and only is None:
         db.execute(ab.insert().values(transaction_id=transaction_id, table_name=table, written_by=written_by,
                                       work_kind=COPY_WORK, at=func.now()))
     return copied, next_after

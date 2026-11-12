@@ -1,9 +1,11 @@
-"""The migration command (owner 11-11): a table copies to its end, a second run says «already copied», a page whose
-copied lines do not give what t shows is rolled back and stops its table, naming the cell."""
+"""The migration command (owner 11-11): a table copies to its end, a second run says «already copied»; a cell whose
+copied lines do not give what t shows is recorded in copy_mismatch_<t>.csv and its page lands (owner ㄴ, lead 11-12);
+--rows copies a record's rows again."""
+import json
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import MetaData, Table, create_engine, select, text
+from sqlalchemy import MetaData, Table, create_engine, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -81,10 +83,42 @@ def test_the_check_counts_after_every_page_and_leaves_nothing():
         assert db.execute(select(lines.AuditBatch.__table__.c.work_kind)).scalars().all() == []
 
 
+def shown(engine, row_id):
+    with Session(bind=engine) as db:
+        t = lines.current_table(db, "t", CFG)
+        lot, won_by = db.execute(select(t.c.lot, t.c[lines.WON_BY]).where(t.c.row_id == row_id)).one()
+    return lot, (json.loads(won_by) if isinstance(won_by, str) else won_by) or {}
+
+
+def copy_audits(engine):
+    with Session(bind=engine) as db:
+        ab = lines.AuditBatch.__table__
+        return db.execute(select(func.count()).select_from(ab).where(ab.c.work_kind == "copy")).scalar()
+
+
 @pytest.mark.parametrize("page", [1, 2])
-def test_a_page_whose_lines_do_not_give_t_is_rolled_back_and_stops_the_table(page):
+def test_a_cell_whose_lines_do_not_give_t_is_recorded_and_its_page_lands(page, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     engine, said = build("not b"), []
     out = script.copy_table(engine, "t", CFG, page, say=said.append)
-    assert out["stopped"] and [m[:2] for m in out["mismatched"]] == [("r2", "lot")]
-    assert copied_rows(engine) == (["r1"] if page == 1 else [])      # the pages before it stay
-    assert "STOPPED" in said[-1] and "r2.lot" in said[-1]
+    assert out["mismatched"] == 1 and copied_rows(engine) == ["r1", "r2"] and copy_audits(engine) == 1
+    with open(out["record"], encoding="utf-8") as f:
+        assert f.read().splitlines() == ["table,row_id,column,t_value,lines_value", "t,r2,lot,not b,b"]
+    assert "1 cell(s) do not match" in said[-1] and "--rows %s" % out["record"] in said[-1]
+    lot, won_by = shown(engine, "r2")
+    assert lot == "not b" and "lot" not in won_by          # t shows its value; no line is named its winner
+    assert "lot" in shown(engine, "r1")[1]
+
+
+def test_a_records_rows_copied_again_after_t_is_fixed_match_and_r1_is_untouched(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    engine, said = build("not b"), []
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append)
+    r1_line = shown(engine, "r1")[1]["lot"]
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE t SET lot = 'b' WHERE row_id = 'r2'"))
+    again = script.copy_table(engine, "t", CFG, 1, say=said.append, rows=script.recorded_rows(out["record"])["t"])
+    assert again == {"table": "t", "again": 1, "copied": 1, "mismatched": 0, "record": None}
+    assert copied_rows(engine) == ["r1", "r2"] and copy_audits(engine) == 1     # one copy line a row, one audit row
+    assert shown(engine, "r1")[1]["lot"] == r1_line and "lot" in shown(engine, "r2")[1]
+    assert said[-1].startswith("t: 1 row(s) copied again - 1 copy line(s) taken out") and "every cell matches" in said[-1]
