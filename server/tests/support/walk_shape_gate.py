@@ -51,6 +51,8 @@ REFUSED.update({("qualifier_required_attribute", kind):
 #: the value row is held as «no node»: a value is not a node - it is a Quantity edge's qualifier (owner 11-11; the
 #: 08-28 retirement of value nodes stands). This board declares no Quantity, so the walk is held to draw none
 VALUE_IS_A_QUALIFIER = "by design not a node - a value is a Quantity edge qualifier (owner 11-11)"
+#: the qualifier and attribute seats take timestamptz without a zone; only the value role asks for one (lead 11-12:
+#: kept refused - that rule belongs to the retired value path and is not widened)
 REFUSED[("value", "timestamptz")] = ("role 'value' carries a timestamp, so its column binding must declare the "
                                      "timezone a naive reading is in - the compiler cannot know it and every atom "
                                      "would be refused without it")
