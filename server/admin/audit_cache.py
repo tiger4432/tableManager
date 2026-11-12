@@ -350,7 +350,7 @@ def _batch_walk(db: Session, floor, limit_groups: int, settings: dict):
             position = (rows[-1][1], rows[-1][2])
         return keys, True, scanned, None
     except OperationalError as exc:
-        if not _cut(exc):
+        if not db_waits.cancelled(exc):
             raise
         db.rollback()
         return _said_cut(keys, scanned, started, "%s past recent_statement_seconds %d" % (
