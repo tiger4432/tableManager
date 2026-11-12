@@ -166,6 +166,12 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def is_line_table(name: str) -> bool:
+    """Whether a table of the database is a declared table's line table (`lines_relation`'s name) - the one seat
+    every catalogue reader asks (lead 11-12: the business key picker built a UNIQUE on t__lines)."""
+    return name.endswith(LINES_SUFFIX) and len(name) > len(LINES_SUFFIX)
+
+
 def sets_at_once(db) -> bool:
     """A step's rows in one set statement (write_lines, line_migration.copy_page's won_by): PostgreSQL (psycopg2 sends an UPDATE's parameter sets one round trip each,
     lead 11-12 ㄴ); sqlite keeps the parameter sets - no round trips there, and no bit_or."""
@@ -387,6 +393,20 @@ def line_indexes(engine, table_name: str, table_cfg: dict, say=None, only=None) 
     return out
 
 
+def drop_key_index(engine, table_name: str):
+    """PostgreSQL: the business key unique index the start's picker built on t__lines before it left line tables out
+    (lead 11-12) - dropped CONCURRENTLY. -> its name, or None when there is none."""
+    from migrations.add_business_key_unique_index import unique_index_name
+
+    name = unique_index_name(lines_relation(table_name))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        if conn.execute(text("SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND tablename = :t "
+                             "AND indexname = :i"), {"t": lines_relation(table_name), "i": name}).first() is None:
+            return None
+        conn.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
+    return name
+
+
 def head_index(engine, table_name: str, table_cfg: dict, say=None) -> str:
     """t__lines' head index for its chunks as they stand (`line_indexes`' head case). -> the builder's answer."""
     with __import__("sqlalchemy.orm", fromlist=["Session"]).Session(engine) as db:
@@ -532,7 +552,7 @@ def drop_every_line_table(engine) -> list:
     Base.metadata.drop_all, which never sees them (each lives on shape's own MetaData). -> the names dropped."""
     from sqlalchemy import inspect
 
-    names = [n for n in inspect(engine).get_table_names() if n.endswith(LINES_SUFFIX)]
+    names = [n for n in inspect(engine).get_table_names() if is_line_table(n)]
     with engine.begin() as conn:
         for name in names:
             conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{_checked(name)}"')
@@ -876,6 +896,10 @@ def ensure_declared(engine, tables=None) -> dict:
         if engine.dialect.name != "postgresql":
             continue
         try:
+            dropped = drop_key_index(engine, name)
+            if dropped:
+                log.warning("[Lines] %s: dropped %s - a business key index on a line table refuses a row's second "
+                            "live write (every line of a keyed row carries its key)", lines_relation(name), dropped)
             answers = line_indexes(engine, name, cfg, say=log.info)
         except Exception as err:                             # noqa: BLE001 - said; the sync raises it with the rest
             answers = {lines_relation(name): "%s%s" % (models.INDEX_FAILED_SAID, told(err))}

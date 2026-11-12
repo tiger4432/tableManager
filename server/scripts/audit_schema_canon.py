@@ -1163,10 +1163,10 @@ def rule_r8(decl, phys=None):
         "`bonding_log`. That is the join between layers and R8 explicitly wants the name "
         "to change when the fact crosses a layer.")
 
-    from database.lines import LINES_SUFFIX     # a declared table's history - engine machinery, any prefix
+    from database.lines import is_line_table    # a declared table's history - engine machinery, any prefix
 
     def classify(t):
-        if t in ENGINE_TABLES or t.endswith(LINES_SUFFIX):
+        if t in ENGINE_TABLES or is_line_table(t):
             return "engine"
         for v in STAGE_PREFIX_VARIANTS:
             if t.startswith(v):

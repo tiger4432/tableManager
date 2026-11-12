@@ -275,7 +275,7 @@ def run(args):
     ensure_target_database(args.target)
     build_target_schema(args.target)
     dst_engine = create_engine(args.target)
-    from database.lines import LINES_SUFFIX     # after the target is pinned (above)
+    from database.lines import LINES_SUFFIX, is_line_table     # after the target is pinned (above)
     dst = dst_engine.connect()
 
     src_tables = set(list_tables(src))
@@ -315,7 +315,7 @@ def run(args):
         if t in EMPTY_TABLES:
             report[t] = ("empty-by-design", 0)
             continue
-        if t in ROW_SCOPED or t.endswith(LINES_SUFFIX):
+        if t in ROW_SCOPED or is_line_table(t):
             continue                # handled after, needs the copied row set
 
         cols = [c for c in columns_of(src, t) if c in set(columns_of(dst, t))]

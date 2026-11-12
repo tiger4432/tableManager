@@ -215,7 +215,9 @@ def tables_with_business_key(conn) -> list:
           AND t.table_type = 'BASE TABLE'
         ORDER BY c.table_name
     """), {"col": BK_COLUMN}).fetchall()
-    return [r[0] for r in rows]
+    from database.lines import is_line_table    # t__lines carries the key on every line of a row - never unique
+
+    return [r[0] for r in rows if not is_line_table(r[0])]
 
 
 def existing_unique_index(conn, table: str):
