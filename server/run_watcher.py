@@ -710,6 +710,9 @@ def main():
     global workspace_watcher
     workspace_watcher = watcher
     
+    from utils.logger import booted
+
+    booted()
     logger.info(f"Watching {watcher.watch_count} directory configurations...")
     try:
         watcher.start(blocking=True)

@@ -573,6 +573,9 @@ async def _serve(index, answers):
     asks = asyncio.Queue()
     threading.Thread(target=_read_asks, args=(asyncio.get_running_loop(), asks),
                      name="chain-slot-asks", daemon=True).start()
+    from utils.logger import booted
+
+    booted()
     while True:
         heartbeat.beat(name, note=ingestion_worker._worker_note())
         try:

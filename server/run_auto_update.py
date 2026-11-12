@@ -1116,6 +1116,9 @@ def main():
     except Exception as e:
         logger.error(f"Failed to start the index and statistics line: {told(e)}", exc_info=e)
     try:
+        from utils.logger import booted
+
+        booted()
         MultiDiscoveryScheduler(check_interval=5).run()
     finally:
         if config_watcher:

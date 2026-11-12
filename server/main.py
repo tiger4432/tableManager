@@ -737,6 +737,9 @@ async def startup_event():
         #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을
         #    만드는 문장이었습니다.
         logger.error(f"Startup step failed (watcher/chain worker): {told(e)}", exc_info=e)
+    from utils.logger import booted
+
+    booted()
 
 @app.on_event("shutdown")
 async def shutdown_event():
