@@ -2360,6 +2360,118 @@
       "cite": "Logic If: If(1 < 2, \"Small\", \"Big\")-> Small"
     },
     {
+      "id": "if.no.else.true",
+      "expr": "If(1 < 2, \"Small\")",
+      "rows": [],
+      "expect": "Small",
+      "basis": "ours",
+      "cite": "owner 11-10: If takes two arguments; no else is empty, as a Case with no else"
+    },
+    {
+      "id": "if.no.else.false",
+      "expr": "If(2 < 1, \"Small\")",
+      "rows": [],
+      "expect": null,
+      "basis": "ours",
+      "cite": "owner 11-10: no else is empty, as a Case with no else"
+    },
+    {
+      "id": "if.no.else.rows",
+      "expr": "If([x] > 1, [x])",
+      "rows": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": null
+        }
+      ],
+      "expect_rows": [
+        null,
+        2,
+        null
+      ],
+      "basis": "ours",
+      "cite": "owner 11-10: row by row, a false condition is empty"
+    },
+    {
+      "id": "sn.empty",
+      "expr": "SN(null, 5)",
+      "rows": [],
+      "expect": 5,
+      "basis": "ours",
+      "cite": "owner 11-10: SN(value, instead) is instead when value is empty (Conversion SN)"
+    },
+    {
+      "id": "sn.value",
+      "expr": "SN(3, 5)",
+      "rows": [],
+      "expect": 3,
+      "basis": "ours",
+      "cite": "owner 11-10: a value is kept"
+    },
+    {
+      "id": "sn.zero",
+      "expr": "SN(0, 5)",
+      "rows": [],
+      "expect": 0,
+      "basis": "ours",
+      "cite": "owner 11-10: 0 is a value, not empty"
+    },
+    {
+      "id": "sn.invalid",
+      "expr": "SN(0/0, 5)",
+      "rows": [],
+      "expect": 5,
+      "basis": "ours",
+      "cite": "an invalid value (NaN) is read as empty (Ops 0/0 -> (Empty)), so SN gives instead"
+    },
+    {
+      "id": "sn.rows",
+      "expr": "SN([s], \"none\")",
+      "rows": [
+        {
+          "s": "a"
+        },
+        {
+          "s": ""
+        },
+        {
+          "s": "  "
+        },
+        {
+          "s": null
+        }
+      ],
+      "expect_rows": [
+        "a",
+        "none",
+        "none",
+        "none"
+      ],
+      "basis": "ours",
+      "cite": "owner 11-10: empty is the one blank rule - empty text, spaces, null"
+    },
+    {
+      "id": "sn.empty.text",
+      "expr": "SN(\"\", \"x\")",
+      "rows": [],
+      "expect": "x",
+      "basis": "ours",
+      "cite": "a text of length 0 is empty (CLAUDE.md: length-0 string is NULL), so SN gives instead"
+    },
+    {
+      "id": "sn.spaces.text",
+      "expr": "SN(\"  \", \"x\")",
+      "rows": [],
+      "expect": "x",
+      "basis": "ours",
+      "cite": "spaces only are empty (the one blank rule), so SN gives instead"
+    },
+    {
       "id": "if.is.null.rows",
       "expr": "If([x] Is Null, \"0\", \"has value\")",
       "rows": [

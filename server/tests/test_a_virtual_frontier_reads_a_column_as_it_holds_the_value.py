@@ -8,11 +8,13 @@ text, as the join's spelled comparison did; a column with notation rules stays s
   rules        the spelled expression, the text as it is
 """
 import notation_norm
+from ledger.sql_translate import Leg
 from ledger_api.ledger_subgraph import VirtualEvidenceLookup
 
 
 class _Leg:
     relation = "t"
+    compared = Leg.compared                 # the one key comparison (lead D ccac72ede), on this leg's specs
 
     def __init__(self, **specs):
         self.specs = specs

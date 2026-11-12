@@ -32,6 +32,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from error_said import told
+from runtime import stages as receivers
 from utils import heartbeat
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,8 @@ def counting_group():
     counts = _Counts()
     token = _COUNTS.set(counts)
     try:
-        yield counts.summary
+        with receivers.receiving(_GroupStages(counts)):
+            yield counts.summary
     finally:
         _COUNTS.reset(token)
 
@@ -244,43 +246,33 @@ def phase(name: str):
         counts.phases[name] = counts.phases.get(name, 0.0) + (time.perf_counter() - started)
 
 
-@contextlib.contextmanager
-def stage(name: str, said: str = None):
-    """Charge this block's WALL CLOCK to `name` among the group's MACHINERY (S-94, 판정 241).
-    `said` - what the beat says beyond the name while in it: a write carries its page line (총괄 59f2ab3f4 -
-    the write stage had replaced it on every page). The seconds still go to `name`.
+class _GroupStages:
+    """The group's receiver of `runtime.stages.stage` (S-94, 판정 241): each outer stage's WALL CLOCK charged to its name
+    among the group's MACHINERY. Entering one is progress on the work this thread claimed - the watcher's file, the
+    chain's group - and the stage is what a stalled line names (`said` - a write's page line, 총괄 59f2ab3f4); a pause
+    asked of the group (`interrupt_at_stages`) stops it there.
 
-    🔴 A SECOND LAYER, AND IT HAS TO BE A SECOND DICT. `phase` names what happens INSIDE
-    one alignment view build; this names what the group does AROUND the mapper - reading
-    the outbox, calling the mapper, writing each target table. The mapper call contains
-    every phase, so putting the two in one dict would count the same seconds twice and the
-    line's own remainder would stop being an answer.
-
-    ⚠️ WHY IT IS NOT ANOTHER `mapper_ms`. The batch loop already records a `mapper_ms`
-    for its latency budget, and that name is not true of what it measures: it brackets the
-    WHOLE group body - mapper, writes and outbox together - which is exactly why the ~15 s
-    of chain machinery could not be aimed at. This layer splits that one number, and the
-    stage names say which part is which rather than one of them borrowing the name.
-
-    ⛔ LIKE `phase`, THE BLOCKS MUST NOT NEST INSIDE EACH OTHER, or the sum stops being
-    comparable with the group's wall clock and the unnamed remainder goes negative - the
-    arithmetic saying a cost was filed under something that did not incur it.
+    🔴 A SECOND LAYER, AND IT HAS TO BE A SECOND DICT. `phase` names what happens INSIDE one alignment view build; this
+    names what the group does AROUND the mapper - reading the outbox, calling the mapper, writing each target table.
+    The mapper call contains every phase, so one dict would count the same seconds twice and the line's own remainder
+    would stop being an answer. ⚠️ NOT ANOTHER `mapper_ms` - that brackets the WHOLE group body. ⛔ Outer stages only
+    (`outer_only`), or the sum stops being comparable with the group's wall clock and the unnamed remainder goes negative.
     """
-    counts = _COUNTS.get()
-    if counts is None:
-        yield
-        return
-    # Entering a stage is progress on the work this thread claimed - the watcher's file,
-    # the chain's group - and the stage is what a stalled line names.
-    heartbeat.progress(name if said is None else "%s · %s" % (name, said))
-    check = _INTERRUPT.get()
-    if check is not None:
-        check()
-    started = time.perf_counter()
-    try:
-        yield
-    finally:
-        counts.stages[name] = counts.stages.get(name, 0.0) + (time.perf_counter() - started)
+
+    outer_only = True
+
+    def __init__(self, counts):
+        self.counts = counts
+
+    def enter(self, name, rows, said):
+        heartbeat.progress(name if said is None else "%s · %s" % (name, said))
+        check = _INTERRUPT.get()
+        if check is not None:
+            check()
+        return name
+
+    def leave(self, name, seconds, told):
+        self.counts.stages[name] = self.counts.stages.get(name, 0.0) + seconds
 
 
 @contextlib.contextmanager

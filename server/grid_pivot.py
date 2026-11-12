@@ -98,9 +98,10 @@ def of(table_name, **asked):
 
 
 def split_filters(filters, pivot):
-    """`?filters=` -> (the key columns' and the item column's filters as `?filters=` text, {item: its filter}) - the
-    item column's narrows the long rows, so the items, their count and the groups follow it. Anything else is refused
-    by name; text that is not JSON goes on as it is, to the grid filter's own refusal."""
+    """`?filters=` -> (the key columns' and the item column's filters as `?filters=` text, {name: its filter} of the
+    items' and the carried columns') - the item column's narrows the long rows, so the items, their count and the
+    groups follow it; an item's or a carried column's keeps whole groups (`narrow`). Anything else is refused by name;
+    text that is not JSON goes on as it is, to the grid filter's own refusal."""
     import json
 
     try:
@@ -111,27 +112,28 @@ def split_filters(filters, pivot):
         return filters, {}
     keys, items = {}, {}
     for name, spec in asked.items():
-        item = item_of(name, pivot)
-        if item is None:
+        if item_of(name, pivot) is None and name not in pivot.carry:
             keys[name] = spec
         else:
-            items[item] = spec
+            items[name] = spec
     return (json.dumps(keys) if keys else None), items
 
 
 def item_of(name, pivot):
-    """The item `name` filters (`item:<item>`), or None for a key column or the item column - the names a pivot read
-    takes, its filters' and its value lists' (`grid_read.column_values`) one judgment; anything else refused by name."""
+    """The item `name` filters (`item:<item>`), or None for a key column, the item column or a carried column - the
+    names a pivot read takes, its filters', its sort's and its value lists' (`grid_read.column_values`) one judgment;
+    anything else refused by name."""
     if name.startswith(ITEM_PREFIX):
         return name[len(ITEM_PREFIX):]
-    if name in pivot.keys or name == pivot.column:
+    if name in pivot.keys or name == pivot.column or name in pivot.carry:
         return None
     if name == pivot.value:
         raise HTTPException(status_code=422, detail=(
             "'%s' fills the pivot's cells - filter it per item inside the pivot as %s<item>" % (name, ITEM_PREFIX)))
     raise HTTPException(status_code=422, detail=(
-        "'%s' is not a key column (%s) or the item column (%s) of the pivot - filter an item column as %s<item>"
-        % (name, ", ".join(pivot.keys), pivot.column, ITEM_PREFIX)))
+        "'%s' is not a key column (%s), a carried column (%s) or the item column (%s) of the pivot - filter an item "
+        "column as %s<item>" % (name, ", ".join(pivot.keys), ", ".join(pivot.carry) or "none", pivot.column,
+                                ITEM_PREFIX)))
 
 
 def index_names(table_name, order_by, filters):
@@ -189,18 +191,20 @@ def group_rows(db, model, pivot):
 
 
 def narrow(query, model, pivot, items):
-    """The long rows of the key groups whose items pass `items`: each item's filter an EXISTS of that item's row with
-    the grid filter's own condition on `value`; a filter that takes the blank cell («blank», or a set holding null -
-    `_takes_blank`) takes a group with no such row with a value too."""
+    """The long rows of the key groups that pass `items` ({name: filter}, `split_filters`): each an EXISTS of a row of
+    the group with the grid filter's own condition - an item's (`item:<item>`) on that item's row's `value`, a carried
+    column's on any of the group's rows (owner 11-11 ㄴ: one row met keeps the whole group); an item filter that takes
+    the blank cell («blank», or a set holding null - `_takes_blank`) takes a group with no such row with a value too."""
     from column_filter import get_column_filter_condition
 
-    for item, spec in items.items():
-        held = aliased(model)
-        met = get_column_filter_condition(held, pivot.value, spec)
+    for name, spec in items.items():
+        item, held = item_of(name, pivot), aliased(model)
+        met = get_column_filter_condition(held, name if item is None else pivot.value, spec)
         if met is None:
             continue
-        found = exists().where(_same_keys(held, model, pivot), getattr(held, pivot.column) == item, met)
-        if _takes_blank(spec):
+        found = exists().where(_same_keys(held, model, pivot), met,
+                               *(() if item is None else (getattr(held, pivot.column) == item,)))
+        if item is not None and _takes_blank(spec):
             valued = aliased(model)
             found = or_(found, ~exists().where(
                 _same_keys(valued, model, pivot), getattr(valued, pivot.column) == item,
@@ -224,9 +228,10 @@ def groups(query, model, pivot):
 
 
 def order(groups, model, pivot, order_by, order_desc):
-    """`groups` (`groups`' query) in order: a key column, or one item's value - a group without it last either way -
-    then the keys. An item's value is one LEFT JOIN to that item's rows, not a read per group (B 11-05: 400k rows
-    405 s -> 1.5 s, box throwaway DB). `grid_order.ENTERED`: each group at its place - its rows' first row_id
+    """`groups` (`groups`' query) in order: a key column, one item's value, or a carried column's - a group without it
+    last either way - then the keys. An item's or a carried value is one LEFT JOIN to the group's rows (that item's),
+    not a read per group (B 11-05: 400k rows 405 s -> 1.5 s, box throwaway DB); a group of several values sorts by its
+    smallest ascending, its largest descending (owner 11-11 «정렬도 안되네», lead). `grid_order.ENTERED`: each group at its place - its rows' first row_id
     (whole table, so a filter does not move it) or where it was dragged - and each row of the read carries the first
     row_id and the place after its keys."""
     import grid_order
@@ -244,15 +249,18 @@ def order(groups, model, pivot, order_by, order_desc):
     if order_by in pivot.keys:
         first = getattr(model, order_by)
         return groups.order_by(first.desc() if order_desc else first.asc(), *keys)
-    if order_by.startswith(ITEM_PREFIX):
-        held = aliased(model)
-        cells = (select(*(getattr(held, key) for key in pivot.keys), getattr(held, pivot.value).label("value"))
-                 .where(getattr(held, pivot.column) == order_by[len(ITEM_PREFIX):]).subquery())
-        cell = func.min(cells.c.value)
+    if order_by.startswith(ITEM_PREFIX) or order_by in pivot.carry:
+        held, item = aliased(model), item_of(order_by, pivot)
+        cells = select(*(getattr(held, key) for key in pivot.keys),
+                       getattr(held, order_by if item is None else pivot.value).label("value"))
+        cells = (cells if item is None else cells.where(getattr(held, pivot.column) == item)).subquery()
+        cell = (func.max if order_desc else func.min)(cells.c.value)
         return (groups.outerjoin(cells, _same_keys(model, cells.c, pivot))
                 .order_by((cell.desc() if order_desc else cell.asc()).nulls_last(), *keys))
-    raise HTTPException(status_code=422, detail=("cannot sort a pivot by '%s' - sort by a key column (%s) or an item "
-                                                 "column as %s<item>" % (order_by, ", ".join(pivot.keys), ITEM_PREFIX)))
+    raise HTTPException(status_code=422, detail=("cannot sort a pivot by '%s' - sort by a key column (%s), a carried "
+                                                 "column (%s) or an item column as %s<item>"
+                                                 % (order_by, ", ".join(pivot.keys), ", ".join(pivot.carry) or "none",
+                                                    ITEM_PREFIX)))
 
 
 def item_names(query, model, pivot, most, places=None):

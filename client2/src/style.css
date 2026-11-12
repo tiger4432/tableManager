@@ -3014,10 +3014,11 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 /* the last stall's line goes down under its label and time: its longest word (a table name) whole in the panel */
 .status-panel .stall-line { flex-wrap: wrap; }
 .status-panel .status-indicators { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
-.status-panel__last { display: flex; align-items: baseline; gap: var(--space-2); }
+/* the last action's line in the head bar: one line, cut with … (its whole text in the title, followTitle) */
+.status-panel__last { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; }
 .status-panel__key { flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-muted); }
-.status-panel #performance-log { flex: 1 1 auto; pointer-events: auto; white-space: normal; text-align: left;
-  padding: var(--space-1) var(--space-2); }
+.status-panel__last #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; text-align: left;
+  padding: 0 var(--space-3); line-height: calc(var(--control-h) - 2px); }
 .more-panel { width: 260px; gap: 0; }
 .more-panel__head { padding: var(--space-3) var(--space-4) var(--space-1); font-size: var(--fs-tag); color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.08em; }
@@ -3366,18 +3367,24 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 /* ── a column's formula (formula_popover.js, owner 10-28 option A) ──────────────────────────────────────── */
 /* The header: its name and an fx mark, inside the header's own text span (AG's innerHeaderComponent). */
 #myGrid .formula-header { display: inline-flex; align-items: center; gap: var(--space-2); }
-#myGrid .formula-mark {
-  height: auto;
-  min-height: 0;
+/* «this is a formula» - one mark (formula_input.FORMULA_MARK): the header's button, a formula field, a folded line, a
+   read-only leaf. One look; in the grid its id beats the base button's look. */
+.formula-mark, #myGrid .formula-mark {
+  flex: none;
   padding: 0 var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--fs-tag);
   font-weight: 600;
   line-height: 1.4;
-  letter-spacing: 0;
-  text-transform: none;
   color: var(--decl-pred-ink);
   background: var(--decl-pred-weak);
+}
+/* the header's mark is a button: the base button's frame off */
+#myGrid .formula-mark {
+  height: auto;
+  min-height: 0;
+  letter-spacing: 0;
+  text-transform: none;
   border: 0;
   border-radius: 0;
   cursor: pointer;
@@ -3399,11 +3406,12 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
    chain rule's formula cell. The field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
 .formula-input { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .formula-input [hidden] { display: none; }
-.formula-input__field { position: relative; display: flex; align-items: center; gap: var(--space-2); }
-.formula-input__input { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); }
-/* «this is a formula» (formula_input.formulaMark) - on the field and on a folded line that shows one */
-.formula-mark { flex: none; font-family: var(--font-mono); font-style: italic; font-weight: 600; color: var(--accent); }
-.formula-mark + * { font-family: var(--font-mono); }
+.formula-input__field { position: relative; display: flex; align-items: flex-start; gap: var(--space-2); }
+/* many lines (owner 11-11): the box grows with its lines up to eight, then scrolls */
+.formula-input__input { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); height: auto; max-height: 8lh;
+  field-sizing: content; resize: none; white-space: pre-wrap; overflow-y: auto; }
+.formula-input__keys { display: none; flex: none; align-self: center; font-size: var(--fs-label); color: var(--text-muted); white-space: nowrap; }
+.formula-input:focus-within .formula-input__keys { display: inline; }
 .formula-input__input[aria-invalid="true"] { border-color: var(--danger); }
 /* what the caret stands in, over what follows (owner's mockup 11-07): the names offered under the field, or the call's
    arguments with the one being typed in bold under the field and its refusal */
@@ -3446,7 +3454,6 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 .value-filter__value:has(input:checked) { background: var(--accent-weak); }
 .value-filter__value.is-blank { font-family: var(--font-body); font-style: italic; color: var(--text-muted); }
 .value-filter__list > .meta, .value-filter__list > .refusal { padding: var(--space-1) var(--space-2); }
-.value-filter__paste { font-family: var(--font-mono); resize: vertical; white-space: pre; }
 .value-filter__cond { display: flex; gap: var(--space-2); }
 .value-filter__cond > * { flex: 1 1 0; min-width: 0; }
 .value-filter__cond > select { flex-grow: 1.4; }

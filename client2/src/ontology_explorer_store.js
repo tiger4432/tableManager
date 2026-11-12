@@ -56,6 +56,9 @@ export const initialExplorerState = Object.freeze({
   droppedFields: null,
   viewPreference: 'active',
   editorText: '',
+  // The text the draft opened on - «Unsaved» is a text that is not it (lead 11-11). `dirty` is wider: it also keeps a
+  // seeded text through a response (see RESPONSE_RECEIVED).
+  openedText: '',
   dirty: false,
   loading: false,
   error: null,
@@ -326,6 +329,7 @@ export function reduceExplorerState(state = initialExplorerState, action) {
         ...state,
         draft: action.draft,
         editorText: JSON.stringify(action.draft.raw, null, 2),
+        openedText: JSON.stringify(action.draft.raw, null, 2),
         dirty: false,
         detailTab: 'raw',
       };
@@ -333,17 +337,19 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       if (!isDraftRevisionEditable(state.draft)) return state;
       // Form D: while the text does not read, the form stays on the last text that did (formText) - set only here,
       // where a text can stop reading; every other writer of editorText writes a document.
-      return { ...state, editorText: action.text, dirty: true,
+      // `opened`: the text a draft is seeded with on opening (an unread declaration's own) - what it opened on.
+      return { ...state, editorText: action.text, dirty: true, ...(action.opened ? { openedText: action.text } : {}),
         formText: reads(action.text) ? action.text : (reads(state.editorText) ? state.editorText : state.formText) };
     case 'DRAFT_SAVED':
       return {
         ...state,
         draft: action.draft,
         editorText: JSON.stringify(action.draft.raw, null, 2),
+        openedText: JSON.stringify(action.draft.raw, null, 2),
         dirty: false,
       };
     case 'DRAFT_CLOSED':
-      return { ...state, draft: null, editorText: '', dirty: false };
+      return { ...state, draft: null, editorText: '', openedText: '', dirty: false };
     // 🔴 SAVED IS NOT APPLIED (order af991aae5). The save writes the file even with grammar
     //    errors (owner's ruling), and the loader then leaves that declaration out -- so 「Saved」
     //    was true of the file and false of the product. The save's own answer says which.

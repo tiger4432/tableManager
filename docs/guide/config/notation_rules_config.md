@@ -1,7 +1,7 @@
 # `notation_rules.json` 세팅 — 표기 정규화(조회 시점 폴드)
 
 > **Status:** 🟢 Living | **Last-verified:** 2026-09-26 (§2.3 `write` 칸은 모든 쓰기 문에서 접혀 저장 — 2 단계 · 값 규칙 · 별칭 표) · 2026-09-15 (§6 — 소비자는 ON 절 하나가 아니라 «키 식» `notation_norm.key_expression_sql/_text` 하나를 지나는 네 자리, 텍스트 아닌 컬럼은 `::text` — S-245 `ddd5b3ba`) · 직전 2026-08-04 (🔴 **전면 재작성 — 이 문서가 서술하던 모델은 철회됐습니다.** `92b8d6f`가 출하한 **물리 파생 컬럼(`<컬럼>_norm`)**은 `8d306a5`에서 **아무도 소비하기 전에** 통째로 제거됐습니다(사용자 확정 2026-08-04). 지금 선언이 뜻하는 것은 「이 컬럼의 **표기가 정규화된 것으로 선언됐다**」 하나이고, 소비자가 **조회 시점에 비교의 양쪽을 SQL에서 접습니다**. **저장되는 것은 없습니다** — 파생 컬럼도, `<컬럼>_norm` 관례도, 재파생 스크립트도 이제 없습니다. 종전 판의 §2(층 셋)·§4.1·§4.2·§4.4·§7은 **전부 소멸했고**, 그 자리를 §2(한 단계)·§5.2(병합군 라우트)·§6(가상 조인의 함수 인덱스)이 대신합니다) | **Owner:** Backend / Ops
-> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 [virtual_join_rules](./virtual_join_rules.md)** · 정본 코드는 `server/notation_norm.py`
+> 상위: [폴더 인덱스](./README.md) · 지도는 [CONFIG_GUIDE §1](../CONFIG_GUIDE.md) · **소비자는 조인의 키 비교**(`chain/join_into` · `chain/join_key_index`) · 정본 코드는 `server/notation_norm.py`
 
 <!-- Loader evidence (2026-08-04, 8d306a5 - measured against the tree, not transcribed):
   python fold:    notation_norm.fold_notation(text, rules)        (reference spelling)
@@ -16,13 +16,13 @@
                    by the owner's decision 5ee9d3bd1 ③)
   read entry:     normalized_by_table() -> rules_for_column / is_normalized
                   join_pair_rules(lt, lc, rt, rc)  <- "either side declared = both folded"
-  cache:          RULES_CACHE_TTL = 5.0 + reset_cache()  (main.reload_local_process_cache)
+  cache:          config_watcher.held - read again when notation_rules.json or table_config changes
   key expression: notation_norm.key_expression_sql(column, rules)                 (SQLAlchemy - what a join COMPARES)
                   notation_norm.key_expression_text(inner_sql, rules, text_column)  (PG text - what an index is BUILT on)
                   = coalesce(fold(col), '') ; non-text column -> coalesce(fold(col::text), '')   (S-245 ddd5b3ba, 2026-09-15)
                   except a datetime column -> assy_key_instant(col, zone) (b3a6e64f7, 10-20) and a float / numeric
                   column -> assy_key_number(col), the ledger's spelling (363775bfd, 10-31)
-  consumers:      virtual_join_executor.join_onclause      (the ON clause, both sides)
+  consumers:      chain.join_into                          (the join's key read, both sides)
                   chain.join_key_index.index_key_expression / required_index_ddl   (decides text-or-not: it holds the table; moved 21abf176, virtual_join.config re-imports it)
                   chain.unique_key                         (duplicate probe groups by the same expression; moved 21abf176)
                   chain.join_into._folded                  (the unified join's write-time join)
@@ -44,7 +44,7 @@
 | 선언이 뜻하는 것 | 「이 컬럼은 **저 컬럼으로 파생된다**」 | 「이 컬럼의 **표기가 정규화됐다**」 |
 | 값 | 물리 컬럼 `<컬럼>_norm`에 **저장** | **아무것도 저장하지 않음** |
 | 켜는 절차 | `table_config` 컬럼 → 이 파일 쌍 → `display_columns` (**층 셋**) | 이 파일에 **한 줄** |
-| 소비 | 없음(1단계라 아무도 안 읽음) | **가상 조인의 키 비교**가 양쪽을 접어 씀 |
+| 소비 | 없음(1단계라 아무도 안 읽음) | **조인의 키 비교**가 양쪽을 접어 씀 |
 | 규칙이 틀렸을 때 | 규칙 고치고 **재파생 스크립트** 실행 | 규칙만 고치면 **다음 조회부터** 끝 |
 | 쓰기 거부 | 파생 컬럼으로 가는 쓰기를 400으로 거부 | **거부할 것이 없음**(쓰기 경로에 존재하지 않음) |
 
@@ -126,10 +126,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 
 ### 2.2 반영 시점
 
-`notation_rules.json`은 **config watcher의 감시 대상이 아닙니다**(watcher가 보는 파일은 `table_config.json` 하나뿐입니다). 반영은 두 갈래입니다:
-
-- **자동**: 선언 캐시 TTL이 **5초**(`RULES_CACHE_TTL`) — 저장하고 5초 뒤 다음 조회부터. 워커 프로세스도 포함입니다.
-- **즉시**: `POST /admin/reload-configs`(웹서버 프로세스의 캐시를 그 자리에서 버립니다).
+`notation_rules.json` 은 설정 감시기가 봅니다 — 저장하면 마지막 쓰기 뒤 약 1 초에 프로세스마다 다시 읽고(`config_watcher.held`), 다음 조회부터 새 규칙입니다. 워커 프로세스도 포함입니다.
 
 > ✅ **「이미 쌓인 행은 어떻게 되나」라는 질문이 사라졌습니다.** 저장되는 값이 없으므로 과거 행과 새 행에 차이가 없습니다 — 규칙을 바꾸면 **모든 행이 같은 순간에** 새 규칙으로 비교됩니다. 종전 판의 「한 컬럼에 두 세대가 섞인다」 함정은 존재하지 않습니다.
 
@@ -153,7 +150,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 | `join` | `.` `_` `-` 공백의 연속을 이 한 글자로(`-` `_` `.` 공백 중 하나) | 예 — 두 엔진 |
 | `pad_last_number` | 끝 숫자가 n 자리(1–9)보다 짧으면 앞에 0. 길면 그대로 — `zero_pad`(앞 0 제거)와 반대 방향 | 예 — 두 엔진 |
 | `replace` | `[[패턴, 바꿀 것], ...]` 차례로. 위 둘로 안 되는 경우 | 예 — 두 엔진 |
-| `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수 | 아니오 — 쓸 때만 |
+| `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수. 해가 없는 꼴은 `"year": "arrival"` — §2.4 | 아니오 — 쓸 때만 |
 | `collapse_repeats` | 이 한 글자로 가른 마디가 바로 앞 마디와 같으면 하나로 — `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. `write` 필수 | 아니오 — 쓸 때만 |
 
 - **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case` → `collapse_repeats`. 마디는 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
@@ -176,6 +173,15 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
   - 별칭 표 순서: `install_product_tables.py --apply` → reload(설정 감시가 물리 표를 만듦) → 선언. 모델만 있고 표가 없으면 `write` 칸이 있는 표의 쓰기가 실패합니다.
 - **`time` 이 그대로 둔 값**: 파일마다 FILE 줄에 한 칸 — `time rule left as written: no matching format N, time zone written M`(0 이면 안 씀).
 
+### 2.4 해가 없는 날짜 — «3월 5일» 은 `"year": "arrival"` (eea7069b4, 11-10)
+
+```json
+"columns": {"<표>": {"<칸>": {"write": true, "rules": {"time": {"from": ["%m월 %d일", "%m월%d일"], "year": "arrival"}}}}}
+```
+- «3월 5일» → `<들어온 해>-03-05 00:00:00`. **쓸 때는 지금 해**, **소급은 그 층이 들어온(`ingested_at`) 해**. 꼴에 안 맞는 값은 그대로.
+- ⚠️ **해 넘김**: 12월 값이 1월에 들어오면 새해로 접힙니다(12-xx 가 다음 해). 그런 값은 손으로 고칩니다.
+- **거절**: 해가 없는 꼴을 `"year"` 없이 적으면 1900 년으로 접지 않고 거절합니다 — `[Notation] <표>.<칸>: input format '%m월 %d일' reads no year - add "year": "arrival" to take the year the value comes in - not folded`. `"year"` 값은 `"arrival"` 하나뿐입니다.
+
 ## 3. 🔴 선언한 다음에 반드시 해야 할 것 — 무엇이 합쳐지는지 본다
 
 선언은 「접겠다」이고, **「접었더니 서로 다른 두 로트가 하나가 되지는 않았나」는 데이터만 답할 수 있습니다.** 그 질문에 답하는 라우트가 따로 있습니다:
@@ -193,16 +199,15 @@ curl -H "X-Admin-Token: <토큰>" \
 **읽는 법은 하나입니다** — 숫자가 아니라 `variants` 목록을 읽고 **「이것들이 정말 같은 물리 로트인가」**에 답하십시오. 서버가 만들어 주는 문장이 이미 그렇게 묻습니다:
 
 ```
-dt_log.core_lot: 원본 표기 30종이 15종으로 접힙니다. 서로 다른 원본 표기가 한 값으로
-합쳐진 그룹이 15개입니다. 가장 큰 그룹은 'CL-2601-001'이고 원본 2종
-(CL-2601-001 | CL_2601_001)이 여기로 모입니다. 이 목록을 읽고 「이것들이 정말 같은
-것인가」를 확인하세요 — 하나라도 아니라면 notation_rules.json의 규칙을 고치면
-됩니다(저장된 값은 원본 그대로라 되돌릴 것이 없습니다).
+dt_log.core_lot: 30 raw spellings fold into 15. 15 groups merge different raw spellings into one
+value. The largest is 'CL-2601-001', gathering 2 spellings (CL-2601-001 | CL_2601_001). Read the list
+and check that they really are the same - if one is not, fix the rule in notation_rules.json (stored
+values stay raw, so there is nothing to undo).
 ```
 
 - 전부 같은 것이면 규칙이 옳습니다.
 - **한 그룹이라도 아니면** 이 파일의 규칙을 고치십시오. **끝입니다** — 되돌릴 데이터가 없습니다.
-- 병합군 0개면 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아니고, 서버 문장이 *「조인 반대편이 지저분하다면 그쪽에서 효과가 납니다」*라고 덧붙입니다.
+- 병합군 0개면 그 컬럼에는 접을 것이 애초에 없었습니다. 이상이 아니고, 서버 문장이 *«if the other side of a join is messy, the effect shows there»* 라고 덧붙입니다.
 
 > ⚠️ **알려진 무해한 모양**: `variants`가 `-` · `_` · `.` · `--`처럼 **구분자만으로 된 값들**뿐인 그룹이 나올 수 있습니다(그런 값은 전부 `-` 하나로 접힙니다). 실제 로트가 아니라 원본 데이터의 쓰레기 값이 한자리에 모인 것이니 그것만 보고 규칙이 틀렸다고 판단하지 마십시오.
 
@@ -263,7 +268,7 @@ folds '01' and '1' into one value
 
 | code | 언제 | 실제 메시지(발췌) |
 |---|---|---|
-| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are separator, case, zero_pad` |
+| `unknown_rule` | 없는 규칙 이름 (예: `"transliterate": true`) | `unknown rule 'transliterate'; known rules are …`(`notation_norm.KNOWN_RULES` 전부) |
 | `shape` | 선언이 `true`/`false`/객체가 아님 | `declaration must be true, false, or an object {rules}` |
 | `shape` | **옛 모델의 `derived` 키** | `'derived' is no longer a thing: normalization does not produce a column any more, it folds BOTH SIDES of a comparison at query time. ...` |
 | `shape` | 파일이 객체가 아님 / `columns`가 객체가 아님 | `notation_rules.json must be an object; the whole file was ignored and NO column is normalized` |
@@ -283,37 +288,36 @@ folds '01' and '1' into one value
 **A. 선언이 유효할 때** — `detail`이 그대로 화면에 렌더되는 문장입니다:
 
 ```
-dt_log.core_lot의 표기가 정규화된 것으로 선언됐습니다. 적용 중인 규칙: separator, case.
-이 컬럼이 조인 키로 쓰이면 **비교의 양쪽이 모두** 접힌 값으로 비교됩니다 — 반대편
-컬럼에 선언이 없어도 그렇습니다(한쪽만 접으면 이미 맞고 있던 매치를 조용히 잃기
-때문입니다). 저장되는 값은 없습니다: 원본은 원본 그대로 남고, 규칙을 고치면 다음
-조회부터 바로 반영됩니다. 무엇이 무엇으로 합쳐지는지는
-GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으로
-답합니다 — 규칙을 켠 다음 그것부터 보세요.
+dt_log.core_lot is declared with normalised notation. Rules on: separator, case. When this column is
+a join key, both sides of the comparison use the folded value - even if the other column declares
+nothing (folding one side only would silently lose matches that already held). Nothing is stored:
+raw values stay raw, and a rule change applies from the next lookup. What merges into what is
+answered as merge groups by GET /admin/config/notation/preview?table=dt_log&column=core_lot - look
+there first after switching a rule on.
 ```
 
 `fields`에 `{table, column, rules}`가 들어 있어 **어느 규칙 집합이 이 컬럼에 적용 중인지**를 눈으로 확인할 수 있습니다.
 
-**B. 규칙이 하나도 안 켜져 있을 때**: 선언은 `effective`에 남되 *「적용할 규칙이 하나도 켜져 있지 않아 아무것도 접지 않습니다 — 선언은 유효하지만 비교는 원본 그대로입니다」*라고 말합니다.
+**B. 규칙이 하나도 안 켜져 있을 때**: 선언은 `effective`에 남되 *«No rule is switched on, so nothing folds - the declaration is valid but comparisons stay raw.»* 라고 말합니다.
 
-**C. 아무것도 선언 안 했을 때**: `sources[0].detail`이 *「선언 0건이 유효합니다.」*, 파일이 없으면 *「선언 파일이 없습니다 — 표기 정규화가 적용되는 컬럼이 하나도 없습니다.」*, 읽지 못했으면 *「선언 파일을 읽지 못했습니다 — 어떤 컬럼도 정규화되지 않습니다.」*
+**C. 아무것도 선언 안 했을 때**: `sources[0].detail`이 *«0 declarations are valid.»*, 파일이 없으면 *«No declaration file - no column has its notation normalised.»*, 읽지 못했으면 *«The declaration file could not be read - no column is normalised.»*
 
 > ⚠️ **`effective`는 「이 컬럼이 정규화됐다고 선언됐다」까지입니다.** 「무엇이 합쳐졌나」도 「그 조인이 실제로 도나」도 답하지 않습니다 — 위 표의 나머지 두 줄이 그 자리입니다.
 
-## 6. 🔴 소비자 — 가상 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
+## 6. 🔴 소비자 — 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
 
-이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 네 자리가 그것을 지납니다: 가상 조인 ON 절(`virtual_join_executor.join_onclause`) · 인덱스 DDL(`virtual_join_config.index_key_expression`) · 중복 탐침(`virtual_join.unique_key`) · 통합 join 의 쓰기 조인(`chain/join_into`)(S-245 `ddd5b3ba`). 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다(🆕 시각 칸은 `assy_key_instant(col, zone)` — 10-20 `b3a6e64f7`, float · numeric 칸은 원장 철자와 같은 `assy_key_number(col)` — 10-31 `363775bfd`) — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
+이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 그것을 지나는 자리: 유일 인덱스 DDL(`chain/join_key_index`) · 통합 join 의 쓰기 조인(`chain/join_into`, S-245 `ddd5b3ba`) · 규칙의 키 읽기(`chain/rule_run`). ⚰️ 가상 조인 ON 절 · 그 인덱스 DDL · 중복 탐침은 가상 조인과 함께 은퇴. 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다(🆕 시각 칸은 `assy_key_instant(col, zone)` — 10-20 `b3a6e64f7`, float · numeric 칸은 원장 철자와 같은 `assy_key_number(col)` — 10-31 `363775bfd`) — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
 
 **① 어느 한쪽이라도 선언됐으면 양쪽이 접힙니다.** 한쪽만 접을 수 있는 인자도, 플래그도, 호출 모양도 **일부러 없습니다**(`notation_norm.join_pair_rules`). 양쪽이 서로 다른 규칙으로 선언돼 있으면 유효 집합은 **합집합**입니다 — 폴드는 컬럼의 성질이 아니라 **비교의 성질**이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택입니다.
 
-**② 승인 게이트의 방향이 뒤집힙니다.** 가상 조인의 승인 조건은 「조인 키를 덮는 유효한 UNIQUE 인덱스」인데, 키에 정규화가 걸리면 **평범한 b-tree 인덱스는 후보에서 배제되고 표현식(함수) 인덱스만 후보가 됩니다.** 이유가 성능이 아니라 **정확성**이라는 점에 주의하십시오:
+**② 승인 게이트의 방향이 뒤집힙니다.** 조인의 승인 조건은 「조인 키를 덮는 유효한 UNIQUE 인덱스」인데, 키에 정규화가 걸리면 **평범한 b-tree 인덱스는 후보에서 배제되고 표현식(함수) 인덱스만 후보가 됩니다.** 이유가 성능이 아니라 **정확성**이라는 점에 주의하십시오:
 
 > 원본으로 서로 다른 두 행(`'CL-1'`과 `'CL_1'`)이 접히면 **한 값**입니다. 컬럼에 UNIQUE가 있어도 **접힌 키로는 중복**이고, 그 중복이 곧 조인 팬아웃입니다. 즉 평범한 UNIQUE 인덱스는 **게이트가 묻는 유일성을 애초에 증명하지 못합니다.**
 
 거부 코드는 `no_unique_index`이고, `GET /admin/chain/join/verify`가 **만들어야 할 DDL을 그대로** 줍니다(정규화가 걸린 키에서는 함수 인덱스 형태이고, 인덱스 이름에 `_nf` 접미가 붙습니다):
 
 ```sql
-CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
+CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf_ns_eb ON "core_wafer_map" (
   translate(
     regexp_replace("core_lot", '[	
  ... 　-]+', '-', 'g'),
@@ -326,7 +330,7 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 - DDL이 길어 보이는 것은 대가입니다. `\uXXXX` 이스케이프라 **전부 ASCII**이고 psql에 그대로 붙여 넣을 수 있습니다(제어문자를 날것으로 싣지 않는 이유입니다).
 - ⚠️ **접기는 공짜가 아닙니다.** `8d306a5` 실측 — 폴드 자체가 행당 3.06µs, 그리고 함수 인덱스를 만들기 전 `dt_log` 조인이 **3.1ms → 151.6ms**였습니다. 켜기 전에 §3의 병합군을 보고, 켠 뒤에는 인덱스를 만드십시오.
 
-절차의 정본은 [virtual_join_rules](./virtual_join_rules.md)와 [CONFIG_ROLLOUT_GUIDE §5](../CONFIG_ROLLOUT_GUIDE.md)입니다.
+절차의 정본은 [CONFIG_ROLLOUT_GUIDE §5](../CONFIG_ROLLOUT_GUIDE.md)입니다.
 
 ## 7. 🔴 맵 키는 이 기능이 건드리지 않습니다
 
@@ -349,19 +353,19 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 
 ## 9. 잘못됐을 때 — 되돌리기
 
-1. **선언 되돌리기**: `columns`에서 그 줄을 지우거나 `false`로 바꾸면 **다음 조회부터** 원본 비교로 돌아갑니다(TTL 5초 또는 `POST /admin/reload-configs`). 🔴 **치울 데이터가 없습니다** — 저장된 것이 없기 때문입니다. 함수 인덱스는 남지만 해롭지 않고, 필요 없으면 `DROP INDEX`하면 됩니다.
+1. **선언 되돌리기**: `columns`에서 그 줄을 지우거나 `false`로 바꾸면 **다음 조회부터** 원본 비교로 돌아갑니다(감시기가 저장을 보고 약 1 초 뒤). 🔴 **치울 데이터가 없습니다** — 저장된 것이 없기 때문입니다. 함수 인덱스는 남지만 해롭지 않고, 필요 없으면 `DROP INDEX`하면 됩니다.
 2. **파일 통째로 복구**:
    ```bash
    conda run -n assy_manager python server/scripts/backup_config.py list
    conda run -n assy_manager python server/scripts/backup_config.py restore notation_rules_<yymmdd>.json.bak --yes
    ```
-3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 조회가 실패하지 않습니다. 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어집니다 — 이 기능이 생기기 전과 **정확히 같은 동작**(원본 비교)이라 안전한 방향입니다.
+3. **파일을 읽을 수 없게 됐을 때**(JSON 문법 오류 등): 조회가 실패하지 않습니다. 한 번도 잘 읽은 적이 없으면 로더가 실패를 로그에 남기고 **「어떤 컬럼도 정규화하지 않음」**으로 떨어지고, 잘 읽은 뒤라면 그 마지막 규칙을 그대로 씁니다 — 이 기능이 생기기 전과 **정확히 같은 동작**(원본 비교)이라 안전한 방향입니다.
 
 ## 10. 함정
 
 - 🔴 **`server/scripts/rederive_notation_norm.py`는 삭제됐습니다**(`8d306a5`). 다시 파생할 것이 없기 때문입니다. 그 명령이 적힌 문서를 보면 그것이 낡은 것입니다.
 - 🔴 **`<컬럼>_norm` 컬럼이 이 환경에 있다면 그것은 잔여물입니다.** 코드 어디도 그것을 쓰지 않습니다. `table_config.json`에서 지워도 **물리 컬럼은 DB에 남습니다**(한 방향 문).
 - 🔴 **한쪽만 접을 방법을 찾지 마십시오** — 없는 것이 설계입니다. 「깨끗한 쪽은 선언 안 해도 되겠지」가 맞는 이유가 바로 그것이고(§3의 표), 그래서 **어느 한쪽만 선언해도 양쪽이 접힙니다.**
-- ⚠️ **선언 캐시 TTL이 5초라, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 종전 판과 달리 **복구할 것은 없습니다** — 다음 조회가 이미 새 규칙입니다.
+- ⚠️ **규칙은 감시기가 저장을 본 순간 바뀌므로, 배치 도중에 규칙을 바꾸면 한 배치가 두 규칙 집합에 걸칠 수 있습니다.** 종전 판과 달리 **복구할 것은 없습니다** — 다음 조회가 이미 새 규칙입니다.
 - ⚠️ **`case`가 ASCII만 접는다는 것을 「미구현」으로 읽지 마십시오** — §1.2의 실측이 강제한 **의도된 좁힘**입니다. 비ASCII 대소문자 폴딩을 넣으면 두 엔진이 갈라지고 계약이 빨개집니다.
 - ⚠️ **`/admin/config/notation/preview`는 요청 경로에 상주할 질의가 아닙니다** — 전수 스캔입니다. 대시보드에 걸지 마십시오.

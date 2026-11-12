@@ -178,9 +178,10 @@ def _pace_param():
     return _p("pace", required=False, choices=_pace_choices,
               help="how hard to push. Slowing yields between units of work so the "
                    "database stays free for everything else; the paces and their names "
-                   "are declared in server/config/pacing.json. Retroactive runs go ONE AT A "
-                   "TIME, so a slower pace also makes whatever is queued behind this "
-                   "wait that much longer")
+                   "are declared in server/config/pacing.json. A retroactive run waits for "
+                   "a run in flight that writes the same places (one whose places are not "
+                   "known waits for every run), so a slower pace also makes a queued run "
+                   "that shares them wait that much longer")
 
 
 # ---------------------------------------------------------------------------
@@ -2884,6 +2885,10 @@ MOVING_UNREPORTED = "unreported"
 CANCEL_AT_NEXT_BATCH = "at_next_batch"
 CANCEL_UNKNOWN = "unknown"
 CANCEL_NEVER = "never"
+#: A × that releases the row: it is queued (the server ends it on the spot) or no process runs it any more
+#: (`_nobody_runs` - the question `request_cancel` asks), whatever its operation - a retired one too (owner 10-11:
+#: a retired op's running row held the queue and the screen drew no ×).
+CANCEL_RELEASES = "releases"
 
 #: The states in which a run still holds the scheduler's gate closed.
 #:
@@ -3161,8 +3166,10 @@ def _described(row, now, stall_after, stages):
     try:
         cancellable = bool(operation(row.op)["cancellable"])
     except RetroactiveRefused:
-        cancellable = False
-    if not cancellable:
+        cancellable = False                               # a retired operation - no batch boundary to stop at
+    if row.state == RUN_QUEUED or (not cancellable and _nobody_runs(row)):
+        cancel = CANCEL_RELEASES
+    elif not cancellable:
         cancel = CANCEL_NEVER
     elif moving == MOVING_PROGRESSING:
         cancel = CANCEL_AT_NEXT_BATCH
@@ -3282,6 +3289,7 @@ def _beating(control, engine):
     from sqlalchemy import event
 
     from chain import keyset_scan
+    from runtime import stages as receivers
 
     here, held = threading.get_ident(), {}
 
@@ -3293,7 +3301,7 @@ def _beating(control, engine):
     def given_back(_dbapi_conn, record):
         held.pop(id(record), None)
 
-    token = keyset_scan.RUN_CONTROL.set(control)
+    token, receiving = keyset_scan.RUN_CONTROL.set(control), receivers.opened(control)
     stop = threading.Event()
     # pg_stat_activity is PostgreSQL's - another database runs with the stage lines alone
     beat = (threading.Thread(target=_beat, args=(control, stop, engine.url, held), name="retroactive-beat",
@@ -3306,7 +3314,8 @@ def _beating(control, engine):
     try:
         yield
     finally:
-        keyset_scan.RUN_CONTROL.reset(token)  # first - whatever below raises, this thread's run control is not left set
+        receivers.closed(receiving)        # first - whatever below raises, this thread's run control is not left set
+        keyset_scan.RUN_CONTROL.reset(token)
         stop.set()
         control.stop_telling()            # before the run's ending notice - no RUNNING after its DONE (QA 10-14 ④)
         if beat is not None:
@@ -3457,7 +3466,7 @@ class RunControl:
         #: run's start, whose rate the time left is told by (a page's own rate swings on a one-row page).
         self._said, self._boundary, self._pages = 0, time.monotonic(), 0
         self._began, self._total = self._boundary, None
-        #: The stages the page in progress is inside, outermost first - `(name, since, rows)` (`stage`, the beat reads it).
+        #: The stages the page in progress is inside, outermost first - `(name, since, rows)` (`enter`, the beat reads it).
         self.stages = []
         #: The stage lines on or off - `retroactive_debug`, read again at every page boundary.
         self.debug = retroactive_debug()
@@ -3644,23 +3653,23 @@ class RunControl:
         finally:
             session.close()
 
-    @contextlib.contextmanager
-    def stage(self, name, rows=None):
-        """A stage inside the page in progress (`keyset_scan.stage`, 총괄 d9be013cb): in `stages` while it runs - the
-        beat says the innermost and how long it has run - and its step line when it ends, while `debug` is on: a
-        line only - the run row's time moves once a page, at its boundary (총괄 bdc08ec39 ③: it was an UPDATE and a
-        COMMIT a stage, 14 a page). Yields a dict: a `note` ends the line, a `rows` there replaces the one given."""
+    #: The run's receiver of `runtime.stages.stage` takes inner stages too - the beat says the innermost.
+    outer_only = False
+
+    def enter(self, name, rows, said):
+        """A stage inside the page in progress (총괄 d9be013cb): in `stages` while it runs - the beat says the innermost
+        and how long it has run - and its step line when it ends (`leave`), while `debug` is on: a line only - the run
+        row's time moves once a page, at its boundary (총괄 bdc08ec39 ③: it was an UPDATE and a COMMIT a stage, 14 a
+        page). A `note` the stage's dict holds ends the line, a `rows` there replaces the one given."""
         entry = (name, time.monotonic(), rows)
         self.stages.append(entry)
-        said = {}
-        try:
-            yield said
-        finally:
-            if entry in self.stages:
-                self.stages.remove(entry)
-            if self.debug:
-                self._step_line(name, self._pages + 1, said.get("rows", rows), time.monotonic() - entry[1],
-                                said.get("note"))
+        return entry
+
+    def leave(self, entry, seconds, told):
+        if entry in self.stages:
+            self.stages.remove(entry)
+        if self.debug:
+            self._step_line(entry[0], self._pages + 1, told.get("rows", entry[2]), seconds, told.get("note"))
 
     def _stamp(self, values) -> None:
         """`last_progress_at` = now, with `values`, on this control's own session."""
@@ -3692,6 +3701,16 @@ class RunControl:
             self.announcing = False
             logger.warning("[Retroactive] run_id=%s op=%s: a progress notice was not heard - none more for this "
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
+
+
+def _nobody_runs(row) -> bool:
+    """No process runs this row any more - its runner is orphaned by the heartbeat, no fresh beat holds it, and its pid
+    is not alive here. THE question a × asks before it releases a row (`request_cancel`) and the run list asks before
+    it offers one (`_described`)."""
+    from utils import heartbeat
+
+    return (_runner_state(row.runner) == "orphaned" and not heartbeat.beat_holds(row.run_id)
+            and heartbeat.pid_here(row.runner, row.run_id, _since(row.started_at)) is not True)
 
 
 def _since(started_at):
@@ -3798,12 +3817,10 @@ def request_cancel(db, run_id: str) -> dict:
                  .filter(models.RetroactiveRun.run_id == run_id).first())
         return {"run_id": run_id, "op": op,
                 "state": moved.state if moved else None, "released": True}
-    from utils import heartbeat
 
     # A runner alive here (a child just started, no beat yet) or a run a fresh beat holds is asked like any other:
     # judgement ① releases «the process that started it is GONE» (lead 11-09: × released a healthy child).
-    if (_runner_state(runner) == "orphaned" and not heartbeat.beat_holds(run_id)
-            and heartbeat.pid_here(runner, run_id, _since(row.started_at)) is not True):
+    if _nobody_runs(row):
         # 🔴 `failed`, NOT `cancelled` (총괄 판정 ①). Nobody stopped it - the process
         #    died - and its work did not finish and never will. `cancelled` would tell the
         #    operator they stopped it themselves, which is not true, and it is the word a

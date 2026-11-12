@@ -6,6 +6,8 @@ from the one seat that says «scan» (`trace_router._engine_reading`), through t
   served     an automatic index built on a scanned column takes it out of the scans (the catalogue's judgment)
   view       a source reading a view is never asked for
   cap        a table holding auto_index_per_table automatic indexes is not asked for one more
+  said       each end carries its first key column's last word (lead 11-11, owner «인덱스 없어»): None while the ask
+             waits, then what the ask came to - asked, or the table at its cap; a served end its index
 """
 import json
 import os
@@ -71,6 +73,34 @@ def test_a_source_reading_a_view_is_never_asked_for(board, asked, monkeypatch):
     scans = _scans(board)
     assert scans and asked, "canary: the two table sources still scan and ask"
     assert "wp_view" not in {t for t, _c in scans} | {t for t, _c, _w, _s in asked}
+
+
+def test_each_end_says_what_came_of_its_key_column(board, asked, monkeypatch):
+    from conftest import PG_TEST_SCHEMA
+    from parsers.directory_watcher import auto_index_per_table
+
+    def said():
+        trace_router._COMPILED.clear()
+        with board["engine"].connect() as conn:
+            _legs, engine = trace_router._engine_reading(conn, "virtual", trace_router._worlds(None))
+        return {(end["table"], end["column"]): (kind, end["said"]) for kind in ("scans", "served") for end in engine[kind]}
+
+    monkeypatch.setattr(index_wants, "_WORDS", {})
+    assert said()[("wafer_process", "wafer_id")] == ("scans", None)              # queued, no answer yet
+    assert index_wants.ask("wafer_process", ["wafer_id"], models.AUTO_WALK_KEY, None, board["engine"]) is True
+    cap = auto_index_per_table()
+    with board["engine"].begin() as conn:
+        for n in range(cap):                                    # on no key column: the cap, not a served end
+            conn.execute(text('CREATE INDEX "%scap_%d" ON "%s"."lot_slot_wafer" (row_id)'
+                              % (models.AUTO_INDEX_PREFIX, n, PG_TEST_SCHEMA)))
+        conn.execute(text('CREATE INDEX by_hand_recipe ON "%s"."wafer_process" (recipe_id)' % PG_TEST_SCHEMA))
+    assert index_wants.ask("lot_slot_wafer", ["lot"], models.AUTO_WALK_KEY, None, board["engine"]) is False
+    got = said()
+    assert got[("wafer_process", "wafer_id")] == (
+        "scans", "asked for an automatic index on wafer_process (wafer_id) - walk key")
+    assert got[("lot_slot_wafer", "lot")] == ("scans", "lot_slot_wafer (lot) - not asked for a walk key: lot_slot_wafer "
+                                              "holds auto_index_per_table (%d) automatic indexes" % cap)
+    assert got[("wafer_process", "recipe_id")] == ("served", "wafer_process (recipe_id) - served by by_hand_recipe")
 
 
 def test_a_table_at_its_cap_is_not_asked_for_one_more(board):

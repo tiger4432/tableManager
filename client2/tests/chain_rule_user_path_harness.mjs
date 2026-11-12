@@ -271,6 +271,9 @@ function freshPage() {
   catalogueReads = 0;
 }
 
+/** A picker's options, those in its groups too (owner 11-11: the editor's picker in the list's groups). */
+const optionsIn = (sel) => (sel.children || []).flatMap((c) => (c.tagName === 'OPTGROUP' ? c.children : [c]));
+
 async function suite(probe) {
   const before = { pass, fail };
   freshPage();
@@ -288,13 +291,13 @@ async function suite(probe) {
   ok(Boolean(panelRoot()), 'A the page seats a panel in its own mount');
   const picker = byAttr('data-picker');
   ok(Boolean(picker), 'A the picker is drawn');
-  ok(Boolean(picker) && picker.children.length === NAMES.length + 1,
-     `A the picker holds the served names and the placeholder (${picker ? picker.children.length : 0})`);
+  ok(Boolean(picker) && optionsIn(picker).length === NAMES.length + 1,
+     `A the picker holds the served names and the placeholder (${picker ? optionsIn(picker).length : 0})`);
   if (!picker) return { pass: pass - before.pass, fail: fail - before.fail };
   // 🔴 C-95-b. NOTHING IS PICKED YET, AND THE SCREEN SAYS SO. The first read carries no name, so
   //    without a placeholder the picker shows its first option by browser default -- and the
   //    boxes beside it are empty. 「이름이 있는데 칸이 비어 있다」 is the first thing anybody sees.
-  const opening = picker.children.filter((o) => o.getAttribute('selected'));
+  const opening = optionsIn(picker).filter((o) => o.getAttribute('selected'));
   ok(opening.length === 1 && opening[0].value === PICK_NAME,
      `A nothing is picked, and the picker says that rather than naming a rule `
      + `(${opening.map((o) => o.value).join(',')})`);
@@ -400,7 +403,7 @@ async function suite(probe) {
      'H and the document the save would send is the edited one, not the served one');
   const underClock = byAttr('data-picker');
   const onClock = underClock
-    ? underClock.children.filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
+    ? optionsIn(underClock).filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
   ok(onClock.length === 1 && onClock[0] === RULE.name,
      `H the rule is still the one open -- deselecting IS the 「초기화」 (${JSON.stringify(onClock)})`);
   ok(Boolean(boxAt('lot_column')) || (held() || {}).lot_column === RULE.lot_column,
@@ -418,7 +421,7 @@ async function suite(probe) {
   await refreshChainRule();
   await flush();
   const grown = byAttr('data-picker');
-  const names = grown ? grown.children.map((o) => o.value) : [];
+  const names = grown ? optionsIn(grown).map((o) => o.value) : [];
   ok(names.includes('a_rule_somebody_else_added'),
      `H the list DOES refresh -- that is what the read was for (${JSON.stringify(names)})`);
   ok(names.indexOf(PICK_NAME) === -1,
@@ -455,7 +458,7 @@ async function suite(probe) {
   // ── F. staying: the rule is still open and still filled ─────────────────────────────────
   const stillPicked = byAttr('data-picker');
   const selected = stillPicked
-    ? stillPicked.children.filter((o) => o.getAttribute('selected')).map((o) => o.value)
+    ? optionsIn(stillPicked).filter((o) => o.getAttribute('selected')).map((o) => o.value)
     : [];
   ok(selected.length === 1 && selected[0] === RULE.name,
      `F after saving, the picker still shows that rule (${JSON.stringify(selected)})`);
@@ -766,8 +769,8 @@ async function suite(probe) {
   ok(Boolean(renameSave) && renameSave.body.name === 'renamed_rule' && renameSave.body.from === RULE.name,
      `R a renamed rule is saved as the rule it was: the new name, from the one opened (${renameSave ? JSON.stringify({ name: renameSave.body.name, from: renameSave.body.from }) : 'no save'})`);
   const afterRename = byAttr('data-picker');
-  const listedAfter = afterRename ? afterRename.children.map((o) => o.value) : [];
-  const chosen = afterRename ? afterRename.children.filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
+  const listedAfter = afterRename ? optionsIn(afterRename).map((o) => o.value) : [];
+  const chosen = afterRename ? optionsIn(afterRename).filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
   ok(JSON.stringify(chosen) === '["renamed_rule"]' && listedAfter.filter((v) => v === 'renamed_rule').length === 1
      && !listedAfter.includes(RULE.name),
      `R ...the renamed rule stays picked, one line in the list, the old name gone (${JSON.stringify({ chosen, listedAfter })})`);

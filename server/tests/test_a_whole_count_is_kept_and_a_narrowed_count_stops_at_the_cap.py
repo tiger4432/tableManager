@@ -33,8 +33,9 @@ def _counts_by_thread(monkeypatch):
 
 
 def _held(table):
-    with main_mod._COUNT_COND:
-        return [dict(h) for k, h in main_mod._WHOLE.items() if main_mod.count_cache_table_of(k) == table]
+    with main_mod.WHOLE_COUNTS._cond:
+        return [dict(h, counted_at=h.get("at")) for k, h in main_mod.WHOLE_COUNTS._kept.items()
+                if main_mod.count_cache_table_of(k) == table]
 
 
 def _until_counted(table, total, seconds=5.0):

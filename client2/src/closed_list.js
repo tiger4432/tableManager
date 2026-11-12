@@ -57,7 +57,8 @@ function member(item) {
  *
  * @param {Member[]|null|undefined} options 서버가 준 닫힌 목록의 멤버
  * @param {string} current 문서가 «지금» 들고 있는 값 (없으면 '')
- * @param {{loaded?: boolean, name?: string}} [opts] `loaded` 는 목록의 «도착» 여부
+ * @param {{loaded?: boolean, name?: string, fallback?: string}} [opts] `loaded` 는 목록의 «도착» 여부 ·
+ *        `fallback` 은 빈 칸이 되는 값(골격 잎의 `default`) — 빈 줄이 «Default: X» 로 말한다
  * @returns {{control: 'unread'|'none'|'value'|'picker', value: string,
  *            options: {value: string, label: string, group: string}[], reason: string}}
  */
@@ -80,9 +81,10 @@ export function closedListChoice(options, current, opts = {}) {
              reason: name ? `${NO_CHOICE} · ${name}` : NO_CHOICE };
   }
   // ⚠️ 현재 값은 «언제나» 항목에 남습니다(위 주석) — 묶음 «없이», 맨 앞에. 그것이 지금 참인
-  //    것이고, 묶음은 «고를 수 있는 것»의 분류입니다.
+  //    것이고, 묶음은 «고를 수 있는 것»의 분류입니다. 빈 값의 줄은 그 칸의 기본값을 말합니다(`opts.fallback`).
+  const blank = value === '' && opts.fallback ? `Default: ${opts.fallback}` : value;
   const offered = members.some((m) => m.value === value)
-    ? members : [{ value, label: value, group: '' }, ...members];
+    ? members : [{ value, label: blank, group: '' }, ...members];
   if (offered.length === 1) {
     return { control: 'value', value, options: offered, reason: '' };
   }

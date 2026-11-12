@@ -945,11 +945,12 @@ function joinResolvedFilterDef(entry, baseTooltip) {
 
 /** A column's one filter (lead 11-06 ㄱ: one filter door per column, no exception) - Pick · Paste list · Condition, a
  *  `kind` of 'text' or 'number', the Condition's `options` and the floating cell's first type. */
-function valueFilterDef(kind, options = null, defaultOption = null) {
+function valueFilterDef(kind, options = null, defaultOption = null, server = false) {
   return {
     filter: ValueFilter,
     floatingFilterComponent: ValueFloatingFilter,
-    filterParams: { kind, ...(options ? { options } : {}), ...(defaultOption ? { defaultOption } : {}), readValues: readColumnValues },
+    filterParams: { kind, ...(options ? { options } : {}), ...(defaultOption ? { defaultOption } : {}), readValues: readColumnValues,
+      ...(server ? { server } : {}) },
   };
 }
 
@@ -1011,14 +1012,15 @@ export function buildColumnDefs() {
   // pivoted (owner 10-22): the keys, then one column per item
   const shown = pivotShown() ? pivotColumns(state.pivotView, state.currentPivot, state.currentCompositeKeySources)
     : state.currentColumns.filter((col) => !retired.includes(col));
-  // a pivot row's carried columns (owner 11-06): read-only, not sorted or filtered - one value or «N values»
+  // a pivot row's carried columns (owner 11-06): read-only - one value or «N values»; filtered and sorted by the server
+  // over the group's long rows (owner 11-11 ㄴ, «정렬도 안되네»)
   const carried = pivotShown() ? carryColumns(state.pivotView, state.currentPivot) : [];
   const columnDefs = shown.map((col, index) => {
     const isSystem = isSystemColumn(col);
     const isCarried = carried.includes(col);
     // ROW_ID alone among them is filterable (owner 10-02, lead e67ef53f3): finding a row by its id
     // is the question. It stays read-only, and the other system columns stay unfilterable.
-    const filterable = (!isSystem || col === 'row_id') && !isCarried;
+    const filterable = !isSystem || col === 'row_id';
     const colTypes = state.currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
 
@@ -1061,13 +1063,13 @@ export function buildColumnDefs() {
       // row (owner 10-23)
       editable: !isSystem && !viewTable && !isCarried
         && (pivotShown() && itemOf(col) === null ? (params) => isNewPivotRow(params.data && params.data.row_id) : true),
-      sortable: !isCarried,
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
       ...(col === held ? { filter: HeldColumnFilter }
         : filterable ? valueFilterDef(colType === 'number' ? 'number' : 'text', null,
-          colType !== 'number' && indexed.includes('equal') && !indexed.includes('search') ? 'equals' : null) : { filter: false }),
+          colType !== 'number' && indexed.includes('equal') && !indexed.includes('search') ? 'equals' : null, isCarried)
+          : { filter: false }),
       floatingFilter: filterable,
       headerClass: [fillOrdinal ? 'fill-target-header' : '', chainTip.length && !formula ? 'chain-written-header' : '',
         ...indexed.map((kind) => `idx-${kind}`)]
@@ -1080,7 +1082,10 @@ export function buildColumnDefs() {
       valueFormatter: isTimeColumn(col, colType) ? timeCellFormatter : undefined,
       // a carried cell whose long rows hold more than one value says how many (owner 11-06)
       ...(isCarried ? { valueFormatter: (params) => carryText(params.data && params.data.data && params.data.data[col])
-        || (isTimeColumn(col, colType) ? timeCellFormatter(params) : params.value) } : {}),
+        || (isTimeColumn(col, colType) ? timeCellFormatter(params) : params.value),
+        // its order is the server's (the group's smallest or largest value); the grid sorting what it holds put a group of
+        // «2 values» last where the server put it first (11-11, measured on a scratch answer)
+        comparator: () => 0 } : {}),
       valueGetter: (params) => {
         if (col === 'row_id') return params.data.row_id;
         if (col === 'created_at') return params.data.created_at;
@@ -1632,8 +1637,10 @@ export function renderGrid(initialRows) {
       // 🔴 WHEN EVERYTHING IS LOADED THE LOCAL SORT IS ALREADY THE WHOLE-TABLE SORT, and
       //    asking the server would be a round trip that changes nothing. Measured: a 907-row
       //    table (under one page) sorts to its true maximum today, with zero requests.
-      if (holdsWholeTable()) { state.serverSort = null; return; }
       const sorted = state.gridApi.getColumnState().find(c => c.sort);
+      // a carried column's order is its group's smallest or largest value - the server's; the grid holds one or none
+      const carried = pivotShown() && sorted && carryColumns(state.pivotView, state.currentPivot).includes(sorted.colId);
+      if (holdsWholeTable() && !carried) { state.serverSort = null; return; }
       // The column id IS the declared column name (`field: col` for both plain and 🔗 join
       // columns), so the name on the wire is one the table declares — the server's 422 for an
       // unknown name is unreachable from this control, not merely unlikely.

@@ -241,7 +241,7 @@ def test_dashboard_summary_carries_rate_and_denominator(client, db_session):
     db_session.commit()
 
     import main
-    main.RECORRECTION_CACHE["value"] = None   # TTL cache must not serve a stale run
+    main.FIGURES.forget()   # TTL cache must not serve a stale run
 
     res = client.get("/dashboard/summary")
     assert res.status_code == 200
@@ -265,7 +265,7 @@ def test_dashboard_survives_a_failing_recorrection_query(client, db_session, mon
         raise RuntimeError("canceling statement due to statement timeout")
 
     monkeypatch.setattr(crud, "get_recorrection_stats", boom)
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
     res = client.get("/dashboard/summary")
     assert res.status_code == 200
@@ -277,7 +277,7 @@ def test_dashboard_survives_a_failing_recorrection_query(client, db_session, mon
     assert body["system_health"], "the dashboard's own verdict went dark with the failing part"
     assert body["recorrection"]["rate_pct"] is None
     assert body["recorrection"]["unavailable_reason"]
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 def test_the_unavailable_reason_names_the_actual_cause_not_a_canned_timeout(
@@ -295,13 +295,13 @@ def test_the_unavailable_reason_names_the_actual_cause_not_a_canned_timeout(
         raise RuntimeError("column audit_logs.source_name does not exist")
 
     monkeypatch.setattr(crud, "get_recorrection_stats", boom)
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
     reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
     assert "source_name does not exist" in reason, "name the real failure"
     assert "RuntimeError" in reason
     assert "시간 초과" not in reason, "must not claim a timeout that did not happen"
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 def test_a_real_recorrection_timeout_is_still_identified_as_one(
@@ -312,12 +312,12 @@ def test_a_real_recorrection_timeout_is_still_identified_as_one(
         raise RuntimeError("canceling statement due to statement timeout")
 
     monkeypatch.setattr(crud, "get_recorrection_stats", boom)
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
     reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
     assert "시간 초과" in reason and lines.index_name("<table>", "p") in reason, \
         "the timeout case must still point at the index that fixes it"
-    main.RECORRECTION_CACHE["value"] = None
+    main.FIGURES.forget()
 
 
 # ── 9. Whose line (lead 11-10 ㄴ) ─────────────────────────────────────────────

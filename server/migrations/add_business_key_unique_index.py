@@ -261,7 +261,8 @@ def key_catalogue(conn, table: str) -> dict:
         from database import crud
 
         cfg = crud.TABLE_CONFIG.get(table) or {}
-    except Exception:                                   # noqa: BLE001 - the catalogue answers without the config
+    except Exception as e:                              # noqa: BLE001 - the catalogue answers without the config
+        print("  %s: the catalogue is read without the table's config - %s" % (table, told(e)), flush=True)
         cfg = {}
     keys = {BK_COLUMN, *([cfg["business_key"]] if cfg.get("business_key") else []),
             *(cfg.get("composite_key_source") or [])}

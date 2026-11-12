@@ -312,7 +312,7 @@
 #ontology-explorer-root .oe-tree-item {
   width: 100%; display: flex; align-items: center; border: 0;
   background: transparent; color: var(--oe-text); padding: 6.8px 6.8px 6.8px 20.4px;
-  text-align: left; overflow-wrap: anywhere; cursor: pointer;
+  text-align: left; overflow-wrap: anywhere; white-space: normal; cursor: pointer;
   font-family: var(--oe-font-mono); font-size: var(--fs-h6);
 }
 #ontology-explorer-root .oe-change-label {
@@ -763,11 +763,12 @@
    when it is drawn over it. */
 /* 🔴 ONE GRID FOR THE WHOLE TREE (lead 10-21, form D). The topmost node holds the two columns; every node, children
    box and row below it is a subgrid of them, so a name column is as wide as its longest name with its indent, and
-   the value column starts at one x at every depth. A name is never cut while the form has the room.
+   the value column starts at one x at every depth. A name is never cut: past half the form it wraps instead (lead 11-11
+   ㄱ) - uncapped, one deep name took 398 of a 506 px form and left the boxes 22 px.
    `:not([hidden])` - a `display` here would beat the page's `[hidden]` rule (id weight). */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node:not(.oe-node *):not([hidden]) {
   display: grid; min-width: 0; column-gap: var(--space-3);
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: fit-content(50%) minmax(0, 1fr);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node :is(.oe-node, .oe-node-children):not([hidden]) {
   display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; min-width: 0;
@@ -797,19 +798,12 @@
   display: flex; align-items: center; gap: var(--space-2); min-width: 0; align-self: stretch;
   padding-left: calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0));
 }
-/* 🔴 THE ROW KEEPS ONE HEIGHT. At depth the label column is narrow -- 214px less 16px a
-   level, so 134px by depth 5 -- and `allowed_binding_kinds` plus its badge needed 144. The
-   name wrapped, and 30 of 136 rows stood at 57px against the others' 38. Uniform rows are
-   what 「잘 정돈되게」 buys; a column of two heights is not that.
-   Nothing is lost: the name is `title`d, so the whole identifier is one hover away, and it
-   is still in the DOM for search. Scoped to the TREE -- `.oe-node-name` is also the flow
-   node's class, and the flow stacks in a 330px column where wrapping is right. */
+/* A name past half the form wraps - at a space or its <wbr> (after an '_' or a '.'), never between letters - and its
+   row grows by a line (lead 11-11 ㄱ). Scoped to the TREE: `.oe-node-name` is also the flow node's class. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  white-space: normal; overflow-wrap: normal;
   font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
 }
-/* Chrome breaks at a <wbr> even under nowrap (measured 10-21): the break after an '_' is the stacked layout's only. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: none; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-badge { flex: none; white-space: nowrap; }
 /* The value cell: its box, then the row's word (Declared · Derived · Required ...) right of it, muted. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
@@ -833,8 +827,6 @@
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-label { grid-area: label; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value { grid-area: value; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value:empty { display: none; }
-  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name { white-space: normal; overflow: visible; }
-  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: inline; }
 }
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
@@ -947,8 +939,8 @@
   color: var(--oe-accent); cursor: pointer;
   display: block; text-align: start;
   flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  /* A word, not a control: the base layer's button height would make the bar two controls tall. */
-  height: auto; min-height: 0; line-height: inherit;
+  /* The small control height (lead 11-11): a step at its text's 19 px was a target under the base layer's. */
+  height: var(--control-h-small); min-height: 0; line-height: var(--control-h-small);
 }
 #ontology-explorer-root .oe-path-step[aria-current="true"] { flex: none; }
 #ontology-explorer-root button.oe-path-step:hover { text-decoration: underline; }
@@ -1330,15 +1322,17 @@
 }
 
 /* 🔴 THE VALUE BOX (lead 10-21, skill §0-bis). Every box a tree row's value cell holds - an input, a picker, a folded
-   value, a value read, a name to add - carries .oe-box, and this rule alone sizes it: one width, the small height, a
-   step of padding, a hairline edge. As wide as its cell up to that width - a table's cell is narrower. After the
+   value, a value read, a name to add - carries .oe-box, and this rule alone sizes it: one width, the small height (a
+   formula's box grows with its lines up to eight, owner 11-11), a step of padding, a hairline edge. As wide as its cell up to that width - a table's cell is narrower. After the
    controls' own rules, which it outranks in the tree. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-box {
   display: inline-block; box-sizing: border-box; flex: 0 1 auto; width: 100%; max-width: var(--oe-box-w); min-width: 0;
-  height: var(--control-h-small); min-height: var(--control-h-small); padding: 0 var(--space-3);
+  height: auto; min-height: var(--control-h-small); max-height: 8lh; padding: 0 var(--space-3);
   border-width: 1px; border-style: solid;
   line-height: calc(var(--control-h-small) - 2px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* A formula's box keeps its lines (owner 11-11 «1 ㄱ», formula_input.js) - the one value box that is not one line. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-box.formula-input__input { white-space: pre-wrap; overflow-y: auto; }
 /* A value read, or the one choice there is, has no edge to press. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; }
 

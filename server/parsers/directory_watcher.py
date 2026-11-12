@@ -27,6 +27,7 @@ if server_dir not in sys.path:
 import db_safety
 from database.database import SessionLocal
 from maps import alignment_batch_counts
+from runtime.stages import stage
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
 from utils import heartbeat
@@ -478,6 +479,10 @@ CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
 #: A grid read's statement limit (총괄 d16033b63) - null or 0: none. The default is measured on the 4,000,000-row board.
 GRID_READ_TIMEOUT_SETTING = "grid_read_timeout_seconds"
 GRID_READ_TIMEOUT_DEFAULT = 10.0
+#: How long the column picker's exact counts of a table may run behind its answer, all of them together (lead 11-10 ㅈ ·
+#: ㅌ) - past it they are cut and not counted again until a person asks. null or 0: no limit.
+COLUMN_COUNT_SETTING = "column_count_seconds"
+COLUMN_COUNT_DEFAULT = 120.0
 #: How many item columns a pivot read spreads at the most - past it the first ones and «N more» (소유자 10-22).
 PIVOT_MAX_COLUMNS_SETTING = "pivot_max_columns"
 PIVOT_MAX_COLUMNS_DEFAULT = 200
@@ -637,6 +642,12 @@ def _whole_number(settings, cell, absent, least):
     value = settings.get(cell, absent)
     good = isinstance(value, int) and not isinstance(value, bool) and value >= least
     return value if good else absent
+
+
+def column_count_timeout(settings=None):
+    """Seconds the column picker's exact counts of one table may run together, None = no limit (`ledger.column_stats`)."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, COLUMN_COUNT_SETTING, COLUMN_COUNT_DEFAULT)
 
 
 def grid_read_timeout(settings=None):
@@ -4091,7 +4102,7 @@ class IngestionHandler(FileSystemEventHandler):
                     chunk_started = time.monotonic()
                     items = []
 
-                    with alignment_batch_counts.stage("parse"):
+                    with stage("parse"):
                         for file_row, row in (chunk if map_columns else enumerate(chunk, start=processed_rows + 1)):
                             normalized_row = {}
                             bk_val = None
@@ -4164,7 +4175,7 @@ class IngestionHandler(FileSystemEventHandler):
                             _sampler = None
 
                         _time_left, _replaced, _dropped = {}, ({} if map_columns else None), {}
-                        with alignment_batch_counts.stage("apply"):
+                        with stage("apply"):
                             results, changed_cells, created_logs, deleted_row_ids = \
                                 crud.apply_batch_updates(db, t_name, batch_obj,
                                                          replace_report=_replaced,
@@ -4181,7 +4192,7 @@ class IngestionHandler(FileSystemEventHandler):
                         nokey_counts["rows"] += (batch_obj._nokey or {}).get("rows", 0)
                         nokey_counts["columns"].update((batch_obj._nokey or {}).get("columns") or ())
 
-                        with alignment_batch_counts.stage("commit"):
+                        with stage("commit"):
                             db.commit()
 
                         # Between chunks, immediately after the commit that made this chunk
@@ -4384,7 +4395,8 @@ SWEEP_LAP_PREFIX = "sweep:"
 #: The lap a (table, source)'s re-read stop leaves - «reread:<table>@<source>», its `stopped` the sentence, none when
 #: let go - read by the file page's line beside the sweep's.
 REREAD_LAP_PREFIX = "reread:"
-#: The reads a re-read makes: the retry door's three words, and a sweep's file whose stamp was let go (`reread.uncheck`).
+#: The reads a re-read makes: the retry door's three words, and a sweep's file with no stamp - let go by hand
+#: (`reread.uncheck`, replay_ingestion --apply; a changed reading no longer lets any go, 소유자 11-11).
 REREAD_WHYS = frozenset({ingestion.checkpoint.WHY_RETRY, ingestion.checkpoint.WHY_READ_AGAIN,
                          ingestion.checkpoint.WHY_READ_NOW, ingestion.checkpoint.WHY_UNSTAMPED})
 

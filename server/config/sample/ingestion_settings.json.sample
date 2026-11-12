@@ -20,6 +20,8 @@
   "statement_timeout_seconds": null,
   "_chain_statement_timeout_seconds_doc": "체인 묶음의 SQL 문장 하나가 걸릴 수 있는 상한(초). 넘으면 DB 가 그 문장을 끊고 그 묶음은 실패(재시도 규칙 그대로)로 끝나며 체인은 다음 묶음으로 갑니다. 적지 않으면 120. null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만. 볼 줄과 끄는 법은 RUN.md 10-08 절.",
   "chain_statement_timeout_seconds": 120,
+  "_column_count_seconds_doc": "온톨로지 선언 화면 «컬럼 고르기»의 정확한 셈(칸마다 채워진 수 · 열쇠 유일성)이 답 뒤에서 돌 수 있는 상한(초) — 그 표의 셈 전부를 합친 시간. 넘으면 끊고 «≈ 어림만»을 남기며, 사람이 다시 세기를 누를 때까지 다시 세지 않습니다. 기본 120. null 이나 0 이면 상한 없음.",
+  "column_count_seconds": 120,
   "_save_lock_timeout_seconds_doc": "사람 저장(HTTP 로 들어오는 쓰기)이 다른 쓰기의 잠금을 기다리는 상한(초). 체인 그룹은 쓰기 단계 내내 그 행을 쥐므로, 같은 행을 저장하면 그 그룹이 커밋할 때까지 기다립니다. 넘으면 409 «Another write is in progress - save again» — 다시 저장하면 됩니다. 적지 않으면 10(판: 1,000 행 그룹 뒤의 가장 긴 기다림 0.66 초, 그룹 하나의 기준 5 초의 두 배). null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만.",
   "save_lock_timeout_seconds": 10,
   "_background_parallel_workers_doc": "뒷일 프로세스(체인 · 슬롯 · 원장 · 워처 · 스케줄러 · 소급 등 API 가 아닌 것)의 DB 연결에서 문장 하나가 쓰는 PostgreSQL 병렬 일꾼 수. 서버(API)와 그리드 · 걷기 프로세스는 서버 기본값 그대로. 적지 않으면 0. null 이면 모든 연결이 서버 기본값. 연결이 새로 열릴 때 읽으므로 바꾸면 재기동. PostgreSQL 만. 볼 줄은 RUN.md 11-06 «뒷일 병렬» 절.",

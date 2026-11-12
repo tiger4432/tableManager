@@ -462,13 +462,13 @@ def test_enrichment_rules_api_contract_shape(client, enrich_env):
     res = client.get("/enrichment/rules")
     assert res.status_code == 200
     body = res.json()
-    assert set(body.keys()) == {"rules"}
+    assert set(body.keys()) == {"rules", "missing"}
     assert len(body["rules"]) == 1
     rule = body["rules"][0]
     assert set(rule.keys()) == {
         "name", "source_table", "derived_table", "decision_key",
         "target_fields", "list_columns", "reference_views", "queue_filters",
-        "keyed_queue_filters", "alignment", "queue_predicate",
+        "keyed_queue_filters", "alignment", "queue_predicate", "missing",
     }
     # 이 픽스처 규칙은 정렬을 선언하지 않았다 → false. 키는 **항상** 있다: 없으면 클라가
     # 「서버가 이 필드를 모른다」와 「이 규칙은 정렬 대상이 아니다」를 가르려고 버전 검사를
@@ -894,3 +894,65 @@ def test_the_overlay_config_is_read_once_and_handed_out_as_a_copy(tmp_path):
     first["alignment"]["min_score"] = 999
     second = map_overlay.load_overlay_config(str(config_file))
     assert second["alignment"]["min_score"] == 1, second
+
+# ---------------------------------------------------------------------------
+# The queue counts are held (owner 11-10 «1 ㄱ»: every admin tab asked every rule's queue count every 30 s) - the
+# rules read answers what the whole counter last counted; a change to the derived table counts it again.
+# ---------------------------------------------------------------------------
+
+def test_the_queue_counts_are_held_and_counted_once_however_many_read(client, enrich_env, monkeypatch):
+    import threading
+    import time
+
+    import main
+    from parsers import directory_watcher
+
+    db = enrich_env
+    tx = f"tx_{uuid.uuid4().hex[:8]}"
+    _seed_source(db, [
+        {"equipment": "EQP1", "event_time": "T1", "chip_id": "C1"},
+        {"equipment": "EQP2", "event_time": "T2", "chip_id": "C2"},
+    ], tx)
+    _run_chain_for_tx(db, tx)
+    monkeypatch.setattr(directory_watcher, "count_recount_seconds", lambda settings=None: 0.0)
+    counts, real, go = [], main._table_rows, threading.Event()
+    def counting(*a, **k):
+        counts.append(k)
+        if k:                                                   # a queue count waits; a grid's whole count does not
+            go.wait(10)
+        return real(*a, **k)
+
+    monkeypatch.setattr(main, "_table_rows", counting)
+    first = client.get("/enrichment/rules").json()["missing"]
+    assert (first["total"], first["updating"], first["unknown"]) == (None, True, ["bonding_wafer_attribution"]), \
+        "the read answers at once while its count runs"
+    assert main.QUEUE_COUNTS.running(), "canary: the queue count is held"
+    monkeypatch.setattr(main, "COUNT_WAIT_SECONDS", 5)
+    grid = client.get("/tables/enrich_test_src/data/count").json()
+    assert grid["counting"] is False and grid["total"] == 2, ("a held queue count held a grid's whole count", grid)
+    go.set()
+
+    def settled(total):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            body = client.get("/enrichment/rules").json()
+            if body["missing"]["total"] == total and not body["missing"]["updating"]:
+                return body
+            time.sleep(0.05)
+        raise AssertionError(body)
+
+    body = settled(2)
+    assert [k for k in counts if k] == [{"enrichment_queue": "bonding_wafer_attribution"}], "canary: counted, narrowed"
+    assert body["missing"]["unknown"] == [] and body["missing"]["capped"] is False and body["missing"]["counted_at"]
+    rule = body["rules"][0]
+    assert (rule["missing"]["count"], rule["missing"]["failed"]) == (2, None)
+    for _ in range(3):
+        client.get("/enrichment/rules")
+    assert len([k for k in counts if k]) == 1, "a read counted again - the count must be held"
+
+    row_id = client.get("/tables/enrich_test_derived/data", params={"order_by": "row_id"}).json()["data"][0]["row_id"]
+    assert client.put("/tables/enrich_test_derived/data/updates", json={
+        "updates": [{"row_id": row_id, "updates": {"wafer_id": "W777"}, "source_name": "user", "updated_by": "tester"}],
+        "silent": True}).status_code == 200
+    settled(1)
+    assert len([k for k in counts if k]) == 2, "the derived table's change counted the queue again"

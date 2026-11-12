@@ -885,9 +885,10 @@ def _compile_vocabulary(section: Mapping[str, Any],
     builder = _RegistryBuilder(VocabularyRegistry)
     for predicate_id, item in section.items():
         obj = item["object"]
-        roles = predicate_claim(predicate_id, item, entities)["roles"]
-        qualifiers = [(name, role) for name, role in roles.items()
-                      if role.get("kind") == "attribute"]
+        claim = predicate_claim(predicate_id, item, entities)
+        # the qualifiers are the names the claim's object carries - not the roles of kind «attribute»: a string or
+        # boolean value object's own value role is of that kind, and read as a qualifier it refused every row (11-10)
+        qualifiers = [(name, claim["roles"][name]) for name in claim["emit"]["object"].get("qualifiers") or ()]
         builder.add(predicate_id, PredicateDescriptor(
             predicate_id=predicate_id,
             status=item["status"],

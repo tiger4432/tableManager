@@ -278,7 +278,8 @@ def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_s
                                                    path="pics:맵/a.png"))
     db_session.commit()
     table = report_reads.Report(db_session, json.loads(json.dumps(SPEC)), "E1").yield_by()["html"]
-    assert "wafer_id W2 · version v1 합성맵" in table["left_out"] and table["pictures"][0][1][2] == {"text": ""}
+    assert "wafer_id W2 · version v1 합성맵" in table["left_out"] and table["pictures"][0][1][2] == {
+        "refused": "2 합성맵 rows for wafer_id W2 · version v1"}, "the cell says why (owner 11-10: blank, no reason)"
 
 
 def test_the_first_rule_that_holds_colours_the_cell(report):

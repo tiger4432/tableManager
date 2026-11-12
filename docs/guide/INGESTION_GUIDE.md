@@ -15,7 +15,7 @@
 3. **실행 및 정제**: 매칭된 파서가 데이터를 Pandas DataFrame으로 로드하고 변환(연산/타입 캐스팅)을 수행합니다. 이후 PostgreSQL에 안전하게 적재될 수 있도록 `NaN`, `NaT` 등의 비정상 수치를 자동으로 정화(None으로 치환)합니다.
 4. **표준 파서 폴백 (Std Parser Fallback, 2026-07-25)**: **어떤 커스텀 스크립트도 파일을 처리하지 않았을 때만** 표준 파서가 시도됩니다(→ §1.5). 스크립트 로드/`match()` 오류가 발생한 경우에는 깨진 스크립트를 은폐하지 않기 위해 폴백 없이 즉시 실패 처리됩니다.
 5. **아카이빙 및 격리**: 성공적으로 DB에 배치(Batch) 적재가 완료되면, 원본 파일은 `archives/` 폴더로 자동 이동됩니다. 커스텀 파서와 표준 파서 모두 처리하지 못한 경우 오류가 발생하여 파일이 `err/` 폴더로 격리되며 데이터베이스에 실패 로그가 기록됩니다.
-6. **기동/주기 스윕 (이벤트 유실 안전망, 2026-07-25)**: 워처는 파일 생성 이벤트에만 의존하지 않습니다. ① **기동 스윕** — observer 기동 직후(및 신규 워크스페이스 런타임 등록 직후) 각 `raws/` 직속의 기존 파일을 mtime 오름차순으로 이벤트 경로와 동일하게 처리합니다(서버 정지 중 투입된 파일도 기동만으로 적재). ② **주기 스윕** — 300초 주기 백그라운드 스레드가 잔류 파일을 재스캔합니다. 처리 불가로 남은 파일은 (mtime, size) 시그니처로 기억해 같은 상태로는 재시도하지 않으며(무한 재시도 차단), 파일을 수정하면(mtime 변경) 다시 처리됩니다. `err/` 등 형제 폴더는 스윕 대상이 아니고, `raws/` 직속 하위 디렉토리는 스윕되지 않고 **트리 적재 트리거**가 됩니다(→ §1.9 — `600b49d` 이후 승격이 아니라 **제자리 적재**). 스윕과 실시간 이벤트의 동시 진입은 락으로 차단됩니다(이중 처리 없음). 구현: `WorkspaceWatcher.sweep_existing_files / _periodic_sweep_loop`.
+6. **기동/주기 스윕 (이벤트 유실 안전망, 2026-07-25)**: 워처는 파일 생성 이벤트에만 의존하지 않습니다. ① **기동 스윕** — observer 기동 직후(및 신규 워크스페이스 런타임 등록 직후) 각 `raws/` 직속의 기존 파일을 mtime 오름차순으로 이벤트 경로와 동일하게 처리합니다(서버 정지 중 투입된 파일도 기동만으로 적재). ② **주기 스윕** — 백그라운드 스레드가 스윕이 «끝난 뒤» `ingestion_settings.json` 의 `sweep_interval_seconds`(기본 300초)만큼 쉬고 잔류 파일을 재스캔합니다. 처리 불가로 남은 파일은 (mtime, size) 시그니처로 기억해 같은 상태로는 재시도하지 않으며(무한 재시도 차단), 파일을 수정하면(mtime 변경) 다시 처리됩니다. `err/` 등 형제 폴더는 스윕 대상이 아니고, `raws/` 직속 하위 디렉토리는 스윕되지 않고 **트리 적재 트리거**가 됩니다(→ §1.9 — `600b49d` 이후 승격이 아니라 **제자리 적재**). 스윕과 실시간 이벤트의 동시 진입은 락으로 차단됩니다(이중 처리 없음). 구현: `WorkspaceWatcher.sweep_existing_files / _periodic_sweep_loop`.
 
 ---
 
@@ -88,7 +88,7 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 |---|---|
 | 저장소 | 신규 테이블 **`file_ingestion_checkpoints`**(`UNIQUE(table_name, file_signature)`). `FileIngestionLog`에 컬럼을 붙이지 않은 이유는 `create_all`이 ALTER를 하지 않아 **조회 프로세스보다 먼저 도는 마이그레이션**이 필요해지고 운영 DB에서 `UndefinedColumn` 500이 열리기 때문입니다. 준비: `python server/scripts/setup_ingestion_checkpoint.py`(멱등) |
 | 원자성 | 오프셋 갱신(`record_chunk_progress`)은 청크 upsert와 **같은 트랜잭션**에서 일어납니다 → **"커밋된 행 수 == 기록된 오프셋"**이 항상 성립합니다 |
-| 재개 조건 | 시그니처 + `total_rows` + `source_kind`(파서 정체성 `std` / `pipeline:<Class>`) + 오프셋 범위(`0 ≤ processed_rows ≤ total_rows`)가 **전부** 일치할 때만. 하나라도 다르면 0부터 재처리하되 **사유를 로그·`FileIngestionLog.detail`·완료 통지에 명시**합니다(조용한 재처리 금지) |
+| 재개 조건 | 시그니처 + `total_rows` + `source_kind`(파서 정체성 `std` / `pipeline:<파일>::<Class>`) + 오프셋 범위(`0 ≤ processed_rows ≤ total_rows`)가 **전부** 일치할 때만. 하나라도 다르면 0부터 재처리하되 **사유를 로그·`FileIngestionLog.detail`·완료 통지에 명시**합니다(조용한 재처리 금지) |
 | 다시 넣기 | 어드민 재시도는 내용이 이미 `DONE` 이면 0 부터 다시 넣습니다(`_retry_should_restart`) |
 | 적용 범위 | heavy / normal 레인, 기동·주기 스윕, 관리자 재시도 — **4경로 전부 동일 동작** |
 | 비활성화 | `resume_from_checkpoint: false`로 재개만 끌 수 있습니다. 시그니처 계산이 `OSError`로 실패하면 체크포인트가 자동으로 비활성화되고 사유가 note에 남습니다 |
@@ -105,7 +105,7 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 | 체크 | 그 열쇠의 `file_ingestion_logs` 행이 파일의 **(수정 시각, 크기)** 를 들고 있으면(`file_mtime` · `file_size`) 안 읽습니다. 하나라도 다르면 읽습니다 |
 | 도장을 적는 곳 | 읽기가 «답을 낸» 자리 — SUCCESS, 그리고 파일 탓의 FAILED. **잠금 대기로 끝난 FAILED 는 도장이 없어** 다음 훑기가 다시 집습니다 |
 | 묻는 자리 | 함수 하나 `checkpoint.checked` — raws 훑기 · 외장 훑기 · 폴더 트리 걷기 · 이벤트 · 수집기(소급 backfill)의 기다림. 재시도 문(파일 화면 Retry)은 **묻지 않고** 읽은 뒤 도장을 적습니다 |
-| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비웁니다(훑기가 제자리 파일을 다시 읽음). 상한 없음, 와처가 자기 속도로 읽습니다. 🆕 10-24 실패 파일은 저절로 다시 읽지 않습니다 — 파일 화면의 Retry · Read now · Read all again 으로만(디스크에서 지워진 파일은 Retry 해도 안 읽고 «the file is not on the disk any more» 로 남음). 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)` |
+| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌어도 **읽은 파일은 저절로 다시 읽지 않습니다**(🆕 11-11 소유자 «수동으로» — 스크립트는 수정 시각을 봐서 주석만 고쳐도 다시 읽던 것을 끔). 읽은 파일 수만 로그에 남고, 새 읽는 법으로 다시 읽히려면 파일 화면의 **Read all again** 입니다. 🆕 10-24 실패 파일은 저절로 다시 읽지 않습니다 — 파일 화면의 Retry · Read now · Read all again 으로만(디스크에서 지워진 파일은 Retry 해도 안 읽고 «the file is not on the disk any more» 로 남음). 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) kept as read (Read all again on the file page applies the change to them), failed files are not read again by themselves (Retry on the file page)` |
 | 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처의 첫 훑기가 그 훑기의 stat 위에서 **한 번** 채웁니다(디스크를 따로 안 훑음): 최신 행이 SUCCESS 또는 FAILED 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다 — FAILED 는 실패로 남고 Retry 로만 다시 읽습니다(🆕 10-26). 로그 `[Watcher] read files stamped N · failed files stamped K (read again only by Retry on the file page) · left for re-read C (changed since read)`. 모든 외장 소스에 닿은 훑기가 끝나면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
 | 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Read a file now** 에 경로를 넣고 **Read now**(행이 없거나 와처가 안 집은 파일도) 또는 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
 | 은퇴 | 원장의 경로 tier 1 · 내용 서명 dedup(같은 내용이어도 다른 경로면 읽음, 소유자 10-20 ㄱ) · 훑기의 프로세스 메모리 · 외장 «수정» 이벤트의 해시 우회 · 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`. 원장(`file_ingestion_checkpoints`)은 **이어 읽기(재개)** 만 맡습니다 |
@@ -165,7 +165,7 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 | 상태 | 언제 | 처리 |
 |---|---|---|
 | `no_match` | 선언했는데 아무것도 매치 안 됨 | **보고**(빈칸으로 두지 않음). 고정 폴더 구조에서는 나지 않지만, 구조가 섞이면 절반이 컬럼을 잃은 실행이 전부 매치된 실행과 **똑같이 보여서는 안 됩니다** |
-| `ambiguous_reference` | 패턴이 **서로 다른 값을 2개 이상** 매치(`finditer` + distinct — 같은 토큰이 두 층에 반복된 것은 모호가 아닙니다) | **거부, 해결하지 않음.** 동점을 깰 권위가 없으므로 `re.search`의 첫 히트를 쓰는 것은 **추측을 데이터 컬럼에 쓰는 것**입니다. 어휘는 `enrichment_analysis.CLS_AMBIGUOUS`와 **같은 단어**(한 상태에 한 어휘 — 동의어를 만들지 않습니다) |
+| `ambiguous_reference` | 패턴이 **서로 다른 값을 2개 이상** 매치(`finditer` + distinct — 같은 토큰이 두 층에 반복된 것은 모호가 아닙니다) | **거부, 해결하지 않음.** 동점을 깰 권위가 없으므로 `re.search`의 첫 히트를 쓰는 것은 **추측을 데이터 컬럼에 쓰는 것**입니다. 어휘는 `chain/enrichment/analysis.py` 의 `CLS_AMBIGUOUS`와 **같은 단어**(한 상태에 한 어휘 — 동의어를 만들지 않습니다) |
 | `cast_failed` | 매치했지만 선언 `type`으로 표현 불가 | **보고**(종전에는 None으로 저장 = 같은 침묵 계급) |
 | `path_value_discarded` | 경로가 낸 값이 **파일 자신의 헤더**가 같은 컬럼을 나르는 바람에 버려짐 | **보고, 차단 안 함.** ⚠️ 이 방향만 이름을 붙입니다 — **헤더가 이기는 것이 곧 규칙**이므로 정상이고 경고할 것이 없습니다. 운영자가 볼 수 없는 것은 *"내가 선언한 폴더 규칙이 값을 만들었는데 아무 효과가 없었다"*이고, 침묵은 그것을 "규칙이 매치 안 됐다"로 읽히게 합니다. (`a5eb934`에서 `path_overrides_header`에서 **개명**됐습니다 — 뜻이 뒤집혔기 때문입니다) |
 
@@ -299,7 +299,7 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 - `statuses`(쉼표 — 들어간 파일까지면 `SUCCESS,FAILED,SKIPPED`, 적지 않으면 FAILED 만 = 실패 재시도) · `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `preview`.
 - 미리보기(`preview=true`)가 다시 읽힐 파일 수 `count` · 상태별 `by_state` · 바로 아래 폴더별 `by_folder`, 기록이 말하는 자리에 없는 파일 수 `missing` 과 앞 다섯 이름 `missing_files` 를 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
-- 🆕 10-11 넘길 파일이 `ingestion_settings.json` 의 `reread_max_files`(기본 25)를 넘으면 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 이고 아무것도 표시하지 않습니다(미리보기는 상한을 안 따지고 답에 `limit` 을 싣습니다).
+- 🆕 10-11 넘길 파일이 `ingestion_settings.json` 의 `reread_max_files`(기본 25)를 넘으면 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 이고 아무것도 표시하지 않습니다(미리보기는 상한을 안 따지고 답에 `limit` 을 싣습니다). 🔴 이 409 는 요청이 직접 읽을 때만입니다 — 분리 모드(`DECOUPLED=True`, 운영 런처)에서는 거절하지 않고 워처가 한 번에 그 수만큼씩 집습니다(10-21).
 - 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, 체크리스트를 묻지 않고(내용이 같아도 다시 읽음) 읽은 뒤 그 행이 파일을 체크하며, 끝나면 보통 인제션과 같은 토스트가 옵니다.
 - 소급 관문을 안 잡습니다 — replay 가 돌아도 다시 읽기가 기다리지 않고, 다시 읽기가 replay 를 막지 않습니다.
 - 🆕 10-11 되돌리기 — POST `/admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` 가 아직 기다리는 행을 넘기기 전 상태로 돌립니다. 워처가 이미 집은 행(PENDING 이후)은 안 건드립니다. 🆕 10-12 워처는 아직 `PENDING_RETRY` 인 행만 조건부로 집으므로 되돌린 행은 읽히지 않고, 취소 답의 수가 곧 되돌린 수입니다.
@@ -392,7 +392,7 @@ class MyEquipmentLogParser(BasePipelineParser):
 
 ### 2.3 고급 기능 (커스텀 리더 구현)
 
-기본적으로 `.csv`는 `pd.read_csv()`, `.xlsx`는 `pd.read_excel()`로 읽힙니다. 만약 구분자가 탭(`\t`)이거나 인코딩이 다를 경우 `_read_file_to_dataframe` 메서드를 직접 오버라이딩하십시오.
+기본적으로 `.csv` · `.txt` 는 `pd.read_csv()`, `.xlsx` · `.xls` 는 `pd.read_excel()`로 읽힙니다. 만약 구분자가 탭(`\t`)이거나 인코딩이 다를 경우 `_read_file_to_dataframe` 메서드를 직접 오버라이딩하십시오.
 
 ```python
     def _read_file_to_dataframe(self, file_path: str) -> pd.DataFrame:
@@ -413,7 +413,7 @@ class MyEquipmentLogParser(BasePipelineParser):
 [my_table] ✅ Successfully processed and archived: equipment_A_2026.csv
 ```
 
-괄호 안 낱말이 «왜 읽나»입니다: new(기록 없음) · changed(읽은 뒤 바뀜) · unstamped(도장 없음 — 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기) · retry(실패 파일을 다시 넘김) · read again(읽은 파일을 Read all again 으로 넘김) · read now(Read now 로 처음 넘김) · checklist not read(체크리스트를 못 읽어 일단 읽음).
+괄호 안 낱말이 «왜 읽나»입니다: new(기록 없음) · changed(읽은 뒤 바뀜) · unstamped(도장 없음 — 손으로 체크 해제됨(`replay_ingestion --apply`), 또는 잠금 대기로 끝난 읽기) · retry(실패 파일을 다시 넘김) · read again(읽은 파일을 Read all again 으로 넘김) · read now(Read now 로 처음 넘김) · checklist not read(체크리스트를 못 읽어 일단 읽음).
 
 파이프라인이 정상적으로 매칭되었는지, 성공적으로 적재(Changed cells) 되었는지 위 로그들을 통해 즉각적인 파악이 가능합니다.
 

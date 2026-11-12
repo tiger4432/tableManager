@@ -225,7 +225,10 @@ export const FLOORS = new Map([
   // does not show that value the operator reads "saved" as "running". Three states, because
   // the list response carries no `enabled` at all and drawing that as `false` would answer
   // a question nobody asked.
-  ['chain_rule_panel_harness.mjs', 67],
+  ['chain_rule_panel_harness.mjs', 77],
+  // New with the owner's 11-11 «트리거표.규칙명 … 많아지니 안 보이더라» (lead): the Chain Rules list folded by a table - groups,
+  // their heads' counts, the filter, open groups kept per «group by», a storage that throws, two lists, nine mutants.
+  ['chain_rule_groups_harness.mjs', 37],
   ['absent_harness.mjs', 35],
   // THE ZERO THAT LIES. Four tabs each grew their own sentence for "0 but there is work",
   // while the server has shipped a closed list of six absence words that nothing read.
@@ -263,7 +266,7 @@ export const FLOORS = new Map([
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
   // 267 -> 271: the Waiting number and each owner line say «events» - U1-U2 and their two mutants (lead 10-28).
-  ['chain_queue_panel_harness.mjs', 271],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
+  ['chain_queue_panel_harness.mjs', 277],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -291,12 +294,6 @@ export const FLOORS = new Map([
   //    module state, so a harness never has to slice its text, so the module's structure
   //    never acquires a veto over refactoring it. A floor drop here means the round trip
   //    stopped being scored in one of its two directions, which is invisible to exit codes.
-  // 🔴 what SURVIVED the enrichment deletion. Four harnesses had `src/enrichment.js` as a
-  //    subject; three had ONLY that, and this one also scored the shipped
-  //    `enrichment_queue.js` (admin.js:13 imports `queueQuery`). Deleting it wholesale
-  //    would have dropped live coverage, so its P6 assertions moved here -- and stopped
-  //    slicing on the way: they now import the module instead of rebuilding it.
-  ['enrichment_queue_harness.mjs', 14],
   ['excel_form_roundtrip_harness.mjs', 306],
   // New 2026-08-05 with MAP_ALIGNMENT_SPEC 0.3 step 1 (the frame becomes a value). Same rule
   // as the other new entries: the floor is the count it reports on the commit that introduces
@@ -889,7 +886,7 @@ export const FLOORS = new Map([
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
   // 147 -> 155 ([8b] W1-W2 and six mutants, lead 10-27: the worlds' overlaps and notices as meta lines).
   // 155 -> 173 ([13] I1-I4 and five mutants: an imported entity type is edited in its world; [14] E1-E4 and five: a key from sections[key_section], a ref from the world its key names - lead 10-27).
-  ['explorer_open_path_harness.mjs', 173],
+  ['explorer_open_path_harness.mjs', 226],   // 222 -> 226: [4c] C1 · B1 and their two mutants (lead 11-11)
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -906,7 +903,7 @@ export const FLOORS = new Map([
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
   // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
   // 21 -> 27 (N0-N3 K6 K7, lead 10-11 small two: a folded row and a shut branch say the plan's note once; the stale refusal's retry).
-  ['explorer_form_grammar_harness.mjs', 33],
+  ['explorer_form_grammar_harness.mjs', 34],   // 33 -> 34: D1, a press kept through the change's draw (lead 11-11)
   // New with lead a5720d9d8: the screen's one blank rule (absent.js isBlank) - the contract's scalar
   // rows, the rule beyond scalars, and the seats that fold into it asking the same function.
   ['blank_rule_harness.mjs', 4],
@@ -1186,7 +1183,7 @@ export const FLOORS = new Map([
   // NEW 2026-10-22 (owner, lead ㄱ ①): the main grid's pivot - rows, columns, one cell's write, the narrowing, the footer's
   // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
   // the footer's unit ignored (N3) - each red alone.
-  ['grid_pivot_harness.mjs', 29],
+  ['grid_pivot_harness.mjs', 36],
   // new with the entered order and its places (owner 11-06): its count on the commit that adds it
   ['grid_order_harness.mjs', 16],
   // a cell's look (owner 11-06, lead L2): paint over rules, the later rule, columns, writer, the broadcast, the writes, a rule moved, the selection and its paints, a broadcast's answer, M1-M8
@@ -1240,7 +1237,7 @@ export const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 358],   // 356 -> 358: the count's one address, retroCountUrl (owner 11-10 «노테이션 소급 ㄱ»)
+  ['retroactive_view_harness.mjs', 368],   // 356 -> 358: the count's one address, retroCountRequest (owner 11-10 «노테이션 소급 ㄱ»)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],
@@ -1385,7 +1382,7 @@ export const FLOORS = new Map([
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
   ['testbed_harness.mjs', 156],   // -> 140: T43 a slot of days, T44 (Multiple), T45 one order of categories, T46-T50 images (lead-board-14) and their mutants; -> 110: T40-T42 the marks (lead-board-13 ②), M60-M65, M10 retired; -> 102: T39 rows not a time said with not a number, M59; -> 100: T36-T38 a slot's scale, the scatter and the picker's chips by it, a continuous Color by (lead-board-13 ①), M53-M58; -> 91: T34 the picker's «time» (lead 10-14 ③), M50 M51; T35 a cross table's empty cell pill UniqueCount(rows), M52; 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
-  ['browser_collector_harness.mjs', 23],   // the browser collector's run without a browser - values, opened, a batch, a run, a page in batches, pause, retry, M1-M8 (lead 11-07)
+  ['browser_collector_harness.mjs', 33],   // the browser collector's run without a browser - values, opened, a batch, a run, a page in batches, pause, retry, M1-M8 (lead 11-07)
   ['board_layout_harness.mjs', 199],   // the Board: layout, markings, chain, root base set, Sheet on the root (the count it reports 10-14)
   ['sheet_kind_harness.mjs', 40],   // the Sheet's visible area: grid, formats, key, formula bar, #MANY #NAME? #CYCLE, SM1-SM12 (lead 10-14 ㄱ)
   ['expression_vectors_harness.mjs', 483],   // -> 483 (lead 11-09 ㄱ ㄴ): İ / ı under option i, Repeat's limit, X49; -> 479 (lead 11-09): Min/Max of a time a function gives, a silent empty said, X47 X48; -> 474 (owner 11-09 «ㄴ»): Text 20 + & and patterns, F4 F5 the catalogue read, X37-X46; the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
@@ -1469,7 +1466,7 @@ export const FLOORS = new Map([
   // New (owner 11-05 ㄱ): a picture pasted or dropped on an image cell - the text wins beside it, image cells only, one picture,
   // the topmost cell under a drop; the real paste listener uploads once and writes the ref through the paste's own PUT.
   ['image_paste_harness.mjs', 23],
-  ['pivot_filter_carry_harness.mjs', 25],
+  ['pivot_filter_carry_harness.mjs', 34],
   // New (owner 11-05): a table's columns fitted once to their first rows, a column hidden from its header and «N hidden».
   // 27 -> 30 (owner 11-06): «#» fitted with them, one digit past its widest number.
   // 30 -> 28 (lead 11-08 ㄱ): W3 and its mutant X8 retired - the read no longer pays the fit, the grid's rowDataUpdated
@@ -1788,8 +1785,9 @@ export const FLOORS = new Map([
   // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 35],   // -> 35 (lead 11-09 ⓑ): the storage rows S1-S5, XS1-XS6
-  ['value_filter_harness.mjs', 37],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06)
-  ['tables_harness.mjs', 29],   // Tables L1: the grid's hand-off, the first table by page through the grid's door, 9 mutants (owner 11-06)
+  ['value_filter_harness.mjs', 36],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06); 37 -> 36: the list's reading (L1) went to list_field
+  ['list_field_harness.mjs', 12],   // the base layer's list field: how a list is read and said, the box (lead 11-11)
+  ['tables_harness.mjs', 48],   // Tables L1: the grid's hand-off, the first table by page through the grid's door; 11-11 the walk table to table - row marks, a hop, the axis compare, the store's names; 19 mutants (owner 11-06, 11-11)
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
@@ -1838,10 +1836,10 @@ export const FLOORS = new Map([
   ['gallery_harness.mjs', 38],
   // New with lead 10-29 ③ (owner 10-28 option A): a column's formula on its header - the requests, opening, the preview,
   // a refusal word for word, Apply and Remove, closing, chips at the caret, two instances, the fx press not a sort.
-  ['formula_popover_harness.mjs', 52],
+  ['formula_popover_harness.mjs', 65],
   // New with the owner's 11-09 «ㄴ»: the one formula field the popover, the colour rule, the test bed and the chain form
   // draw - names, columns, words, the call's arguments, the refusal line, two on one page, and its mutants.
-  ['formula_input_harness.mjs', 36],
+  ['formula_input_harness.mjs', 49],
   // New with the owner's 10-29 «ㄴ»: the admin help's side panel - the request, each answer as drawn, asking, Cancel
   // keeping the late answer, Open form's fields and help_id, Earlier, two panels.
   // 41 -> 45 (lead 10-29 «every answer is not sure»): not sure carries the last try's refusal and the why, on the card,

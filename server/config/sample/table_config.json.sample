@@ -1579,24 +1579,6 @@
       "name": "string"
     }
   },
-  "ai_memory": {
-    "__comment": "A person's corrections of AI cells, written by the ask and report rules' memory half and read back into their prompts",
-    "composite_key_source": [
-      "purpose",
-      "situation",
-      "cell"
-    ],
-    "column_types": {
-      "purpose": "string",
-      "situation": "string",
-      "cell": "string",
-      "ai": "string",
-      "right": "string",
-      "memo": "string",
-      "who": "string",
-      "at": "string"
-    }
-  },
   "split_expanded": {
     "__comment": "A split plan spread out, one row a lot's split item - its wafer, and the value the split fill join walks",
     "composite_key_source": [

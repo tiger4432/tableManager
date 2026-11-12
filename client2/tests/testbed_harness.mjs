@@ -403,7 +403,7 @@ async function parts(M) {
   // the expression box is the one formula field (formula_input.js): its input carries sf-pop__expr, its refusal line is its own
   const exprInput = () => walk(pickHost).find((n) => String(n.className).split(' ').includes('sf-pop__expr'));
   const exprWhy = () => (walk(pickHost).find((n) => n.className === 'formula-input__why') || {}).textContent;
-  const enter = (text) => { exprInput().value = text; exprInput().listeners.keydown[0]({ key: 'Enter' }); };
+  const enter = (text) => { exprInput().value = text; exprInput().listeners.keydown[0]({ key: 'Enter', ctrlKey: true }); };
   enter('Avg(');
   const custom = [exprWhy(), JSON.stringify(xp.part.declaration().encode.color) === JSON.stringify(product)];
   enter('If([nope] = 1, 1, 0)');

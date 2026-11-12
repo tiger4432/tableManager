@@ -207,7 +207,9 @@ def test_the_read_answers_at_once_and_walks_behind(panel, monkeypatch):
     assert time.monotonic() - began < 1.0, "the read did not wait for the walk"
     assert (first["groups"], first["updating"]) == ([], True), first
     go.set()
-    audit_cache.audit_cache._behind.join(30)
+    deadline = time.monotonic() + 30                              # the work behind (runtime.behind) ends
+    while audit_cache.audit_cache._behind.busy(audit_cache.RECENT) and time.monotonic() < deadline:
+        time.sleep(0.05)
     second = client.get(URL).json()
     assert (_keys(second["groups"]), second["updating"]) == (["ab-c", "ab-a", "ab-b"], False), second
 

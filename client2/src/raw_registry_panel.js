@@ -311,7 +311,9 @@ function markRefusedField(box, view, spec) {
 
 /**
  * @param {HTMLElement} mount
- * @param {{doc?: Document, onOpen?: Function, onSave?: Function}} deps
+ * @param {{doc?: Document, onOpen?: Function, onSave?: Function,
+ *          pickGroups?: (names: string[], query: string) => {label: string, names: string[]}[], pickFilter?: string}} deps
+ *        pickGroups: the picker's names in groups, a filter's kept (the page's); pickFilter: the filter box's word
  * @param {RegistrySpec} spec
  */
 export class RawRegistryPanel {
@@ -328,6 +330,10 @@ export class RawRegistryPanel {
     if (!this.doc) throw new Error('RawRegistryPanel needs a document (deps.doc or mount.ownerDocument)');
     this.onOpen = deps.onOpen || null;
     this.onSave = deps.onSave || null;
+    // A picker in groups beside a filter box, when the page hands the groups (owner 11-11); else one flat list.
+    this.pickGroups = deps.pickGroups || null;
+    this.pickFilter = deps.pickFilter || '';
+    this._pickQuery = '';
     this.now = deps.now || (() => Date.now());
     // The last save's base, and when the consumer was seen holding THAT base (spec.pickup).
     this._pickup = null;
@@ -611,23 +617,24 @@ export class RawRegistryPanel {
     this._picker = picker;
     this._options(picker, view, picked ? key : '');
     if (picker.addEventListener && this.onOpen) {
-      picker.addEventListener('change', (e) => {
-        const value = e && e.target ? e.target.value || '' : '';
-        if (value === NEW_NAME || value === PICK_NAME) return;
-        // 🔴 C-106 ②. 저장 안 된 것이 있으면 «묻습니다». 타이머는 C-101 이 막았지만 사람의
-        //    손은 안 막았고, 고르개 한 번이 화면을 바꾸는 유일한 자리입니다.
-        if (drafted !== null && !this.ask(LEAVE_UNSAVED)) {
-          // 보던 것으로 «되돌립니다» — 고르개가 가지 않은 곳을 가리키고 있으면 그 자체가 거짓입니다.
-          if (this._picker) this._picker.value = this.newMode ? NEW_NAME : view.name;
-          return;
-        }
-        this.newMode = false;
-        // 고르개로 «다른 문서»를 열면 취소의 복귀 지점은 뜻을 잃습니다 — 그 자리에 둘 수 없습니다.
-        this._backTo = null;
-        this.onOpen(value);
-      });
+      picker.addEventListener('change', (e) => this.pick(e && e.target ? e.target.value || '' : ''));
     }
     head.appendChild(picker);
+    if (this.pickGroups) {
+      const filter = doc.createElement('input');
+      filter.type = 'search';
+      filter.className = `${spec.cls}-pick-filter glass-input ctl-small`;
+      filter.placeholder = this.pickFilter;
+      filter.setAttribute('aria-label', this.pickFilter || 'Filter');
+      filter.value = this._pickQuery;
+      if (filter.addEventListener) {
+        filter.addEventListener('input', () => {
+          this._pickQuery = filter.value;
+          this._options(this._picker, this._pickView, this._pickOpen);
+        });
+      }
+      head.appendChild(filter);
+    }
 
     // ① 새 이름. 등록부가 «말»을 주지 않으면 컨트롤이 없습니다.
     if (spec.addLabel) {
@@ -1057,16 +1064,35 @@ export class RawRegistryPanel {
    * @param {object} view  방금 읽은 것
    * @param {string} open  «열려 있는» 문서의 이름. ''이면 아직 아무것도 안 골랐습니다
    */
+  /** Open `name` as the picker does - every way to another document comes here (the picker, a list's Edit). Unsaved
+   *  text asks first (C-106 ②); kept, the picker goes back to what is open. True when it went. */
+  pick(name) {
+    if (!name || name === NEW_NAME || name === PICK_NAME || !this.onOpen) return false;
+    // 🔴 C-106 ②. 저장 안 된 것이 있으면 «묻습니다». 타이머는 C-101 이 막았지만 사람의 손은 안 막았습니다.
+    if (this.draft !== null && !this.ask(LEAVE_UNSAVED)) {
+      // 보던 것으로 «되돌립니다» — 고르개가 가지 않은 곳을 가리키고 있으면 그 자체가 거짓입니다.
+      if (this._picker) this._picker.value = this.newMode ? NEW_NAME : (this.open || PICK_NAME);
+      return false;
+    }
+    this.newMode = false;
+    // 고르개로 «다른 문서»를 열면 취소의 복귀 지점은 뜻을 잃습니다 — 그 자리에 둘 수 없습니다.
+    this._backTo = null;
+    this.onOpen(name);
+    return true;
+  }
+
   _options(picker, view, open) {
     if (!picker) return;
     const doc = this.doc;
+    this._pickView = view;
+    this._pickOpen = open;
     picker.textContent = '';
-    const opt = (value, selected, word = value) => {
+    const opt = (value, selected, word = value, holder = picker) => {
       const o = doc.createElement('option');
       o.value = value;
       o.textContent = word;
       if (selected) o.setAttribute('selected', 'selected');
-      picker.appendChild(o);
+      holder.appendChild(o);
     };
     // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
     // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
@@ -1075,7 +1101,18 @@ export class RawRegistryPanel {
     // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
     // 그 이름의 내용은 아직 읽은 적이 없습니다.
     else if (!open) opt(PICK_NAME, true);
-    for (const name of view.names) opt(name, name === open);
+    const groups = this.pickGroups ? this.pickGroups(view.names, this._pickQuery) : null;
+    if (!groups) for (const name of view.names) opt(name, name === open);
+    else {
+      // what is open stays shown though the filter leaves it out - the picker never names another document than the open one
+      if (open && !groups.some((g) => g.names.includes(open))) opt(open, true);
+      for (const group of groups) {
+        const box = doc.createElement('optgroup');
+        box.setAttribute('label', group.label);
+        for (const name of group.names) opt(name, name === open, name, box);
+        picker.appendChild(box);
+      }
+    }
     this._names = view.names.join('\u0000');
   }
 

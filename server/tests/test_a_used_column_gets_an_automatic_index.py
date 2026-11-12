@@ -165,8 +165,9 @@ def test_a_refused_ask_is_asked_again_after_its_wait_and_a_written_one_never(mon
     monkeypatch.setattr(index_wants, "_ASKED", {})
     monkeypatch.setattr(index_wants.time, "monotonic", lambda: now[0])
     assert index_wants._first("refused") and index_wants._first("written")
-    index_wants._written("refused", False)
-    index_wants._written("written", True)
+    monkeypatch.setattr(index_wants, "ask", lambda table, *rest: table == "written")
+    index_wants._asked("refused", "refused", ["c"], None, 0, None)        # the asking thread's (`want`'s queue)
+    index_wants._asked("written", "written", ["c"], None, 0, None)
     now[0] += index_wants.ASK_AGAIN_SECONDS - 1
     assert not index_wants._first("refused") and not index_wants._first("written")
     now[0] += 2
@@ -298,13 +299,14 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
 def test_a_read_cancelled_at_its_limit_asks_too(monkeypatch):
     """소유자 10-15: a read past grid_read_timeout_seconds was cancelled before the ask - it asks, and its text-pattern
     filter column asks for a search index."""
+    import db_waits
     import main
     from parsers import directory_watcher
     from runtime import index_wants
     from sqlalchemy.exc import OperationalError
 
     class _Orig:
-        pgcode = main.QUERY_CANCELED
+        pgcode = db_waits.QUERY_CANCELED
 
     class _Db:
         def get_bind(self):

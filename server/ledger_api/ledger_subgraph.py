@@ -532,6 +532,18 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
+def _kept(filters, read, entities):
+    """`read` (atoms, cut) without the atoms the walk's value filters refuse (`walk_filter.keeps_atom`, the calculator)
+    - the stored and in-memory reads' judge; the virtual read says the same in its SQL (`_filtered`)."""
+    if not filters:
+        return read
+    from ledger import walk_filter
+
+    atoms, cut = read
+    frontier = walk_filter.frontier_of(entities)
+    return [atom for atom in atoms if walk_filter.keeps_atom(filters, atom, frontier)], cut
+
+
 def _qualifier_values(payload, names):
     """The values `names` take in an edge's qualifiers (`_json_key`), or None when one is not there - an edge without
     the value binds nothing and is bound by nothing (`follow=<predicate>:<qualifier>`, lead 10-27)."""
@@ -849,7 +861,7 @@ class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
     def __init__(self, connection, worlds=None, since=None, until=None,
-                 one=(), current_only=True, leave_out=None, indexed=()):
+                 one=(), current_only=True, leave_out=None, indexed=(), filters=None):
         from ledger import schema
 
         self.connection = connection
@@ -879,6 +891,8 @@ class SqlEvidenceLookup:
         #: the qualifiers every walked ledger keeps an index on (`schema.qualifier_index`) - a read bound on one of
         #: them asks its equality (`_bound_on`); none: every read as it was
         self.indexed = frozenset(indexed)
+        #: the walk's value filters (`walk_filter`) - judged over each atom fetched (`_kept`): the cap reads first
+        self.filters = filters or {}
         #: A continued walk's «as of» (총괄 10-12 이어 걷기): only atoms recorded before this uuid7 bound - `_as_of_bound`.
         self.recorded_before = None
 
@@ -1045,7 +1059,7 @@ class SqlEvidenceLookup:
             LIMIT %(fetch)s
         """, params)
         self._count_excluded(cte, _arms, params)
-        return self._bounded(rows, limit)
+        return _kept(self.filters, self._bounded(rows, limit), entities)
 
     def _count_excluded(self, frontier_cte, arms, params):
         """One aggregate per hop, and ONLY when an interval was asked for (ruling 208).
@@ -1096,7 +1110,7 @@ class SqlEvidenceLookup:
             ORDER BY e.occurred_at {order}, e.id {order}
             LIMIT %(fetch)s
         """, params)
-        return self._bounded(rows, limit)
+        return _kept(self.filters, self._bounded(rows, limit), [entity])
 
     def count_not_event_time(self, entity, direction, predicate):
         """How many of those atoms the time page leaves out because their time is not an event
@@ -1289,9 +1303,10 @@ class _DescribedSeeds:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, indexed=()):
+    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, indexed=(), filters=None):
         # `indexed`: the SQL lookup's, taken for its signature - a list in memory has no index to read by
         self.atoms = list(atoms)
+        self.filters = filters or {}
         self.one = frozenset(one)
         self.current_only = current_only
         # 🔴 THE SAME TWO ARGUMENTS AND THE SAME ACCUMULATOR AS THE SQL LOOKUP. A double
@@ -1390,7 +1405,7 @@ class InMemoryEvidenceLookup:
                         continue
                     atom = replace(atom, not_current=True)
                 rows.append(atom)
-        return self._result(rows, limit)
+        return _kept(self.filters, self._result(rows, limit), entities)
 
     def count_far_ends(self, entities, direction, predicate, far_type):
         """`SqlEvidenceLookup.count_far_ends` over the atoms held here - the read's filters, its census left alone."""
@@ -1437,7 +1452,8 @@ class VirtualEvidenceLookup:
     refuses a continued walk. `said`: the answer's `engine` cell - «left_out» gains a `one` predicate more than one
     source says (its current fact is read in one table)."""
 
-    def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None):
+    def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None,
+                 filters=None):
         from ledger import schema
         from ledger.trace_router import _instant_arg
 
@@ -1450,15 +1466,18 @@ class VirtualEvidenceLookup:
         self.one, self.current_only = frozenset(one), current_only
         self.said = {} if said is None else said
         said_by = Counter((world, predicate) for world, predicate, _source in
-                          {(leg.world, leg.predicate, leg.source) for leg in legs if leg.predicate in self.one})
-        self.legs = tuple(leg for leg in legs if said_by.get((leg.world, leg.predicate), 0) < 2)
+                          {(leg.world_name, leg.predicate, leg.source) for leg in legs if leg.predicate in self.one})
+        self.legs = tuple(leg for leg in legs if said_by.get((leg.world_name, leg.predicate), 0) < 2)
         self.said.setdefault("left_out", []).extend(
             {"source": source, "world": world,
              "why": f"{predicate!r} is declared one and more than one source says it - its current fact is read "
                     f"in one"}
-            for source, world, predicate in sorted({(leg.source, leg.world, leg.predicate) for leg in legs
-                                                    if said_by.get((leg.world, leg.predicate), 0) > 1}))
+            for source, world, predicate in sorted({(leg.source, leg.world_name, leg.predicate) for leg in legs
+                                                    if said_by.get((leg.world_name, leg.predicate), 0) > 1}))
         self._census_of = {}
+        self._took = {}
+        #: the walk's value filters (`walk_filter`), said in each read's WHERE (`_filtered`)
+        self.filters = filters or {}
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -1470,22 +1489,17 @@ class VirtualEvidenceLookup:
         where the key speller spells it back to `texts`' own), so the column's index serves it; a column with notation
         rules, or a time key held as text, as the join spells it (`Leg.key`) - its expression index. One tuple, one set."""
         import map_overlay
-        import notation_norm
-        from ledger.sql_translate import _FLOAT, _INTEGER, _TEXT, _TIME, _held, _quoted
+        from ledger.sql_translate import _held
         from utils.time_format import _zone
-
-        held_as = {_FLOAT: "float8", _INTEGER: "bigint", "numeric": "numeric", _TIME: "timestamptz",
-                   "timestamp without time zone": "timestamp"}
 
         columns, texts = leg.columns_of(arm), sorted(set(texts))
         if not texts or not columns:
             return "true" if texts else "false"
         cells, types, rows = [], [], []
         for _key, spec in columns:
-            spelled = notation_norm.rules_for_column(leg.relation, spec["column"]) or (
-                spec.get("zone") and spec["kind"] not in (_TIME, "timestamp without time zone"))
-            cells.append(leg.key(spec) if spelled else f"w.{_quoted(spec['column'])}")
-            types.append("text" if spelled or spec["kind"] == _TEXT else held_as[spec["kind"]])
+            cell, kind = leg.compared(spec)
+            cells.append(cell)
+            types.append(kind)
         for each in texts:
             row = []
             for text, (_key, spec), kind in zip(each, columns, types):
@@ -1510,27 +1524,95 @@ class VirtualEvidenceLookup:
             f"CAST(%({name}{index})s AS {kind}[])" for index, kind in enumerate(types))))
         return "(" + " AND ".join(said) + ")"
 
+    def _filtered(self, leg, other, entities, params, name):
+        """SQL AND-ed to a read of `leg` from the end opposite `other` - the walk's filters (`walk_filter.where`): its
+        predicate's over the row's qualifiers, `other`'s type's over that end's keys unless it is one of `entities`
+        (a node the read starts from); "" when none applies."""
+        from ledger import walk_filter
+
+        said = []
+        edge = (self.filters.get("edge") or {}).get(leg.predicate)
+        if edge:
+            said.append(walk_filter.where(edge, lambda ref: self._qualifier_cell(leg, ref), params, f"{name}fe"))
+        far_type = leg.ends[other][0]
+        node = (self.filters.get("node") or {}).get(far_type) if far_type is not None else None
+        if node:
+            start = self._in(leg, other, [texts for _item, texts in leg.named(other, entities)], params, f"{name}fs")
+            keys = walk_filter.where(node, lambda ref: self._key_cell(leg, other, ref), params, f"{name}fn")
+            said.append(f"({keys} OR {start})")
+        return "".join(f" AND {each}" for each in said)
+
+    @staticmethod
+    def _qualifier_cell(leg, ref):
+        """A qualifier as the walk compares it - a filter (`walk_filter.where`) and a bound value (`_bound`) alike (lead
+        11-11): (its SQL, its kind - text · number · bool · time, its blank, `spell`: a value as that SQL says it, None
+        when it is not one), as the atom carries it (`_atom`: a blank cell says nothing). A time is its instant, one
+        spelling both sides (`assy_key_instant` - `map_overlay.time_key_text`). None when the sentence carries no such
+        qualifier; `walk_filter.NotRead` for one the SQL does not say yet."""
+        import expression
+        from ledger import walk_filter
+        from ledger.sql_translate import _BOOLEAN, _NUMBERS, _TEXT, _held, _literal, _missing, _quoted
+
+        spec = leg.qualifiers.get(ref)
+        if spec is None:
+            return None
+        if "constant" in spec:
+            value = spec["constant"]
+            kind = walk_filter.kind_of(value)
+            return (_literal(value), kind, "TRUE" if expression.is_blank(value) else "FALSE",
+                    lambda v: v if walk_filter.kind_of(v) == kind else None)
+        cell = f"w.{_quoted(spec['column'])}"
+        if spec.get("time") is not None:
+            if spec["time"].get("format"):
+                raise walk_filter.NotRead(f"[{ref}] of {leg.predicate} is a time read by a format - the walk does not "
+                                          f"compare it yet")
+            from map_overlay import time_key_text
+            from notation_norm import KEY_INSTANT_FUNCTION
+            from utils.time_format import _zone
+
+            name = spec["time"].get("zone") or expression.time_zone().key
+            zone = _zone(name)
+            return (f"{KEY_INSTANT_FUNCTION}({cell}, {_literal(name)})", "time", _missing(spec),
+                    lambda v: time_key_text(v, zone) if expression._wall(v, zone) is not None else None)
+        if spec["kind"] == _BOOLEAN:
+            return cell, "bool", _missing(spec), lambda v: v if isinstance(v, bool) else None
+        if spec["kind"] not in (_TEXT, *_NUMBERS):
+            raise walk_filter.NotRead(f"[{ref}] of {leg.predicate} is a {spec['kind']} qualifier - the walk does not "
+                                      f"compare it yet")
+        kind = "text" if spec["kind"] == _TEXT else "number"
+        return cell, kind, _missing(spec), lambda v: _held(v, spec) if walk_filter.kind_of(v) == kind else None
+
+    @staticmethod
+    def _key_cell(leg, arm, ref):
+        """A key of `arm`'s end as a node filter reads it: its spelling - the text the node's id carries - as the column
+        where that is the spelling (`Leg.compared`, its index serves it), else the join's (`Leg.key`)."""
+        from ledger.sql_translate import _literal
+
+        spec = leg.ends[arm][1].get(ref)
+        if spec is None:
+            return None
+        if "constant" in spec:
+            return _literal(spec["constant"]), "text", "FALSE"
+        cell, kind = leg.compared(spec)
+        return (cell if kind == "text" else leg.key(spec)), "text", f"(btrim({leg.key(spec)}) = '')"
+
     @staticmethod
     def _bound(leg, bound, params, name):
-        """SQL: the row's qualifiers `bound["names"]` take one of `bound["values"]` (`_qualifier_values`' spelling, a
-        value read as its column holds it - `_held`)."""
-        from ledger.sql_translate import _TEXT, _held, _quoted
-
-        specs = [leg.qualifiers.get(each) for each in bound["names"]]
-        if any(spec is None for spec in specs):
+        """SQL: the row's qualifiers `bound["names"]` take one of `bound["values"]` (`_qualifier_values`' spelling) -
+        each compared as a filter compares it (`_qualifier_cell`: a time by its instant)."""
+        cells = [VirtualEvidenceLookup._qualifier_cell(leg, each) for each in bound["names"]]
+        if any(cell is None for cell in cells):
             return "false"
         ors = []
         for row, values in enumerate(bound["values"]):
             ands = []
-            for index, (spec, value) in enumerate(zip(specs, values)):
-                if "constant" in spec:
-                    ands.append("true" if _json_key(spec["constant"]) == value else "false")
-                elif isinstance(value, bool) or isinstance(value, str) != (spec["kind"] == _TEXT) \
-                        or _held(value, spec) is None:
+            for index, ((sql, _kind, _blank, spell), value) in enumerate(zip(cells, values)):
+                said = spell(value)
+                if said is None:
                     ands.append("false")
                 else:
-                    params[f"{name}_{row}_{index}"] = _held(value, spec)
-                    ands.append(f"w.{_quoted(spec['column'])} = %({name}_{row}_{index})s")
+                    params[f"{name}_{row}_{index}"] = said
+                    ands.append(f"{sql} = %({name}_{row}_{index})s")
             ors.append("(" + " AND ".join(ands or ["true"]) + ")")
         return "(" + " OR ".join(ors or ["false"]) + ")"
 
@@ -1540,7 +1622,9 @@ class VirtualEvidenceLookup:
         arms = []
         for arm, other in (("outgoing", "incoming"), ("incoming", "outgoing")):
             far_bare = leg.ends[other][0]
-            if direction not in (arm, "both") or (far_types and (far_bare in far_types[1]) != (far_types[0] == "in")):
+            # no far end (a registration's object) passes no far-type door, as the stored read spells it
+            if direction not in (arm, "both") or (far_types and (
+                    far_bare is None or (far_bare in far_types[1]) != (far_types[0] == "in"))):
                 continue
             step, groups = {"p": leg.predicate, "d": arm, "t": far_bare}, defaultdict(list)
             for item, texts in leg.named(arm, entities):
@@ -1562,6 +1646,7 @@ class VirtualEvidenceLookup:
             if far:
                 door = self._in(leg, other, [texts for _item, texts in leg.named(other, far[1])], params, f"{arm[0]}f")
                 said += f" AND {'' if far[0] == 'in' else 'NOT '}{door}"
+            said += self._filtered(leg, other, entities, params, arm[0])
             arms.append(said)
         return "(" + " OR ".join(arms) + ")" if arms else None
 
@@ -1579,8 +1664,17 @@ class VirtualEvidenceLookup:
         return "(" + (" OR " if outside else " AND ").join(said) + ")"
 
     def _select(self, leg, where, params, *, current=None, tail=""):
-        """The rows of `leg` `where` keeps (`_statement`)."""
-        return self._execute(self._statement(leg, where, params, current=current, tail=tail), params)
+        """The rows of `leg` `where` keeps (`_statement`) - its time and rows added up by leg on the answer's `engine`
+        cell, slowest first (`said["legs"]`, lead 11-11: which leg a slow walk waited on)."""
+        started = time.perf_counter()
+        rows = self._execute(self._statement(leg, where, params, current=current, tail=tail), params)
+        took = self._took.setdefault((leg.relation, leg.source, leg.sentence), {
+            "table": leg.relation, "leg": f"{leg.source}.{leg.sentence}", "seconds": 0.0, "rows": 0, "statements": 0})
+        took["seconds"] += time.perf_counter() - started
+        took["rows"] += len(rows)
+        took["statements"] += 1
+        self.said["legs"] = sorted(self._took.values(), key=lambda each: -each["seconds"])
+        return rows
 
     def _statement(self, leg, where, params, *, current=None, tail=""):
         """THE ONE STATEMENT a leg is read by: the rows `where` keeps as (row id, each end's column keys, the qualifier
@@ -1591,6 +1685,7 @@ class VirtualEvidenceLookup:
         current = self.current_only if current is None else current
         listed = ["w.row_id", *(leg.key(spec) for arm in ("outgoing", "incoming") for _key, spec in leg.columns_of(arm)),
                   *(f"w.{_quoted(spec['column'])}" for _name, spec in sorted(leg.qualifiers.items()) if "column" in spec),
+                  *([f"w.{_quoted(leg.value['column'])}"] if leg.value and "column" in leg.value else []),
                   leg.at()]
         aliases = ["rid", *(f"c{index}" for index in range(1, len(listed) - 1)), "at"]
         named = ", ".join(f"{cell} AS {alias}" for cell, alias in zip(listed, aliases))
@@ -1607,10 +1702,15 @@ class VirtualEvidenceLookup:
         # its source's sentences of the predicate on the same subject - one table, one clock (across sources: refused)
         said = []
         for other in self.legs:
-            if (other.world, other.source, other.predicate, other.ends["outgoing"][0]) != (leg.world, leg.source, leg.predicate, bare)                     or set(other.ends["outgoing"][1]) != set(specs):
+            if (other.world_name, other.source, other.predicate, other.ends["outgoing"][0]) != (leg.world_name, leg.source, leg.predicate, bare)                     or set(other.ends["outgoing"][1]) != set(specs):
                 continue
-            subject = [_literal(spec["constant"]) if "constant" in spec else other.key(spec)
-                       for _key, spec in sorted(other.ends["outgoing"][1].items())]
+            # the subject compared as the frontier is (`Leg.compared`) where that is text - `c` holds the key's
+            # spelling, the column itself on every row `said` keeps (no blank key) - so the column's index serves it;
+            # a number or time key held as its own type stays spelled (lead 11-11 ①: a scan of the table a step)
+            subject = []
+            for _key, spec in sorted(other.ends["outgoing"][1].items()):
+                cell, kind = other.compared(spec) if "constant" not in spec else (_literal(spec["constant"]), "text")
+                subject.append(cell if kind == "text" else other.key(spec))
             said.append(f"SELECT {', '.join(f'{cell} AS s{index}' for index, cell in enumerate(subject))}{', ' if subject else ''}"
                         f"{other.at()} AS at FROM {other.relation} w WHERE {' AND '.join(other.said())}{bound}"
                         + (f" AND ({', '.join(subject)}) IN (SELECT {', '.join(mine)} FROM c)" if subject else ""))
@@ -1638,6 +1738,32 @@ class VirtualEvidenceLookup:
                                          for key, spec in sorted(leg.ends[arm][1].items())})
                      for arm in ("outgoing", "incoming"))
 
+    @staticmethod
+    def _object(object_type, object_keys):
+        """(object kind, payload) of an end - None and an empty payload for no object (`sql_translate.NO_OBJECT`), as
+        the stored read gives a registration's atom."""
+        return ("entity_ref", {"type": object_type, "keys": object_keys}) if object_type is not None else (None, {})
+
+    @staticmethod
+    def _cell(value, spec):
+        """A read cell as a virtual atom holds it - `roleframe._plain`, and a Decimal (a numeric column) as the number
+        JSON reads back, the shape every stored atom value comes back from jsonb in (7 · 1.25); a time (`spec["time"]`)
+        read by the translator's time read (`roleframe.aware_time`) and spelled as the walk spells an instant
+        (`_instant`), None when it does not read."""
+        from decimal import Decimal
+
+        from ledger import roleframe
+        from ledger.sql_translate import moment
+
+        if spec.get("time") is not None:
+            try:
+                return _instant(roleframe.aware_time(moment(value), spec["time"]["zone"], spec["column"],
+                                                     fmt=spec["time"]["format"]))
+            except (roleframe.RoleFrameError, ValueError):
+                return None
+        value = roleframe._plain(value)
+        return json.loads(str(value)) if isinstance(value, Decimal) else value
+
     def _atom(self, leg, row, moment):
         """A `_timed` row as an atom."""
         from ledger import roleframe
@@ -1646,17 +1772,23 @@ class VirtualEvidenceLookup:
         values = iter(row[1 + sum(len(leg.columns_of(arm)) for arm in ("outgoing", "incoming")):])
         qualifiers = {}
         for name, spec in sorted(leg.qualifiers.items()):
-            value = spec["constant"] if "constant" in spec else roleframe._plain(next(values))
-            if value is not None:
+            value = spec["constant"] if "constant" in spec else self._cell(next(values), spec)
+            # a blank cell says nothing, as the translator leaves an optional qualifier out (`roleframe._attribute_value`)
+            if not roleframe._is_missing(value):
                 qualifiers[name] = value
         atom_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"{leg.source}|{leg.sentence}|{row[0]}"))
+        object_kind, payload = self._object(object_type, object_keys)
+        if leg.value is not None:               # a value object: the value is the object (`roleframe`)
+            said = leg.value["constant"] if "constant" in leg.value else self._cell(next(values), leg.value)
+            object_kind, payload = "value", {"value": said}
+        if qualifiers:
+            payload = dict(payload, qualifiers=qualifiers)
         return EvidenceAtom(
             id=atom_id, subject_type=subject_type, subject_keys=subject_keys, predicate=leg.predicate,
-            object_kind="entity_ref", object_payload={"type": object_type, "keys": object_keys,
-                                                      **({"qualifiers": qualifiers} if qualifiers else {})},
+            object_kind=object_kind, object_payload=payload,
             occurred_at=moment, source_who=leg.source, source_translator_ver=leg.version,
             source_raw_ref=f"{leg.relation}:{row[0]}", supersedes=None, source_event_id=None, source_event_state=None,
-            not_current=bool(row[-1]), occurred_at_basis=leg.basis, world=leg.world)
+            not_current=bool(row[-1]), occurred_at_basis=leg.basis, world=leg.world_name)
 
     def _legs(self, follow=None, exclude=None):
         return [leg for leg in self.legs
@@ -1699,8 +1831,8 @@ class VirtualEvidenceLookup:
         out = []
         for _moment, leg, row in read:
             (subject_type, subject_keys), (object_type, object_keys) = self._ends(leg, row)
-            out.append(Reached(subject_type, subject_keys, "entity_ref", {"type": object_type, "keys": object_keys},
-                               leg.world, leg.source, f"{leg.relation}:{row[0]}"))
+            out.append(Reached(subject_type, subject_keys, *self._object(object_type, object_keys),
+                               leg.world_name, leg.source, f"{leg.relation}:{row[0]}"))
         return out, cut
 
     def count_far_ends(self, entities, direction, predicate, far_type):
@@ -1734,6 +1866,7 @@ class VirtualEvidenceLookup:
                 continue
             params = {"fetch": MAX_CLAIM_SCAN + 1}
             where = self._in(leg, direction, [texts for _item, texts in leg.named(direction, [entity])], params, "p")
+            where += self._filtered(leg, "incoming" if direction == "outgoing" else "outgoing", [entity], params, "p")
             if at is not None:
                 params["at"] = leg.edge(at[0])
                 where += f" AND {leg.at()} {'<=' if op == '<' else '>='} %(at)s"

@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from admin import retroactive
 from database import models
+from runtime import stages
 
 T = datetime(2026, 10, 14, 1, 0, tzinfo=timezone.utc)
 
@@ -77,7 +78,7 @@ def test_the_stage_before_in_and_after_a_page_is_written_and_told(run):
     control.tell()
     assert _stage(db)[0] == notices[-1][1]["phase"] == "counting the rows of t"
 
-    with control.stage("read"):
+    with stages.receiving(control), stages.stage("read"):
         control.tell()
         assert _stage(db)[0] == notices[-1][1]["phase"] == "Page 1: read"
 
