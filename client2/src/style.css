@@ -1351,7 +1351,6 @@ input[type="color"].look-swatch { block-size: var(--control-h-small); inline-siz
 
 .sub-log-text {
   font-family: var(--font-mono);
-  word-break: break-all;
 }
 
 /* Active Transaction Filter Banner */

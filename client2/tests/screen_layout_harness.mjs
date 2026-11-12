@@ -3610,7 +3610,7 @@ const DRIVE = {
         const r = document.getElementById('refresh-history-btn'); if (r) r.click(); return true; })()`);
       await settle(c, log);
       await until(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
-        return !!li && /1,000\+ rows/.test(li.textContent) && !!li.querySelector('.expand-indicator'); })()`);
+        return !!li && li.textContent.includes('1,000+ rows') && !!li.querySelector('.expand-indicator'); })()`);
       await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
         li.querySelector('.expand-indicator').click(); li.scrollIntoView({ block: 'start' }); return true; })()`);
       await settle(c, log);
