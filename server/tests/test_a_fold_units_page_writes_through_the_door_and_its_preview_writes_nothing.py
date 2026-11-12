@@ -1,7 +1,7 @@
 """fold-units' page through the product's write door (lead 11-11 ㄱ, scratchpad ruling): `replay._fold_units_page`
 hands a fold rule's marks to crud.apply_batch_updates collapsed - the mark is the rule's layer on the line table, t
-shows it, one outbox row a page. Its preview writes inside held and rolls back: t, the lines and the outbox as they
-were. A row the answer named that is gone is not made again."""
+shows it, one outbox row a page. Its preview writes nothing (judged read-only, lead 11-12): t, the lines and the
+outbox as they were. A row the answer named that is gone is not made again."""
 import pytest
 from sqlalchemy import text
 

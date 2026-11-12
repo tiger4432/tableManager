@@ -7,8 +7,9 @@ of the value it showed is the newest - whichever name came later:
 
   n   chain:a 1, then chain:b 2     one stamp for all copies shows 1
   h   chain:b x, then chain:a y     copies stamped in the order they are read (by name) show x
-  t   chain:a p, chain:b q at ONE   the row showed p (the name decides a tie, as stored before
-      time                          9280922aa); its copies keep that tie's answer
+  t   chain:a p, chain:b q at ONE   the row shows q - one instant, the later line (rank 2c; the name
+      time                          deciding a tie, stored before 9280922aa, has no line); its copies keep it
+On the lines (the overhaul): the copies are the holder's lines under merged names (`lines.layers`).
 """
 import os
 import sys
@@ -24,7 +25,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 from conftest import retire_dynamic_model                            # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
 from database.database import Base                                   # noqa: E402
 
 TABLE = "mk_rows"
@@ -43,6 +44,9 @@ def fixture_db():
     crud.TABLE_CONFIG.update(CONFIG)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    from tests.support import line_tables
+
+    line_tables.build(engine, TABLE)                                   # the product's shape: a table keeps lines
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
         yield session
@@ -69,22 +73,22 @@ def test_a_merge_keeps_the_value_the_merged_row_showed(db):
     _write(db, {"job": "J5", "x": 1, "y": 2, "h": "y"}, "chain:a")             # ... shows 2, y
     rows = {row.job: row for row in db.query(model)}
     holder, merged = rows["J1"].row_id, rows["J5"].row_id
-    db.query(models.CellSource).filter_by(table_name=TABLE, row_id=merged, column_name="t").update(
-        {"ingested_at": datetime(2026, 10, 1, 9, 0, 0)})                   # a tie stored before
-    db.query(model).filter_by(row_id=merged).update({"t": "p"})            # ... showing p
+    from sqlalchemy import text
+
+    db.execute(text('UPDATE "%s" SET at = :at WHERE row_id = :r' % lines.lines_relation(TABLE)),
+               {"at": datetime(2026, 10, 1, 9, 0, 0), "r": merged})     # the row's lines at one instant: a tie
     db.commit()
     rows = {row.job: row for row in db.query(model)}
-    assert (rows["J5"].n, rows["J5"].h, rows["J5"].t) == ("2", "y", "p")
+    assert (rows["J5"].n, rows["J5"].h, rows["J5"].t) == ("2", "y", "q")
     _write(db, {"job": "J1", "x": 1, "y": 2}, "chain:m", row_id=merged)        # merged into J1
 
     assert [row.row_id for row in db.query(model)] == [holder]
-    for column, value, writer in (("n", "2", "chain:b"), ("h", "y", "chain:a"), ("t", "p", "chain:a")):
-        layers = {layer.source_name: layer for layer in db.query(models.CellSource).filter_by(
-            table_name=TABLE, row_id=holder, column_name=column)}
+    db.expire_all()
+    for column, value, writer in (("n", "2", "chain:b"), ("h", "y", "chain:a"), ("t", "q", "chain:b")):
+        layers = lines.layers(db, TABLE, [holder], [column])[(holder, column)]
         copies = [name for name in layers if crud.layer_writer(name) in ("chain:a", "chain:b")]
         assert len(copies) == 2 and all(name not in ("chain:a", "chain:b") for name in copies)
-        sources = {name: {"value": layer.value, "timestamp": layer.ingested_at.isoformat()}
-                   for name, layer in layers.items()}
-        shown, top = crud.compute_priority_value(sources, None, TABLE)
-        assert (column, shown, crud.layer_writer(top)) == (column, value, writer)
+        shown, top = crud.compute_priority_value(layers, None, TABLE)
+        assert (column, shown) == (column, value), (top, writer)     # the value kept, under the merge's own
+        # «collision_merge» line where one wins (write_lines._merge_into) - the copies are the history
         assert getattr(db.query(model).one(), column) == value

@@ -427,11 +427,6 @@ def write_changed_rows_by_shape(session, flush_context, instances):
     from sqlalchemy.orm.attributes import set_committed_value
     from sqlalchemy.sql import ClauseElement
 
-    import numbers
-
-    def kind(value):
-        return "bool" if isinstance(value, bool) else "number" if isinstance(value, numbers.Number) else type(value)
-
     shapes, locking = {}, {}
     for obj in session.dirty:
         if not isinstance(obj, dynamic):
@@ -455,8 +450,7 @@ def write_changed_rows_by_shape(session, flush_context, instances):
                         .order_by(table.c.row_id).with_for_update())
     for (table, names, stamp) in sorted(shapes, key=lambda shape: (shape[0].name, shape[1], repr(shape[2]))):
         rows = sorted(shapes[(table, names, stamp)], key=lambda row: row[0].row_id)
-        if any(len({kind(changed[name]) for _obj, changed in rows if changed[name] is not None}) > 1
-               for name in names):
+        if not all(crud.one_kind([changed[name] for _obj, changed in rows]) for name in names):
             continue
         written = crud.update_by_arrays(session, table, names, [
             [obj.row_id] + [changed[name] for name in names if name != "updated_at"] for obj, changed in rows], stamp)
