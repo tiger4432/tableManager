@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""총괄 5c0a86cec (소유자 10-20): two writers of one table that insert the same new key meet at its unique index
-BEFORE either writes its history and layers - the batch's rows go in first, the new ones in business-key order.
-So the loser's rollback leaves ~2 dead rows instead of every layer and audit line it wrote, two batches of the
-same new keys in opposite orders wait in one order instead of deadlocking (40P01, which nothing retries), and the
-admin retry that runs in the server process takes the table's file lock as the watcher does."""
+"""총괄 5c0a86cec (소유자 10-20: one row per new key, measure the rollback's dead rows): two writers of one table that
+insert the same new key end on one row, and two batches of the same new keys in opposite orders wait in one order
+instead of deadlocking (40P01, which nothing retries) - the new rows go in in business-key order. The means changed
+on the overhaul (lead 11-13 ㄱ): a new row goes in once at step 5, after its lines; a key another writer put meanwhile
+is not rolled back but taken over - this write's lines move onto that row (no line orphaned). The admin retry that
+runs in the server process takes the table's file lock as the watcher does."""
 import os
 import threading
 import time
@@ -13,8 +14,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from database import crud, models, schemas
-from sql_budget import inserts_into, record_statements
+from database import crud, lines, models, schemas
 
 TABLE = "inventory_master"
 
@@ -33,13 +33,21 @@ def test_new_rows_go_in_in_business_key_order(db_session):
     assert order == sorted(keys)
 
 
-def test_the_rows_go_in_before_the_history_and_the_layers(db_session):
-    with record_statements(db_session) as recorded:
-        crud.apply_batch_updates(db_session, TABLE, schemas.GeneralUpdateBatch(updates=_items(["K1", "K2"])))
-    position = {id(call): n for n, call in enumerate(recorded)}
-    first = {name: min(position[id(c)] for c in inserts_into(recorded, name))
-             for name in (TABLE, "cell_sources", "audit_logs")}
-    assert first[TABLE] < first["cell_sources"] and first[TABLE] < first["audit_logs"], first
+def test_two_batches_of_the_same_new_keys_end_on_one_row_a_key_with_every_line_on_it(db_session):
+    crud.apply_batch_updates(db_session, TABLE, schemas.GeneralUpdateBatch(updates=_items(["K1", "K2"])))
+    again = _items(["K2", "K1"], "night.csv")
+    for item in again:
+        item.updates["stock_qty"] = 2                    # a value the night moves, so it writes its lines
+    crud.apply_batch_updates(db_session, TABLE, schemas.GeneralUpdateBatch(updates=again))
+    db_session.commit()
+    rows = db_session.execute(text('SELECT business_key_val, count(*) FROM "%s" WHERE business_key_val IN '
+                                   "('K1', 'K2') GROUP BY 1 ORDER BY 1" % TABLE)).all()
+    rel = lines.lines_relation(TABLE)
+    spoke = db_session.execute(text('SELECT count(*) FROM "%s"' % rel)).scalar()
+    orphans = db_session.execute(text('SELECT count(*) FROM "%s" l WHERE NOT EXISTS (SELECT 1 FROM "%s" t WHERE '
+                                      "t.row_id = l.row_id)" % (rel, TABLE))).scalar()
+    assert spoke >= 4, "CANARY: both batches wrote their lines"
+    assert ([tuple(r) for r in rows], orphans) == ([("K1", 1), ("K2", 1)], 0)
 
 
 def test_the_server_s_admin_retry_takes_the_table_s_file_lock(client, db_session, tmp_path, monkeypatch):
