@@ -494,6 +494,9 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     of them; `conftest.pg_engine` builds one on the scratch table only, inside
     the scratch schema, and drops it with the schema.
     """
+    from tests.support import line_tables
+
+    line_tables.build(pg_session.get_bind(), TABLE)          # the product's shape: a table keeps lines (owner 11-11)
     url, _ = _resolve_pg_test_url()
     index_name = pg_session.execute(text(
         "SELECT indexname FROM pg_indexes "
@@ -536,11 +539,8 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
         crud._apply_batch_updates_once = real_once
 
     assert fired == [True], "the race never happened - this asserted nothing"
-    assert len(attempts) == 2, (
-        f"expected one lost race and one replay, got {len(attempts)} attempt(s)")
-    assert any("BK Conflict Recovered" in r.message for r in caplog.records), (
-        "the recovery must be NAMED in the log; a race nobody logs is a race "
-        "nobody ever measures")
+    # one try: the claim (ON CONFLICT, read back under the lock) finds the winner's row - no replay (lead 11-11 ㄹ, D3)
+    assert len(attempts) == 1, f"expected one try, got {len(attempts)} attempt(s)"
 
     rows = pg_session.execute(text(
         f'SELECT business_key_val, row_id, qty, note FROM "{TABLE}" '
@@ -552,78 +552,51 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     collided = [r for r in rows if r[0] == "PN-2"][0]
     assert collided[1] == winner_row_id, (
         "the batch inserted its OWN row instead of merging onto the row the "
-        "winner committed - the replay did not re-read identity")
+        "winner committed - the claim did not read identity back")
     assert (collided[2], collided[3]) == (2.0, "mine"), (
-        "the replay's values did not land on the merged row")
+        "the batch's values did not land on the merged row")
     assert len(results) == 5
 
 
-def test_a_persistent_business_key_conflict_is_refused_not_replayed(pg_session, caplog):
-    """The other half of the design, against a real index.
+def test_a_key_a_competitor_holds_is_written_onto_its_row(pg_session):
+    """Two writers of one key end on one row (lead 11-11 ㄹ, D3; rewritten 11-12 from «a persistent conflict is
+    refused» - the replay it bounded is retired). The competitor commits PN-9 after this batch's instant and before
+    its claim; the claim's ON CONFLICT reads its row back: one try, no IntegrityError, the competitor's row_id, my qty
+    as my source's line, its note - a cell this batch did not speak - as it was."""
+    from database import lines
+    from tests.support import line_tables
 
-    A competitor that wins EVERY attempt is not a lost race, it is a genuine
-    duplicate identity. The batch must be refused after the declared bound
-    rather than spun forever - and the exception must still classify as a
-    business-key violation, because `main.py` maps that to a 409 and anything
-    else to a 500.
-
-    HOW A CONFLICT IS MADE TO PERSIST. A competitor that merely inserts once is
-    recovered from on attempt 2 - that is the test above. To keep losing, the
-    competitor has to be gone when the replay's prefetch looks (so identity is
-    still resolved as absent) and back before the commit. So it withdraws at
-    the top of every attempt and re-commits inside every `batch_write_instant`
-    (after the prefetch, before the rows' flush).
-    """
+    line_tables.build(pg_session.get_bind(), TABLE)          # the product's shape: a table keeps lines (owner 11-11)
     url, _ = _resolve_pg_test_url()
-    seen = []
     real_instant = crud.batch_write_instant
     real_once = crud._apply_batch_updates_once
-
-    def withdrawing_once(*a, **kw):
-        _competitor_withdraws(url, "PN-9")
-        return real_once(*a, **kw)
+    fired, attempts = [], []
 
     def racing_instant(db, *a, **kw):
-        seen.append(len(seen))
-        _competing_writer(url, "PN-9", f"THEIRS-{len(seen)}",
-                          withdraw_first=True)
+        if not fired:
+            fired.append(True)
+            _competing_writer(url, "PN-9", "THEIRS")
         return real_instant(db, *a, **kw)
+
+    def counting_once(*a, **kw):
+        attempts.append(1)
+        return real_once(*a, **kw)
 
     item = schemas.GeneralUpdateItem(
         business_key_val="PN-9", updates={"part_no": "PN-9", "qty": 1},
         source_name="probe.csv", updated_by="watcher")
 
     crud.batch_write_instant = racing_instant
-    crud._apply_batch_updates_once = withdrawing_once
+    crud._apply_batch_updates_once = counting_once
     try:
-        with caplog.at_level(logging.ERROR, logger="Server"):
-            with pytest.raises(IntegrityError) as caught:
-                crud.apply_batch_updates(
-                    pg_session, TABLE,
-                    schemas.GeneralUpdateBatch(updates=[item]))
+        crud.apply_batch_updates(pg_session, TABLE, schemas.GeneralUpdateBatch(updates=[item]))
     finally:
         crud.batch_write_instant = real_instant
         crud._apply_batch_updates_once = real_once
 
-    assert len(seen) == crud.BK_CONFLICT_MAX_RETRIES + 1
-    assert crud._is_business_key_unique_violation(caught.value), (
-        "the re-raised error no longer classifies as a business-key "
-        "violation, so the endpoint would answer 500 instead of 409")
-    assert caught.value.orig.diag.constraint_name == f"uq_bk_{TABLE}"
-    # The refusal is an operator line (S-247): its search prefix is `line()`'s and its
-    # next-action clause is `widen_the_key` - the OPPOSITE repair of `fold_the_data`,
-    # because two rows the table's own identity cannot tell apart is a declaration
-    # defect, not a data one. Both are asked of `operator_line` rather than copied, so
-    # the sentence has one author and this test cannot go green on a lookalike.
-    import operator_line
-    prefix = operator_line.line("BKConflict", TABLE, "", "").split(" ", 1)[0]
-    refusals = [r.message for r in caplog.records if r.message.startswith(prefix)]
-    assert refusals, f"no {prefix} operator line was logged"
-    assert refusals[-1].endswith(_invariant_tail(operator_line.widen_the_key)), (
-        refusals[-1])
-
-    pg_session.rollback()
-    # The session must be USABLE after the refusal - the caller's `finally`
-    # and the next request both depend on it.
-    assert pg_session.execute(text(
-        f'SELECT count(*) FROM "{TABLE}"')).scalar() == 1
+    assert (fired, len(attempts)) == ([True], 1)
+    assert [tuple(r) for r in pg_session.execute(text(
+        f'SELECT row_id, qty, note FROM "{TABLE}" WHERE business_key_val = \'PN-9\'')).fetchall()] == [
+        ("THEIRS", 1.0, "theirs")]
+    said = lines.layers(pg_session, TABLE, ["THEIRS"], ["qty"])[("THEIRS", "qty")]
+    assert said["probe.csv"]["value"] == 1, said
