@@ -2142,26 +2142,31 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # `ranks` - a batch's memo over its rows, one table (here: the term list, built once); alone, this call's own
     ranks = {} if ranks is None else ranks
 
-    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
-    # one sits on the cell, the chain's layers there order by time as before
-    unowned = any(layer_ranks_as(name) == CHAIN_SOURCE and not layer_owner(name) for name in sources)
+    from database import lines
+
     terms = ranks.get(_TERMS_MEMO)
     if terms is None:
         terms = ranks[_TERMS_MEMO] = rank_terms(table_name)
 
-    def _rank(name):
-        # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
-        # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
+    def _owner_rule(name, entry):
+        # a line's own owner_rule where the entry carries it (the line's - lead 11-12 ㄴ), else the name's
+        if isinstance(entry, dict) and "owner_rule" in entry:
+            return entry["owner_rule"]
         owner = layer_owner(name)
-        entry = sources[name]
-        line = {"ranks_as": layer_ranks_as(name), "owner_rule": owner[0] if owner else None,
-                "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
-                "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
-        return tuple(term(line, unowned) for term in terms)
+        return owner[0] if owner else None
 
+    # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
+    # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
+    said = {name: {"ranks_as": layer_ranks_as(name), "owner_rule": _owner_rule(name, entry),
+                   "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
+                   "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
+            for name, entry in sources.items()}
+    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
+    # one sits on the cell, the chain's layers there order by time as before
+    unowned = lines.chain_unowned(said.values())
     # `min` rather than `sorted`: the same first element, without materialising and
     # sorting the whole list on a per-cell hot path.
-    top_source = min(sources.keys(), key=_rank)
+    top_source = min(sources.keys(), key=lambda name: lines.rank(said[name], terms, unowned))
     if formula is not None and top_source == formula[0]:
         return none_if_blank(formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}])), top_source
     return layer_value(sources, top_source), top_source
@@ -3516,6 +3521,15 @@ def array_params(db, columns, rows):
         params["a%d" % i] = [bind(value) if bind else value for value in values]
         casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
     return params, casts
+
+
+def one_kind(values) -> bool:
+    """Do `values` (None aside) take one array type - text, a number, a boolean? One array takes one type; the ORM
+    casts each row on assignment, an array cannot (총괄 10-14) - a column of two kinds is written row by row."""
+    import numbers
+
+    return len({"bool" if isinstance(v, bool) else "number" if isinstance(v, numbers.Number) else type(v)
+                for v in values if v is not None}) <= 1
 
 
 def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
