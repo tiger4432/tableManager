@@ -90,7 +90,7 @@ def _load(engine, limit_groups=100, cache=None):
         cache.load_initial(session, limit_groups)
     finally:
         session.close()
-    cache._behind_ended = float("inf")                         # no catch-up behind the reads below
+    cache._behind.ask(audit_cache.RECENT, lambda: None, wait=5)   # a catch-up just ran: the pacing (CATCH_UP_GAP_SECONDS) holds the next one behind the reads below
     return cache
 
 
