@@ -380,23 +380,37 @@ export function ledgerReceiptLine(newValue, worlds) {
   return parts.join(' · ');
 }
 
-// What a folded line is, said once (lead 10-29) - the kind pill, the card's title and its Row · column cell read it, so the
-// cell's count says the title's unit (it said «N ROWS» for every fold; a fold of receipts or of changes is not N rows).
-// The count is the transaction's audit lines, and the unit what one line is. 🔴 C-55: the ledger first - a failed receipt
-// has two lines and would fold as «N changes», a table edit's sentence. «All» for the same reason as DELETE · CREATE: a
-// mixed transaction is not named after one side.
+// What a folded line is, said once - the kind pill, the card's title and its Row · column cell read it. 🔴 C-55: the
+// ledger first - a failed receipt has two lines and would fold as a table edit. «All» for the same reason as DELETE ·
+// CREATE: a mixed transaction is not named after one side.
 const FOLDS = {
-  ledger: { pill: 'LEDGER', cls: 'kind-ledger', unit: 'receipt' },
-  delete: { pill: 'DELETE', cls: 'kind-delete', unit: 'row' },
-  create: { pill: 'CREATE', cls: 'kind-create', unit: 'row' },
-  batch: { pill: 'BATCH', cls: 'kind-batch', unit: 'change' },
+  ledger: { pill: 'LEDGER', cls: 'kind-ledger' },
+  delete: { pill: 'DELETE', cls: 'kind-delete' },
+  create: { pill: 'CREATE', cls: 'kind-create' },
+  batch: { pill: 'BATCH', cls: 'kind-batch' },
 };
+
+/** The rows a transaction changed (owner 11-10: «바뀐 행수»; lead 11-12 ㄷ reverses lead 10-29's «the audit lines»): the
+ *  recent list's changed_rows summed over its tables, «+» when one is the floor (the server counts to its cap) - the
+ *  route's total_count after unfolding is the same quantity. With no counted table, a group that holds all its logs (one
+ *  built from live logs, one read to its end) counts their rows; a sample says it does not know. */
+export function changedRowsOf(group) {
+  const tables = Array.isArray(group && group.changed) ? group.changed.filter((t) => t && isCount(t.changed_rows)) : [];
+  if (tables.length) {
+    const n = tables.reduce((sum, t) => sum + Number(t.changed_rows), 0);
+    return unitText(`${n.toLocaleString('en-US')}${tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''}`, 'row');
+  }
+  if (!holdsAll(group)) return `${ABSENT} rows`;
+  const logs = group && Array.isArray(group.logs) ? group.logs : [];
+  const rows = new Set(logs.map((log) => log && log.row_id).filter((id) => id && id !== '_BATCH_'));
+  return unitText(rows.size.toLocaleString('en-US'), 'row');
+}
 
 function foldOf(group) {
   const kind = allLogsAre(group, LEDGER_BATCH_COLUMN) ? 'ledger'
     : allLogsAre(group, 'DELETE') ? 'delete'
       : allLogsAre(group, 'CREATE') ? 'create' : 'batch';
-  return { kind, ...FOLDS[kind], count: unitText(group.total_count, FOLDS[kind].unit) };
+  return { kind, ...FOLDS[kind], count: changedRowsOf(group) };
 }
 
 /** A receipt's own word - the server's `receipt_label` (crud.receipt_log: «Ledger batch», «formula T.c»); a receipt
@@ -477,21 +491,24 @@ export function auditTargetTable(group) {
   const logs = (group && Array.isArray(group.logs)) ? group.logs : [];
   const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];
   if (!names.length) return '';
-  // total_count 가 없으면 NaN 이고, NaN 은 어떤 `<` 비교도 false 로 만듭니다
-  // -- 즉 «완전함»으로 읽힙니다. 그것이 맞는 동작이라 대체값을 안 둡니다
-  // (넣어 봤는데 «어떤 입력에서도» 답이 같아서 죽은 줄이었고, 변이가 그걸 잡았습니다).
-  const total = Number(group && group.total_count);
-  const sampled = logs.length < total;
   // 여럿임이 «표본으로 이미 증명된» 때만 수를 붙입니다 (하한입니다).
   const more = names.length > 1 ? ` +${names.length - 1}` : '';
-  return `${names[0]}${more}${sampled ? ' …' : ''}`;
+  return `${names[0]}${more}${holdsAll(group) ? '' : ' …'}`;
 }
 
-/** A group that carries a part of its logs (the list route sends one representative, A 1e4bbe748): unfolding it reads
- *  the transaction for all of them. One that carries them all draws what it holds; no total_count reads as complete. */
-export function needsTransactionRead(group) {
+/** Whether a group holds all its logs. Once the transaction route has answered, its cursor says (null: every page read) -
+ *  the route gives a row once and the list counts lines, so a count cannot. Before, the count: the list route sends one
+ *  representative (A 1e4bbe748); no total_count is NaN, which no `<` holds - complete. */
+function holdsAll(group) {
+  if (group && 'nextCursor' in group) return !group.nextCursor;
   const logs = group && Array.isArray(group.logs) ? group.logs : [];
-  return logs.length < Number(group && group.total_count);
+  return !(logs.length < Number(group && group.total_count));
+}
+
+/** Unfolding a group reads the transaction's first page when it holds a part of its logs and the route has not answered
+ *  it yet - unfolded again, it keeps the pages «more» read (lead 11-12). */
+export function needsTransactionRead(group) {
+  return !(group && 'nextCursor' in group) && !holdsAll(group);
 }
 
 export function createGlobalTimelineItemDom(group) {
@@ -655,19 +672,18 @@ export function createGlobalTimelineItemDom(group) {
             group.logs = page.logs;
             group.nextCursor = page.truncated ? page.nextCursor : null;
             state.fetchingTransactions.delete(txId);
-            // 이제 그룹의 로그를 «전부» 들고 있습니다. 그러면 접힌 줄의 … 가 거짓말이 됩니다 --
-            // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
-            // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
+            // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다:
+            // 줄을 통째로 다시 그리면 방금 펼친 것이 접힙니다.
             const keyEl = li.querySelector('.audit-target-table');
             if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
-            renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId));
+            renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
           } catch (err) {
             console.error('Failed to load transaction details', err);
             detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
             state.fetchingTransactions.delete(txId);
           }
         } else {
-          renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId));
+          renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
         }
       }
     };
@@ -806,7 +822,7 @@ export function renderGlobalTimelineIncremental(log) {
       const indicator = newLi.querySelector('.expand-indicator');
       if (detailsContainer) {
         detailsContainer.style.display = 'block';
-        renderSubDetails(detailsContainer, group.logs);
+        renderSubDetails(detailsContainer, group.logs, transactionPane(group, log.transaction_id, detailsContainer));
       }
       if (indicator) {
         indicator.style.transform = 'rotate(90deg)';
@@ -1212,8 +1228,8 @@ export function installAuditFilters() {
 
 /** The pane of an unfolded transaction's rows (lead 11-12 ㄴ): the route answers a page and its cursor, and the same
  *  «more» the history lists use reads the next one into this group's list - its lined rows, then its receipt-only
- *  rows. A group read whole carries no cursor and no control. */
-export function transactionPane(group, txId) {
+ *  rows, into `container`'s list. A group read whole carries no cursor and no control. */
+export function transactionPane(group, txId, container) {
   return {
     label: () => `Partial (${group.logs.length}) · more`,
     cursor: () => group.nextCursor || null,
@@ -1221,8 +1237,8 @@ export function transactionPane(group, txId) {
     live: () => state.expandedTransactions.has(txId),
     url: (cursor) => `${API_BASE}/audit_logs/transaction/${txId}?cursor=${encodeURIComponent(cursor)}`,
     listKey: 'logs',
-    absorb(page, btn) {
-      const list = btn.closest('.tx-details-container').querySelector('.sub-timeline-list');
+    absorb(page) {
+      const list = container.querySelector('.sub-timeline-list');
       page.logs.forEach((log) => {
         group.logs.push(log);
         list.appendChild(createSubDetailItemDom(log));
@@ -1272,7 +1288,8 @@ export function renderSubDetails(container, logs, pane = null) {
   const ul = document.createElement('ul');
   ul.className = 'sub-timeline-list';
 
-  const renderLimit = 500;
+  // a paged transaction holds only the pages its «more» read - all drawn, so a page read next lands after them (lead 11-12)
+  const renderLimit = pane ? Infinity : 500;
   const initialLogs = logs.slice(0, renderLimit);
   const remainingLogs = logs.slice(renderLimit);
   const appendLogItem = (log) => ul.appendChild(createSubDetailItemDom(log));
