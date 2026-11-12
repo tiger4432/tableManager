@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from chain import ingestion_worker as worker                          # noqa: E402
 from database import models                                           # noqa: E402
 
-#: Retired by migrations/drop_redundant_layering_indexes.py (RETIRE_UNUSED) - never declared again,
+#: Retired by migrations/drop_redundant_layering_indexes.py (RETIRE_UNUSED, the script itself retired 11-12) - never declared again,
 #: or the boot's own build would make them back.
 RETIRED = ("ix_cell_sources_table_name", "ix_cell_sources_column_name")
 

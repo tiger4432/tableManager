@@ -75,6 +75,7 @@ Exit code is 0 only when nothing was refused.
 import argparse
 import os
 import sys
+import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -84,12 +85,115 @@ from db_safety import (  # noqa: E402
     assert_writable, close_readonly_connection, open_readonly_connection)
 import db_safety  # noqa: E402
 
-# 🔴 Reused, not re-implemented. These are the catalogue readers and the
-# drop-then-ask-the-catalogue helper that `drop_redundant_layering_indexes`
-# already carries the measurements for.
-from drop_redundant_layering_indexes import (  # noqa: E402
-    _drop, index_facts, quote_ident, rollback_ddl, stats_are_trustworthy)
 from error_said import told
+
+# The catalogue readers and the drop-then-ask-the-catalogue helper - moved here from the retired
+# drop_redundant_layering_indexes, unchanged (lead 11-12).
+
+def quote_ident(name):
+    """PostgreSQL folds unquoted identifiers, so `DROP INDEX ix_Foo` asks for
+    `ix_foo`; with `IF EXISTS` that miss is swallowed and the caller reports a
+    successful drop of something it never touched. Same reasoning, same helper,
+    as `add_business_key_unique_index.quote_ident`."""
+    return '"%s"' % name.replace('"', '""')
+
+
+def index_facts(conn, table):
+    """Every index on `table`, with its ordered key columns and per-key opclass,
+    collation and sort direction. One query, so section 1's proof cannot read a
+    different catalogue than the report prints."""
+    rows = conn.execute(text("""
+        SELECT i.relname, x.indisunique, x.indisprimary, x.indisvalid,
+               x.indpred IS NOT NULL, x.indexprs IS NOT NULL, am.amname,
+               x.indnkeyatts, x.indkey::text, x.indclass::text,
+               x.indcollation::text, x.indoption::text,
+               pg_relation_size(x.indexrelid), pg_get_indexdef(x.indexrelid),
+               (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                  FROM unnest(x.indkey[0:x.indnkeyatts-1]) WITH ORDINALITY AS k(att, ord)
+                  JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.att)
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class c ON c.oid = x.indrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_am am ON am.oid = i.relam
+        WHERE n.nspname = 'public' AND c.relname = :t
+    """), {"t": table}).fetchall()
+    out = {}
+    for r in rows:
+        n = int(r[7])
+        out[r[0]] = {
+            "unique": r[1], "primary": r[2], "valid": r[3], "partial": r[4],
+            "expr": r[5], "am": r[6], "nkeys": n,
+            "key": r[8].split()[:n], "class": r[9].split()[:n],
+            "coll": r[10].split()[:n], "option": r[11].split()[:n],
+            "bytes": int(r[12]), "def": r[13],
+            "cols": (r[14] or "").split(",") if r[14] else [],
+        }
+    return out
+
+
+def stats_are_trustworthy(conn, table):
+    """Is `idx_scan == 0` EVIDENCE here, or just an empty counter?
+
+    Two different ways a zero lies, and both have bitten this project:
+
+      1. `idx_scan` lives in the statistics collector and is lost to
+         `pg_stat_reset()` or an unclean shutdown - the index is read every
+         minute and the ledger says zero.
+      2. The database is a fresh restore or a copy. Then EVERY counter is zero,
+         including the ones on indexes nothing could run without, and "this
+         index has no reads" is true of the whole table rather than of this
+         index. Measured while preparing this script: on a `pg_restore`d copy
+         `ix_audit_logs_business_key` read zero - and so did the primary key.
+
+    So the check is comparative, not absolute: sum the scans across the table's
+    OTHER indexes. If they are zero too, the counters have observed nothing and
+    cannot support a retirement, whatever this one index says.
+    """
+    reset_at, age = conn.execute(text(
+        "SELECT stats_reset, extract(epoch from now() - stats_reset)::bigint "
+        "FROM pg_stat_database WHERE datname = current_database()")).first()
+    peers = conn.execute(text(
+        "SELECT coalesce(sum(idx_scan), 0) FROM pg_stat_user_indexes "
+        "WHERE relname = :t"), {"t": table}).scalar()
+    return reset_at, (int(age) if age is not None else None), int(peers or 0)
+
+
+def rollback_ddl(indexdef):
+    """The exact statement that puts this index back, handed to the operator
+    BEFORE the drop rather than after they need it."""
+    return indexdef.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ", 1) \
+                   .replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX CONCURRENTLY ", 1) + ";"
+
+
+_DROPPED = set()
+
+
+def _drop(conn, name):
+    """Drop once, then ask the CATALOGUE whether it is gone. `IF EXISTS` turns a
+    name that matches nothing into a silent success, so the return code is not
+    evidence - the same standard `add_business_key_unique_index.drop_redundant_indexes`
+    holds itself to."""
+    if name in _DROPPED:
+        return None
+    _DROPPED.add(name)
+    t0 = time.time()
+    try:
+        conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS public."
+                          + quote_ident(name)))
+    except Exception as e:
+        print(f"      !! FAILED: {told(e).strip().splitlines()[0]}")
+        return None
+    still = conn.execute(text(
+        "SELECT 1 FROM pg_class i JOIN pg_namespace n ON n.oid = i.relnamespace "
+        "WHERE n.nspname='public' AND i.relname = :n"), {"n": name}).first()
+    if still:
+        print("      !! FAILED: DROP reported success but the index is still "
+              "in the catalogue")
+        return None
+    print(f"      dropped ({time.time() - t0:.2f}s)")
+    return name
+
 
 READONLY_APPLICATION_NAME = "assy_align_indexes_check"
 

@@ -150,20 +150,9 @@ conda run -n assy_manager python server/migrations/add_business_key_unique_index
 - 두 절은 서로 독립이다 — 한쪽만 실행해도 된다.
 - 🔴 **`--drop-redundant`는 드라이런이 아니라 실제로 드롭한다.** 읽기 전용 사전점검은 **플래그 없는** 호출이다(위 첫 줄). 이름이 「redundant를 드롭한다」이므로 `--apply`가 따로 필요할 것처럼 읽히지만 아니다.
 
-#### 접두 중복·미사용 인덱스 회수 (`drop_redundant_layering_indexes.py`) — 2026-08-11
+#### ~~접두 중복·미사용 인덱스 회수 (`drop_redundant_layering_indexes.py`)~~ — 11-12 은퇴
 
-위 `--drop-redundant`의 **자매 스크립트**이고 대상 계급이 다르다. 저쪽은 「PK 인덱스의 사본」만, 이쪽은 `cell_sources`/`cell_overwrites`/`audit_logs`의 **① 넓은 인덱스의 진짜 왼쪽 접두사** ② **읽는 곳이 없는 인덱스**다.
-
-```bash
-conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py           # 사전점검(읽기 전용 — 되읽어 증명, 위 「읽기 전용 가드」)
-conda run -n assy_manager python server/migrations/drop_redundant_layering_indexes.py --apply   # 회수
-```
-
-- 🔴 **접두 관계는 「같은 컬럼을 갖는다」가 아니라 「같은 순서로 갖는다」이다.** `(a,b,c)`는 `(a,b,c,d)`가 대신 서 주지만 `(b,a,c,d)`는 절대 아니다. 그래서 `pg_index`의 **indkey·indclass·indcollation·indoption(정렬 방향)** 네 축을 전부 대조한다 — `indoption`을 빼면 `(a, b DESC)`를 `(a, b)`의 중복으로 잘못 드롭한다.
-- 🔴 **[2026-08-13 `1260c9b`] 연결이 하나가 아니라 «둘»이다.** 종전에는 **같은 연결**이 인덱스를 찾고 드롭했고, 두 모드를 가르는 것이 플래그 하나뿐이었다. 지금은 세는 패스가 **양쪽 모드 모두에서** PostgreSQL이 쓰기를 거절하는 연결 위에서 돌고, `--apply`가 **별개의 두 번째** 연결을 연다 — 점검 실행은 프로세스 어디에도 쓰기 가능한 연결이 없고, `--apply`도 **판정을 내린 그 연결로는** 실수로라도 DDL을 낼 수 없다(`add_business_key_unique_index.run`과 같은 모양).
-- 🔴 **구조적 중복성은 플래너 행동을 예측하지 못한다.** 2026-08-11 실측: `idx_overwrites_lookup`은 UNIQUE `idx_overwrites_lookup_col`의 **진짜 접두사인데도**, 숨기자 플래너는 넓은 쪽이 아니라 `ix_cell_overwrites_row_id`를 골랐고 **1.81배 느려졌다**(45→113 버퍼). 그래서 이 스크립트는 **접두사라는 이유만으로 드롭하지 않는다** — 사람이 판정한 목록만 드롭하고, **드롭하지 않는 접두 중복 인덱스도 전부 이름으로 출력**한다(숨지 못하게).
-- **「읽는 곳이 없다」는 카탈로그가 답할 수 없다** — 코드 전수 조사가 근거이고 `idx_scan`은 **거절 게이트**로만 쓴다. 게다가 갓 복원한 DB에서는 PK를 포함해 **모든** 카운터가 0이므로, 같은 테이블의 다른 인덱스 스캔 합이 0이면 **증거 없음으로 판정하고 거절**한다.
-- 되돌리는 `CREATE INDEX CONCURRENTLY` 문을 **드롭하기 전에** 출력한다.
+옛 층 표(`cell_sources`)가 줄 표로 옮겨 가며 대본도 은퇴했습니다. 그 표의 인덱스는 표를 지울 때 같이 나갑니다. 카탈로그 함수는 `align_indexes_to_declarations.py` 로 옮겼습니다.
 
 #### 재교정률 인덱스 (`idx_audit_user_recorrection`)
 어드민 Overview의 재교정률([data_model §2.3](../architecture/data_model.md))이 쓰는 부분 커버링 인덱스. **없으면 `/dashboard/summary`가 `audit_logs` 전량을 훑는다**(2026-07-27 실측: 2,628,453행/1.6GB에서 512ms).

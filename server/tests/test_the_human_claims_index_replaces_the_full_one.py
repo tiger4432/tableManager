@@ -89,21 +89,3 @@ def test_every_reader_names_the_constant_rather_than_quoting_the_value():
         # spelling of it - only a filter is.
         assert not re.search(r'CellSource[.]source_name\s*==\s*[\x22\x27]', body), (
             module_name, function_name)
-
-
-def test_the_migration_gate_names_the_same_two_indexes():
-    """⛔ A THIRD SPELLING WOULD MAKE THE GATE CHECK THE WRONG INDEX. The replacement
-    section drops the old index only once the new one exists, so if either name here
-    drifted from the model the gate would be looking at something that is not the
-    replacement - and would then either refuse forever or drop with nothing standing in."""
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
-                                                    "migrations")))
-    import drop_redundant_layering_indexes as migration
-
-    entries = [e for e in migration.REPLACED if e[0] == models.RETIRED_CLAIMS_INDEX]
-    assert len(entries) == 1, migration.REPLACED
-    _, table, replacement = entries[0]
-    assert table == "cell_sources"
-    assert replacement == models.HUMAN_CLAIMS_INDEX
-
-

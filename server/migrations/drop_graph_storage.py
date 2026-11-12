@@ -156,7 +156,7 @@ def run(apply=False, allow_owner=False, url=None):
     else:
         # 🔴 The dry run is read-only ENFORCED BY POSTGRES, not by this script
         # remembering not to write. `db_safety` owns that guard; see
-        # `drop_redundant_layering_indexes.py` for why it does not get a second
+        # the retired `drop_redundant_layering_indexes.py` (git log) for why it does not get a second
         # spelling here.
         engine = db_safety.open_readonly_engine(
             url, application_name=READONLY_APPLICATION_NAME)
