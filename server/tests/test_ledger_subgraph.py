@@ -192,6 +192,29 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
         raise AssertionError("one subject was accepted as observed AND as a control")
 
 
+def test_a_seed_is_a_declared_entity_and_the_answer_keeps_no_shell_of_a_retired_kind():
+    """2026-08-28: a claim, an event, a point, a collection, an action and a value are not places. The seed node is
+    the entity's alone and the answer keeps none of their shells (lead 11-12: an action branch called a function
+    that no longer existed, behind a seed kind `decode_node_id` cannot produce - D's undefined-name scan)."""
+    import ast
+    import inspect
+
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
+    answer = ledger_subgraph.subgraph({"positive": [explorer.entity_id("Lot", {"lot": "MARK"})],
+                                       "negative": [explorer.entity_id("Lot", {"lot": "CTRL"})]}, lookup, hops=4)
+    assert "claims_scanned" in answer["walk"], "canary: the walk's own block"
+    assert not {"enrich_actions", "actions_scanned"} & set(answer["walk"])
+    assert "claims" in answer["truncated"] and "claims" in answer["limits"], "canary: the budget blocks"
+    assert "actions" not in answer["truncated"] and "actions" not in answer["limits"]
+    assert [sorted(item) for item in answer["seeds"]] == [["id", "sign"]] * 2
+    with pytest.raises(ValueError):
+        ledger_subgraph.decode_node_id("ledger-action:v1:x")
+    seed = ast.parse(inspect.getsource(ledger_subgraph._seed_node))
+    assert not [node for node in ast.walk(seed) if isinstance(node, (ast.If, ast.IfExp, ast.Match))], (
+        "a seed kind came back")
+    assert "action_lookup" not in inspect.signature(ledger_subgraph._walk).parameters
+
+
 def uneven_fixture():
     """Two marked subjects carrying a DIFFERENT number of claims, one factor each.
 

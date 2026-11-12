@@ -1,24 +1,8 @@
-"""Unified, bounded evidence subgraph over evidence and physical referents.
+"""Bounded evidence subgraph over the ledger - a walk of ``ledger_events``, not a second graph store.
 
-This is a projection of ``ledger_events`` rather than a second graph store.  It exposes
-the append-only atom as a first-class Claim node and the source utterance that grouped
-claims as a first-class Event node:
-
-    Event --asserts--> Claim --subject--> Entity
-                              --<predicate>--> Entity | Value
-
-High-cardinality observations stay as individual Claim rows in the ledger, but defects
-are not promoted to traversable domain entities.  An Entity walk projects them as a
-Finding Collection with aggregate and spatial properties.  Expanding a Collection
-adds terminal Finding Point nodes; those points never continue an automatic walk.
-
-A payload leaf the modeller has bound to a physical quantity continues into the declared
-mechanism graph, which is synthesized from `mechanism_models.json` rather than read from
-the ledger — a Quantity is not an entity anybody asserted:
-
-    Value             --binding--> Quantity
-    Finding Collection --finding--> Quantity   the model's own target, by finding_kind
-    Quantity        --mechanism--> Quantity    `dir` as declared
+Every node is a declared entity and every edge a declared predicate between two of them: a claim, a source event, a
+finding and a value are not places (2026-08-28). A value is an attribute of an edge toward an entity such as
+Quantity (owner 11-11).
 
 Every public node id is opaque, typed, canonical, and can be passed back as the next
 seed.  Traversal is undirected for reachability but directed in the returned evidence.
@@ -3009,82 +2993,10 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
     return block
 
 
-def _seed_node(seed_id, seed_ref, action_lookup):
-    """Build the depth-0 node for ONE seed.
-
-    Extracted verbatim so a signed seed SET runs the same construction per member;
-    the branches and their spellings are unchanged.
-    """
-    if seed_ref["kind"] == "entity":
-        seed_node = _entity_node(seed_ref["type"], seed_ref["keys"])
-    elif seed_ref["kind"] == "event":
-        seed_node = {
-            "id": seed_id, "type": "Source Event", "node_kind": "event",
-            "schema_kind": "source_event", "label": f"Event {seed_ref['event_id'][:8]}",
-            "keys": {"source_event_id": seed_ref["event_id"]},
-            "occurred_at": _instant(seed_ref["occurred_at"]),
-            "source_event_state": seed_ref["event_state"], "claim_count": 0,
-            "predicates": [],
-        }
-    elif seed_ref["kind"] == "claim":
-        seed_node = {
-            "id": seed_id, "type": "Claim", "node_kind": "claim",
-            "schema_kind": "claim_atom", "label": f"Claim {seed_ref['claim_id'][:8]}",
-            "keys": {"id": seed_ref["claim_id"]}, "claim_count": 0, "predicates": [],
-        }
-    elif seed_ref["kind"] == "point":
-        seed_node = {
-            "id": seed_id, "type": "Finding Point",
-            "node_kind": "point", "schema_kind": "terminal_finding_point_projection",
-            "label": f"Finding point {seed_ref['claim_id'][:8]}",
-            "keys": {"claim_id": seed_ref["claim_id"]},
-            "occurred_at": _instant(seed_ref["occurred_at"]),
-            "expansion": "explicit_seed_to_wafer_only",
-            "claim_count": 0, "predicates": [],
-        }
-    elif seed_ref["kind"] == "collection":
-        seed_node = {
-            "id": seed_id, "type": "Finding Collection", "node_kind": "collection",
-            "schema_kind": "finding_collection_projection",
-            "label": " · ".join(filter(None, [
-                seed_ref["finding_kind"], seed_ref.get("method"),
-                seed_ref.get("map_id")])),
-            "keys": {
-                "subject_type": seed_ref["type"], "subject_keys": seed_ref["keys"],
-                "finding_kind": seed_ref["finding_kind"],
-                "method": seed_ref.get("method"), "map_id": seed_ref.get("map_id"),
-            },
-            "finding_kind": seed_ref["finding_kind"],
-            "method": seed_ref.get("method"), "map_id": seed_ref.get("map_id"),
-            "claim_count": 0, "predicates": [],
-        }
-    elif seed_ref["kind"] == "action":
-        action = action_lookup.action_for_ref(seed_ref) if action_lookup else None
-        if action is not None:
-            seed_node = _enrich_action_node(action)
-        else:
-            seed_node = {
-                "id": seed_id, "type": "Enrich Action", "node_kind": "action",
-                "schema_kind": "enrich_action_projection",
-                "label": f"{seed_ref['rule_name']} · current state unavailable",
-                "keys": {
-                    "rule": seed_ref["rule_name"],
-                    "contract_version": seed_ref["version"],
-                    "scope": seed_ref["scope"],
-                    "decision_key": seed_ref.get("decision_key"),
-                },
-                "state": "projection_unavailable", "projection": True,
-                "terminal_in_automatic_walk": True,
-                "claim_count": 0, "predicates": [],
-            }
-    else:
-        seed_node = {
-            "id": seed_id, "type": "Value", "node_kind": "value",
-            "schema_kind": "claim_value", "label": "Value",
-            "keys": {"claim_id": seed_ref["claim_id"]}, "claim_count": 0,
-            "predicates": [],
-        }
-    return seed_node
+def _seed_node(seed_ref):
+    """The depth-0 node for ONE seed: a declared entity - the only node there is (`decode_node_id` returns
+    {"kind": "entity"} or refuses), so a signed seed SET builds each member the same way."""
+    return _entity_node(seed_ref["type"], seed_ref["keys"])
 #: The same trim for an ENTITY type: `defect_kind@1` -> `defect_kind`.
 #: 🔴 본체는 `declaration_names.bare_name` 하나다 — 이 이름을 쓰던 네 모듈이 «다른 답»을
 #: 낼 수 있었다. 앞뒤 공백을 이제 턴다(종전 이 판은 안 텄다).
@@ -3681,7 +3593,7 @@ def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
         "nodes": sorted(nodes.values(), key=lambda item: (
             item["depth"], item["node_kind"], item["label"], item["id"])),
         "edges": edges,
-        "seeds": [{"id": seed, "sign": "+", "node_kind": ref["kind"]}],
+        "seeds": [{"id": seed, "sign": "+"}],
         "walk": {"mode": "time_page", "direction": direction,
                  "hops_requested": 1, "hops_reached": 1 if edges else 0},
         "message": None if edges else "No %s points %s" % (
@@ -3700,7 +3612,7 @@ def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
 
 def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
-             action_lookup=None, follow=None,
+             follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, follow_qualifiers=None, collect=None,
              cardinalities=None, rows=False,
@@ -3909,12 +3821,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: and cut where the answer is assembled (`_newest_records`), not in the order fetched
     edge_records = {}
     action_claims_seen = set()
-    node_cut = edge_cut = claim_cut = action_cut = depth_cut = False
+    node_cut = edge_cut = claim_cut = depth_cut = False
     #: nodes that have spent the node budget -- see `carried` below
     budgeted = 0
     budgeted_edges = 0
     claims_scanned = 0
-    actions_scanned = 0
 
     #: 🔴 THE BUDGET COUNTS WHAT THE ANSWER SHOWS: every node without `collect`, the collected
     #: types with it. A node passed through is admitted free, so it still expands. Free is not
@@ -4259,7 +4170,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             refs.setdefault(node_id, decode_node_id(node_id))
 
     for item, ref in seed_refs.items():
-        add_node(_seed_node(item, ref, action_lookup), ref, 0)
+        add_node(_seed_node(ref), ref, 0)
         dep_cost[item] = 0
         modes[item] = SEED
 
@@ -4349,22 +4260,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             break
         entity_refs = [refs[item] for item in frontier_ids
                        if refs[item]["kind"] == "entity"]
-        point_refs = [refs[item] for item in frontier_ids
-                      if refs[item]["kind"] == "point"
-                      and refs[item].get("expandable", False)]
-        event_refs = [refs[item] for item in frontier_ids
-                      if refs[item]["kind"] == "event"]
-        collection_refs = [refs[item] for item in frontier_ids
-                           if refs[item]["kind"] == "collection"
-                           and refs[item].get("expandable", False)]
-        finding_refs = [refs[item] for item in frontier_ids
-                        if refs[item]["kind"] == "collection"]
 
         full_entity_refs = [item for item in entity_refs
                             if not item.get("observation_only", False)]
         # what the walk does not expand by its question is not left unexpanded by a cap
         read_whole.update(node_id for node_id in frontier_ids
-                          if refs[node_id]["kind"] != "entity" or refs[node_id].get("observation_only", False))
+                          if refs[node_id].get("observation_only", False))
         # 🔴 A NAME IS FETCHED WITH A NARROWER `follow`, NOT FILTERED AFTER THE FETCH.
         # `_expand_atom` already refuses the `s -> d` step, and refusing it there is too
         # late: the atom has been read out of the ledger and charged to `claims_scanned`
@@ -4643,14 +4544,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             hub_counts[step_id] = lookup.count_far_ends(ends, cells["direction"], cells["predicate"],
                                                         cells["far_type"])
     seed = nodes[primary]
-    found = (len(nodes) > len(seed_refs) or bool(edges)
-             or any(ref["kind"] == "action" for ref in seed_refs.values()))
+    found = len(nodes) > len(seed_refs) or bool(edges)
     reasons = []
     if depth_cut: reasons.append("depth")
     if node_cut: reasons.append("nodes")
     if edge_cut: reasons.append("edges")
     if claim_cut: reasons.append("claims")
-    if action_cut: reasons.append("actions")
     # 🔴 SEEDS CUT IS A TRUNCATION LIKE THE OTHERS. A walk that started from 200 of 5,000
     # subjects answered a NARROWER question than the one asked, and `complete` has to say so
     # -- a contrast computed over a fifth of the controls is the skew `propagation.complete`
@@ -4707,12 +4606,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                  _declared_plural_attributes(str(item.get("type") or "")))
                 for item in visible_nodes) if plural
         },
-        "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-",
-                   "node_kind": seed_refs[item]["kind"]} for item in seed_signs],
+        "seeds": [{"id": item, "sign": "+" if seed_signs[item] > 0 else "-"} for item in seed_signs],
         # the ranking, unless the caller said it does not read it (총괄 9166099d4 - 70 % of a 200-seed value walk)
         **({"propagation": _propagation(
             nodes, ordered_edges, seed_signs,
-            not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
+            not (depth_cut or node_cut or edge_cut or claim_cut
                  or seed_cut or fan_cut),
             static_types, (resume or {}).get("reach"), reached, deferred)} if propagation else {}),
         "walk": {
@@ -4724,20 +4622,18 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "hops_requested": hops,
             "hops_reached": max(depths.values(), default=0),
             "claims_scanned": claims_scanned,
-            "actions_scanned": actions_scanned,
-            "enrich_actions": action_lookup is not None,
             "raw_claims": True, "resolver_applied": False,
         },
         "more": more,
         "limits": {"nodes": node_limit, "edges": edge_limit,
-                   "claims": claim_limit, "actions": edge_limit,
+                   "claims": claim_limit,
                    "max_hops": MAX_HOPS,
                    # ⚠️ Present only when a DESCRIPTION was asked for: an enumerated seed
                    # list has no ceiling of its own, and a number here would state one.
                    **({"seeds": seed_limit} if seed_type else {})},
         "truncated": {
             "depth": depth_cut, "nodes": node_cut, "edges": edge_cut,
-            "claims": claim_cut, "actions": action_cut,
+            "claims": claim_cut,
             "reason": ", ".join(reasons) if reasons else None,
             # 🔴 HOW MANY SUBJECTS THE DESCRIPTION NAMED AND THIS WALK DID NOT TAKE
             # (S-148-a). A COUNT rather than a flag, as `interval_excluded` beside it is:

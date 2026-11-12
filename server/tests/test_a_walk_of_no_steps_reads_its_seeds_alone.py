@@ -58,7 +58,7 @@ def test_no_steps_answers_the_seeds_own_records_and_no_edge():
         assert node["attributes"]["product"].startswith("P"), "its own record came with it"
     # «depth»: the steps asked were reached - the same rule as a walk of one step (the test bed does not read it as a cut)
     cut = none["truncated"]
-    assert cut["reason"] == "depth" and not any(cut[axis] for axis in ("nodes", "edges", "claims", "actions"))
+    assert cut["reason"] == "depth" and not any(cut[axis] for axis in ("nodes", "edges", "claims"))
     assert none["more"]["resume"] is None
 
 
