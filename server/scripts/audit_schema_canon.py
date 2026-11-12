@@ -733,7 +733,8 @@ def rule_r4(default_surface, decl):
         "The incident's UPDATE arm: `ingested_at` seeded, upserted with None, stored NULL.")
     b_named = Bucket(
         "named_in_the_incident", INFO,
-        "the three columns SCHEMA_CANON names for R4. Present here means the surface "
+        "the columns SCHEMA_CANON names for R4 that still exist (its third, the old layer "
+        "table's ingested_at, retired with that table 11-12). Present here means the surface "
         "this detector reports really does cover the incident.")
     b_declared_reserved = Bucket(
         "config_declares_a_reserved_metadata_name", VIOLATION,
@@ -742,8 +743,7 @@ def rule_r4(default_surface, decl):
         "promises a type nobody applies, and a reader sizing a write against the config "
         "is reading a column that does not behave the way it is written down.")
 
-    incident = {("cell_sources", "ingested_at"), ("cell_overwrites", "updated_at"),
-                ("cell_overwrites", "is_overwrite")}
+    incident = {("cell_overwrites", "updated_at"), ("cell_overwrites", "is_overwrite")}
     for (t, c), kinds in sorted(default_surface.items()):
         b_surface.add(f"{t}.{c}", kinds)
         if "py" in kinds.split("+"):
@@ -1119,7 +1119,7 @@ def rule_r7(findings):
 # named list that the report prints in full, precisely so the exceptions are auditable
 # instead of assumed - an exception nobody can see is indistinguishable from a bug.
 ENGINE_TABLES = frozenset({
-    "audit_logs", "cell_sources", "cell_overwrites", "database_outbox",
+    "audit_batches", "line_columns", "line_sources", "cell_overwrites", "database_outbox",
     # graph_edges / graph_nodes / graph_sync_state dropped from this list 2026-08-18
     # along with the tables themselves.
     "file_ingestion_checkpoints", "file_ingestion_logs",
@@ -1163,8 +1163,10 @@ def rule_r8(decl, phys=None):
         "`bonding_log`. That is the join between layers and R8 explicitly wants the name "
         "to change when the fact crosses a layer.")
 
+    from database.lines import LINES_SUFFIX     # a declared table's history - engine machinery, any prefix
+
     def classify(t):
-        if t in ENGINE_TABLES:
+        if t in ENGINE_TABLES or t.endswith(LINES_SUFFIX):
             return "engine"
         for v in STAGE_PREFIX_VARIANTS:
             if t.startswith(v):
