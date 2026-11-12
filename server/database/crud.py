@@ -776,10 +776,6 @@ def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
     parsers write under the INGESTED FILENAME, so the set of automatic source names is
     open-ended (10,750 distinct values on the live database) and cannot be enumerated.
 
-    ⚠️ IT IS A FUNCTION RATHER THAN A CONDITION AT ITS ONE SEAT because it has a SECOND
-    reader now: `scripts/count_absent_null_layers.py` asks the same question of layers
-    already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
-    and the writing come to disagree about what they are counting.
     """
     return replaces_map or layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
 
@@ -2931,24 +2927,6 @@ def _copy_field(value) -> str:
 CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
 CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id', 'owner_rule', 'owner_key')
 
-
-def owner_cells(source_name) -> dict:
-    """`owner_rule` / `owner_key` of a layer named `source_name` - read off its name by the one parser
-    (`layer_owner`), so a write and every copy of a layer (a merge, a fold, a pin) say the same owner (owner 11-06
-    step 2). None for a layer no rule owns."""
-    owner = layer_owner(source_name)
-    return {"owner_rule": owner[0] if owner else None, "owner_key": owner[1] if owner else None}
-
-
-from sqlalchemy import event as sa_event                             # noqa: E402
-
-
-@sa_event.listens_for(models.CellSource, "before_insert")
-@sa_event.listens_for(models.CellSource, "before_update")
-def _owner_of_a_layer_row(_mapper, _connection, target):
-    """A layer row written through the ORM (`db.add`) says its owner as the bulk upsert does (`owner_cells`)."""
-    for column, value in owner_cells(target.source_name).items():
-        setattr(target, column, value)
 
 def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:

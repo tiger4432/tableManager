@@ -41,7 +41,6 @@ NOT_T = {
     "migrations/add_ledger_source_events.py:_backfill_partition": "ledger_source_events",
     "migrations/add_outbox_ledger_state.py:apply": "database_outbox",
     "scripts/archive/migrate_updated_at.py:migrate": "the retired DataRow model",
-    "scripts/migrate_to_postgres.py:migrate": "the retired DataRow model",
 }
 CANARY = {"database/write_lines.py:" + name
           for name in ("_claim", "_heads", "_lines", "_merge_into", "_merge_now", "_put_keys", "write_lines")}

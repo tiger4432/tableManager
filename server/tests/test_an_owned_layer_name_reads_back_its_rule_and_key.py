@@ -53,25 +53,6 @@ def test_a_name_no_owner_built_has_no_owner(name):
     assert crud.layer_owner(name) is None
 
 
-def test_a_layer_row_stamps_the_owner_cells_off_the_name():
-    """A layer row says its owner in `owner_rule` / `owner_key` - an ORM insert, off the one parser;
-    a layer no rule owns says none (the bulk upsert door retired with the lines, 11-11)."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    models.CellSource.__table__.create(engine)
-    db = sessionmaker(bind=engine)()
-    owned = crud.owned_layer_name("r (1)", "k|2")
-    db.add(models.CellSource(table_name="t", row_id="b", column_name="c", source_name=owned, value=3))
-    db.add(models.CellSource(table_name="t", row_id="b", column_name="d", source_name="user", value=4))
-    db.commit()
-    got = {(row.row_id, row.column_name): (row.owner_rule, row.owner_key) for row in db.query(models.CellSource)}
-    assert got == {("b", "c"): ("r (1)", "k|2"), ("b", "d"): (None, None)}
-
-
 A, B = crud.owned_layer_name("rule_a", "k"), crud.owned_layer_name("rule_b", "k")
 
 
@@ -89,55 +70,3 @@ def test_two_rules_on_one_cell_rank_by_priority_then_declared_order(monkeypatch,
     times = {A: datetime(2026, 11, 8, 3), B: datetime(2026, 11, 8, 2), crud.CHAIN_SOURCE: datetime(2026, 11, 8, 1)}            # A newest, the unowned layer oldest
     sources = {name: {"value": name} for name in layers}
     assert crud.compute_priority_value(sources, ingested_at_by_source={n: times[n] for n in layers}) == (shown, shown)
-
-
-def _add_owner_columns(engine):
-    from sqlalchemy import text
-
-    from database import models
-
-    with engine.begin() as conn:
-        for name in models.OWNER_COLUMNS:
-            conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s VARCHAR" % name))
-
-
-def test_a_database_from_before_owners_is_refused_at_the_write_by_name():
-    """A box with cell_sources but no owner_rule / owner_key: a layer write says so (never fails inside the ORM) - the
-    boot no longer adds them (the old layer table retires, lead 11-11); with them there the write passes and the rows
-    already there keep their values."""
-    from sqlalchemy import create_engine, text
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
-        conn.execute(text("INSERT INTO cell_sources (source_name, value) VALUES ('user', 'x')"))
-    with pytest.raises(RuntimeError, match="nothing adds them any more"):
-        models.require_owner_columns(engine)
-    _add_owner_columns(engine)
-    models.require_owner_columns(engine)
-    with engine.connect() as conn:
-        assert conn.execute(text("SELECT source_name, value, owner_rule, owner_key FROM cell_sources")).all() == [
-            ("user", "x", None, None)]
-
-
-def test_a_session_bound_to_a_connection_is_asked_through_that_connection():
-    """Lead 11-09 (release 11-09's PG red, test_a_time_the_database_refuses_is_not_entered): a session bound to one
-    Connection - a held zone, the dev bench - asks with its bind: read through that Connection, remembered by its
-    Engine."""
-    from sqlalchemy import create_engine, text
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
-    with engine.connect() as conn:
-        with pytest.raises(RuntimeError, match="nothing adds them any more"):
-            models.require_owner_columns(conn)
-    _add_owner_columns(engine)
-    assert engine not in models._OWNER_COLUMNS       # nothing remembered yet - the next read is the Connection's own
-    with engine.connect() as conn:
-        models.require_owner_columns(conn)
-    assert engine in models._OWNER_COLUMNS

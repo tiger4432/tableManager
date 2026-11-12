@@ -120,7 +120,6 @@ conda run -n assy_manager python scripts/<이름>.py
 
 | 스크립트 | 언제 것 |
 |---|---|
-| `migrate_to_postgres.py` | SQLite → PostgreSQL 이관 (2026-04) |
 | `migrate_assets.py` | 다른 서버의 옛 `config`·`ingestion_workspace` 이관 (2026-04) |
 | `drop_legacy_tables_20260725.sql` | 레거시 표 정리 **준비본** — ⚠️ 실행 전 안의 전제·절차를 반드시 읽을 것 |
 

@@ -5848,8 +5848,6 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 층 순위   파일 머리에 있는 칸은 파일이 그 맵의 진술이라 표의 source_priority 대로 섬 — 같은 칸의 체인 값을 가릴 수 있음
 >          사람이 적은 값(층 0)은 그대로 위
 > 확인     맵 교체 파일을 넣고 그리드에서 그 다이의 빈 칸이 비었는지 · 와처 로그 «[Map Diff] … Written: W | Removed: M»
-> 세기     cd server ; python scripts/count_absent_null_layers.py
->          이 칸들은 «replaced» 로 따로 셈(정상) — «→ 다음»의 가림 수에 안 듦. absent 수가 늘면 다른 원인
 > 되돌리기  git revert 338dffcf7 -> 런처 재기동. 이미 비운 칸은 남음 — 다음 파일이 값을 적으면 그 값
 > ```
 >
@@ -10407,7 +10405,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 재기동 뒤        새 합치기(쓰기 문 · 키 고치기 --apply · 표기 소급)는 넘어가는 행에 없던 칸의 층을 만들지 않는다
-> 센다(읽기만)      python server/scripts/count_absent_null_layers.py
+> 센다(읽기만)      은퇴 (11-12) — 옛 층 표가 줄 표로 옮겨 가며 빈 층도 줄로 옮겨짐(지워지지 않음). 세는 대본은 없앰
 > 세 수의 뜻        ① 비울 수 없는 쓴 이(파일 등)의 빈 층 — 전부터 세던 그 수(S-243-b), 판정 405 이전에 쌓인 부재
 >                ② 합치기가 남긴 빈 사본, 비울 수 없는 쓴 이 — 부재로 확정. 이번 결함이 남긴 것
 >                ③ 합치기가 남긴 빈 사본, 사람 · 체인 — 부재이거나 사람이 일부러 비운 칸의 사본. 구별이 안 된다

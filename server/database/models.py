@@ -681,37 +681,6 @@ def ensure_run_columns(engine, add=True):
 #: The databases `ensure_run_columns` found or made the columns on, in this process.
 _RUN_COLUMNS = weakref.WeakSet()
 
-#: The chain layer's owner (owner 11-06 step 2) - `CellSource.owner_rule` · `owner_key`.
-OWNER_COLUMNS = ("owner_rule", "owner_key")
-
-
-def _owner_columns_missing(bind) -> list:
-    """The owner columns `cell_sources` lacks - [] at once for a database this process has seen them on. `bind` an
-    Engine or a Connection - a session bound to one (lead 11-09) - read through itself, remembered by its Engine."""
-    engine = bind.engine
-    if engine in _OWNER_COLUMNS:
-        return []
-    from sqlalchemy import inspect
-
-    have = {c["name"] for c in inspect(bind).get_columns("cell_sources")}
-    missing = [name for name in OWNER_COLUMNS if name not in have]
-    if not missing:
-        _OWNER_COLUMNS.add(engine)
-    return missing
-
-
-def require_owner_columns(engine):
-    """The layer write's question: the owner columns are there, or a refusal that says why and what to do - never a
-    write that fails inside the ORM."""
-    if _owner_columns_missing(engine):
-        raise RuntimeError("cell_sources has no owner_rule / owner_key - the old layer table is retired (the cell-"
-                           "source overhaul) and nothing adds them any more; a write to it cannot run here")
-
-
-#: The databases the owner columns were found on, in this process.
-_OWNER_COLUMNS = weakref.WeakSet()
-
-
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
                        "reader", "source", "reason", "failed_at", "took_seconds", "transaction_id")

@@ -18,6 +18,10 @@ DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 CELL_SOURCES_ALLOWED = {# 까닭: 운영 복사 전 - the copy retires the round after it has run in operation (lead 11-11)
                         "database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
+                        # the migration command that drives the copy - same reason (lead 11-12)
+                        "scripts/copy_layers_to_lines.py:<module>", "scripts/copy_layers_to_lines.py:_one",
+                        "scripts/copy_layers_to_lines.py:copy_table", "scripts/copy_layers_to_lines.py:main",
+                        "scripts/copy_layers_to_lines.py:plan",
                         "*:write_back",
                         # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)
                         "scripts/snapshot.py:_facts", "scripts/restore.py:counts", "scripts/restore.py:main"}
