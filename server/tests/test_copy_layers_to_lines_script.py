@@ -86,8 +86,8 @@ def test_the_check_counts_after_every_page_and_leaves_nothing():
 def shown(engine, row_id):
     with Session(bind=engine) as db:
         t = lines.current_table(db, "t", CFG)
-        lot, won_by = db.execute(select(t.c.lot, t.c[lines.WON_BY]).where(t.c.row_id == row_id)).one()
-    return lot, (json.loads(won_by) if isinstance(won_by, str) else won_by) or {}
+        lot = db.execute(select(t.c.lot).where(t.c.row_id == row_id)).scalar_one()
+        return lot, lines.won_by_of(db, "t", [row_id]).get(row_id, {})
 
 
 def copy_audits(engine):

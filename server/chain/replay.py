@@ -2195,9 +2195,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         heads = lines.layers(db, table_name, ids, folded)
         won_by = {}                     # row -> {column: the line its shown value is}
         if heads:
-            now = lines.current_table(db, table_name, config)
-            won_by = {r: dict(w or {}) for r, w in db.execute(
-                select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(ids)))}
+            won_by = lines.won_by_of(db, table_name, ids)
             # a cell with lines that t was never stamped as (copied where t showed another spelling - the copy
             # stores what today's write would): its winner is asked of the merge, as the write will merge it
             loose = sorted({r for (r, c) in heads if c not in won_by.get(r, {})})
@@ -2567,9 +2565,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                     changed = write_lines(db, table_name, items, kind="recompute", transaction_id=tx_id)["changed"]
             won = {}
             if changed and keeps:
-                now = lines.current_table(db, table_name, crud.TABLE_CONFIG.get(table_name) or {})
-                won = {r: dict(w or {}) for r, w in db.execute(
-                    select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(sorted(changed))))}
+                won = lines.won_by_of(db, table_name, sorted(changed))
 
             for row_id, col in sorted((r, c) for r, change in changed.items() for c in declared
                                       if crud.values_differ((change.get("old") or {}).get(c),

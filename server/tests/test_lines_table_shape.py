@@ -71,7 +71,7 @@ def test_shape_binds_t_as_built_with_won_by(db):
     built = [c["name"] for c in inspect(db.connection()).get_columns("t")]
     assert [c.name for c in s["table"].columns] == built
     assert s["columns"] == [n for n in built if n != "won_by"]
-    db.execute(s["table"].insert().values(row_id="r1", lot="x", won_by={"lot": 1}))
+    db.execute(s["table"].insert().values(row_id="r1", lot="x", won_by=lines.won_by_stored({"lot": 1}, s["bits"])))
     assert db.execute(text("SELECT lot FROM t WHERE row_id = 'r1'")).scalar() == "x"
 
 

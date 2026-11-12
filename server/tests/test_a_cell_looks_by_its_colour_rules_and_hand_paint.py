@@ -72,9 +72,12 @@ def _layers(db_session, row_id, column, *names):
         ids = [line_tables.line(conn, TABLE, bits, row_id, source=name, at=T0 + timedelta(minutes=n),
                                 values={column: 1.5 if column == "value" else "x"}) for n, name in enumerate(names)]
         t = Table(TABLE, MetaData(), autoload_with=conn)
-        won = dict(conn.execute(t.select().where(t.c.row_id == row_id)).one().won_by or {})
+        from database import lines
+
+        won = lines.won_by_of(conn, TABLE, [row_id]).get(row_id, {})
         won[column] = ids[-1]
-        conn.execute(t.update().where(t.c.row_id == row_id).values(won_by=won))
+        conn.execute(t.update().where(t.c.row_id == row_id).values(won_by=lines.won_by_stored(
+            won, lines.bit_map(conn, TABLE))))
 
 
 def _read(client, **params):

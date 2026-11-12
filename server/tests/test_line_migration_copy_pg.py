@@ -47,7 +47,7 @@ def test_copied_lines_merge_to_what_t_shows_on_pg(db):
     db.commit()
     merged = lines.merge(db, NAME, CFG, ["r1", "r2"])
     assert merged["r1"]["lot"][0] == "u" and merged["r1"]["qty"][0] == 5 and merged["r2"]["lot"][0] == "x"
-    won = db.execute(text(f"SELECT won_by FROM {NAME} WHERE row_id = 'r1'")).scalar()
+    won = lines.won_by_of(db, NAME, ["r1"])["r1"]
     assert set(won) == {"lot", "qty"}
     with pytest.raises(line_migration.AlreadyCopied, match="already copied, 3 lines"):
         line_migration.copy_page(db, NAME, CFG, None, 1, transaction_id="tx-again")
@@ -69,5 +69,5 @@ def test_a_text_cell_copies_what_todays_write_would_store_on_pg(db, stored, line
     line_id, said = db.execute(select(lt.c.line_id, lt.c[lines.value_column("lot")])
                                .where(lt.c.row_id == "r2", lt.c.source_name == "fileN")).one()
     assert said == line
-    won_by = db.execute(text(f"SELECT won_by FROM {NAME} WHERE row_id = 'r2'")).scalar() or {}
+    won_by = lines.won_by_of(db, NAME, ["r2"]).get("r2", {})
     assert (won_by.get("lot") == line_id) if won else ("lot" not in won_by)

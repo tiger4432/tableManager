@@ -3521,10 +3521,19 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     return []
 
 def array_params(db, columns, rows):
-    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor."""
+    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor; an
+    array column's value as its text literal (unnest flattens an array of arrays - `update_by_arrays` casts it back,
+    t.won_by - lead 11-13 안 1)."""
+    from sqlalchemy.types import ARRAY
+
     dialect = db.get_bind().dialect
     params, casts = {}, []
     for i, (column, values) in enumerate(zip(columns, zip(*rows))):
+        if isinstance(column.type.dialect_impl(dialect), ARRAY):
+            params["a%d" % i] = [None if v is None else "{%s}" % ",".join("NULL" if x is None else str(x) for x in v)
+                                 for v in values]
+            casts.append("CAST(:a%d AS TEXT[])" % i)
+            continue
         bind = column.type.bind_processor(dialect)
         params["a%d" % i] = [bind(value) if bind else value for value in values]
         casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
@@ -3546,11 +3555,15 @@ def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     (its `rowcount`). The one array writer: the notation fold, the unit mark and the flush's changed rows
     (`database.write_changed_rows_by_shape`, 총괄 8af4d378c) call it."""
     from sqlalchemy import text
+    from sqlalchemy.types import ARRAY
 
     valued = [name for name in names if name != "updated_at"]
     columns = [table.c[key]] + [table.c[name] for name in valued]
     params, casts = array_params(db, columns, rows)
-    sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
+    dialect = db.get_bind().dialect
+    sets = ['"%s" = %s' % (name, "CAST(v.a%d AS %s)" % (i, table.c[name].type.compile(dialect=dialect))
+                           if isinstance(table.c[name].type.dialect_impl(dialect), ARRAY) else "v.a%d" % i)
+            for i, name in enumerate(valued, start=1)]
     if "updated_at" in names:
         sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
         params["updated_at"] = batch_now

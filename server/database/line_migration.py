@@ -108,10 +108,11 @@ def take_copy_lines(db, table, cfg, rows, tx) -> int:
     gone = set(db.execute(select(lt.c.line_id).where(lt.c.batch == tx, lt.c.row_id.in_(rows))).scalars())
     if gone:
         db.execute(delete(lt).where(lt.c.line_id.in_(sorted(gone))))
-        for row_id, won_by in db.execute(select(t.c.row_id, t.c[lines.WON_BY]).where(t.c.row_id.in_(rows))).all():
-            kept = {c: lid for c, lid in (won_by or {}).items() if lid not in gone}
-            if kept != (won_by or {}):
-                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: kept or None}))
+        for row_id, won_by in lines.won_by_of(db, table, rows, s["bits"]).items():
+            kept = {c: lid for c, lid in won_by.items() if lid not in gone}
+            if kept != won_by:
+                db.execute(update(t).where(t.c.row_id == row_id).values(
+                    {lines.WON_BY: lines.won_by_stored(kept, s["bits"])}))
     return len(gone)
 
 
@@ -215,7 +216,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
                 mismatched.extend((row_id, c, now[c], v) for c, (v, lid) in sorted(cols.items())
                                   if lid is not None and c in t.c and c not in won)
             if won:
-                named.append([row_id, {**(now[lines.WON_BY] or {}), **won}])
+                named.append([row_id, lines.won_by_stored({**lines.won_by_cells(now[lines.WON_BY], bits), **won}, bits)])
         if named and lines.sets_at_once(db):             # one set statement for the page (lead 11-12)
             crud.update_by_arrays(db, t, [lines.WON_BY], named, None)
         else:

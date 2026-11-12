@@ -800,8 +800,10 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
     if not row_ids:
         return {}, {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
-    won_by = {row_id: {} if columns is None else {c: w for c, w in ((old.get(row_id) or {}).get("won_by") or {}).items()
-                                                  if c not in columns} for row_id in row_ids}
+    bits = shape["bits"]
+    was_won = {row_id: lines.won_by_cells((old.get(row_id) or {}).get(lines.WON_BY), bits) for row_id in row_ids}
+    won_by = {row_id: {} if columns is None else {c: w for c, w in was_won[row_id].items() if c not in columns}
+              for row_id in row_ids}
     if columns is not None:                        # a column not merged reads as its line reads it (lead 11-11: 2, not 2.0)
         numbers = [c for c in data if c not in columns and shape["kinds"].get(c) == "number"]
         for row_id in row_ids:
@@ -838,7 +840,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
     for row_id in row_ids:
         if row_id in old and _moved(old[row_id], merged[row_id], data, types):
             moved.append(row_id)
-        elif row_id in old and keeps and (old[row_id].get("won_by") or {}) != won_by[row_id]:
+        elif row_id in old and keeps and was_won[row_id] != won_by[row_id]:
             only_won.append(row_id)
     names = data + (["won_by"] if keeps else [])
     lost = {}
@@ -856,7 +858,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         # 1.72 s a 1k write)
         got = set(db.execute(statement.returning(now.c.row_id), [
             {"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
-             **({"won_by": won_by[r]} if keeps else {})} for r in put]).scalars())
+             **({"won_by": lines.won_by_stored(won_by[r], bits)} if keeps else {})} for r in put]).scalars())
         lost.update({r: fresh.get(r) for r in put if r not in got})
         for r in lost:
             merged.pop(r, None)
@@ -867,7 +869,8 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         for ids, stamp in ((moved, ["updated_at"]), (only_won, [])):
             for page in _pages(ids, 1):
                 crud.update_by_arrays(db, now, names + stamp, [
-                    [r] + [merged[r][c] for c in data] + ([won_by[r]] if keeps else []) for r in page], at)
+                    [r] + [merged[r][c] for c in data] + ([lines.won_by_stored(won_by[r], bits)] if keeps else [])
+                    for r in page], at)
         return merged, lost
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     if moved or only_won:
@@ -875,7 +878,8 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
             {**{c: bindparam("__%d" % n) for n, c in enumerate(data)},
              **({"won_by": bindparam("__won")} if keeps else {}), "updated_at": bindparam("__at")}),
-            [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
+            [{"__row": row_id, "__won": lines.won_by_stored(won_by[row_id], bits),
+              **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
               "__at": at if row_id in stamped else old[row_id].get("updated_at")}
              for row_id in moved + only_won])
     return merged, lost

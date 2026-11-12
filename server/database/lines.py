@@ -1,7 +1,7 @@
 """The cell-source overhaul's table shape - ONE author (docs/design/CELL_SOURCE_OVERHAUL.md).
 
-A declared table t stays what it is - the current values (owner 11-11) - plus one column `won_by` (column ->
-winning line_id). Its history is `t__lines` (one line per write). The line-table name, the column -> bit map and
+A declared table t stays what it is - the current values (owner 11-11) - plus one column `won_by` (by bit slot,
+the winning line_id - `won_by_cells`). Its history is `t__lines` (one line per write). The line-table name, the column -> bit map and
 every DDL on the pair go through here; nothing else spells «__lines».
 """
 import contextlib
@@ -10,7 +10,7 @@ import math
 
 from sqlalchemy import (BigInteger, Column, DateTime, Index, Integer, MetaData, String, Table,
                         func, select, text)
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.types import JSON
 
 from .database import Base
@@ -567,7 +567,41 @@ def value_column(name: str) -> str:
 
 
 def won_by_type():
-    return JSON().with_variant(JSONB, "postgresql")
+    """t.won_by: a bigint array by bit slot - won_by[bit] the winning line_id, FORMULA_WON where the formula shows,
+    NULL where no line won (lead 11-13 안 1: column names made t 2.4x main's width); sqlite the same list as JSON.
+    Read and written only through `won_by_cells` / `won_by_stored` / `won_by_of`."""
+    return JSON().with_variant(ARRAY(BigInteger), "postgresql")
+
+
+def won_by_cells(stored, bits: dict) -> dict:
+    """THE reading of a row's won_by: {column: line_id} - `bits` t's {column: bit} (`bit_map`, a shape's); a slot no
+    live column holds is left out."""
+    if not stored:
+        return {}
+    by_bit = {b: c for c, b in bits.items()}
+    return {by_bit[n]: int(v) for n, v in enumerate(stored) if v is not None and n in by_bit}
+
+
+def won_by_stored(cells: dict, bits: dict):
+    """THE writing of a row's won_by: {column: line_id} -> the stored list; None when no cell has a winner."""
+    if not cells:
+        return None
+    out = [None] * (1 + max(bits[c] for c in cells))
+    for c, line_id in cells.items():
+        out[bits[c]] = int(line_id)
+    return out
+
+
+def won_by_of(db, table_name: str, row_ids, bits: dict = None) -> dict:
+    """{row_id: {column: line_id}} of these rows of t (`won_by_cells`), a statement a page."""
+    bits = bit_map(db, table_name) if bits is None else bits
+    t = Table(table_name, MetaData(), Column("row_id", String), Column(WON_BY, won_by_type()))
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    out = {}
+    for at in range(0, len(ids), 1000):
+        for row_id, stored in db.execute(select(t.c.row_id, t.c[WON_BY]).where(t.c.row_id.in_(ids[at:at + 1000]))):
+            out[row_id] = won_by_cells(stored, bits)
+    return out
 
 
 def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:

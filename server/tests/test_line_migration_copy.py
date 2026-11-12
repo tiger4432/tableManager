@@ -56,8 +56,7 @@ def test_the_copied_lines_merge_to_what_t_shows_and_won_by_names_them(db):
     user_line = db.execute(select(lt.c.line_id).where(lt.c.row_id == "r1", lt.c.source_name == "user")).scalar()
     import json
 
-    won = shown["r1"].won_by
-    won = json.loads(won) if isinstance(won, str) else won
+    won = lines.won_by_of(db, "t", ["r1"])["r1"]
     assert won["lot"] == user_line and "qty" in won
     assert db.execute(select(lt.c.batch).distinct()).scalars().all() == ["tx-copy"]
 
@@ -141,8 +140,7 @@ def test_a_text_cell_copies_what_todays_write_would_store(db, stored, line, won)
     line_id, said = db.execute(select(lt.c.line_id, lt.c[lines.value_column("lot")])
                                .where(lt.c.row_id == "r2", lt.c.source_name == "fileN")).one()
     assert said == line
-    won_by = db.execute(text("SELECT won_by FROM t WHERE row_id = 'r2'")).scalar()
-    won_by = (json.loads(won_by) if isinstance(won_by, str) else won_by) or {}
+    won_by = lines.won_by_of(db, "t", ["r2"]).get("r2", {})
     assert (won_by.get("lot") == line_id) if won else ("lot" not in won_by)
 
 
