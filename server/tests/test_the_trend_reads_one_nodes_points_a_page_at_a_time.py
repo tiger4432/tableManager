@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import explorer, schema, trace_router  # noqa: E402
 from ledger.envelope import ROW_COLUMNS  # noqa: E402
 
-pytestmark = pytest.mark.pg
+pytestmark = [pytest.mark.pg, pytest.mark.usefixtures("stored_walks")]   # a stored-only ledger fixture (11-10; PG, left out of f5a2b1998's sqlite count, 11-12)
 
 T = datetime(2026, 5, 3, 2, 0, tzinfo=timezone.utc)
 Q = ("quantity", {"quantity": "p"})

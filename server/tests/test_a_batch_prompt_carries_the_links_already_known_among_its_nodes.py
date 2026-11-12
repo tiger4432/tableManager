@@ -384,6 +384,7 @@ def _ledger_rows(atoms):
 
 
 @pytest.mark.pg
+@pytest.mark.usefixtures("stored_walks")   # a stored-only ledger fixture (11-10; PG, left out of f5a2b1998's sqlite count, 11-12)
 def test_the_real_walk_reaches_the_known_links(model, ledger_engine, monkeypatch):
     """`_walked` as shipped - `trace_router._evidence_graph` on a connection of its own - over a scratch ledger:
     the same prompt as the in-memory walk gives. public is not read: the engine is the scratch one."""

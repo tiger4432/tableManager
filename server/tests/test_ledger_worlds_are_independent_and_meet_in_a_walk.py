@@ -470,6 +470,7 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
 
 
 @pytest.mark.pg
+@pytest.mark.usefixtures("stored_walks")   # a stored-ledger contract: the virtual walk reads the source's present (lead 11-12)
 def test_a_fact_is_current_or_not_within_its_own_world(world):
     """A later fact of a `one` predicate in C does not hide A's - a source two worlds translated
     shows from both."""
@@ -757,6 +758,7 @@ def test_the_boot_restamp_and_the_script_naming_no_world_move_the_operating_worl
 
 
 @pytest.mark.pg
+@pytest.mark.usefixtures("stored_walks")   # a stored-ledger contract: the virtual walk reads the source's present (lead 11-12)
 def test_a_world_copied_starts_as_that_declaration_once_and_is_walked_before_it_is_translated(world):
     _seed(world)
     _make(world, A, _only(KEPT))
