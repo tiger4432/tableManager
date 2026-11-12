@@ -1141,22 +1141,25 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
     shown = [c for c in view_columns if c not in OUTBOX_PAYLOAD_EXCLUDED_COLUMNS]
     collapsed = request_outbox_mode.get() == OUTBOX_MODE_COLLAPSED
     table_shape = SimpleNamespace(columns=[SimpleNamespace(name=c) for c in view_columns])
+
+    def as_row(row_id, old, new):                  # the event's row - built only where events are staged a row
+        return SimpleNamespace(__table__=table_shape, row_id=row_id,
+                               business_key_val=keys.get(row_id, old.get("business_key_val")),
+                               **{c: new.get(c) for c in shown})
+
     events = {"CREATE": [], "EDIT": [], "DELETE": []}
     for row_id, change in changed.items():
         old, new = change["old"] or {}, change["new"]
         if new is None:
-            events["DELETE"].append((row_id, None, {c: json_value(old.get(c)) for c in shown}, old))
+            events["DELETE"].append((row_id, None, {c: json_value(old.get(c)) for c in shown}, None))
             continue
-        row = SimpleNamespace(__table__=table_shape, row_id=row_id,
-                              business_key_val=keys.get(row_id, old.get("business_key_val")),
-                              **{c: new.get(c) for c in shown})
         if change["old"] is None:
             events["CREATE"].append((row_id, sorted(wrote.get(row_id, set()) | {"row_id", "business_key_val"}),
-                                     None, row))
+                                     None, (old, new)))
             continue
         moved = _moved(old, new, shown, types)
         if moved:
-            events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, row))
+            events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, (old, new)))
     for event_type, rows in events.items():
         if not rows:
             continue
@@ -1165,8 +1168,8 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
                                   sorted({c for r in rows for c in r[1] or ()}) or None,
                                   old=[r[2] or {} for r in rows] if event_type != "CREATE" else None)
         else:
-            for _row_id, _columns, old, row in rows:
-                stage_event(db, event_type, table, row, old=old)
+            for row_id, _columns, old, (was, new) in rows:
+                stage_event(db, event_type, table, as_row(row_id, was, new), old=old)
 
 
 def _audit(db, table, said, transaction_id, at):
