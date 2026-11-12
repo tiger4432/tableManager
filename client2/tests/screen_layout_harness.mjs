@@ -3609,8 +3609,16 @@ const DRIVE = {
       await evaluate(c, `(() => { const t = document.getElementById('tab-global'); if (t) t.click();
         const r = document.getElementById('refresh-history-btn'); if (r) r.click(); return true; })()`);
       await settle(c, log);
-      await until(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
-        return !!li && li.textContent.includes('1,000+ rows') && !!li.querySelector('.expand-indicator'); })()`);
+      // the list read with its reads settled: the tab and Refresh are two asks, and the second redraws the list (a redraw
+      // folds an unfolded batch) - so the cell, and no «Updating», twice a second and a half apart
+      const read = `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        const count = document.getElementById('audit-filter-count');
+        return !!li && li.textContent.includes('1,000+ rows') && !!li.querySelector('.expand-indicator')
+          && !(count && count.textContent === 'Updating'); })()`;
+      await until(c, read);
+      await sleep(1500);
+      await settle(c, log);
+      await until(c, read);
       await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
         li.querySelector('.expand-indicator').click(); li.scrollIntoView({ block: 'start' }); return true; })()`);
       await settle(c, log);
