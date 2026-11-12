@@ -1,5 +1,54 @@
 # 지금 돌리면 되는 것
 
+> ## [11-12c] **옛 층 표를 줄 표로 옮기기 — 이주 명령 (서버를 끈 채 한 번) · 시작 검사가 줄 표 인덱스를 다 짓는다** — 새 릴리스로 올린 뒤
+>
+> ```
+> 순서     ① 새 릴리스로 올리고 런처를 한 번 띄웠다가 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
+>          ② 미리보기   cd server ; python scripts/copy_layers_to_lines.py
+>          ③ (고를 때) 점검  python scripts/copy_layers_to_lines.py --check     옮겨 보고 쪽마다 되돌린다. 남는 것 없음
+>          ④ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
+>          ⑤ 런처를 띄운다
+> 미리보기  <표>  N layer(s) on M row(s) · to copy | copied | lines not built - start the server once
+>          <표>  names read as an old key merge's copies: N, first: ...     옛 키 병합의 사본 이름. 줄 표에 사본으로 적힌다
+>          total N layer(s) to copy · preview only - add --apply
+> 점검     <표>: N / M rows checked, K mismatched so far[, first: <행>.<칸> t=<값> lines=<값>]   쪽마다 한 줄
+>          Ctrl+C 로 언제 끊어도 그때까지의 수가 참이다. K 가 0 이 아니면 그 줄을 총괄께
+> 진행     <표>: N / M rows, K layer(s) copied, about X min left        표마다 10 초에 한 줄
+>          X 는 그 표의 지금까지 속도로 셈한 것이다. 앞뒤 속도가 고르지 않을 수 있다
+> 끝       <표>: done - K layer(s) copied in S s
+>          copied A table(s), B already, C stopped                       C 가 0 이 아니면 exit 1
+>
+> 답의 뜻
+>   refused: the server is running - <이름> (pid N)
+>          서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
+>   refused: lines not built for <표>
+>          ① 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
+>   <표>: already copied (...) - skipped
+>          그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   <표>: STOPPED - N cell(s) where the copied lines do not give what t shows, first: <행>.<칸> t=<값> lines=<값>
+>          게이트: 옮긴 줄을 다시 합친 값이 화면(t)의 값과 다르다. 그 쪽만 되돌렸고 앞 쪽들은 남는다
+>          다른 표는 계속 옮겨진다. 할 일: 그 줄을 그대로 총괄께. 고친 뒤 ④ 를 다시 — 이어서 간다
+>   REFUSED - <표>: cell_sources has no owner_rule / owner_key - the copy reads them; this database cannot be copied
+>          옛 층 표에 owner 칸이 없다 — release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
+>          할 일: 지금 운영 중인 릴리스(옛 릴리스)로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) 새 릴리스로 올리고 ① 부터
+>
+> 이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ④ 를 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
+> 시간     운영 시간 추정은 아직 없다 — 조용한 판에서 잰 수가 나오면 여기에 적는다. 진행 줄의 남은 시간을 본다
+> 되돌리기  옛 릴리스로 되돌린다. 옛 층 표는 읽기만 했으니 그대로다. 되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
+> 끄기     없음 — 이 명령은 사람이 돌릴 때만 돈다
+>
+> 시작 검사 (런처가 뜰 때마다, 7953b76ff)
+>          줄 표마다 선언된 인덱스 다섯(_ra · _b · _p · _h · _i)이 있고 유효한지 묻는다. 빠졌거나 INVALID 면 그 자리에서 짓는다
+>          다 있으면 조용하다 — 박스 60 표에 약 2 초
+>   [Indexes] line index '<표>__lines_<x>' ...       빠진 인덱스를 짓는 줄. 짓는 동안 시작이 기다린다
+>          (표가 클수록 길다 — 7 천만 줄에서 인덱스 하나에 수 분으로 «외삽», 잰 수가 아니다)
+>   LineTablesRefused ... <표>: index <이름> not built (<답>) - the line above says why; start again once it is free
+>          인덱스를 못 지어 시작을 «거절»했다. 바로 위 줄이 이유다(다른 세션이 표를 잡고 있음 · 짓기 실패)
+>          할 일: 그 세션이 끝난 뒤 런처를 다시. 실패가 반복되면 그 두 줄을 총괄께
+> ```
+>
+> ---
+
 > ## [11-11i] **표 걷기(Tables 화면) — 행을 + / − 로 찍어 다음 표로 걷고, 마지막 표를 축 하나로 «축 | + | −» 표로 접는다** — 번들 적용 · api 재기동
 >
 > ```

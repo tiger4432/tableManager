@@ -318,12 +318,14 @@ def line_indexes(engine, table_name: str, table_cfg: dict, say=None, only=None) 
     starts (owner 11-11 «the launcher builds everything or starts nothing», lead 11-12). sqlite: create_all and
     alter_columns build them. -> {index name: the builder's answer}."""
     import logging
+    import time
 
     from sqlalchemy.orm import Session
     from sqlalchemy.schema import CreateIndex
 
     from . import models
 
+    say = say or logging.getLogger(__name__).info
     with Session(engine) as db:
         s = shape(db, table_name, table_cfg)
         db.rollback()
@@ -333,11 +335,13 @@ def line_indexes(engine, table_name: str, table_cfg: dict, say=None, only=None) 
         if only is not None and index.name not in only:
             continue
         ddl = str(CreateIndex(index).compile(dialect=engine.dialect))
+        began = time.perf_counter()
         out[index.name] = models._ensure_one_index_once(
             engine, index.name, ddl.replace("CREATE INDEX", "CREATE INDEX CONCURRENTLY IF NOT EXISTS", 1),
-            "line head" if index.name == head else "line", say=say or logging.getLogger(__name__).info,
-            table=lines_relation(table_name),
+            "line head" if index.name == head else "line", say=say, table=lines_relation(table_name),
             leftovers=[head_index_name(table_name, n) for n in range(1, s["chunks"])] if index.name == head else ())
+        if out[index.name] == models.INDEX_BUILT:
+            say("[Indexes] line index '%s' built in %.1f s" % (index.name, time.perf_counter() - began))
     return out
 
 
