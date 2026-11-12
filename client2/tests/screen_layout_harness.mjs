@@ -3403,8 +3403,12 @@ const DRIVE = {
       const pick = (name) => evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
         sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await evaluate(c, "window.__tabsFrom = (document.getElementById('table-select') || {}).value; true");
-      // three tables other than the open one, each opened (a table opened again after × reads: clean)
-      const names = await evaluate(c, "[...document.getElementById('table-select').options].map((o) => o.value).filter((v) => v && v !== window.__tabsFrom).slice(0, 3)");
+      // three tables other than the open one, each opened (a table opened again after × reads: clean) - tables whose first
+      // page the answers hold: lot_event and process_event read nothing here and left 4 answers reds a size (11-12)
+      const read = Object.keys(ANSWERS).map((k) => /^\/tables\/([^/]+)\/data\?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true$/.exec(k)).filter(Boolean).map((m) => m[1]);
+      const names = await evaluate(c, `[...document.getElementById('table-select').options].map((o) => o.value)
+        .filter((v) => v && v !== window.__tabsFrom && ${JSON.stringify(read)}.includes(v)).slice(0, 3)`);
+      if (names.length < 3) throw new Error(`three tables with answers to open, found ${names.length}: ${names.join(', ')}`);
       const opened = (name) => `(document.getElementById('table-select') || {}).value === ${JSON.stringify(name)}
         && ((document.querySelector('#table-tabs .table-tab.is-open .table-tab-name') || {}).textContent || '') === ${JSON.stringify(name)}`;
       for (const name of names) {
