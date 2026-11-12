@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-13] **줄 표 · 선언된 표의 autovacuum — 규칙 하나 (50 + 행 수의 2%, 상한, cost_limit 2000)** — 새 릴리스로 재기동 뒤
+>
+> ```
+> 할 일    없음. 스케줄러가 시작 · 병합 때 건다 (PG 18 이 필요 — 운영 18.3)
+> 볼 줄    scheduler 로그, 시작 뒤 1~2 분 안에 한 번씩:
+>   [Lines] autovacuum on line tables (... max_threshold = 50000 ...): set now N
+>   [Storage] autovacuum on declared tables (... max_threshold = 100000 ...): set now N
+>          뜻: N 개 표에 처음 걸었다. 다음 시작부터는 다 걸려 있어 이 줄이 안 나온다 (조용 = 정상)
+>   ... by hand N        누가 손으로 바꾼 값이 있어 그대로 둠. 인덱스 화면 «Apply declared» 로 덮을 수 있다
+>   ... not set (lock busy) N   그 표 잠금이 바빴다 — 다음 병합(2 분)에 다시. 계속 나오면 [DDL] 줄이 쥔 쪽을 말한다
+>   ... not set (failed) N      PG 가 거절 — 대개 PG 18 아님. [Indexes] <표> storage not set 줄이 사유
+> 확인     인덱스 화면의 Storage 표: 표마다 autovacuum_* 줄이 held
+> 끄기     ingestion_settings.json 에 "lines_autovacuum_threshold": null / "table_autovacuum_threshold": null
+>          -> 그 표들은 손대지 않음 (이미 걸린 값은 남는다 — 총괄께 말하면 되돌리는 법을 드림)
+> 바꾸기   같은 칸에 숫자 (상한, 죽은 행 수). 표 하나만은 table_config 의 그 표 "storage" 에 칸을 적으면 이긴다
+> ```
+
 > ## [11-13d] **느린 요청 줄의 시계 — DB 가 취소한 문장도 SQL 시간으로 센다** — 새 릴리스로 올린 뒤 (서버만)
 >
 > ```
@@ -29,10 +46,10 @@
 >          total N layer(s) to copy · preview only - add --apply
 > 점검     <표>: N / M rows checked, K mismatched so far[, first: <행>.<칸> t=<값> lines=<값>]   쪽마다 한 줄
 >          Ctrl+C 로 언제 끊어도 그때까지의 수가 참이다. K 가 0 이 아니면 그 줄을 총괄께
-> 진행     <표>: N / M rows, K layer(s) copied, about X min left        표마다 10 초에 한 줄
+> 진행     <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
 >          X 는 그 표의 지금까지 속도로 셈한 것이다. 앞뒤 속도가 고르지 않을 수 있다
-> 끝       <표>: done - K layer(s) copied in S s
->          copied A table(s), B already, C stopped                       C 가 0 이 아니면 exit 1
+> 끝       <표>: done - K layer(s) copied in S s[ - D cell(s) do not match, listed in <파일> ...]
+>          copied A table(s), B already, C stopped - D cell(s) do not match (<파일>…)   C 가 0 이 아니면 exit 1
 >
 > 답의 뜻
 >   refused: the server is running - <이름> (pid N)
@@ -41,9 +58,12 @@
 >          ① 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
 >   <표>: already copied (...) - skipped
 >          그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
->   <표>: STOPPED - N cell(s) where the copied lines do not give what t shows, first: <행>.<칸> t=<값> lines=<값>
->          게이트: 옮긴 줄을 다시 합친 값이 화면(t)의 값과 다르다. 그 쪽만 되돌렸고 앞 쪽들은 남는다
->          다른 표는 계속 옮겨진다. 할 일: 그 줄을 그대로 총괄께. 고친 뒤 ④ 를 다시 — 이어서 간다
+>   D cell(s) do not match, listed in copy_mismatch_<표>.csv
+>          옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸. 쪽은 그대로 옮겨졌고 표는 끝까지 간다 (소유자 ㄴ)
+>          그 칸은 지금 값을 그대로 보이다가, «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다
+>          파일 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다. 할 일: 파일을 총괄께
+>          고친 뒤 그 행만 다시: python server/scripts/copy_layers_to_lines.py --apply --rows <파일>
+>            -> «<표>: N row(s) copied again - ... - every cell matches» 면 끝. 아니면 새 파일(.again-<시각>.csv)
 >   REFUSED - <표>: cell_sources has no owner_rule / owner_key - the copy reads them; this database cannot be copied
 >          옛 층 표에 owner 칸이 없다 — release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
 >          할 일: 지금 운영 중인 릴리스(옛 릴리스)로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) 새 릴리스로 올리고 ① 부터

@@ -7,6 +7,8 @@ Usage
     python server/scripts/copy_layers_to_lines.py --check [--table <t> ...]   copy and roll back each page: cells
                                                                               whose lines merge to other than t, so far
     python server/scripts/copy_layers_to_lines.py --apply [--workers 4] [--table <t> ...] [--page 1000]
+    python server/scripts/copy_layers_to_lines.py --apply --rows copy_mismatch_<t>.csv   those rows' copy lines
+                                         taken out and copied again (after their layers or t were fixed)
     python server/scripts/copy_layers_to_lines.py --estimate [--workers 4] [--analyze] [--sample]   per table, layers
                                          from the database's statistics (nothing read) and hours; --analyze makes them
                                          first; --sample copies the biggest table for SAMPLE_SECONDS and rolls it back
@@ -14,8 +16,10 @@ Usage
 
 Per table: pages of `--page` rows, a commit each (`line_migration.copy_page`). Interrupted, run it again - each table
 resumes after its last committed page (`copied_through`); a table already copied says so and is skipped.
-The gate rides every page: the copied lines merged again must give what t shows. A page that does not is rolled
-back and its table stops, naming the cells; fix and run again. The last page of a table writes its «copy» audit row.
+The gate rides every page: the copied lines merged again must give what t shows. A cell that does not is written to
+copy_mismatch_<t>.csv (table, row_id, column, t_value, lines_value) and the page lands (owner ㄴ): t still shows its
+value, and the cell turns to its lines' winner only when that column is written (c7319dfb6 - a merge re-decides only
+the cells its write touched). The last page of a table writes its «copy» audit row.
 `--workers N` copies N tables at once, one process each.
 
 Refused while any product process (application_name assy_*) is connected to the database - stop the server first.
@@ -35,8 +39,11 @@ from sqlalchemy.orm import Session                                   # noqa: E40
 
 from database import crud, line_migration, lines, models             # noqa: E402
 
-#: the cells a stopped table names, at most
+#: the cells a line names, at most
 SHOWN = 5
+#: a table's cells whose copied lines do not give what t shows: copy_mismatch_<t>.csv, in the directory it runs in
+RECORD = "copy_mismatch_%s.csv"
+RECORD_COLUMNS = ("table", "row_id", "column", "t_value", "lines_value")
 #: seconds between a table's progress lines
 SAY_EVERY = 10.0
 #: layers a second --estimate counts hours at: a quiet box, one 30-column table, one process (C, lead 11-12)
@@ -162,13 +169,52 @@ def plan(engine, tables: dict) -> list:
     return out
 
 
-def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
-    """Copy one table to its end, a commit a page; stop at a page the gate refuses (rolled back)."""
+def record(path, table, mismatched) -> None:
+    """Append (row_id, column, t's value, the lines' winner) cells to the record, its head line first."""
+    import csv
+
+    new = not os.path.exists(path)
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        out = csv.writer(f)
+        if new:
+            out.writerow(RECORD_COLUMNS)
+        out.writerows((table,) + tuple("" if v is None else v for v in m) for m in mismatched)
+
+
+def recorded_rows(path) -> dict:
+    """{table: [row_id]} of a record."""
+    import csv
+
+    with open(path, newline="", encoding="utf-8") as f:
+        got = {}
+        for r in csv.DictReader(f):
+            got.setdefault(r["table"], set()).add(r["row_id"])
+    return {t: sorted(r) for t, r in got.items()}
+
+
+def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -> dict:
+    """Copy one table to its end, a commit a page; a cell the gate finds is recorded and the page lands. `rows`: those
+    rows only (a record's), their copy lines taken out first."""
     tx = "copy_lines:%s" % table
     cs = models.CellSource.__table__
+    path = os.path.abspath(RECORD % table)
     with Session(bind=engine) as db:
-        rows = db.execute(select(func.count(func.distinct(cs.c.row_id))).where(cs.c.table_name == table)).scalar()
-        after, copied, pages, mismatched = None, 0, 0, []
+        total = db.execute(select(func.count(func.distinct(cs.c.row_id))).where(cs.c.table_name == table)).scalar()
+        after, copied, pages, mismatched, found = None, 0, 0, [], 0
+        if rows is not None:
+            path = os.path.abspath((RECORD % table)[:-4] + time.strftime(".again-%Y%m%d-%H%M%S.csv"))
+            taken = take_copy_lines(db, table, cfg, rows, tx)
+            n, _ = line_migration.copy_page(db, table, cfg, None, len(rows), transaction_id=tx,
+                                            mismatched=mismatched, rows=rows)
+            db.commit()
+            if mismatched:
+                record(path, table, mismatched)
+            say("%s: %d row(s) copied again - %d copy line(s) taken out, %d layer(s) copied - %s" % (
+                table, len(rows), taken, n, "%d cell(s) still do not match, listed in %s" % (len(mismatched), path)
+                if mismatched else "every cell matches"))
+            return {"table": table, "again": len(rows), "copied": n, "mismatched": len(mismatched),
+                    "record": path if mismatched else None}
+        rows = total
         started = said = time.perf_counter()
         while True:
             try:
@@ -182,13 +228,11 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
                 db.rollback()
                 say("REFUSED - %s" % refused)
                 return {"table": table, "stopped": True, "refused": str(refused), "copied": copied}
-            if mismatched:
-                db.rollback()
-                shown = "; ".join("%s.%s t=%r lines=%r" % m for m in mismatched[:SHOWN])
-                say("%s: STOPPED - %d cell(s) where the copied lines do not give what t shows, first: %s - page "
-                    "rolled back, the pages before it stay" % (table, len(mismatched), shown))
-                return {"table": table, "stopped": True, "mismatched": mismatched, "copied": copied}
             db.commit()
+            if mismatched:
+                record(path, table, mismatched)
+                found += len(mismatched)
+                mismatched = []
             copied += n
             pages += 1
             after = after_next
@@ -197,15 +241,35 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
                 began = time.perf_counter()          # a migrated t__lines has no statistics: its first reads plan blind
                 with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
                     c.execute(text('ANALYZE "%s"' % lines.lines_relation(table)))
-                say("%s: done - %d layer(s) copied in %.0f s - analyzed %s in %.0f s" % (
-                    table, copied, now - started, lines.lines_relation(table), time.perf_counter() - began))
-                return {"table": table, "copied": copied, "seconds": now - started}
+                say("%s: done - %d layer(s) copied in %.0f s - analyzed %s in %.0f s%s" % (
+                    table, copied, now - started, lines.lines_relation(table), time.perf_counter() - began,
+                    (" - %d cell(s) do not match, listed in %s: each shows t's value until its column is written, "
+                     "then its lines' winner; to copy those rows again: python server/scripts/copy_layers_to_lines.py "
+                     "--apply --rows %s" % (found, path, path)) if found else ""))
+                return {"table": table, "copied": copied, "seconds": now - started, "mismatched": found,
+                        "record": path if found else None}
             if now - said >= SAY_EVERY:
                 said = now
                 done = min(pages * page, rows)
                 rate = done / (now - started)
-                say("%s: %d / %d rows, %d layer(s) copied, about %.0f min left"
-                    % (table, done, rows, copied, (rows - done) / rate / 60 if rate else 0))
+                say("%s: %d / %d rows, %d layer(s) copied, %d mismatched so far, about %.0f min left"
+                    % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
+
+
+def take_copy_lines(db, table, cfg, rows, tx) -> int:
+    """Take these rows' copy lines out of t__lines, and the won_by entries naming them. -> lines taken."""
+    from sqlalchemy import delete, update
+
+    s = lines.shape(db, table, cfg)
+    lt, t = s["lines"], lines.current_table(db, table, cfg)
+    gone = set(db.execute(select(lt.c.line_id).where(lt.c.batch == tx, lt.c.row_id.in_(rows))).scalars())
+    if gone:
+        db.execute(delete(lt).where(lt.c.line_id.in_(sorted(gone))))
+        for row_id, won_by in db.execute(select(t.c.row_id, t.c[lines.WON_BY]).where(t.c.row_id.in_(rows))).all():
+            kept = {c: lid for c, lid in (won_by or {}).items() if lid not in gone}
+            if kept != (won_by or {}):
+                db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: kept or None}))
+    return len(gone)
 
 
 def check_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
@@ -260,6 +324,7 @@ def main(argv=None) -> int:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--page", type=int, default=1000)
     parser.add_argument("--table", action="append", default=[])
+    parser.add_argument("--rows", help="a copy_mismatch_<t>.csv: copy its rows again (with --apply)")
     args = parser.parse_args(argv)
     from database.database import engine
 
@@ -334,6 +399,17 @@ def main(argv=None) -> int:
         print("refused: lines not built for %s - start the server once (it builds them), stop it, run again"
               % ", ".join(unbuilt))
         return 2
+    if args.rows:
+        asked = recorded_rows(args.rows)
+        unknown = sorted(t for t in asked if t not in tables)
+        if unknown:
+            print("refused: %s names %s, not a declared table that keeps lines" % (args.rows, ", ".join(unknown)))
+            return 2
+        again = [copy_table(engine, t, tables[t], args.page, say=lambda line: print(line, flush=True), rows=r)
+                 for t, r in sorted(asked.items())]
+        print("copied again %d row(s) of %d table(s) - %d cell(s) still do not match" % (
+            sum(r["again"] for r in again), len(again), sum(r["mismatched"] for r in again)))
+        return 0
     work = [(p["table"], args.page) for p in todo if not p["copied"] and p["layers"]]
     engine.dispose()
     if args.workers > 1:
@@ -342,9 +418,11 @@ def main(argv=None) -> int:
     else:
         results = [_one(w) for w in work]
     stopped = [r["table"] for r in results if r.get("stopped")]
-    print("copied %d table(s), %d already, %d stopped%s" % (
+    records = [r["record"] for r in results if r.get("record")]
+    print("copied %d table(s), %d already, %d stopped%s - %d cell(s) do not match%s" % (
         sum(1 for r in results if "seconds" in r), sum(1 for r in results if r.get("already")), len(stopped),
-        (" - " + ", ".join(stopped)) if stopped else ""))
+        (" - " + ", ".join(stopped)) if stopped else "", sum(r.get("mismatched") or 0 for r in results),
+        (" (" + ", ".join(records) + ")") if records else ""))
     return 1 if stopped else 0
 
 
