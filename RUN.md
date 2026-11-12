@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-13] **줄 표 · 선언된 표의 autovacuum — 규칙 하나 (50 + 행 수의 2%, 상한, cost_limit 2000)** — 새 릴리스로 재기동 뒤
+>
+> ```
+> 할 일    없음. 스케줄러가 시작 · 병합 때 건다 (PG 18 이 필요 — 운영 18.3)
+> 볼 줄    scheduler 로그, 시작 뒤 1~2 분 안에 한 번씩:
+>   [Lines] autovacuum on line tables (... max_threshold = 50000 ...): set now N
+>   [Storage] autovacuum on declared tables (... max_threshold = 100000 ...): set now N
+>          뜻: N 개 표에 처음 걸었다. 다음 시작부터는 다 걸려 있어 이 줄이 안 나온다 (조용 = 정상)
+>   ... by hand N        누가 손으로 바꾼 값이 있어 그대로 둠. 인덱스 화면 «Apply declared» 로 덮을 수 있다
+>   ... not set (lock busy) N   그 표 잠금이 바빴다 — 다음 병합(2 분)에 다시. 계속 나오면 [DDL] 줄이 쥔 쪽을 말한다
+>   ... not set (failed) N      PG 가 거절 — 대개 PG 18 아님. [Indexes] <표> storage not set 줄이 사유
+> 확인     인덱스 화면의 Storage 표: 표마다 autovacuum_* 줄이 held
+> 끄기     ingestion_settings.json 에 "lines_autovacuum_threshold": null / "table_autovacuum_threshold": null
+>          -> 그 표들은 손대지 않음 (이미 걸린 값은 남는다 — 총괄께 말하면 되돌리는 법을 드림)
+> 바꾸기   같은 칸에 숫자 (상한, 죽은 행 수). 표 하나만은 table_config 의 그 표 "storage" 에 칸을 적으면 이긴다
+> ```
+
 > ## [11-12c] **옛 층 표를 줄 표로 옮기기 — 이주 명령 (서버를 끈 채 한 번) · 시작 검사가 줄 표 인덱스를 다 짓는다** — 새 릴리스로 올린 뒤
 >
 > ```
