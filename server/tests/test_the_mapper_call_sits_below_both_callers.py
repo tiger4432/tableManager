@@ -125,17 +125,14 @@ def test_replay_no_longer_imports_the_worker_for_the_executor():
     replay = io.open(os.path.join(SERVER_DIR, "chain", "replay.py"), encoding="utf-8").read()
 
     assert "from chain.ingestion_worker import execute_custom_mapper" not in replay
-    # 총괄 10-11: asked of the FUNCTIONS, not the file's imports - fold-units (770b1f24b, 소유자 10-11 「접는 거 일단
-    # 스크립트로 빨리 하는 거 줘, 맵퍼 말고」) runs its fold rule through the seat by design and lives in this file; the
-    # replay door and everything else here still only hands rows over.
+    # 총괄 10-11: asked of the FUNCTIONS, not the file's imports. ⚰️ fold-units ran its fold rule through the seat here
+    # (770b1f24b) - retired 11-12 (owner: folds run through the chain's replay), so no function of this file does.
     tree = ast.parse(replay)
     running = sorted(fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef) and any(
         isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "rule_run"
         for n in ast.walk(fn)))
-    # `asked` is fold_units' own, nested: it asks the seat a few groups at a time (총괄 2ea5ee2a7)
-    assert running == ["_fold_units_page", "asked", "fold_units"], (
-        "a replay function reaches the seat; replay hands rows over, it does not run rules (only fold-units does)",
-        running)
+    assert running == [], ("a replay function reaches the seat; replay hands rows over, it does not run rules",
+                           running)
     # 🔴 THE SEAT STILL LIVES IN ITS OWN HOUSE. `mapper_call` kept the two pieces that are
     #    genuinely about calling a FILE mapper - the signature convention and the stage clock -
     #    so the seat importing it is the neutral-house shape, not a leftover edge.

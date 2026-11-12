@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-"""총괄 10-11 (소유자 「접는 거 일단 스크립트로 빨리 하는 거 줘, 맵퍼 말고」) — `fold-units` leaves what the chain leaves.
-
-Two copies of one seed in the scratch schema. A: the unit rule replayed and drained through the worker's group
-step (setup ⑤ - the write door, then the edited unit rows' withdrawal). B: `replay.fold_units(apply=True)`.
-Compared with ids and times left out: every log row's mark, every layer and overwrite on the mark column, the
-history lines. The seed holds each case the script has to get right: a log row marked so already, a hand-written
-layer above the chain's, a unit that lost and now wins (its old marks go), a log row whose job moved (its old
-mark goes), a winner with no out time, AUTO before MANUAL."""
+"""A fold rule replayed through the chain folds: the unit rule replayed and drained through the worker's group step
+(setup ⑤ - the write door, then the edited unit rows' withdrawal). Owner 11-12: folds run through the chain's replay -
+`fold-units` (10-11, 「접는 거 일단 스크립트로 빨리 하는 거 줘」) is retired; this file compared it with this copy, and
+PINNED is what the two left alike on main 0062fc8b7 (ids and times left out). The seed holds each case a fold has to
+get right: a log row marked so already, a hand-written layer above the chain's, a unit that lost and now wins (its old
+marks go), a log row whose job moved (its old mark goes), a winner with no out time, AUTO before MANUAL."""
 import json
 import os
 import sys
@@ -17,7 +15,6 @@ from sqlalchemy import MetaData, text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import event_constants                                              # noqa: E402
-from admin.audit_cache import audit_cache                           # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import keyset_scan, replay, rule_run                     # noqa: E402
 from conftest import PG_TEST_SCHEMA, _declared_as_test_database, _resolve_pg_test_url   # noqa: E402
@@ -56,6 +53,195 @@ FOLDED = {**{"%s-%d" % (job, i): "" for job, _w, _t in JOBS for i in range(3)},
           **{"MAN_J6-%d" % i: "folded into MAN_J7" for i in range(3)},
           **{"MAN_J10-%d" % i: "folded into AUTO_J9" for i in range(3)}, "MOVED-0": ""}
 PARTS = ("shown", "layers", "overwrites", "history")
+#: what the chain's copy and fold-units both left on main 0062fc8b7 (A == B, 13 passed) - b74_fill_pins.py
+PINNED = {'history': [('AUTO_J5-1',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J1',
+                       'chain_ingestion (pgqa_fu_by_unit CW1)',
+                       'pgqa_fu_by_unit',
+                       'AUTO_J5-1'),
+                      ('AUTO_J5-2',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J1',
+                       'chain_ingestion (pgqa_fu_by_unit CW1)',
+                       'pgqa_fu_by_unit',
+                       'AUTO_J5-2'),
+                      ('MAN_J10-0',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J9',
+                       'chain_ingestion (pgqa_fu_by_unit CW5)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J10-0'),
+                      ('MAN_J10-1',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J9',
+                       'chain_ingestion (pgqa_fu_by_unit CW5)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J10-1'),
+                      ('MAN_J10-2',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J9',
+                       'chain_ingestion (pgqa_fu_by_unit CW5)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J10-2'),
+                      ('MAN_J3-1',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J4',
+                       'chain_ingestion (pgqa_fu_by_unit CW3)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J3-1'),
+                      ('MAN_J3-2',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into AUTO_J4',
+                       'chain_ingestion (pgqa_fu_by_unit CW3)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J3-2'),
+                      ('MAN_J6-0',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into MAN_J7',
+                       'chain_ingestion (pgqa_fu_by_unit CW4)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J6-0'),
+                      ('MAN_J6-1',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into MAN_J7',
+                       'chain_ingestion (pgqa_fu_by_unit CW4)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J6-1'),
+                      ('MAN_J6-2',
+                       'ROW_UPDATE',
+                       'fold_mark: empty',
+                       'fold_mark: folded into MAN_J7',
+                       'chain_ingestion (pgqa_fu_by_unit CW4)',
+                       'pgqa_fu_by_unit',
+                       'MAN_J6-2'),
+                      ('MAN_J7-0',
+                       'fold_mark',
+                       'folded into MAN_J6',
+                       'null',
+                       'chain_replay_withdraw',
+                       'withdraw:chain_ingestion (MAN_J7)',
+                       'MAN_J7-0'),
+                      ('MAN_J7-1',
+                       'fold_mark',
+                       'folded into MAN_J6',
+                       'null',
+                       'chain_replay_withdraw',
+                       'withdraw:chain_ingestion (MAN_J7)',
+                       'MAN_J7-1'),
+                      ('MAN_J7-2',
+                       'fold_mark',
+                       'folded into MAN_J6',
+                       'null',
+                       'chain_replay_withdraw',
+                       'withdraw:chain_ingestion (MAN_J7)',
+                       'MAN_J7-2'),
+                      ('MOVED-0',
+                       'fold_mark',
+                       'folded into AUTO_J4',
+                       'null',
+                       'chain_replay_withdraw',
+                       'withdraw:chain_ingestion (MAN_J3)',
+                       'MOVED-0')],
+          'layers': [('AUTO_J5-0',
+                      'chain_ingestion (pgqa_fu_by_unit CW1)',
+                      'folded into AUTO_J1',
+                      'AUTO_J5',
+                      'pgqa_fu_by_unit'),
+                     ('AUTO_J5-1',
+                      'chain_ingestion (pgqa_fu_by_unit CW1)',
+                      'folded into AUTO_J1',
+                      'AUTO_J5',
+                      'pgqa_fu_by_unit'),
+                     ('AUTO_J5-2',
+                      'chain_ingestion (pgqa_fu_by_unit CW1)',
+                      'folded into AUTO_J1',
+                      'AUTO_J5',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J10-0',
+                      'chain_ingestion (pgqa_fu_by_unit CW5)',
+                      'folded into AUTO_J9',
+                      'MAN_J10',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J10-1',
+                      'chain_ingestion (pgqa_fu_by_unit CW5)',
+                      'folded into AUTO_J9',
+                      'MAN_J10',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J10-2',
+                      'chain_ingestion (pgqa_fu_by_unit CW5)',
+                      'folded into AUTO_J9',
+                      'MAN_J10',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J3-0',
+                      'chain_ingestion (pgqa_fu_by_unit CW3)',
+                      'folded into AUTO_J4',
+                      'MAN_J3',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J3-0', 'user', 'kept by hand', None, 'op'),
+                     ('MAN_J3-1',
+                      'chain_ingestion (pgqa_fu_by_unit CW3)',
+                      'folded into AUTO_J4',
+                      'MAN_J3',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J3-2',
+                      'chain_ingestion (pgqa_fu_by_unit CW3)',
+                      'folded into AUTO_J4',
+                      'MAN_J3',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J6-0',
+                      'chain_ingestion (pgqa_fu_by_unit CW4)',
+                      'folded into MAN_J7',
+                      'MAN_J6',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J6-1',
+                      'chain_ingestion (pgqa_fu_by_unit CW4)',
+                      'folded into MAN_J7',
+                      'MAN_J6',
+                      'pgqa_fu_by_unit'),
+                     ('MAN_J6-2',
+                      'chain_ingestion (pgqa_fu_by_unit CW4)',
+                      'folded into MAN_J7',
+                      'MAN_J6',
+                      'pgqa_fu_by_unit')],
+          'overwrites': [('MAN_J3-0', True, 'pgqa_fu_by_unit', None)],
+          'shown': [('AUTO_J1-0', 'AUTO_J1-0', None),
+                    ('AUTO_J1-1', 'AUTO_J1-1', None),
+                    ('AUTO_J1-2', 'AUTO_J1-2', None),
+                    ('AUTO_J2-0', 'AUTO_J2-0', None),
+                    ('AUTO_J2-1', 'AUTO_J2-1', None),
+                    ('AUTO_J2-2', 'AUTO_J2-2', None),
+                    ('AUTO_J4-0', 'AUTO_J4-0', None),
+                    ('AUTO_J4-1', 'AUTO_J4-1', None),
+                    ('AUTO_J4-2', 'AUTO_J4-2', None),
+                    ('AUTO_J5-0', 'AUTO_J5-0', 'folded into AUTO_J1'),
+                    ('AUTO_J5-1', 'AUTO_J5-1', 'folded into AUTO_J1'),
+                    ('AUTO_J5-2', 'AUTO_J5-2', 'folded into AUTO_J1'),
+                    ('AUTO_J9-0', 'AUTO_J9-0', None),
+                    ('AUTO_J9-1', 'AUTO_J9-1', None),
+                    ('AUTO_J9-2', 'AUTO_J9-2', None),
+                    ('MAN_J10-0', 'MAN_J10-0', 'folded into AUTO_J9'),
+                    ('MAN_J10-1', 'MAN_J10-1', 'folded into AUTO_J9'),
+                    ('MAN_J10-2', 'MAN_J10-2', 'folded into AUTO_J9'),
+                    ('MAN_J3-0', 'MAN_J3-0', 'kept by hand'),
+                    ('MAN_J3-1', 'MAN_J3-1', 'folded into AUTO_J4'),
+                    ('MAN_J3-2', 'MAN_J3-2', 'folded into AUTO_J4'),
+                    ('MAN_J6-0', 'MAN_J6-0', 'folded into MAN_J7'),
+                    ('MAN_J6-1', 'MAN_J6-1', 'folded into MAN_J7'),
+                    ('MAN_J6-2', 'MAN_J6-2', 'folded into MAN_J7'),
+                    ('MAN_J7-0', 'MAN_J7-0', None),
+                    ('MAN_J7-1', 'MAN_J7-1', None),
+                    ('MAN_J7-2', 'MAN_J7-2', None),
+                    ('MOVED-0', 'MOVED-0', None)]}
 
 
 def _write(db, table, items):
@@ -166,9 +352,8 @@ def copies(pg_engine):
     out = {"public_before": _public(pg_engine)}
     with _declared_as_test_database(url), pytest.MonkeyPatch.context() as mp:
         mp.setattr(replay, "load_rules", lambda: [dict(r) for r in RULES])
-        # the 12 rows the fold names come in mapper pages of 5 (both copies) and are written in pages of 4
+        # the 12 rows the fold names come in mapper pages of 5
         mp.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 5)
-        mp.setattr(replay, "FOLD_UNITS_PAGE", 4)
         real_run, out["answers"] = rule_run.run_rule, []
 
         def run_rule(*args, **kwargs):
@@ -183,58 +368,16 @@ def copies(pg_engine):
             out["schema"] = db.execute(text("SELECT current_schema()")).scalar()
             seeded = _seed(db)
             out["seed"] = _state(db, seeded)
-            replay.replay_rule(db, dict(RULES[0]), apply=True, log=lambda *a, **k: None)     # A: setup ⑤
+            replay.replay_rule(db, dict(RULES[0]), apply=True, log=lambda *a, **k: None)     # setup ⑤
             _drain(db)
             out["A"] = _state(db, seeded)
+            out["answers_first"] = len(out["answers"])
+            replay.replay_rule(db, dict(RULES[0]), apply=True, log=lambda *a, **k: None)     # again
+            _drain(db)
+            out["A_again"] = _state(db, seeded)
             replay.withdraw_source(db, LOG, "chain_ingestion", columns=[MARK], apply=True, log=lambda *a: None)
             out["A_reset"] = _state(db, seeded)
             db.close()
-            with pg_engine.begin() as conn:
-                conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
-            db = Session()
-            seeded = _seed(db)
-            lines = out["B_dry_lines"] = []
-
-            def hook(_processed, _total):
-                return False
-            hook.step = lambda name, page, pages, rows: lines.append((name, page, rows))
-            out["B_dry"] = replay.fold_units(db, RULES[0]["name"], log=lambda m: None, checkpoint=hook)
-            out["B_after_dry"] = _state(db, seeded)
-            out["B_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)   # B
-            out["B"] = _state(db, seeded)
-            out["B_again"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
-            out["B_after_again"] = _state(db, seeded)
-            replay.withdraw_source(db, LOG, "chain_ingestion", columns=[MARK], apply=True, log=lambda *a: None)
-            out["B_reset"] = _state(db, seeded)
-            db.close()
-            with pg_engine.begin() as conn:
-                conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
-            db = Session()
-            seeded = _seed(db)
-            with pytest.MonkeyPatch.context() as door_only:                      # every cell through the door
-                door_only.setattr(replay, "_fold_units_forced", lambda *a, **k: None)
-                out["B_door_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
-            out["B_door"] = _state(db, seeded)
-            db.close()
-            # the mark kept without history (`no_history_columns`, lead 11-09 ②) - by the decided cells and by the
-            # door; «loud» keeps it, the canary - and the recent changes' cache loaded all along
-            for name, quiet, forced in (("B_loud", False, True), ("B_quiet", True, True), ("B_quiet_door", True, False)):
-                with pg_engine.begin() as conn:
-                    conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
-                db = Session()
-                seeded = _seed(db)
-                with pytest.MonkeyPatch.context() as run:
-                    run.setattr(rule_run, "run_rule", real_run)          # «answers» stays the four runs' above
-                    if quiet:
-                        run.setitem(crud.TABLE_CONFIG[LOG], "no_history_columns", [MARK])
-                    if not forced:
-                        run.setattr(replay, "_fold_units_forced", lambda *a, **k: None)
-                    run.setattr(audit_cache, "is_loaded", True)
-                    run.setattr(audit_cache, "groups", [])
-                    out[name + "_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
-                    out[name + "_cache"] = list(audit_cache.groups)
-                out[name] = _state(db, seeded)
-                db.close()
         finally:
             db.close()                      # a failed run's session holds locks the TRUNCATE below would wait on
             with pg_engine.begin() as conn:
@@ -258,76 +401,33 @@ def test_the_chain_copy_folds_the_seed(copies):
 
 
 @pytest.mark.parametrize("part", PARTS)
-def test_fold_units_leaves_what_the_chain_leaves(copies, part):
+def test_the_chain_leaves_what_the_two_copies_agreed_on(copies, part):
     assert copies["A"][part], "CANARY: the chain copy holds %s" % part
-    assert copies["B"][part] == copies["A"][part]
+    assert copies["A"][part] == PINNED[part]
+
+
+def test_a_unit_that_now_wins_takes_its_old_marks_back_and_a_moved_row_loses_its_own(copies):
+    before, after = _marks(copies["seed"]), _marks(copies["A"])
+    assert [before["MAN_J7-%d" % i] for i in range(3)] == ["folded into MAN_J6"] * 3, "CANARY: MAN_J7 lost before"
+    assert [after["MAN_J7-%d" % i] for i in range(3)] == [""] * 3
+    assert [after["MAN_J6-%d" % i] for i in range(3)] == ["folded into MAN_J7"] * 3
+    assert (before["MOVED-0"], after["MOVED-0"]) == ("folded into AUTO_J4", "")
 
 
 def test_the_higher_layer_keeps_its_value_and_takes_the_chains_under_it(copies):
-    for copy in ("A", "B"):
-        assert _marks(copies[copy])[BY_HAND[0]] == BY_HAND[1], copy
-        # the rule's layer of the unit's group (owner 11-06 step 2 - `owner_key`, the fold's group)
-        assert ("MAN_J3-0", crud.owned_layer_name(RULES[0]["name"], "CW3"), "folded into AUTO_J4", "MAN_J3",
-                RULES[0]["name"]) in \
-            copies[copy]["layers"], copy
-    assert copies["B_stats"]["rows_higher_layer"] == 1
+    assert _marks(copies["A"])[BY_HAND[0]] == BY_HAND[1]
+    # the rule's layer of the unit's group (owner 11-06 step 2 - `owner_key`, the fold's group)
+    assert ("MAN_J3-0", crud.owned_layer_name(RULES[0]["name"], "CW3"), "folded into AUTO_J4", "MAN_J3",
+            RULES[0]["name"]) in copies["A"]["layers"]
 
 
-def test_the_dry_run_counts_what_the_run_does_and_writes_nothing(copies):
-    said = ("units", "groups", "units_losing", "rows_proposed", "rows_to_mark", "rows_already_marked",
-            "rows_higher_layer", "marks_withdrawn")
-    assert {k: copies["B_dry"][k] for k in said} == {k: copies["B_stats"][k] for k in said}
-    assert (copies["B_dry"]["units"], copies["B_dry"]["groups"], copies["B_dry"]["units_losing"],
-            copies["B_dry"]["marks_withdrawn"]) == (9, 5, 4, 5)   # + AUTO_J5-0's layer from before ownership
-    assert copies["B_after_dry"] == copies["seed"]
+def test_the_rule_answers_in_pages_and_a_rerun_writes_nothing(copies):
+    assert copies["answers"][0] == (5, [12]), "the mapper answers the 12 rows it names in pages of 5"
+    assert copies["answers_first"] >= 1, "CANARY: the rule ran"
+    assert copies["A_again"] == copies["A"]
 
 
-def test_a_rerun_writes_nothing(copies):
-    again = copies["B_again"]
-    # 12: AUTO_J5-0, marked so already under its row's old layer, is written again under its rule's (owner 11-06
-    # step 2) and the old one taken back - it is no longer «marked so already»
-    assert copies["B_stats"]["rows_marked"] == 12, "CANARY: the first run wrote"
-    assert copies["answers"][0] == (5, [12]), "CANARY: the mapper answers in pages (A, the chain's copy)"
-    # fold-units asks the rule seat whole groups at a time - 1, then 2, then 2 of the 5 - in each of its 4 runs, so its
-    # first page does not wait on every group's answer (총괄 2ea5ee2a7)
-    assert len(copies["answers"]) == 1 + 4 * 3, copies["answers"]
-    assert (copies["B_stats"]["rows_proposed"], copies["B_stats"]["pages"] >= 3) == (12, True), "every mapper page followed"  # pages of at most 5, from one row
-    assert (again["rows_marked"], again["marks_withdrawn"], again["rows_already_marked"]) == (0, 0, 12)
-    assert copies["B_after_again"] == copies["B"]
-
-
-def test_the_reset_line_clears_both_alike(copies):
+def test_the_reset_line_takes_the_chains_marks_back(copies):
     assert any(source.startswith("chain_ingestion") for _r, source, *_ in copies["A"]["layers"]), "CANARY"
-    assert copies["B_reset"] == copies["A_reset"]
-    assert [one for one in copies["B_reset"]["layers"] if one[1].startswith("chain_ingestion")] == []
-
-
-def test_the_decided_cells_take_the_doors_answer(copies):
-    """`_fold_units_forced` off - every cell judged by `crud.apply_row_update_internal` - leaves the same."""
-    assert copies["B_door"] == copies["B"]
-    assert {k: copies["B_door_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")} ==         {k: copies["B_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")}
-
-
-def test_the_first_line_comes_once_one_group_is_asked(copies):
-    """총괄 10-12 (응용: «fold_units 가 그룹을 한 번에 다 물음» 변이가 살아남음): the first line is the rule seat's
-    answer for the first group alone - not the whole answer before anything is said."""
-    first = min(w for _job, w, _t in JOBS if w)
-    assert copies["B_dry_lines"][0] == ("rule", 1, sum(1 for _job, w, _t in JOBS if w == first)), (
-        copies["B_dry_lines"][:3])
-
-
-def test_a_mark_kept_without_history_is_named_in_no_line_and_in_no_cache(copies):
-    """Lead 11-09 ②: the replay's row lines - the decided cells' and the door's - are made by `crud.row_update_line`,
-    which names no column its table keeps no history for: none stored, none in the recent changes' cache, none handed
-    back (the run hands back its counts). The marks themselves are written all the same."""
-    def named(state):
-        return [h for h in state["history"] if h[1] == "ROW_UPDATE" and MARK in h[3]]
-
-    assert named(copies["B_loud"]) and named(copies["B_door"]), "CANARY: both paths name the mark when it keeps history"
-    assert (named(copies["B_quiet"]), named(copies["B_quiet_door"])) == ([], [])
-    assert copies["B_quiet"]["shown"] == copies["B_quiet_door"]["shown"] == copies["B"]["shown"], "the marks are written"
-    assert [g["summary"]["columns"] for g in copies["B_loud_cache"]] == [{MARK}], "CANARY: the cache was recording"
-    assert (copies["B_quiet_cache"], copies["B_quiet_door_cache"]) == ([], [])
-    for name in ("B_loud", "B_quiet", "B_quiet_door"):
-        assert not [v for v in copies[name + "_stats"].values()
-                    if isinstance(v, list) and any(isinstance(one, dict) and "column_name" in one for one in v)], name
+    assert [one for one in copies["A_reset"]["layers"] if one[1].startswith("chain_ingestion")] == []
+    assert _marks(copies["A_reset"])[BY_HAND[0]] == BY_HAND[1]

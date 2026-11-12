@@ -5120,9 +5120,9 @@ def apply_row_update_internal(
 
 def row_update_line(db, table_name, row_id, changed_cols, new_values, old_values, is_new, source_name, updated_by,
                     transaction_id, business_key, add_to_cache=True):
-    """The `ROW_UPDATE` history line a machine write leaves on a row it changed - the write door's, and
-    `replay.fold_units`' for the cells whose answer is already decided (총괄 10-11). A column its table keeps no
-    history for (`keeps_history`) is not named; None - no line made - when none is left (lead 11-09 ②)."""
+    """The `ROW_UPDATE` history line a machine write leaves on a row it changed - the write door's. A column its
+    table keeps no history for (`keeps_history`) is not named; None - no line made - when none is left (lead 11-09
+    ②)."""
     changed_cols = [col for col in changed_cols if keeps_history(table_name, col)]
     if not changed_cols:
         return None
