@@ -230,7 +230,8 @@ def shells(db, table_name: str, row_ids) -> list:
     shown = [c for c in (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {} if c not in keys]
     if not shown:      # every row of a table declared only by its keys is its keys - none is a shell
         return []
-    found = []
+    config = crud.TABLE_CONFIG.get(table_name) or {}
+    found, s = [], lines.shape(db, table_name, config, assign=False) if lines.has_lines(db, table_name) else None
     for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
         chunk = ids[i:i + DEFAULT_CHUNK_SIZE]
         layers, _pins = _load_cell_state(db, table_name, chunk)
@@ -240,8 +241,7 @@ def shells(db, table_name: str, row_ids) -> list:
         kept = person_rows(db, table_name, chunk)
         # what a row shows is lines.merge's answer; a column it leaves out keeps t's value. t alone lags a withdraw
         # until the merge rewrites it (lead 11-12: shells kept a row by a value its withdrawn line had carried)
-        merged = (lines.merge(db, table_name, crud.TABLE_CONFIG.get(table_name) or {}, chunk)
-                  if lines.has_lines(db, table_name) else {})
+        merged = lines.merge(db, table_name, config, chunk, s=s) if s else {}
         for row in db.query(model).filter(model.row_id.in_(chunk)).all():
             layered = {column for column, _name, _value in by_row.get(row.row_id, ())}
             said = merged.get(row.row_id, {})
