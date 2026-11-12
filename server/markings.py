@@ -69,22 +69,18 @@ def as_filters(db, table, marking_id, filters, user):
     return json.dumps(said)
 
 
-@router.post("/markings")
-def save_marking(request: Request, body: dict = Body(...), db: Session = Depends(get_db)):
-    """Keep a marking: {table, column, values: [...]} -> {id, rev}; with `id`, that marking of yours overwritten."""
-    user = access.person(request)
-    table, column, values = body.get("table"), body.get("column"), body.get("values")
-    if not isinstance(table, str) or not isinstance(column, str) or not isinstance(values, list):
-        raise HTTPException(status_code=422, detail={"reason": "marking_not_spelled",
-                                                     "message": "a marking is {table, column, values: [...]} "
-                                                                "and, to overwrite one, its id"})
+def keep(db, user, table, column, values, marking_id=None):
+    """`user`'s marking of `table`'s `column` at `values` kept (added, not committed) -> {id, rev}; with `marking_id`,
+    that marking of theirs overwritten - THE writer `POST /markings` and the reach's tables (`trace_router._reached`)
+    call. A table unknown 404, one they may not read 403."""
+    user = user if isinstance(user, str) else None
     if table not in crud.TABLE_CONFIG:
         raise HTTPException(status_code=404, detail={"reason": "table_unknown", "message": "no table %s" % table})
     if not access.may(user, table, access.READ):
         access.refuse(user, table, access.READ)
-    marking_id = str(body.get("id") or uuid.uuid4().hex)
+    asked_id, marking_id = marking_id, str(marking_id or uuid.uuid4().hex)
     held = db.get(models.Marking, (_owner(user), marking_id))
-    if held is None and body.get("id"):
+    if held is None and asked_id:
         raise HTTPException(status_code=404, detail={"reason": "marking_unknown",
                                                      "message": "no marking %s of yours" % marking_id})
     if held is None:
@@ -92,8 +88,20 @@ def save_marking(request: Request, body: dict = Body(...), db: Session = Depends
         db.add(held)
     held.table_name, held.column_name, held.marked = table, column, list(values)
     held.rev, held.touched_at = held.rev + 1, datetime.now(timezone.utc)
-    db.commit()
     return {"id": marking_id, "rev": held.rev}
+
+
+@router.post("/markings")
+def save_marking(request: Request, body: dict = Body(...), db: Session = Depends(get_db)):
+    """Keep a marking: {table, column, values: [...]} -> {id, rev}; with `id`, that marking of yours overwritten."""
+    table, column, values = body.get("table"), body.get("column"), body.get("values")
+    if not isinstance(table, str) or not isinstance(column, str) or not isinstance(values, list):
+        raise HTTPException(status_code=422, detail={"reason": "marking_not_spelled",
+                                                     "message": "a marking is {table, column, values: [...]} "
+                                                                "and, to overwrite one, its id"})
+    kept = keep(db, access.person(request), table, column, values, body.get("id"))
+    db.commit()
+    return kept
 
 
 @router.delete("/markings/{marking_id}")

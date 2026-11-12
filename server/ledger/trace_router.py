@@ -283,8 +283,8 @@ def evidence_subgraph(
     reach: dict | None = Body(
         None, embed=True,
         description=("{table, column, values, type, follow, to}: the rows of `to` a marking reaches - the values "
-                     "`table`'s `column` showed, the `type` nodes they name, `follow` one predicate a step (`reach`). "
-                     "Answered instead of the picture")),
+                     "`table`'s `column` showed, the `type` nodes they name, `follow` one predicate a step (`reach`); "
+                     "with no `to`, every table's rows, each kept as a marking. Answered instead of the picture")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -992,11 +992,12 @@ def _items(keys):
                         for key, value in (keys or {}).items()))
 
 
-def reach(connection, *, table, column, values, type, follow, to, world=None, engine=None, hidden=()):
+def reach(connection, *, table, column, values, type, follow, to=None, world=None, engine=None, hidden=()):
     """THE HOP of the Tables page (lead 11-06): the rows of `table` whose `column` is one of `values` (the grid's set
     filter, `column_filter`) -> the `type` nodes their atoms name -> the walk's reader along `follow`, one predicate a
-    step -> the rows of `to` every atom read was read from (`rows_of`). The picture's assembly and its caps are not on
-    the way - `REACH_ATOM_CAP` a step is. A hidden table's sources are left out as the walk leaves them (`_hidden_here`)."""
+    step -> the rows of `to` every atom read was read from (`rows_of`); with no `to`, every table's (`tables`: {table:
+    {rows, count, capped}} - the molecule walk, lead 11-12 ㄴ). The picture's assembly and its caps are not on the way -
+    `REACH_ATOM_CAP` a step is. A hidden table's sources are left out as the walk leaves them (`_hidden_here`)."""
     from datetime import datetime, timezone
 
     from sqlalchemy import select
@@ -1004,18 +1005,22 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     import column_filter
     from database import models
 
-    said = {"table": to, "rows": [], "count": {"total": 0, "capped": False, "cap": REACH_ATOM_CAP}, "seeds": 0,
-            "left_out": []}
+    said = {**({"table": to, "rows": []} if to else {"tables": {}}),
+            "count": {"total": 0, "capped": False, "cap": REACH_ATOM_CAP}, "seeds": 0, "left_out": []}
     left_out = said["left_out"]
     names = _worlds(world)
     reading_of = {}
     for each in names:
         for source, declared in ((_declaration(each.name) or {}).get("sources") or {}).items():
             reading_of.setdefault(declared.get("relation"), []).append(source)
-    views = [each for each in dict.fromkeys((table, to))
-             if not column_filter.model_has_row_id(models.DYNAMIC_TABLES.get(each))]
-    left_out.extend({"why": "a view - its rows have no row_id", "table": each, "sources": reading_of.get(each, [])}
-                    for each in views)
+
+    def views_of(tables):
+        views = [each for each in tables if not column_filter.model_has_row_id(models.DYNAMIC_TABLES.get(each))]
+        left_out.extend({"why": "a view - its rows have no row_id", "table": each, "sources": reading_of.get(each, [])}
+                        for each in views)
+        return views
+
+    views = views_of(dict.fromkeys((table, to) if to else (table,)))
     if not values or table in views:
         said["count"]["counted_at"] = datetime.now(timezone.utc).isoformat()
         return said
@@ -1041,7 +1046,8 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     if engine_said:
         said["engine"] = engine_said
         left_out.extend({"why": item["why"], "table": each, "source": item["source"]} for item in engine_said["left_out"]
-                        for each in dict.fromkeys((table, to)) if item["source"] in reading_of.get(each, ()))
+                        for each in dict.fromkeys((table, to) if to else reading_of)
+                        if item["source"] in reading_of.get(each, ()))
     named = lookup.nodes_of_rows(table, rows, _bare_name(type)) if rows else {}
     if len(named) < len(rows):
         left_out.append({"why": "names no %s" % _bare_name(type), "table": table, "rows": len(rows) - len(named)})
@@ -1068,8 +1074,16 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
                 far[(item.object_payload.get("type"), _items(keys))] = keys
         frontier = [(kind, keys) for (kind, items), keys in far.items() if (kind, items) not in near]
         frontier = frontier[:REACH_FRONTIER_CAP] if cut else frontier
-    said["rows"] = sorted(lookup.rows_of(read, to)) if read and to not in views else []
-    said["count"].update(total=len(said["rows"]), counted_at=datetime.now(timezone.utc).isoformat())
+    rows = lookup.rows_of(read, [to] if to else None) if read else {}
+    views += views_of(sorted(set(rows) - {table, to}))
+    tables = {each: {"rows": sorted(ids), "count": len(ids), "capped": said["count"]["capped"]}
+              for each, ids in sorted(rows.items()) if each not in views}
+    if to:
+        said["rows"] = tables.get(to, {}).get("rows", [])
+    else:
+        said["tables"] = tables
+    said["count"].update(total=sum(each["count"] for each in tables.values()),
+                         counted_at=datetime.now(timezone.utc).isoformat())
     return said
 
 
@@ -1082,12 +1096,13 @@ def _reached(db, asked, world, engine, hidden=(), reader=None):
         import markings
 
         asked, held = markings.as_reach(db, asked, reader)
-    missing = [name for name in ("table", "column", "values", "type", "follow", "to") if name not in asked]
+    missing = [name for name in ("table", "column", "values", "type", "follow") if name not in asked]
     if missing or not isinstance(asked.get("values"), list) or not isinstance(asked.get("follow"), list):
         raise HTTPException(status_code=422, detail={
             "reason": "reach_not_spelled", "argument": "reach", "missing": missing,
-            "message": "reach takes {table, column, values: [...], type, follow: [...], to}"})
-    for table in (asked["table"], asked["to"]):
+            "message": "reach takes {table, column, values: [...], type, follow: [...]} and a `to`, or none for "
+                       "every table"})
+    for table in (asked["table"], asked.get("to")):
         if isinstance(hidden, (tuple, list)) and table in hidden:
             access.refuse(reader, table, access.READ)
     (kind,) = _declared_or_refused([asked["type"]], _collectable_types(world), reason="node_type_not_declared",
@@ -1096,8 +1111,14 @@ def _reached(db, asked, world, engine, hidden=(), reader=None):
                                   reason="predicate_not_declared", what="predicate", world=world,
                                   argument="reach.follow") if asked["follow"] else []
     said = reach(db.connection(), table=asked["table"], column=asked["column"], values=asked["values"], type=kind,
-                 follow=follow, to=asked["to"], world=world, engine=engine_for(engine),
+                 follow=follow, to=asked.get("to"), world=world, engine=engine_for(engine),
                  hidden=hidden)
+    if "tables" in said:                                     # each table's rows kept as one marking of the reader's
+        import markings
+
+        for each, rows in said["tables"].items():
+            rows["marking"] = markings.keep(db, reader, each, "row_id", rows["rows"])
+        db.commit()
     return {**said, "marking": held} if held else said
 
 

@@ -288,3 +288,45 @@ def test_a_marking_names_the_seeds_and_the_answer_says_its_revision(world):
     with pytest.raises(HTTPException) as refused:
         asked(marking="m1", values=["W2"])
     assert refused.value.status_code == 422 and refused.value.detail["reason"] == "seeds_defined_twice"
+
+
+def test_a_reach_with_no_to_answers_every_table_its_atoms_were_read_from(world):
+    """The molecule walk (lead 11-12 ㄴ): lot L1 along has_wafer and processed_with, no `to` - the lot slot rows the
+    first step read and the process rows the second read, each table its own rows; `to`'s table is the same rows a
+    reach with `to` answers, and a reach with `to` answers as it did (no `tables`)."""
+    _board(world)
+    seats = _scalars(world, "SELECT row_id FROM lot_slot_wafer WHERE lot = 'L1'")
+    assert len(seats) == 2, "canary: K1 · K2"
+    for engine in ENGINES:
+        to = _reach(world, engine, **{**LOTS, "values": ["L1"]})
+        said = _reach(world, engine, **{**LOTS, "values": ["L1"], "to": None})
+        assert "tables" not in to and "tables" in said and "rows" not in said and "table" not in said, said
+        assert said["tables"] == {
+            "lot_slot_wafer": {"rows": sorted(seats), "count": 2, "capped": False},
+            "wafer_process": {"rows": to["rows"], "count": 3, "capped": False}}, (engine, said)
+        assert set(to["rows"]) == _expected(world, ("W1", "W2"))[1]
+        assert said["count"]["total"] == 5 and said["seeds"] == to["seeds"] == 2 and said["left_out"] == [], said
+
+
+def test_the_walk_route_keeps_each_reached_table_as_a_marking_of_the_readers(world):
+    """Each table a reach with no `to` answers is kept as one marking of the reader's on its row_id (`markings.keep`,
+    the writer POST /markings calls) - the grid pages it by `?marking=`; a reach with `to` keeps none."""
+    import markings
+    from database import models
+
+    _board(world)
+
+    def asked(**reach):
+        return trace_router.evidence_subgraph(
+            node_id=None, reach={**LOTS, "values": ["L1"], **reach}, engine="virtual", db=world["db"], world=None,
+            follow=None, collect=None, expand=None, seed_type=None, group_by=None, measure=None, since=None,
+            until=None, around=None, earlier=None, later=None, positive=None, negative=None, resume=None)
+
+    before = world["db"].query(models.Marking).count()
+    assert "tables" not in asked() and world["db"].query(models.Marking).count() == before
+    said = asked(to=None)
+    assert sorted(said["tables"]) == ["lot_slot_wafer", "wafer_process"], said
+    for table, reached in said["tables"].items():
+        assert reached["marking"]["rev"] == 1, reached
+        assert markings.read(world["db"], reached["marking"]["id"], None) == (table, "row_id", reached["rows"], 1)
+    assert world["db"].query(models.Marking).count() == before + 2

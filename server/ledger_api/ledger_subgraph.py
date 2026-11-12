@@ -1158,23 +1158,27 @@ class SqlEvidenceLookup:
             WHERE r.relation = %(relation)s AND r.row_id = ANY(%(rows)s)""" for world in self.worlds)
         return _named_by_row(self._execute(reads, {"relation": relation, "rows": list(row_ids)}), bare_type)
 
-    def rows_of(self, atoms, relation):
-        """THE REACHED ROWS (lead 11-06): the ids of `relation`'s rows `atoms` were read from - of every atom read, not
-        only an edge's newest. The stored ledger asks its row index."""
+    def rows_of(self, atoms, relations=None):
+        """THE REACHED ROWS (lead 11-06): {relation: the ids of its rows `atoms` were read from} - of every atom read,
+        not only an edge's newest; `relations` narrows it (a reach with `to`), none is every relation (the molecule
+        walk, lead 11-12). The stored ledger asks its row index."""
         from ledger import schema
 
         refs = defaultdict(set)
         for atom in atoms:
             refs[atom.world].add((atom.source_who, atom.source_raw_ref))
-        found = set()
+        found = defaultdict(set)
         for world, pairs in refs.items():
             who, said = zip(*sorted(pairs))
-            found.update(row for (row,) in self._execute(f"""
-                SELECT DISTINCT r.row_id FROM {schema.world_names(world).row_ref} r
+            for relation, row in self._execute(f"""
+                SELECT DISTINCT r.relation, r.row_id FROM {schema.world_names(world).row_ref} r
                 JOIN unnest(CAST(%(who)s AS text[]), CAST(%(refs)s AS text[])) AS a(who, ref)
                   ON r.source_who = a.who AND md5(r.source_raw_ref) = md5(a.ref) AND r.source_raw_ref = a.ref
-                WHERE r.relation = %(relation)s""", {"who": list(who), "refs": list(said), "relation": relation}))
-        return found
+                WHERE %(every)s OR r.relation = ANY(CAST(%(relations)s AS text[]))""",
+                    {"who": list(who), "refs": list(said), "every": relations is None,
+                     "relations": list(relations or ())}):
+                found[relation].add(row)
+        return dict(found)
 
     # ⚰️ `claims_by_ids` (and the in-memory one) - no caller, and it fetched past
     # `_not_current_clause` (총괄 10-01).
@@ -1901,10 +1905,15 @@ class VirtualEvidenceLookup:
                         named[row[0]][(kind, tuple(sorted(keys.items())))] = keys
         return {row: [(kind, ends[(kind, items)]) for kind, items in sorted(ends)] for row, ends in named.items()}
 
-    def rows_of(self, read, relation):
-        """The row ids of `relation` the atoms or `Reached` rows `read` were read from - their raw ref «relation:row id»."""
-        return {item.source_raw_ref.split(":", 1)[1] for item in read
-                if item.source_raw_ref.startswith(relation + ":")}
+    def rows_of(self, read, relations=None):
+        """{relation: the row ids the atoms or `Reached` rows `read` were read from} - their raw ref «relation:row id»;
+        `relations` narrows it, none is every relation."""
+        found = defaultdict(set)
+        for item in read:
+            relation, _, row = item.source_raw_ref.partition(":")
+            if relations is None or relation in relations:
+                found[relation].add(row)
+        return dict(found)
 
     def _census(self, bare):
         """{node keys as canonical JSON: [keys, rows naming it, its first event instant or None, {predicate}]} - every
