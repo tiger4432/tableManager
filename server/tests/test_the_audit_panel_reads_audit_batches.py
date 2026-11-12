@@ -239,6 +239,32 @@ def test_the_grids_transaction_filter_is_the_rows_of_its_lines(panel):
         session.close()
 
 
+def test_a_formulas_write_is_one_line_its_rows_and_no_cells_change(panel):
+    """Owner 11-11 ㄱ · 11-12 ㄴ «영수증만, 화면은 수식 계산 · N 행»: a formula's write - its batch of work «formula»
+    (A c3fd6977a) and a receipt naming its rows, no line a row - is one panel line, «formula · 2 rows», and its
+    transaction lists the two rows with no cell's before -> after."""
+    from database import crud
+
+    client, engine, bits = panel
+    _seed(engine, bits)
+    who = "formula %s.c" % TABLE
+    with engine.begin() as conn:
+        line_tables.audit_batch(conn, "ab-f", TABLE, written_by=who, kind="formula", at=T0 + timedelta(minutes=5))
+    session = _session(engine)
+    try:
+        crud.bulk_insert_audit_logs(session, crud.receipt_log(None, TABLE, "batch-ab-f", who, {"blank": 0, "refused": 0},
+                                                              crud.CHAIN_SOURCE, who, "ab-f", row_ids=["r1", "r2"]))
+        session.commit()
+    finally:
+        session.close()
+    _load(engine)
+    groups = [g for g in client.get(URL).json()["groups"] if g["transaction_id"] == "ab-f"]
+    assert [_said(g) for g in groups] == [("ab-f", 1, [], [(TABLE, 2, ["formula"], [who])])], groups
+    route = client.get("/audit_logs/transaction/ab-f").json()["logs"]
+    assert sorted((e["row_id"], e["column_name"], e.get("old_value"), e.get("new_value")) for e in route) == [
+        ("r1", None, None, None), ("r2", None, None, None)], route
+
+
 @pytest.mark.pg
 def test_a_statement_past_its_limit_answers_what_the_walk_named_truncated(pg_engine, monkeypatch, caplog):
     """PostgreSQL cancels a walk's statement past recent_statement_seconds; the walk answers what it named."""
