@@ -32,6 +32,9 @@ def fixture_line(pg_engine, monkeypatch):
             monkeypatch.setitem(table.info, "storage", {})
     entry = {"column_types": {"a": "string"}, "storage": {"fillfactor": 80}}
     monkeypatch.setattr(crud, "TABLE_CONFIG", {T: entry})
+    import ingestion.settings
+    monkeypatch.setattr(ingestion.settings, "read_ingestion_settings",   # the product's default for a declared
+                        lambda path=None: {"table_autovacuum_threshold": None})   # table is the other test's
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
         conn.execute(text('CREATE TABLE "%s" (a text)' % T))

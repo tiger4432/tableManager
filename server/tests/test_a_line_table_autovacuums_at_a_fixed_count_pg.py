@@ -1,6 +1,7 @@
 """Lead 11-12 나: every declared table's line table autovacuums at a fixed count of dead lines - a fourth source
 («lines», `lines.line_storage`, ingestion_settings.json lines_autovacuum_threshold) of the declared storage line.
 
+  the rule: 50 + 2 % of the rows, capped at the setting's count (autovacuum_vacuum_max_threshold, PG 18)
   built by the start / migrated by the copy   owed -> set -> held, one «[Lines] autovacuum» line, then silent
   set by hand                                 kept (differs), said once
   the setting null                            left alone - no line-table row
@@ -37,7 +38,7 @@ def fixture_cells(pg_engine, monkeypatch):
             monkeypatch.setitem(table.info, "storage", {})
     monkeypatch.setattr(crud, "TABLE_CONFIG", {T: CFG})
     monkeypatch.setattr(lines, "_SAID_SETTING", set())
-    monkeypatch.setattr(maintenance_line, "_SAID_LINES", [])
+    monkeypatch.setattr(maintenance_line, "_SAID_LINES", {})
     monkeypatch.setattr(maintenance_line, "_SAID_STORAGE", set())
     with pg_engine.begin() as c:
         c.execute(text('DROP TABLE IF EXISTS "%s"' % REL))
@@ -73,10 +74,10 @@ def migrate(engine):
         assert c.execute(text('SELECT count(*) FROM "%s"' % REL)).scalar() == 30     # canary: it was migrated
 
 
-def held(engine):
+def held(engine, rel=REL):
     with engine.connect() as c:
         options = c.execute(text("SELECT c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-                                 "WHERE c.relname = :r AND n.nspname = current_schema()"), {"r": REL}).scalar()
+                                 "WHERE c.relname = :r AND n.nspname = current_schema()"), {"r": rel}).scalar()
     return dict(option.split("=", 1) for option in options or ())
 
 
@@ -91,17 +92,18 @@ def states(engine):
         db.close()
 
 
-def say(engine, caplog):
+def say(engine, caplog, group="[Lines] autovacuum"):
     from runtime import maintenance_line
 
     caplog.clear()
     with caplog.at_level(logging.INFO):
         maintenance_line._storage_and_say(sessionmaker(bind=engine))
-    return [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Lines] autovacuum")]
+    return [r.getMessage() for r in caplog.records if r.getMessage().startswith(group)]
 
 
-DECLARED = {"autovacuum_vacuum_scale_factor": "0",
-            "autovacuum_vacuum_threshold": str(lines.LINES_AUTOVACUUM_DEFAULT), "vacuum_truncate": "false"}
+DECLARED = {"autovacuum_vacuum_scale_factor": "0.02", "autovacuum_vacuum_threshold": "50",
+            "autovacuum_vacuum_max_threshold": str(lines.LINES_AUTOVACUUM_DEFAULT),
+            "autovacuum_vacuum_cost_limit": str(lines.AUTOVACUUM_COST_LIMIT), "vacuum_truncate": "false"}
 
 
 @pytest.mark.parametrize("made", ["built by the start", "migrated by the copy"])
@@ -111,7 +113,7 @@ def test_a_line_table_is_owed_then_set_then_held_and_said_once(cells, pg_engine,
     assert held(pg_engine) == {}
     assert states(pg_engine) == {k: ("owed", "lines") for k in DECLARED}
     said = say(pg_engine, caplog)
-    assert len(said) == 1 and "set now 1" in said[0] and "autovacuum_vacuum_threshold = %d" % (
+    assert len(said) == 1 and "set now 1" in said[0] and "autovacuum_vacuum_max_threshold = %d" % (
         lines.LINES_AUTOVACUUM_DEFAULT) in said[0], said
     assert held(pg_engine) == DECLARED
     assert states(pg_engine) == {k: ("held", "lines") for k in DECLARED}
@@ -121,12 +123,12 @@ def test_a_line_table_is_owed_then_set_then_held_and_said_once(cells, pg_engine,
 def test_a_threshold_set_by_hand_is_kept_and_said_once(cells, pg_engine, caplog):
     say(pg_engine, caplog)
     with pg_engine.begin() as c:
-        c.execute(text('ALTER TABLE "%s" SET (autovacuum_vacuum_threshold = 2000)' % REL))
+        c.execute(text('ALTER TABLE "%s" SET (autovacuum_vacuum_max_threshold = 2000)' % REL))
     said = say(pg_engine, caplog)
     assert len(said) == 1 and "by hand 1" in said[0], said
-    assert held(pg_engine)["autovacuum_vacuum_threshold"] == "2000"
-    assert states(pg_engine)["autovacuum_vacuum_threshold"] == ("differs", "lines")
-    assert say(pg_engine, caplog) == [] and held(pg_engine)["autovacuum_vacuum_threshold"] == "2000"
+    assert held(pg_engine)["autovacuum_vacuum_max_threshold"] == "2000"
+    assert states(pg_engine)["autovacuum_vacuum_max_threshold"] == ("differs", "lines")
+    assert say(pg_engine, caplog) == [] and held(pg_engine)["autovacuum_vacuum_max_threshold"] == "2000"
 
 
 def test_the_setting_null_leaves_the_line_tables_alone(cells, pg_engine, caplog):
@@ -139,7 +141,7 @@ def test_the_setting_null_leaves_the_line_tables_alone(cells, pg_engine, caplog)
 def test_a_wrong_value_is_said_once_and_the_default_held(cells, pg_engine, caplog):
     cells[lines.LINES_AUTOVACUUM_SETTING] = "many"
     with caplog.at_level(logging.WARNING):
-        assert lines.line_storage()["autovacuum_vacuum_threshold"] == lines.LINES_AUTOVACUUM_DEFAULT
+        assert lines.line_storage()["autovacuum_vacuum_max_threshold"] == lines.LINES_AUTOVACUUM_DEFAULT
         lines.line_storage()
     wrong = [r.getMessage() for r in caplog.records if lines.LINES_AUTOVACUUM_SETTING in r.getMessage()]
     assert len(wrong) == 1 and "'many'" in wrong[0], wrong
@@ -154,6 +156,36 @@ def test_a_set_threshold_is_held():
     was = ingestion.settings.read_ingestion_settings
     ingestion.settings.read_ingestion_settings = lambda path=None: {lines.LINES_AUTOVACUUM_SETTING: 7000}
     try:
-        assert lines.line_storage()["autovacuum_vacuum_threshold"] == 7000
+        assert lines.line_storage()["autovacuum_vacuum_max_threshold"] == 7000
     finally:
         ingestion.settings.read_ingestion_settings = was
+
+
+T_DECLARED = {"autovacuum_vacuum_scale_factor": "0.02", "autovacuum_vacuum_threshold": "50",
+              "autovacuum_vacuum_max_threshold": str(lines.TABLE_AUTOVACUUM_DEFAULT),
+              "autovacuum_vacuum_cost_limit": str(lines.AUTOVACUUM_COST_LIMIT), "vacuum_truncate": "false"}
+
+
+def test_a_declared_table_is_held_at_the_table_default_and_said_once(cells, pg_engine, caplog):
+    """Lead 11-13 ga: t itself - the one rule, a pass that finishes, no end truncation."""
+    assert held(pg_engine, T) == {}
+    said = say(pg_engine, caplog, "[Storage] autovacuum on declared tables")
+    assert len(said) == 1 and "set now 1" in said[0], said
+    assert held(pg_engine, T) == T_DECLARED
+    assert say(pg_engine, caplog, "[Storage] autovacuum on declared tables") == []
+
+
+def test_a_storage_cell_the_table_names_wins_over_the_default(cells, pg_engine, caplog, monkeypatch):
+    monkeypatch.setattr(crud, "TABLE_CONFIG", {T: dict(CFG, storage={"autovacuum_vacuum_max_threshold": 7000,
+                                                                      "fillfactor": 90})})
+    say(pg_engine, caplog)
+    assert held(pg_engine, T) == dict(T_DECLARED, autovacuum_vacuum_max_threshold="7000", fillfactor="90")
+    assert held(pg_engine) == DECLARED                     # its line table keeps the line default
+
+
+def test_the_table_setting_null_leaves_t_alone_and_the_lines_held(cells, pg_engine, caplog):
+    cells[lines.TABLE_AUTOVACUUM_SETTING] = None
+    assert lines.table_storage() is None
+    assert say(pg_engine, caplog, "[Storage] autovacuum on declared tables") == []
+    assert held(pg_engine, T) == {} and held(pg_engine) == DECLARED
+

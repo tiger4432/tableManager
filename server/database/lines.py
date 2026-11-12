@@ -235,33 +235,66 @@ def insert_lines(db, ln, rows: list, ids: bool = False) -> list:
         cursor.close()
 
 
-#: ingestion_settings.json - every line table autovacuums after this many dead lines (lead 11-12 나): a write's head
-#: UPDATE leaves a dead line for each earlier line it moves, never HOT (the head columns are in _h's condition), and
-#: PostgreSQL's own 20 % of a 7.9 M-line table waited for 1.6 M. Absent: the default; null: the line tables' own left
-#: alone. Held by the declared storage line (`maintenance_line`, source «lines») - a value set by hand is kept.
+#: ingestion_settings.json - the most dead lines a line table waits for before autovacuum (lead 11-12 나): a write's
+#: head UPDATE leaves a dead line for each earlier line it moves, never HOT (the head columns are in _h's condition),
+#: and PostgreSQL's own 20 % of a 7.9 M-line table waited for 1.6 M. Absent: the default; null: the line tables' own
+#: left alone. Held by the declared storage line (`maintenance_line`, source «lines») - a value set by hand is kept.
 LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT = "lines_autovacuum_threshold", 50000
+#: ingestion_settings.json - the most dead rows a declared table t waits for (lead 11-13 ga): each row a
+#: write moves is rewritten once (D's R1: t's own autovacuum ran from minute 9 on, one pass past 31 min on 5.4 GB, deep
+#: grid pages 1.1 -> 20.8 s p95). 100,000 = 100 writes of 1,000 rows at 1,000 dead rows a write (box 11-13), ~2 % of
+#: R1's t (3.2 M live + 1.7 M dead) - tune_layer_tables' own scale 0.02, as a count. A table_config "storage" cell wins.
+TABLE_AUTOVACUUM_SETTING, TABLE_AUTOVACUUM_DEFAULT = "table_autovacuum_threshold", 100000
+#: a pass that finishes (tune_layer_tables «한 바퀴가 끝나게»): PostgreSQL's 200 left R1's passes unfinished - t's past
+#: 31 min, sb_wide__lines' begun at minute 37 still «vacuuming indexes» at the end - line tables and t alike
+AUTOVACUUM_COST_LIMIT = 2000
+#: ONE rule for line tables and t (lead 11-13): PostgreSQL's threshold, AUTOVACUUM_BASE + AUTOVACUUM_SCALE of the rows
+#: (tune_layer_tables' 0.02), capped at the setting's count (autovacuum_vacuum_max_threshold, PostgreSQL 18 - ops runs
+#: 18): 5,000 rows -> 150, 300,000 -> 6,050, 3 M -> 60,050 or the cap. A fixed count alone left a 5,000-row table to
+#: 20x its size. Below 18 the parameter is refused and the storage line says «not set».
+AUTOVACUUM_BASE, AUTOVACUUM_SCALE = 50, 0.02
 #: wrong values said already - the storage line asks at every merge, the line is said once a process
 _SAID_SETTING = set()
 
 
-def line_storage():
-    """{parameter: value} a line table is held at, or None (the setting null): autovacuum at a fixed count of dead
-    lines (scale 0) and no end truncation (owner 11-09, as cell_sources and the ledger partitions)."""
+def _dead_rows_setting(setting, default):
+    """A dead-row count setting: the number, None (null - left alone), or the default for anything else (said once)."""
     import logging
 
     from ingestion.settings import read_ingestion_settings
 
-    value = read_ingestion_settings().get(LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT)
+    value = read_ingestion_settings().get(setting, default)
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2147483647:
-        if repr(value) not in _SAID_SETTING:
-            _SAID_SETTING.add(repr(value))
+        if (setting, repr(value)) not in _SAID_SETTING:
+            _SAID_SETTING.add((setting, repr(value)))
             logging.getLogger(__name__).warning(
-                "[Lines] ingestion_settings.json: %s is %r - a whole number of dead lines from 0, or null to leave the "
-                "line tables alone; read as %s", LINES_AUTOVACUUM_SETTING, value, LINES_AUTOVACUUM_DEFAULT)
-        value = LINES_AUTOVACUUM_DEFAULT
-    return {"autovacuum_vacuum_scale_factor": 0, "autovacuum_vacuum_threshold": value, "vacuum_truncate": "false"}
+                "[Storage] ingestion_settings.json: %s is %r - a whole number of dead rows from 0, or null to leave "
+                "those tables alone; read as %s", setting, value, default)
+        value = default
+    return value
+
+
+def line_storage():
+    """{parameter: value} a line table is held at, or None (the setting null): the one rule (`_autovacuum`) and no end
+    truncation (owner 11-09, as cell_sources and the ledger partitions)."""
+    return _autovacuum(_dead_rows_setting(LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT))
+
+
+def _autovacuum(cap):
+    """The one rule, capped at `cap` dead rows; None when the setting is null."""
+    if cap is None:
+        return None
+    return {"autovacuum_vacuum_scale_factor": AUTOVACUUM_SCALE, "autovacuum_vacuum_threshold": AUTOVACUUM_BASE,
+            "autovacuum_vacuum_max_threshold": cap, "autovacuum_vacuum_cost_limit": AUTOVACUUM_COST_LIMIT,
+            "vacuum_truncate": "false"}
+
+
+def table_storage():
+    """{parameter: value} a declared table t is held at under its own table_config "storage" cells, or None (the
+    setting null): the one rule, as a line table, at its own cap."""
+    return _autovacuum(_dead_rows_setting(TABLE_AUTOVACUUM_SETTING, TABLE_AUTOVACUUM_DEFAULT))
 
 
 def keeps_lines(table_name: str, table_cfg) -> bool:
