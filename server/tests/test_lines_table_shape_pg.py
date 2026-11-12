@@ -172,15 +172,22 @@ def lt_ix(db, monkeypatch):
     return {i.name for i in lines.shape(db, "lt_ix", CFG)["lines"].indexes}
 
 
-def test_every_declared_line_index_dropped_is_built_again_valid_by_the_start(db, pg_engine, lt_ix):
-    """Lead 11-12: ra, b, p, h and i each dropped on a built line table - the start's ensure builds it back, valid."""
+def test_every_declared_line_index_dropped_is_built_again_valid_by_the_start(db, pg_engine, lt_ix, caplog):
+    """Lead 11-12: ra, b, p, h and i each dropped on a built line table - the start's ensure builds it back, valid,
+    and says the line the operator reads (RUN.md [11-12c])."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger=lines.__name__)
     assert len(lt_ix) == 5 and set(line_index_names(db, "lt_ix")) >= lt_ix
     for name in sorted(lt_ix):
         db.execute(text(f'DROP INDEX "{name}"'))
         db.commit()
         assert name not in line_index_names(db, "lt_ix")
+        caplog.clear()
         assert lines.ensure_declared(pg_engine, tables=["lt_ix"]) == {}
         assert line_index_names(db, "lt_ix").get(name) is True, name
+        assert [r.getMessage().split(" built in ")[0] for r in caplog.records if " built in " in r.getMessage()] \
+            == [f"[Indexes] line index '{name}'"]
 
 
 def test_a_line_index_not_built_refuses_the_start_naming_it(db, pg_engine, lt_ix, monkeypatch):
