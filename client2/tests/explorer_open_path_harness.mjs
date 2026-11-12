@@ -1858,6 +1858,61 @@ const withView = async (mutate) => {
     Object.fromEntries(VIEW_NAMES.map((n) => [n, view[n]])) } })).module.createOntologyExplorerController;
 };
 const withController = async (mutate) => (await loadWithProbe(CONTROLLER, { mutate })).module.createOntologyExplorerController;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [4c] lead 11-11 - a save the load leaves out (a refused source) keeps its declaration on screen while it is read
+//      again and opened again, and opened on its own text it does not say «Unsaved». Before: the re-read asks for no
+//      selection (the refused key is a 400), its answer was drawn - another declaration for seconds on 11-11e - and the
+//      text seeded from the file was «Unsaved» with nothing typed.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[4c] saved and left out: the screen stays on it, and opened on its own text it is not «Unsaved»');
+{
+  const realView = await import('../src/ontology_explorer_view.js');
+  const heldWalk = async (mutate) => {
+    const shown = [];
+    let unsaved = 0;
+    const view = Object.fromEntries(VIEW_NAMES.map((n) => [n, realView[n]]));
+    view.renderOntologyExplorer = (host, st) => {
+      shown.push(st.draft?.target_key || st.selection?.key || null);
+      const out = realView.renderOntologyExplorer(host, st);
+      unsaved += walkAll(host).filter((n) => n._classes?.includes('oe-editor-unsaved')).length;
+      return out;
+    };
+    const create = (await loadWithProbe(CONTROLLER, { ...(mutate ? { mutate } : {}),
+      stubs: { './ontology_explorer_view.js': view } })).module.createOntologyExplorerController;
+    const seen4 = await saveWalk(create, { dropped: true });
+    const from = shown.indexOf(KEY);
+    return { seen4, shown: from < 0 ? shown : shown.slice(from), unsaved };
+  };
+  const heldSuite = (got) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(detail ? `${name} — ${detail}` : name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    say('C1 from the first draw of the declaration on, every draw is that declaration - none of the re-read between',
+      got.shown.length > 2 && got.shown.every((k) => k === KEY), got.shown.join(' · '));
+    say('B1 opened again on the text just saved, no draw says «Unsaved» - nothing is typed in this walk',
+      got.seen4.bad.opened.length === 1 && got.unsaved === 0, `${got.seen4.bad.opened.length} opened, ${got.unsaved} «Unsaved» drawn`);
+    return { ran: names.length, names, failures };
+  };
+  const heldBase = heldSuite(await heldWalk());
+  ran += heldBase.ran;
+  failed += heldBase.failures.length;
+  const MUTANTS = [
+    { id: 'H-M1', what: 'the save draws its re-read', catches: 'C1',
+      mutate: (text) => swap(text, '    if (!held) render();\n', '    render();\n') },
+    { id: 'H-M2', what: 'the seeded text is not what the draft opened on', catches: 'B1',
+      mutate: (text) => swap(text, '        opened: true,\n', '') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => heldSuite(await heldWalk(m.mutate)),
+    { baselineRan: heldBase.ran, baselineNames: heldBase.names, title: '\n  [4c] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
 {
   const importedBase = importedSuite(await importedWalk(createOntologyExplorerController),
     await importedWalk(createOntologyExplorerController, { imported: null }));
@@ -2237,24 +2292,24 @@ console.log('\n[16] a folded line marks its formulas');
     };
     const agg = fold(M.renderAuthoringRow, M.formulaUnder, AGGREGATIONS, { stack_height: 'UniqueCount([stack_height])', n: 'Count()' });
     say('F1 a decide\'s aggregations, folded: each formula wears the mark, after its column\'s name',
-      marks(agg) === 2 && agg.textContent === 'stack_height ƒUniqueCount([stack_height]) · n ƒCount()', agg?.textContent);
+      marks(agg) === 2 && agg.textContent === 'stack_height fxUniqueCount([stack_height]) · n fxCount()', agg?.textContent);
     const take = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { fn: 'Min([t])', separator: ', ' });
     say('F2 a record: its formula field wears it, a plain word beside it none',
-      marks(take) === 1 && take.textContent === 'fn ƒMin([t]) · separator , ', take?.textContent);
+      marks(take) === 1 && take.textContent === 'fn fxMin([t]) · separator , ', take?.textContent);
     const plain = fold(M.renderAuthoringRow, M.formulaUnder, TAKE, { separator: ', ' });
     const none = fold(M.renderAuthoringRow, () => () => false, AGGREGATIONS, { n: 'Count()' });
     say('F3 no formula, or a row the tree hands no skeleton: the line as before, no mark',
       marks(plain) === 0 && plain.textContent === 'separator , ' && marks(none) === 0 && none.textContent === 'n Count()',
       `${plain?.textContent} | ${none?.textContent}`);
     const leaf = fold(M.renderAuthoringRow, M.formulaUnder, FORMULA_LEAF, 'Max([t])');
-    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'ƒMax([t])', leaf?.textContent);
+    say('F4 one formula folded alone wears it too', marks(leaf) === 1 && leaf.textContent === 'fxMax([t])', leaf?.textContent);
     // the read-only tree (the explorer's read mode): its leaves are values, and a formula wears the same mark (lead 11-10 ㄱ)
     const tree = M.renderSkeletonForm(M.readContext({}, {}), TAKE, '', { fn: 'Min([t])', separator: ', ' });
     const read = walkAll(tree).filter((n) => n._classes?.includes('oe-value'));
     const readFn = read.find((n) => n.textContent.includes('Min'));
     const readSep = read.find((n) => n.textContent.includes(','));
     say('F5 read, a formula wears the mark and a plain word beside it none',
-      marks(readFn) === 1 && readFn.textContent === 'ƒMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
+      marks(readFn) === 1 && readFn.textContent === 'fxMin([t])' && marks(readSep) === 0 && readSep.textContent === ', ',
       read.map((n) => n.textContent).join(' | '));
     return { ran: names.length, names, failures };
   };
@@ -2275,6 +2330,82 @@ console.log('\n[16] a folded line marks its formulas');
   ];
   const scored = await scoreMutants(MUTANTS, async (m) => suite16((await loadWithProbe(VIEW, { mutate: m.mutate })).module),
     { baselineRan: base16.ran, baselineNames: base16.names, title: '\n  [16] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// [17] lead 11-11 (owner «선언 폼에도 기본값이 보이게»): a leaf's `default` (what an empty cell becomes, B 4608139fc) is
+//      what its empty box shows - a text, number or formula box as its placeholder, a list's blank line as «Default: X» -
+//      whichever path draws the leaf (the skeleton's own box, or a plan row). A leaf that says none shows nothing new.
+console.log('\n[17] an empty box shows its leaf\'s default');
+{
+  const SHAPE = { kind: 'record', fields: [
+    { key: 'table', node: { kind: 'leaf', hint: 'free', default: 'sys_ai_memory' } },
+    { key: 'limit', node: { kind: 'leaf', hint: 'number', default: 5 } },
+    { key: 'fn', node: { kind: 'leaf', hint: 'formula', default: 'Count()' } },
+    { key: 'side', node: { kind: 'leaf', hint: 'choice', list: 'sides', default: 'right' } },
+    { key: 'note', node: { kind: 'leaf', hint: 'free' } },
+    { key: 'pick', node: { kind: 'leaf', hint: 'choice', list: 'sides' } },
+  ] };
+  const at = (tree, path) => walkAll(tree).find((n) => n.dataset && n.dataset.value === path
+    && ['INPUT', 'TEXTAREA', 'SELECT'].includes(String(n.tagName).toUpperCase()));
+  const blankLine = (sel) => (sel ? walkAll(sel).find((n) => String(n.tagName).toUpperCase() === 'OPTION' && n.value === '') : null);
+  const suite17 = (M) => {
+    const names = [];
+    const failures = [];
+    const say = (name, cond, detail) => {
+      names.push(name);
+      if (cond) { console.log(`  PASS ${name}`); return; }
+      failures.push(name);
+      console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+    };
+    const context = { ...M.readContext({ sides: ['left', 'right'] }, {}), readOnly: false };
+    const tree = M.renderSkeletonForm(context, SHAPE, '', {});
+    const table = at(tree, 'table'), limit = at(tree, 'limit'), fn = at(tree, 'fn');
+    say('D1 an empty text box shows its default, and holds nothing', table && table.placeholder === 'sys_ai_memory' && table.value === '',
+      table && `${table.placeholder}|${table.value}`);
+    say('D2 a number box too', limit && limit.type === 'number' && limit.placeholder === '5' && limit.value === '',
+      limit && `${limit.type}|${limit.placeholder}`);
+    say('D3 a formula box too', fn && String(fn.tagName).toUpperCase() === 'TEXTAREA' && fn.placeholder === 'Count()' && fn.value === '',
+      fn && `${fn.tagName}|${fn.placeholder}`);
+    const side = blankLine(at(tree, 'side'));
+    say('D4 a list\'s blank line says «Default: right», and is still the blank value', side && side.textContent === 'Default: right'
+      && side.selected === true, side && side.textContent);
+    const note = at(tree, 'note'), pick = blankLine(at(tree, 'pick'));
+    say('D5 a leaf that says no default: no placeholder, the blank line as before', note && note.placeholder === ''
+      && pick && pick.textContent === '', `${note && note.placeholder}|${pick && pick.textContent}`);
+    const held = M.renderSkeletonForm(context, SHAPE, '', { side: 'left' });
+    say('D6 a list holding a value draws no blank line', !blankLine(at(held, 'side')));
+    // a plan row: the same default rides in beside the row
+    const row = { path: 'bundle.x', label: 'x', state: 'answered', value: '', tier: 'free_input', candidates: [], refusals: [] };
+    const typed = M.renderAuthoringRow(row, { [row.path]: true }, { kind: 'text', value: '' }, true, null, undefined, 'sys_ai_memory');
+    const box = walkAll(typed).find((n) => String(n.tagName).toUpperCase() === 'INPUT' && n.dataset && n.dataset.action === 'edit-field');
+    say('D7 a plan row\'s box shows the default too', box && box.placeholder === 'sys_ai_memory', box && box.placeholder);
+    const closed = M.renderAuthoringRow(row, { [row.path]: true }, { kind: 'closed', options: ['left', 'right'], value: '' }, true, null,
+      undefined, 'right');
+    const line = blankLine(walkAll(closed).find((n) => String(n.tagName).toUpperCase() === 'SELECT'));
+    say('D8 ...and a plan row\'s list its blank line', line && line.textContent === 'Default: right', line && line.textContent);
+    return { ran: names.length, names, failures };
+  };
+  const base17 = suite17(await import('../src/ontology_explorer_view.js'));
+  ran += base17.ran;
+  failed += base17.failures.length;
+  const MUTANTS = [
+    { id: 'D-M1', what: 'a text box shows no default', catches: 'D1',
+      mutate: (text) => swap(text, '  input.placeholder = defaultText(node);\n', '') },
+    { id: 'D-M2', what: 'a formula box shows no default', catches: 'D3',
+      mutate: (text) => swap(text, '  field.input.placeholder = defaultText(node);\n', '') },
+    { id: 'D-M3', what: 'a list is not told its default', catches: 'D4',
+      mutate: (text) => swap(text, '{ loaded, name: node.list, fallback: defaultText(node) }', '{ loaded, name: node.list }') },
+    { id: 'D-M4', what: 'a plan row\'s box shows no default', catches: 'D7',
+      mutate: (text) => swap(text, '        one.placeholder = fallback;\n', '') },
+    { id: 'D-M5', what: 'a plan row\'s list is not told its default', catches: 'D8',
+      mutate: (text) => swap(text, '{ name: row.label, fallback }', '{ name: row.label }') },
+    { id: 'D-M6', what: 'a default read off another cell than the leaf\'s own', catches: 'D1',
+      mutate: (text) => swap(text, '  const said = node && node.default;\n', '  const said = node && node.hint;\n') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => suite17((await loadWithProbe(VIEW, { mutate: m.mutate })).module),
+    { baselineRan: base17.ran, baselineNames: base17.names, title: '\n  [17] mutants — each must be caught by the check it names.' });
   ran += MUTANTS.length;
   failed += scored.wrong;
 }

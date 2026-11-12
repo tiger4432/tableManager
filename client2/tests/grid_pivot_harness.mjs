@@ -6,11 +6,12 @@
 //   write    a cell with a row writes that row's value; a blank cell its keys, its item and the value - the row made
 //   narrow   pivot=true rides the one narrowing (data and count alike); the footer says groups when told so
 //   memory   per table, and a storage that throws keeps nothing and breaks nothing
+//   item     «+ Item» (owner 11-11): a column on the screen alone; its first value written makes its long row
 //
 // Run: node client2/tests/grid_pivot_harness.mjs
 import { pivotRows, pivotColumns, pivotUpdate, pivotWire, keyColumnsIn, itemColId, itemOf, rememberedPivot, rememberPivot,
   newPivotRows, isNewPivotRow, pivotWriteRefusal, holdNewRowKeys, groupFilters, strayLongRow, PIVOT_KEY_NOTE, PIVOT_NEW_KEYS_NOTE,
-  PIVOT_CARRY_NOTE, carryText } from '../src/grid_pivot.js';
+  PIVOT_CARRY_NOTE, carryText, withItem, PIVOT_ITEM_BLANK_NOTE } from '../src/grid_pivot.js';
 import { narrowingParams } from '../src/narrowing.js';
 import { matchCountText } from '../src/match_count.js';
 
@@ -109,6 +110,20 @@ eq('K3 a carried cell: its one value, or no value and how many', [crows[0].data.
 eq('K4 a write reaching a carried cell is refused whole - a new row\'s too',
   [pivotWriteRefusal(CVIEW, [item(crows[0], { note: 'y' })]), pivotWriteRefusal(CVIEW, [item(fresh, { size: 1 })]),
     pivotWriteRefusal(CVIEW, [item(rows3[0], { 'item:a': 1 })])], [PIVOT_CARRY_NOTE, PIVOT_CARRY_NOTE, '']);
+
+console.log('-- an item added (owner 11-11) --');
+const added = withItem(VIEW, '  d ');
+eq('I1 a new item: its name without the spaces around it, last among the items, the rest of the view as it was',
+  [added.refusal, added.item, added.view.items, added.view.keys, added.view.items_more, VIEW.items],
+  ['', 'd', ['a', 'b', 'c', 'd'], ['lot', 'wafer'], 2, ['a', 'b', 'c']]);
+eq('I2 its column stands after the items before it, before the item column held hidden',
+  pivotColumns(added.view, { column: 'itemid', value: 'value' }, []), ['lot', 'wafer', 'item:a', 'item:b', 'item:c', 'item:d', 'itemid']);
+eq('I3 a blank name, or an item there already: refused, the view kept',
+  [withItem(VIEW, '   ').refusal, withItem(VIEW, '').refusal, withItem(VIEW, null).refusal, withItem(VIEW, ' b').refusal,
+    withItem(VIEW, 'b').view === VIEW], [PIVOT_ITEM_BLANK_NOTE, PIVOT_ITEM_BLANK_NOTE, PIVOT_ITEM_BLANK_NOTE, '«b» is already an item', true]);
+eq('I4 its first value, on a group, sends that group\'s keys, the new item and the value - the long row made',
+  pivotWire(added.view, [{ row_id: 'g1', updates: { 'item:d': 4 } }], () => rows[0]),
+  [{ updates: { lot: 'L1', wafer: 'W1', itemid: 'd', value: 4 } }]);
 
 console.log('-- narrowing and the footer --');
 eq('N1 pivot=true rides the one narrowing', narrowingParams({ pivot: true }).get('pivot'), 'true');

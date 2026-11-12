@@ -124,6 +124,11 @@ _TABLE_HOLDERS = (
 QUERY_CANCELED = "57014"
 
 
+def cancelled(exc) -> bool:
+    """Whether `exc` is PostgreSQL cancelling a statement - its statement_timeout, or a pg_cancel_backend."""
+    return getattr(getattr(exc, "orig", None), "pgcode", None) == QUERY_CANCELED
+
+
 def table_holders(dbapi_conn, table, schema=None, older_than=None):
     """-> the other sessions a CONCURRENTLY build of `table` would wait for and that the wait before it waits out
     (총괄 11-05 ㄱ-2): one holding the table in a mode its own lock conflicts with, any age (`BUILD_WAITS_ON`); and, open

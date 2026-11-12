@@ -774,10 +774,6 @@ def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
     parsers write under the INGESTED FILENAME, so the set of automatic source names is
     open-ended (10,750 distinct values on the live database) and cannot be enumerated.
 
-    ⚠️ IT IS A FUNCTION RATHER THAN A CONDITION AT ITS ONE SEAT because it has a SECOND
-    reader now: `scripts/count_absent_null_layers.py` asks the same question of layers
-    already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
-    and the writing come to disagree about what they are counting.
     """
     return replaces_map or layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
 
@@ -2144,26 +2140,31 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # `ranks` - a batch's memo over its rows, one table (here: the term list, built once); alone, this call's own
     ranks = {} if ranks is None else ranks
 
-    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
-    # one sits on the cell, the chain's layers there order by time as before
-    unowned = any(layer_ranks_as(name) == CHAIN_SOURCE and not layer_owner(name) for name in sources)
+    from database import lines
+
     terms = ranks.get(_TERMS_MEMO)
     if terms is None:
         terms = ranks[_TERMS_MEMO] = rank_terms(table_name)
 
-    def _rank(name):
-        # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
-        # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
+    def _owner_rule(name, entry):
+        # a line's own owner_rule where the entry carries it (the line's - lead 11-12 ㄴ), else the name's
+        if isinstance(entry, dict) and "owner_rule" in entry:
+            return entry["owner_rule"]
         owner = layer_owner(name)
-        entry = sources[name]
-        line = {"ranks_as": layer_ranks_as(name), "owner_rule": owner[0] if owner else None,
-                "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
-                "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
-        return tuple(term(line, unowned) for term in terms)
+        return owner[0] if owner else None
 
+    # two rules' layers on one cell: the priority decides, then the rule declared later - never ingested_at
+    # (owner 11-06 step 2 1ㄱ, lead 11-08 ㄴ). One rule's layers, a file's or a person's: as before.
+    said = {name: {"ranks_as": layer_ranks_as(name), "owner_rule": _owner_rule(name, entry),
+                   "at": resolution_ingested_at(entry, name, ingested_at_by_source), "source_name": name,
+                   "line_id": entry.get("line_id") if isinstance(entry, dict) else None}
+            for name, entry in sources.items()}
+    # a chain layer no rule owns yet (written before owner 11-06 step 2, not adopted) has no rule to order by - while
+    # one sits on the cell, the chain's layers there order by time as before
+    unowned = lines.chain_unowned(said.values())
     # `min` rather than `sorted`: the same first element, without materialising and
     # sorting the whole list on a per-cell hot path.
-    top_source = min(sources.keys(), key=_rank)
+    top_source = min(sources.keys(), key=lambda name: lines.rank(said[name], terms, unowned))
     if formula is not None and top_source == formula[0]:
         return none_if_blank(formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}])), top_source
     return layer_value(sources, top_source), top_source
@@ -2358,6 +2359,28 @@ def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction
         line["transaction_id"] = transaction_id
         lines.append(line)
     return lines
+
+
+def receipt_row_ids(db, table_name, transaction_id) -> dict:
+    """{row_id: its receipt line's "id" · "source_name" · "updated_by" · "timestamp" · "transaction_id"} - the rows a
+    transaction's receipts name in `table_name` (`receipt_log`'s row_ids, as text - they meet a text row_id column),
+    in the order named. A formula's write keeps
+    its receipt and no line a row (owner 11-12 ㄴ «영수증만»), so «the rows it changed» are these - THE reader: the grid's
+    transaction filter and the history's row count and row list ask it. An event line read, not a cell's (the
+    old-table gate allows this one seat)."""
+    from admin.audit_cache import in_group
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    a = models.AuditLog
+    out = {}
+    for log in db.query(a.id, a.new_value, a.source_name, a.updated_by, a.timestamp, a.transaction_id).filter(
+            a.table_name == table_name, in_group(a.transaction_id, transaction_id), a.column_name == RECEIPT_COLUMN
+    ).order_by(a.id):
+        said = {"id": str(log.id), "source_name": log.source_name, "updated_by": log.updated_by,
+                "timestamp": log.timestamp, "transaction_id": log.transaction_id}
+        for row_id in (((log.new_value or {}).get("row_ids") or ()) if isinstance(log.new_value, dict) else ()):
+            out.setdefault(str(row_id), said)
+    return out
 
 
 def keeps_history(table_name, column_name) -> bool:
@@ -2887,24 +2910,6 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
         conn.exec_driver_sql(sql, tuple(flat))
     return True
 
-
-def owner_cells(source_name) -> dict:
-    """`owner_rule` / `owner_key` of a layer named `source_name` - read off its name by the one parser
-    (`layer_owner`), so a write and every copy of a layer (a merge, a fold, a pin) say the same owner (owner 11-06
-    step 2). None for a layer no rule owns."""
-    owner = layer_owner(source_name)
-    return {"owner_rule": owner[0] if owner else None, "owner_key": owner[1] if owner else None}
-
-
-from sqlalchemy import event as sa_event                             # noqa: E402
-
-
-@sa_event.listens_for(models.CellSource, "before_insert")
-@sa_event.listens_for(models.CellSource, "before_update")
-def _owner_of_a_layer_row(_mapper, _connection, target):
-    """A layer row written through the ORM (`db.add`) says its owner as the bulk upsert does (`owner_cells`)."""
-    for column, value in owner_cells(target.source_name).items():
-        setattr(target, column, value)
 
 def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
@@ -3474,6 +3479,15 @@ def array_params(db, columns, rows):
     return params, casts
 
 
+def one_kind(values) -> bool:
+    """Do `values` (None aside) take one array type - text, a number, a boolean? One array takes one type; the ORM
+    casts each row on assignment, an array cannot (총괄 10-14) - a column of two kinds is written row by row."""
+    import numbers
+
+    return len({"bool" if isinstance(v, bool) else "number" if isinstance(v, numbers.Number) else type(v)
+                for v in values if v is not None}) <= 1
+
+
 def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     """`rows` [[key, a value per name but updated_at]] into `table` in one statement - updated_at, when
     named, is the batch's instant as the door stamps it (`batch_write_instant`, else now()). -> the result
@@ -3627,7 +3641,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
-                 "written_by": update_item.updated_by}, formulas)
+                 "written_by": update_item.updated_by, "work": "formula"}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "source_name": update_item.source_name, "written_by": update_item.updated_by,

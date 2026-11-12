@@ -18,6 +18,10 @@ DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 CELL_SOURCES_ALLOWED = {# 까닭: 운영 복사 전 - the copy retires the round after it has run in operation (lead 11-11)
                         "database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
+                        # the migration command that drives the copy - same reason (lead 11-12)
+                        "scripts/copy_layers_to_lines.py:<module>", "scripts/copy_layers_to_lines.py:_one",
+                        "scripts/copy_layers_to_lines.py:copy_table", "scripts/copy_layers_to_lines.py:main",
+                        "scripts/copy_layers_to_lines.py:plan",
                         "*:write_back",
                         # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)
                         "scripts/snapshot.py:_facts", "scripts/restore.py:counts", "scripts/restore.py:main"}
@@ -45,7 +49,10 @@ AUDIT_EVENTS_ALLOWED = {"database/crud.py:create_audit_log", "database/crud.py:b
                         "main.py:get_transaction_logs",
                         # replay._write_resolved — 칸 사건이 audit_logs 에 남는 마지막 자리. 소유자 «전 → 후» 물음과 A 의
                         # _merges_again 착지 대기 (B, lead 11-11 ㄱ: R3 writes no line, only t's shown value)
-                        "chain/replay.py:_write_resolved"}
+                        "chain/replay.py:_write_resolved",
+                        # a receipt's row_ids - the rows a formula's write changed (owner 11-12 ㄴ «영수증만»: no line a
+                        # row); an event line read, the grid's transaction filter asks it (A)
+                        "database/crud.py:receipt_row_ids"}
 #: who hands rows to the event writers (bulk_insert_audit_logs · _insert_audit_row): each builds them with
 #: crud.receipt_log - RECEIPT_COLUMN lines, whose create_audit_log call `cell_line_to_audit` reads - and
 #: store.write_batch writes what its `receipt` callable returns, which only execute_scoped_batch passes

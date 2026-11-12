@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """A file's completion record names the transaction its rows were written under (lead 10-20) - one per file, a read
 resumed after a restart included. A real watcher on a scratch root, a sqlite file and a stub API.
-  ts  a 3-row file, read once                          -> the record's tx = the tx of every audit row of ts
+  ts  a 3-row file, read once                          -> the record's tx = the tx of every line of ts and of
+                                                          its audit_batches rows
   tb  a 20,000-row file, the watcher killed after its first chunks, started again -> it resumes from the checkpoint,
-      and every audit row of tb, before and after, is one tx = the record's = the checkpoint's"""
+      and every line of tb and its audit_batches rows, before and after, is one tx = the record's = the checkpoint's"""
 import http.server
 import json
 import os
@@ -82,8 +83,12 @@ def _record(c, table):
 
 
 def _audit_txs(c, table):
-    return sorted(r[0] for r in c.execute("SELECT DISTINCT transaction_id FROM audit_logs WHERE table_name = ?",
-                                          (table,)))
+    """The transactions `table`'s rows were written under - each line's batch and the table's audit_batches rows
+    (the overhaul's record of a write; audit_logs holds no cell rows)."""
+    lined = {r[0] for r in c.execute('SELECT DISTINCT batch FROM "%s__lines"' % table)}
+    said = {r[0] for r in c.execute("SELECT DISTINCT transaction_id FROM audit_batches WHERE table_name = ?",
+                                    (table,))}
+    return sorted(lined | said) if lined and said else ["lines %s, audit_batches %s" % (sorted(lined), sorted(said))]
 
 
 def test_a_files_rows_are_one_transaction_on_its_record(tmp_path):

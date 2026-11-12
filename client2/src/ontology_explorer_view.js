@@ -829,7 +829,7 @@ function renderRaw(state) {
     const bar = barDeclaration(state);
     // Form D (lead f3639d4a2): the text on the left, the form on the right; a text that does not read turns Save off.
     const split = bar ? null : new DeclarationSplit(document, textarea);
-    if (state.dirty) controls.append(h('span', 'oe-editor-unsaved', 'Unsaved'));
+    if (state.dirty && state.editorText !== state.openedText) controls.append(h('span', 'oe-editor-unsaved', 'Unsaved'));
     if (!bar) {
       const save = button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary');
       const fault = split && split.fault;
@@ -1571,7 +1571,7 @@ function renderUniqueness(row, stats) {
 }
 
 export function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
-                            stats = null, formula = notFormula) {
+                            stats = null, formula = notFormula, fallback = '') {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
                         + (bare ? ' is-bare' : ''));
@@ -1722,7 +1722,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         // rewrite the operator's file by being rendered. That rule still holds -- it now
         // lives in the part, which is also how it survives the value-vs-picker split.
         box.append(renderClosedList(
-          closedListChoice(editable.options, editable.value, { name: row.label }),
+          closedListChoice(editable.options, editable.value, { name: row.label, fallback }),
           h, { action: 'edit-field', path: row.path, label: row.label }));
       } else if (editable.kind === 'list' && !editable.records) {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
@@ -1748,7 +1748,9 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         add.dataset.list = shown;
         box.append(add);
       } else if (editable.kind !== 'object' && !editable.records) {
-        box.append(nameInput(editable.value, 'edit-field'));
+        const one = nameInput(editable.value, 'edit-field');
+        one.placeholder = fallback;
+        box.append(one);
       }
       box.append(list);
       // 🔴 THE CHIPS WRITE. Every candidate is a button carrying the WHOLE value that lands
@@ -1949,6 +1951,16 @@ export function nodeTrail(el, head = []) {
   ];
 }
 
+// A form node's box. `data-path` is the map's jump target; `data-key` is the same path for `dom_patch`, so the box is
+// kept whatever class the controller sets on it after a draw (`is-editing-parent`) - keyed by its class, the parent of
+// the field being typed in was rebuilt on the `change` a press elsewhere in it fires, and that press was lost (11-11).
+function formNodeBox(path) {
+  const box = h('div', 'oe-node');
+  box.dataset.path = path;
+  box.dataset.key = `node:${path}`;
+  return box;
+}
+
 const isFormNode = (node) => node.nodeType === 1 && ` ${node.className || ''} `.includes(' oe-node ')
   && node.dataset && node.dataset.path !== undefined;
 
@@ -1959,10 +1971,10 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls, lead = null) {
   row.dataset.depth = String(depth);
   row.dataset.tone = toneOf(depth);
   const name = h('div', 'oe-node-label');
-  // A name may break only right after an '_' (lead 10-21): each segment is its own span, a <wbr> after its '_'.
-  // It wraps only where the rows stack (CSS); the one grid keeps it on one line everywhere else.
+  // A name breaks at a space, or right after an '_' or a '.' (lead 10-21, 11-11): each segment its own span, a <wbr>
+  // after it - never between two letters.
   const nameText = h('span', 'oe-node-name');
-  for (const part of String(label ?? '').split(/(?<=_)/)) nameText.append(h('span', '', part), h('wbr'));
+  for (const part of String(label ?? '').split(/(?<=[_.])/)) nameText.append(h('span', '', part), h('wbr'));
   nameText.setAttribute('data-wrap-ok', '');
   nameText.title = String(label);
   // The head is one button, its caret and its name (lead 10-21).
@@ -2049,12 +2061,8 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   // map as open in the same action that adds the member, so the row the person just created
   // is the row they are looking at. In READING there is no door -- an empty map there really
   // is nothing -- so the outline stays folded and says how much.
-  const box = h('div', 'oe-node');
-  // The address the right-hand map jumps to. It is the node's own path and nothing else --
-  // the map is drawn from the same paths, so there is no second naming scheme to keep in
-  // step. (Not `data-key`: that is `dom_patch`'s reconciliation signature and these boxes
-  // are already reconciled positionally among their siblings.)
-  box.dataset.path = path;
+  // The address the right-hand map jumps to is the node's own path - the map is drawn from the same paths.
+  const box = formNodeBox(path);
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth, covers);
@@ -2195,8 +2203,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   const stated = typeof held.kind === 'string' && branches[held.kind] ? held.kind : '';
   const chosen = shaped ? shapeBranch(node, value, context.deref)
     : stated || names.find((name) => held[name] !== undefined) || '';
-  const box = h('div', 'oe-node');
-  box.dataset.path = path;
+  const box = formNodeBox(path);
   // Form D: the head is a tree row like every other - its name, the picker in the value column, its demand beside
   // it (the leaves' own seat, `demandWord`) - so its words stand on the rows' lines.
   const name = label === null ? path : label;
@@ -2599,8 +2606,7 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
     hasShape: Boolean(node), required,
   });
   const control = demand.source === 'broken' ? null : leafControl(context, node, path, value, planned);
-  const box = h('div', 'oe-node');
-  box.dataset.path = path;             // the map's jump target; see `renderSkeletonForm`
+  const box = formNodeBox(path);
   let state = null;
   let cls = '';
   if (planned) {
@@ -2623,6 +2629,13 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
 function demandWord(demand, required, value) {
   if (!demand.text || (demand.source === 'skeleton' && !(required === true && isBlank(value)))) return null;
   return h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text);
+}
+
+/** What an empty cell becomes (a skeleton leaf's `default`, B 4608139fc) as the text its empty box shows - '' when the
+ *  leaf says none. Every leaf box asks this, whichever path draws it (lead 11-11). */
+function defaultText(node) {
+  const said = node && node.default;
+  return said === undefined || said === null ? '' : spelledValue(said);
 }
 
 /** A held value as text: a string as itself, anything else as the JSON the file holds.
@@ -2695,7 +2708,7 @@ function renderSkeletonLeaf(context, node, path, value) {
       ? (String(context.heldChoice(node.list, path) || '') || text)
       : text;
     return renderClosedList(
-      closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list }),
+      closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list, fallback: defaultText(node) }),
       h, { action: 'edit-shape', path, cls: 'oe-box' });
   }
   if (node.hint === 'formula') return renderFormulaLeaf(context, node, path, text);
@@ -2711,6 +2724,7 @@ function renderSkeletonLeaf(context, node, path, value) {
   // type a field this screen has never heard of.
   input.type = node.hint === 'number' ? 'number' : 'text';
   input.value = text;
+  input.placeholder = defaultText(node);
   input.dataset.action = 'edit-shape';
   input.dataset.value = path;
   input.setAttribute('aria-label', path);
@@ -2742,6 +2756,7 @@ function renderFormulaLeaf(context, node, path, text) {
   };
   const columns = () => context.refOf(node, path).names;
   const field = new FormulaInput(host, { doc: document, cls: 'oe-field-input oe-box', label: path, value: text, columns, words, refusal });
+  field.input.placeholder = defaultText(node);
   field.input.dataset.action = 'edit-shape';
   field.input.dataset.value = path;
   return host;
@@ -3102,7 +3117,8 @@ function renderAuthoring(state) {
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among
     // them -- and this screen exists so that nothing has to be saved to be seen.
     renderRow: (row, node, bare = false) => renderAuthoringRow(
-      row, state.expandedFields, editableFor(row, node), bare, columnStats, formulaUnder(node, context.deref)),
+      row, state.expandedFields, editableFor(row, node), bare, columnStats, formulaUnder(node, context.deref),
+      defaultText(context.deref(node))),
     // The tree reads folding off the SAME rows the layer counts are computed from, so a
     // branch can never sit folded over a field the spine is still counting as remaining.
     // 🔴 「계획이 «아직 안 옴»」 and 「계획이 «비었음»」 are different answers and the

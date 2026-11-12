@@ -25,6 +25,10 @@
 | 사람 코멘트 | 있음 `memory.comment` (AI 다시 돌림) | `chain/ask_rule` · report | 읽기 |
 | replay | 있음 | `chain/replay` | ✅ chain_replay · a_cut_replay_resumes_after_its_last_committed_page |
 | 시각 · 일정 | **없음** | 규칙 칸 목록(`RULE_ROUTING_OPTIONAL`)에 없음 | 읽기 |
+| 참조 표(take `ref`)의 변경 | **없음** — 빠짐, 트리거 찾기 안 ㄱ 에서 닫음. 값은 다음에 가까운 행 · 키가 바뀌거나 소급할 때까지 조용히 낡음 | 깨움은 `trigger_table` 한 칸(`watches_table`) · ref 는 읽기 집합(`rule_tables` READ)에도 없음 | 읽기 (A 11-10) |
+| 원장 걷기(take `fn: walk`)가 닿는 소스 표의 변경 | **없음** — 빠짐, 트리거 찾기 안 ㄱ 에서 닫음. 같은 낡음 | 같음 · walk 소스 표도 읽기 집합에 없음 | 읽기 (A 11-10) |
+
+3 단 검사기(A 11-10, 트리거 찾기 안 ㄱ): 시스템 세계의 규칙 —reads_from(역할: 트리거 · 오른쪽 · ref · walk)/writes/writes_column→ 표 · 칸 «그래프 하나» 위의 걷기다 — 깨울 규칙 · 순환 · (표, 칸) 소유 충돌이 같은 엣지를 읽는다. 오늘 `reads_from` 은 `trigger_table` 뿐이고(`chain/graph.rule_facts`), 순환 그래프 셋(`column_loops` · `rule_order` · `_validate_chain_cascade_graph`)은 각자 엣지를 짓는다.
 
 ## 2 언제 — 어느 행을 넘기나
 

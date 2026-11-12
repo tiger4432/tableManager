@@ -47,14 +47,35 @@ SEATS = [{"lot_slot_wafer_key": "K1", "lot": "L1", "slot": "1", "wafer": "W1", "
 
 @pytest.fixture(name="board")
 def fixture_board(world):
+    return _board(world, _only(CHANGED, KEPT, one=True))
+
+
+REGISTER = "register@1"
+
+
+@pytest.fixture(name="registering")
+def fixture_registering(world):
+    """The board, and the recipe source registering each wafer - a sentence with no object, no attribute."""
+    document = _only(CHANGED, KEPT, one=True)
+    subjects = document["vocabulary"][REGISTER]["subjects"]
+    if "wafer@1" not in subjects:
+        subjects.append("wafer@1")
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-registered"] = {"predicate": REGISTER, "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}}}}
+    return _board(world, document)
+
+
+def _board(world, document, rows=ROWS):
     import notation_norm
 
     with world["engine"].begin() as conn:
         conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.key_number_sql())
     with open(os.path.join(paths.config_path("ontology"), "ledger_config.json"), "w", encoding="utf-8") as fh:
-        json.dump(_only(CHANGED, KEPT, one=True), fh)
+        json.dump(document, fh)
     trace_router._COMPILED.clear()
-    _write(world, "wafer_process", ROWS)
+    _write(world, "wafer_process", rows)
     _write(world, "lot_slot_wafer", SEATS)
     for source in (CHANGED, KEPT):
         backfill.run(world["engine"], source=source)
@@ -88,8 +109,13 @@ def test_the_virtual_walk_draws_the_walk_the_ledger_draws(board, asked):
     assert all(re.fullmatch(r"(wafer_process|lot_slot_wafer):[0-9a-f-]{36}", e["basis"]) for e in virtual["edges"])
     assert len(stored["edges"]) >= (1 if asked.get("since") else 3), "canary: the walk crosses both sources"
     assert "engine" not in stored, "the stored answer is today's - no new cell"
-    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"]}
-    assert {scan["table"] for scan in virtual["engine"]["scans"]} <= {"wafer_process", "lot_slot_wafer"}
+    said = virtual["engine"]
+    assert said == {"name": "virtual", "left_out": [], "scans": said["scans"], "served": said["served"], "legs": said["legs"]}
+    assert {end["table"] for end in said["scans"] + said["served"]} <= {"wafer_process", "lot_slot_wafer"}
+    # each leg read timed (lead 11-11): the walk's own tables, a statement at least each, the rows it read
+    assert said["legs"] and {leg["table"] for leg in said["legs"]} <= {"wafer_process", "lot_slot_wafer"}
+    assert all(leg["statements"] >= 1 and leg["seconds"] >= 0 for leg in said["legs"])
+    assert sum(leg["rows"] for leg in said["legs"]) >= len(virtual["edges"]) > 0 or asked.get("since")
 
 
 def test_the_three_questions_are_three_answers(board):
@@ -100,6 +126,184 @@ def test_the_three_questions_are_three_answers(board):
 
 
 def test_walk_shadow_finds_no_difference(board):
+    _shadow_finds_no_difference(board)
+
+
+def test_a_sentence_with_no_object_is_read_as_the_ledger_holds_it(registering):
+    """11-10 (owner «가상 일괄», lead ㄷ): a registration is a leg with no object end - not left out; each atom the
+    virtual read makes is the stored one (walk-shadow per predicate), and the walk draws what the stored walk draws."""
+    raw = registering["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [mine] = [leg for leg in legs if leg.sentence == "wafer-registered"]
+    assert mine.ends["incoming"] == (None, {})
+    said = _shadow_finds_no_difference(registering, follow=[mine.predicate])
+    assert said[CHANGED]["atoms"]["stored"] >= 3, "canary: the stored ledger holds the registrations"
+    stored, virtual = _walk(registering, "stored"), _walk(registering, "virtual")
+    assert _drawn(virtual) == _drawn(stored) and virtual["engine"]["left_out"] == []
+
+
+def test_a_source_with_entity_attributes_is_read_with_them(world):
+    """Lead 11-10 stage 2: a source whose wafers carry an attribute - its declared registration sentence says it - is
+    read whole: nothing left out, walk-shadow finds every atom of the source (the registrations with their attribute
+    included, and no second registration of a type the source registers itself), the walk draws what the stored one
+    draws, attribute and all."""
+    from test_ledger_worlds_are_independent_and_meet_in_a_walk import _registering
+
+    document = _registering("step")
+    document["sources"][KEPT] = _only(CHANGED, KEPT)["sources"][KEPT]
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    said = _shadow_finds_no_difference(board, follow=sorted({leg.predicate for leg in legs if leg.source == CHANGED}))
+    assert said[CHANGED]["atoms"]["stored"] >= 7, "canary: edges and registrations both"
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual) == _drawn(stored) and len(stored["edges"]) >= 3
+    labelled = [n for n in stored["nodes"] if n["type"] == "wafer" and (n.get("attributes") or {}).get("label")]
+    assert labelled, "canary: the stored walk draws the attribute"
+
+
+def test_a_role_with_attributes_registers_its_node_once_a_row_and_only_with_a_value(world):
+    """Lead 11-10 stage 2: a source registering nothing itself, its wafers carrying `label` (from `step`) in two sentences
+    of one row - the translator registers each wafer ONCE a row (one molecule, one fact), and not for a row whose
+    `step` is blank (P4). Walk-shadow on «register» finds the stored registrations, no more, no fewer."""
+    document = _only(CHANGED, KEPT, one=True)
+    subjects = document["vocabulary"][REGISTER]["subjects"]
+    if "wafer@1" not in subjects:
+        subjects.append("wafer@1")
+    document["entities"]["wafer@1"]["attributes"] = ["label"]
+    bind = document["sources"][CHANGED]["bind"]
+    bind["entities"] = {"wafer@1": {"attributes": {"label": {"kind": "column", "column": "step"}}}}
+    bind["mappings"]["wafer-processed-again"] = json.loads(json.dumps(bind["mappings"]["wafer-processed-with-recipe"]))
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    said = _shadow_finds_no_difference(board, follow=[REGISTER.split("@")[0]])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "canary: W1 twice (P1, P2) and W2 once (P3) - P4 has no step"
+
+
+def test_a_value_object_is_read_as_the_ledger_holds_it(world):
+    """Lead 11-10 value objects stage 2: a sentence whose object is a value - a string one here, which the stored
+    translator refused row by row until its value role stopped being read as a required qualifier (the claim's own
+    qualifier names, `setup_registry`) - is read whole: nothing left out, walk-shadow finds every atom of the source
+    (the values included), the walk draws what the stored walk draws - a row whose value is blank keeping its edges, its value unsaid."""
+    document = _only(CHANGED, KEPT, one=True)
+    document["vocabulary"]["has_netdie@1"]["subjects"] = ["wafer@1"]              # a value predicate the sample has
+    document["vocabulary"]["has_netdie@1"]["object"]["value_type"] = "string"
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-step-value"] = {"predicate": "has_netdie@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "value": {"kind": "column", "column": "step"}}}
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [valued] = [leg for leg in legs if leg.sentence == "wafer-step-value"]
+    said = _shadow_finds_no_difference(board, follow=[valued.predicate])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "canary: the stored ledger holds the values (P1-P3; P4 has no step)"
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual) == _drawn(stored)
+    assert len(stored["edges"]) >= 3, "P4's edges stay - a blank value unsays its own sentence alone (lead 11-10)"
+
+
+def test_a_blank_required_qualifier_unsays_its_sentence_alone(world):
+    """Lead 11-10 (ㄱ, the owner's «빈 거는 무시» 10-12 and «빈키행은 무시» 11-01): a required qualifier left blank on
+    a row unsays that sentence there - not the row - in both engines; the row's edges stay. It refused the whole row
+    (`missing_binding_value`) and the virtual walk left the source out."""
+    document = _only(CHANGED, KEPT, one=True)
+    vocabulary = document["vocabulary"]["has_netdie@1"]
+    vocabulary["subjects"] = ["wafer@1"]
+    vocabulary["object"]["value_type"] = "string"
+    vocabulary["object"]["qualifiers"] = {"required": ["step"], "optional": []}
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-recipe-value"] = {"predicate": "has_netdie@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}},
+        "value": {"kind": "column", "column": "recipe_id"},
+        "step": {"kind": "column", "column": "step"}}}
+    board = _board(world, document)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [qualified] = [leg for leg in legs if leg.sentence == "wafer-recipe-value"]
+    said = _shadow_finds_no_difference(board, follow=[qualified.predicate])
+    assert said[CHANGED]["atoms"]["stored"] == 3, "P1-P3 say it with their step; P4 (no step) does not"
+    stored, virtual = _walk(board, "stored"), _walk(board, "virtual")
+    assert _drawn(virtual) == _drawn(stored)
+    assert len(stored["edges"]) >= 3, "P4's edges stay - its blank step unsays only the qualified sentence"
+
+
+@pytest.fixture(name="thick")
+def fixture_thick(config, monkeypatch):
+    """wafer_process holds a float `thick` (table_config «number») - asked before `world`, which builds the table."""
+    import test_ledger_worlds_are_independent_and_meet_in_a_walk as worlds
+
+    catalogue = json.loads((config / "table_config.json").read_text(encoding="utf-8"))
+    catalogue["wafer_process"]["column_types"]["thick"] = "number"
+    (config / "table_config.json").write_text(json.dumps(catalogue), encoding="utf-8")
+    sample = worlds._sample
+
+    def floated(name):
+        document = sample(name)
+        if name.startswith("table_config"):
+            document["wafer_process"]["column_types"]["thick"] = "number"
+        return document
+    monkeypatch.setattr(worlds, "_sample", floated)
+
+
+def test_a_float_qualifier_is_read_as_the_ledger_holds_it(thick, world):
+    """Owner on ops 11-11 («qualifier float»): a qualifier read from a float column - 9.0, 0.1 and two blank cells -
+    compiles (nothing left out) and each atom the virtual read makes is the stored one; the walk draws what the stored
+    walk draws, a blank saying no qualifier on both. (A NaN cell: the stored page refuses its row - `roleframe.
+    _row_sort_token` - while the virtual read draws the row without the qualifier; not ruled here.)"""
+    document = _only(CHANGED, KEPT, one=True)
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-processed-with-recipe"]["bind"]["step"] = {
+        "kind": "column", "column": "thick"}
+    rows = [dict(row, thick=value) for row, value in zip(ROWS, (9.0, 0.1, None, None))]
+    board = _board(world, document, rows=rows)
+    raw = board["engine"].raw_connection()
+    try:
+        legs, left_out = trace_router._compiled(raw, (schema.require_world(None),))
+    finally:
+        raw.rollback()
+        raw.close()
+    assert left_out == []
+    [floated] = [leg for leg in legs if leg.sentence == "wafer-processed-with-recipe"]
+    assert floated.qualifiers == {"step": {"column": "thick", "kind": "float"}}
+    _shadow_finds_no_difference(board, follow=[floated.predicate])
+    stored, virtual = _walk(board, "stored", include_superseded=True), _walk(board, "virtual", include_superseded=True)
+    assert _drawn(virtual) == _drawn(stored), [(sorted(set(v) - set(s)), sorted(set(s) - set(v)))
+                                               for v, s in zip(_drawn(virtual)[:2], _drawn(stored)[:2])]
+    said = sorted(str((e.get("qualifiers") or {}).get("step")) for e in stored["edges"] if e["predicate"] == floated.predicate)
+    assert set(said) == {"0.1", "9.0", "None"}, "canary: 9.0 and 0.1 said, a blank not - %s" % said
+
+
+def _shadow_finds_no_difference(board, follow=None):
+    """walk-shadow over each source: the same atoms both ways, no bin - {source: what it said}."""
+    out = {}
     raw = board["engine"].raw_connection()
     try:
         def fetch(sql, params=None):
@@ -107,7 +311,7 @@ def test_walk_shadow_finds_no_difference(board):
         names = schema.require_world(None)
         snapshot = load_setup(names.declaration_root).snapshot
         legs, left_out = trace_router._compiled(raw, (names,))
-        assert left_out == [] and {leg.source for leg in legs} == {CHANGED, KEPT}
+        assert [item for item in left_out if not item["why"].endswith(" not read")] == [] and {leg.source for leg in legs} == {CHANGED, KEPT}
         for source in (CHANGED, KEPT):
             mine = [leg for leg in legs if leg.source == source]
             others = {names.name: [other for other in snapshot.source_plans if other != source]}
@@ -118,9 +322,12 @@ def test_walk_shadow_finds_no_difference(board):
                 fetch, names.ledger, snapshot.source_plans[source],
                 ledger_subgraph.SqlEvidenceLookup(raw, worlds=(names,), leave_out=others),
                 ledger_subgraph.VirtualEvidenceLookup(raw, mine, worlds=(names,)), seeds,
-                sorted({leg.predicate for leg in mine}))
-            assert said["atoms"]["stored"] and said["atoms"]["stored"] == said["atoms"]["virtual"], said
+                follow or sorted({leg.predicate for leg in mine}))
+            if follow is None or source == CHANGED:
+                assert said["atoms"]["stored"] and said["atoms"]["stored"] == said["atoms"]["virtual"], said
             assert said["bins"] == {"spelling": 0, "stale": 0, "stored-only": 0, "real": 0, "tie_split": 0}, said
+            out[source] = said
+        return out
     finally:
         raw.rollback()
         raw.close()

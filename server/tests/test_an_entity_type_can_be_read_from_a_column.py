@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger.backfill import _v2_frame, prepare_v2_cursor_batch               # noqa: E402
 from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
-from ledger.roleframe import RoleFrameError, dry_run_event_frame, mapper_context  # noqa: E402
+from ledger.roleframe import dry_run_event_frame, mapper_context  # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,                      # noqa: E402
                                  require_ready_bundle, validate_bundle,
                                  validate_bundle_errors)
@@ -156,14 +156,17 @@ def test_a_blank_optional_qualifier_leaves_only_that_atom_without_it(shipped, ca
     assert refusals == []
 
 
-def test_a_blank_required_qualifier_is_refused_as_before(shipped, catalog):
-    with pytest.raises(RoleFrameError) as refused:
-        translate(shipped, catalog, [
-            row(1, "quantity", "q-a", "defect_kind", "d-a"),
-            row(2, "quantity", "q-b", "defect_kind", "d-b", certainty=None),
-        ], certainty="required")
-    assert (refused.value.code, refused.value.path) == (
-        "missing_binding_value", f"bundle.sources.{CANDIDATES}.bind.mappings.leads.bind.certainty.column")
+def test_a_blank_required_qualifier_unsays_its_sentence_not_the_batch(shipped, catalog):
+    """총괄 11-10 ㄱ (REVERSES this test's 10-11 «refused as before», `missing_binding_value` failing the batch): a
+    blank required qualifier unsays its sentence at that row, as a blank entity cell does (owner 10-12 «빈 거는 무시»)."""
+    atoms, refusals = translate(shipped, catalog, [
+        row(1, "quantity", "q-a", "defect_kind", "d-a"),
+        row(2, "quantity", "q-b", "defect_kind", "d-b", certainty=None),
+    ], certainty="required")
+    leads = [(atom["subject_keys"], atom["object_payload"]) for atom in atoms if atom["predicate"] == "leads_to"]
+    assert leads == [({"quantity": "q-a"}, {"type": "defect_kind", "keys": {"defect_kind": "d-a"},
+                                            "qualifiers": {"certainty": "suspected"}})]
+    assert refusals == []
 
 
 def test_a_named_type_reads_as_it_did(shipped, catalog):

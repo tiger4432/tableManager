@@ -1,5 +1,5 @@
 {
-  "_what": "The declaration guides and the admin tabs each is shown on - help_guides.GUIDE_TABS reads this; the Help answer's sections and the Guide reader walk it, and client2/tests/guide_markdown_harness.mjs reads it too (lead 11-06).",
+  "_what": "The declaration guides and the admin tabs each is shown on - help_guides.GUIDE_TABS reads this; the Help answer's sections and the Guide reader walk it, and client2/tests/guide_markdown_harness.mjs reads it too (lead 11-06). A guide about a screen that is no admin tab (the map editor) has no tab: it is in «All N» only (lead 11-11).",
   "guides": {
     "docs/guide/config/chain_rules.md": ["chain"],
     "docs/guide/config/table_config.md": ["tables"],
@@ -9,6 +9,18 @@
     "docs/guide/ai_ask_tables.md": ["chain", "tables"],
     "docs/guide/ai_report_tables.md": ["chain"],
     "docs/guide/browser_collector.md": ["file", "tables"],
-    "docs/guide/OPERATIONS_GUIDE.md": ["overview"]
+    "docs/guide/OPERATIONS_GUIDE.md": ["overview"],
+    "docs/guide/AUTO_UPDATE_GUIDE.md": ["autoupdate", "retroactive"],
+    "docs/guide/BACKFILL_GUIDE.md": ["retroactive", "chain", "file"],
+    "docs/guide/INGESTION_GUIDE.md": ["file"],
+    "docs/guide/LEDGER_GUIDE.md": ["ontology", "overview", "retroactive"],
+    "docs/guide/TEXT_LINKS_GUIDE.md": ["chain", "retroactive", "ontology"],
+    "docs/guide/chain_ingestion_guide.md": ["chain", "retroactive", "overview"],
+    "docs/guide/config/notation_rules_config.md": ["overview", "retroactive"],
+    "docs/guide/config/maps.md": [],
+    "docs/guide/config/map_overlay_config.md": ["overview"],
+    "docs/guide/DOE_GUIDE.md": [],
+    "docs/guide/VALID_DIE_MAP_GUIDE.md": [],
+    "docs/guide/ROLLBACK_PROCEDURE.md": []
   }
 }

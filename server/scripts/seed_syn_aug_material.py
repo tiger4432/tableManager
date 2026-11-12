@@ -49,14 +49,9 @@ the door. That is exact because the namespace was emptied before the run, so it 
 run's rows and nothing else. The ledger keeps both events -- written, then withdrawn -- and
 that is true rather than dirty: those facts existed and then did not.
 
-ROLLBACK - one predicate per table, all on the namespace this script owns:
-
-    DELETE FROM void_obs        WHERE base_wafer_id LIKE 'SYN-AUG-%';
-    DELETE FROM inspection_run  WHERE base_wafer_id LIKE 'SYN-AUG-%';
-    DELETE FROM bonding_log     WHERE bond_lot      LIKE 'SYN-AUG-%';
-    DELETE FROM core_defect_map WHERE lot           LIKE 'SYN-AUG-%';
-    DELETE FROM bonding_map     WHERE base          LIKE 'SYN-AUG-%';
-    DELETE FROM wafer_map_metadata WHERE map_id     LIKE 'SYN-AUG-%';
+UNDO
+----
+    Don't paste SQL - ask before undoing a seed. Each run prints its transaction_id, which every write of that run carries.
 """
 import argparse
 import os
@@ -290,7 +285,7 @@ def _put(table, rows, url, log=print):
         values = dict(row)
         items.append(product_door.row_item(
             values.pop("business_key_val"), values, source_name=SOURCE_NAME))
-    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None)
+    result = product_door.put_rows(table, items, base_url=url, log=lambda *_: None, transaction_id=RUN_TX)
     log("   wrote    %-20s %6d rows in %d request(s)" % (
         table, result["rows"], result["requests"]))
     return result["rows"]
@@ -323,6 +318,10 @@ def _score(connection, tag):
         print("    new     %s  " % lot + "  ".join(
             "%s x%.3f" % (a, v) for a, v in sorted(r.items())) + flag)
     return out
+
+
+#: every write of this run carries it - printed when the run starts (lead 11-11: a seed is undone by its batch)
+RUN_TX = str(__import__("uuid6").uuid7())
 
 
 def main(argv=None):
@@ -393,4 +392,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    print("transaction_id: %s - every write of this run carries it" % RUN_TX)
     raise SystemExit(main())

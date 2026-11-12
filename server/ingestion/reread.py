@@ -381,24 +381,20 @@ def uncheck(db, table=None, paths=None, folders=None, apply=True, keep_by_hand=F
 
 
 def hand_on_a_changed_reading(db, table, before, now, folders=()):
-    """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    NOT handed and keep their stamp - a failed file is read again only by hand, Retry · Read now · Read all again
-    (`checkpoint.BY_HAND_ONLY`, 소유자 10-24 «에러파일 자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네»),
-    and its read files still in place - under
-    `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
-    「옮겨진 건 하지 마」). Only its table_config changed: the read files stay checked and are counted - Read all again
-    on the file page applies the change to them (소유자 10-23 「다로 해」). No cap: the watcher reads at its own pace.
-    Other tables are not touched. -> the line to say (the caller adds what its sweeps dispatched), or None."""
+    """The table's reading changed - its plugin, its table_config entry or its external source, alike: its files are
+    read again only by hand (소유자 11-11 «인제션 코드 주석만 바꿔도 도네» · «수동으로»; it overturns 소유자 10-21
+    「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」, 4492b8813). Its read files under `folders` - the ones its sweeps
+    look at - stay checked and are counted, as 소유자 10-23 「다로 해」 kept them for a table_config change: Read all
+    again on the file page reads them with the new reading. Its failed files keep their stamp too - Retry · Read now ·
+    Read all again (`checkpoint.BY_HAND_ONLY`, 소유자 10-24). -> the line to say (the caller adds what its sweeps
+    dispatched), or None."""
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
-    declaration_only = changed == ["table_config"]
-    read = (uncheck(db, table=table, folders=list(folders), apply=not declaration_only, keep_by_hand=True)
-            if folders else 0)
-    said = ("%d read file(s) kept as read (Read all again on the file page applies the change to them)"
-            if declaration_only else "%d read file(s) unchecked") % read
-    return ("[Watcher] %s: its reading changed (%s) - %s, failed files are not read again by themselves (Retry on "
-            "the file page)" % (table, ", ".join(changed), said))
+    read = uncheck(db, table=table, folders=list(folders), apply=False, keep_by_hand=True) if folders else 0
+    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) kept as read (Read all again on the file page "
+            "applies the change to them), failed files are not read again by themselves (Retry on the file page)"
+            % (table, ", ".join(changed), read))
 
 
 def load_reading_stamps(filename=READING_STAMPS_FILENAME):
@@ -485,44 +481,40 @@ def select_files(db, table, folder, limit=None):
     the file)], "not_taken": {why: count}, "not_taken_files": [first names], "walked": files looked at}.
     More than `limit` files under the folder is refused (RereadRefused) before anything is judged."""
     from directory_watcher import _safe_relative_path, one_sweep, source_taking
+    from runtime.stages import Seconds, receiving, stage
 
     limit = WALK_MAX_ENTRIES if limit is None else limit
-    began = clock = time.perf_counter()
-    took = {}
-
-    def stage(name):
-        nonlocal clock
-        now = time.perf_counter()
-        took[name], clock = round(now - clock, 3), now
-
-    files, folders = [], 0
-    for top, _dirs, names in os.walk(folder):
-        folders += 1
-        for name in names:
-            files.append(os.path.join(top, name))
-            if len(files) > limit:
-                raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
-    stage("walk")
-    raws, specs = table_sources(table)
-    stage("sources")
-    rows = _newest_rows_of(db, table, files)
-    stage("lookup")
-    picked, not_taken, names = [], {}, []
-    with one_sweep():
-        for path in sorted(files):
-            why = None
-            if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
-                why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
-                    else OUTSIDE_SOURCES
-            log = rows.get(os.path.normcase(os.path.abspath(path)))
-            if why is None and log is not None and log.status == "PENDING":
-                why = BEING_READ
-            if why is not None:
-                not_taken[why] = not_taken.get(why, 0) + 1
-                names.append(os.path.basename(path))
-                continue
-            picked.append((log, _safe_relative_path(path, folder), path))
-    stage("judge")
+    began = time.perf_counter()
+    took = Seconds()
+    with receiving(took):
+        files, folders = [], 0
+        with stage("walk"):
+            for top, _dirs, names in os.walk(folder):
+                folders += 1
+                for name in names:
+                    files.append(os.path.join(top, name))
+                    if len(files) > limit:
+                        raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
+        with stage("sources"):
+            raws, specs = table_sources(table)
+        with stage("lookup"):
+            rows = _newest_rows_of(db, table, files)
+        picked, not_taken, names = [], {}, []
+        with stage("judge"), one_sweep():
+            for path in sorted(files):
+                why = None
+                if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
+                    why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
+                        else OUTSIDE_SOURCES
+                log = rows.get(os.path.normcase(os.path.abspath(path)))
+                if why is None and log is not None and log.status == "PENDING":
+                    why = BEING_READ
+                if why is not None:
+                    not_taken[why] = not_taken.get(why, 0) + 1
+                    names.append(os.path.basename(path))
+                    continue
+                picked.append((log, _safe_relative_path(path, folder), path))
+    took = {name: round(seconds, 3) for name, seconds in took.items()}
     took["total"] = round(time.perf_counter() - began, 3)
     logger.info("[Reread] preview of %s for %s: %d file(s) in %d folder(s), %d picked - %.1f s (walk %.1f · sources "
                 "%.1f · lookup %.1f · judge %.1f)", folder, table, len(files), folders, len(picked), took["total"],

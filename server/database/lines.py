@@ -655,6 +655,20 @@ def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
     return out
 
 
+def rank(line, terms, unowned) -> tuple:
+    """A line's place in `crud.rank_terms`' order - the line {ranks_as, owner_rule, source_name, at, line_id}. THE one
+    walk of the terms: lines.merge and crud.compute_priority_value (write_lines._others, file_layer_fold, a formula's
+    candidate) rank here, so a line's owner_rule ranks alike in every one (lead 11-12 ㄴ)."""
+    return tuple(term(line, unowned) for term in terms)
+
+
+def chain_unowned(lines_) -> bool:
+    """Does a chain line no rule owns sit on the cell (rank term 1d asks)."""
+    from . import crud
+
+    return any(ln["ranks_as"] == crud.CHAIN_SOURCE and ln["owner_rule"] is None for ln in lines_)
+
+
 def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
@@ -698,12 +712,11 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
                 cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[value_column(col)]))
         for (row, col), said in cells.items():
             pin = pins.get((row, col))
-            unowned = any(ok and ln["ranks_as"] == crud.CHAIN_SOURCE and ln["owner_rule"] is None
-                          for ln, ok, _ in said)
+            unowned = chain_unowned([ln for ln, ok, _ in said if ok])
             left = [(ln, v) for ln, ok, v in said if ok and (pin is None or ln["source_name"] == pin)
                     and ln["source_name"] != exclude_source]
             if left:
-                ln, value = min(left, key=lambda c: tuple(term(c[0], unowned) for term in terms))
+                ln, value = min(left, key=lambda c: rank(c[0], terms, unowned))
                 out.setdefault(row, {})[col] = (crud.line_value(value, kinds.get(col, "string")), ln["line_id"])
             elif pin is None:
                 out.setdefault(row, {})[col] = (None, None)

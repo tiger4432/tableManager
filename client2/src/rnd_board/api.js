@@ -372,7 +372,9 @@ export async function fetchSubgraph(params) {
           // a caller that drops a walk it no longer wants (a part's newer ask, owner 10-14 «연달아 찍는 건 앞 요청 취소»)
           signal,
           // the walk's ranking not computed (lead 10-14, B 9166099d4) - false only; a resumed page carries it too
-          propagation } = params || {};
+          propagation,
+          // the walk's value filters (lead 11-11): ["<predicate>:<expression>"], ["<type>:<expression>"] - none, nothing sent
+          edge_filter: edgeFilter, node_filter: nodeFilter } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -466,6 +468,8 @@ export async function fetchSubgraph(params) {
   //    싣던 것을 «정본 생성기»로 올립니다: 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
   for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t));
   for (const id of Array.isArray(aux) ? aux : []) query.append('aux', String(id));
+  for (const f of Array.isArray(edgeFilter) ? edgeFilter : []) query.append('edge_filter', String(f));
+  for (const f of Array.isArray(nodeFilter) ? nodeFilter : []) query.append('node_filter', String(f));
   if (direction) query.set('direction', direction);
   if (resumable === true) query.set('resumable', 'true');
   if (propagation === false) query.set('propagation', 'false');
@@ -559,6 +563,39 @@ function intervalExcluded(raw) {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
 }
 
+/** One line of what the walk's virtual read said - «<label>: <part> — <part>» (`notReadOf`, `scannedOf`). */
+function engineLine(label, ...parts) {
+  return `${label}: ${parts.join(' — ')}`;
+}
+
+/** How many of the slowest legs the walk shows (lead 11-11). */
+const SLOWEST_SHOWN = 3;
+
+/** The sources the walk's virtual read could not read, each with the server's why (`engine.left_out`; owner 11-10
+ *  «아무것도 안 나옴» - a walk that read nothing said nothing) - one line each, [] when every source was read. */
+export function notReadOf(body) {
+  const out = body && body.engine && Array.isArray(body.engine.left_out) ? body.engine.left_out : [];
+  return out.map((item) => engineLine('Not read', String((item && item.source) ?? '?'), String((item && item.why) ?? '')));
+}
+
+/** What the walk's virtual read said of its key ends and its legs (lead 11-11, owner «인덱스 없어»): `scanned` a line
+ *  each end no index serves - the server's sentence, or its name while the ask waits (`engine.scans`); `served` the
+ *  ends an index serves folded under one head (`engine.served`), null when none; `slowest` the SLOWEST_SHOWN legs the
+ *  read waited on longest (`engine.legs`, slowest first). All empty for a stored read. */
+export function scannedOf(body) {
+  const engine = (body && body.engine) || {};
+  const list = (each) => (Array.isArray(each) ? each : []);
+  const said = (end) => (end.said == null
+    ? [`${String(end.table)}.${String(end.column ?? '?')}`, 'index asked - no answer yet'] : [String(end.said)]);
+  const served = list(engine.served).map((end) => said(end).join(' — '));
+  return {
+    scanned: list(engine.scans).map((end) => engineLine('Scanned', ...said(end))),
+    served: served.length ? { head: engineLine('Served', `${served.length} end${served.length === 1 ? '' : 's'}`), lines: served } : null,
+    slowest: list(engine.legs).slice(0, SLOWEST_SHOWN).map((leg) => engineLine('Slowest',
+      `${String(leg.table)} (${String(leg.leg)})`, `${Number(leg.seconds).toFixed(2)} s · ${Number(leg.rows)} rows`)),
+  };
+}
+
 export function subgraphModel(result) {
   const failed = !result || result.ok === false;
   const body = (result && result.body) || null;
@@ -644,6 +681,7 @@ export function subgraphModel(result) {
     //    「안 물었다」와 「물었는데 무리가 없다」(빈 배열)는 다른 답이고, 읽는 쪽이 그 둘을
     //    갈라야 「아직 안 셌다」를 「없다」로 안 그립니다.
     groups: Array.isArray(body && body.groups) ? body.groups : null,
+    notRead: notReadOf(body),
     nodes: Array.isArray(body.nodes) ? body.nodes : [],
     edges: Array.isArray(body.edges) ? body.edges : [],
     contrast: prop.contrast || null,
@@ -1831,6 +1869,9 @@ export async function fetchDeclaration(params) {
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
              worlds: body.worlds || [],
+             // each source's relation, the types its columns key and the predicates it emits - the Tables page's paths
+             // between two tables; absent (null) when the setup would not compile, as the server omits it
+             sources: Array.isArray(body.sources) ? body.sources : null,
              operating: typeof body.operating === 'string' ? body.operating : null,
              // the zone the calculators cut dates in - the server's setting (expression.useZone)
              zone: typeof body.expression_time_zone === 'string' ? body.expression_time_zone : null };
@@ -2054,7 +2095,7 @@ export function createWalkBoxWalk(deps) {
       const truncated = body.truncated || null;
       const cutAxes = truncationAxes(truncated, { hopsChosen: hops !== undefined && hops !== null });
       return {
-        ok: true, nodes, edges, truncated,
+        ok: true, nodes, edges, truncated, notRead: notReadOf(body), scanned: scannedOf(body),
         // 「무엇에서 잘렸나」를 이름으로도 냅니다 -- 화면이 `reason` 을 그대로 쓰면 «자르지 않은»
         // depth 까지 문장에 실립니다.
         truncatedAxes: cutAxes,

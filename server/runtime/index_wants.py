@@ -33,7 +33,7 @@ logger = logging.getLogger("Server")
 #: page unasked until a restart. Not a setting (owner «줄이려는데 왜 키워»); a written ask stays once a process.
 ASK_AGAIN_SECONDS = 600
 
-#: key -> when this process asked it; None once its ask was written (`_written`) - never again
+#: key -> when this process asked it; None once its ask was written (`_asked`) - never again
 _ASKED = {}
 #: (table, column) -> what the last ask on that column came to in this process (`last_word`)
 _WORDS = {}
@@ -58,7 +58,15 @@ def _first(key):
     return True
 
 
-def _written(key, written):
+def _asked(key, table, columns, why, seconds, bind):
+    """`ask` on the asking thread: a written ask is never asked again; one that broke is said as its columns' last word
+    too (lead 11-11 ㄴ: `last_word` None means «queued, no answer yet» only)."""
+    try:
+        written = ask(table, columns, why, seconds, bind)
+    except Exception as exc:                                        # noqa: BLE001 - the next ask goes on
+        tell(table, columns, "an automatic index on %s (%s) was not asked: %s: %s"
+             % (table, ", ".join(columns), type(exc).__name__, told(exc)), logging.ERROR)
+        return
     if written:
         with _LOCK:
             _ASKED[key] = None
@@ -70,7 +78,7 @@ def want(table, columns, why, seconds, bind):
     key = (table, tuple(columns), why)
     if _first(key):
         _QUEUE.put(("an automatic index on %s (%s) was not asked" % (table, ", ".join(columns)),
-                    lambda: _written(key, ask(table, columns, why, seconds, bind))))
+                    lambda: _asked(key, table, columns, why, seconds, bind)))
 
 
 @contextlib.contextmanager
@@ -318,18 +326,18 @@ def ask(table, columns, why, seconds, bind):
     db = Session(bind=bind)
     try:
         if why == models.AUTO_SLOW_SEARCH and not models.has_trigram(db.connection()):
-            _tell(table, columns, "an automatic index on %s (%s) is not asked for a %s: %s"
-                  % (table, ", ".join(columns), why, models.PG_TRGM_MISSING))
+            tell(table, columns, "an automatic index on %s (%s) is not asked for a %s: %s"
+                 % (table, ", ".join(columns), why, models.PG_TRGM_MISSING))
             return False
         held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table)
         served = [index["name"] for index in held if models.auto_index_serves(index, columns, why)]
         if served:
-            _tell(table, columns, "%s (%s)%s - not asked for a %s: %s already serves it"
-                  % (table, ", ".join(columns), took, why, served[0]))
+            tell(table, columns, "%s (%s)%s - not asked for a %s: %s already serves it"
+                 % (table, ", ".join(columns), took, why, served[0]))
             return False
         if sum(1 for index in held if index["name"].startswith(models.AUTO_INDEX_PREFIX)) >= auto_index_per_table():
-            _tell(table, columns, "%s (%s)%s - not asked for a %s: %s holds auto_index_per_table (%d) automatic "
-                  "indexes" % (table, ", ".join(columns), took, why, table, auto_index_per_table()))
+            tell(table, columns, "%s (%s)%s - not asked for a %s: %s holds auto_index_per_table (%d) automatic "
+                 "indexes" % (table, ", ".join(columns), took, why, table, auto_index_per_table()))
             return False
         waiting = (db.query(models.DatabaseOutbox.payload)
                    .filter(models.DatabaseOutbox.event_type == event_constants.EVENT_INDEX_WANTED,
@@ -337,8 +345,8 @@ def ask(table, columns, why, seconds, bind):
                            models.DatabaseOutbox.processed_chain.is_(False)).all())
         if any((json.loads(row.payload or "{}").get("columns"), json.loads(row.payload or "{}").get("why"))
                == (columns, why) for row in waiting):
-            _tell(table, columns, "%s (%s)%s - the same %s ask is already waiting"
-                  % (table, ", ".join(columns), took, why))
+            tell(table, columns, "%s (%s)%s - the same %s ask is already waiting"
+                 % (table, ", ".join(columns), took, why))
             return False
         db.add(models.DatabaseOutbox(
             event_uuid=str(uuid.uuid4()), table_name=table, event_type=event_constants.EVENT_INDEX_WANTED,
@@ -348,14 +356,15 @@ def ask(table, columns, why, seconds, bind):
         db.commit()
     finally:
         db.close()
-    _tell(table, columns, "asked for an automatic index on %s (%s) - %s%s" % (
+    tell(table, columns, "asked for an automatic index on %s (%s) - %s%s" % (
         table, ", ".join(columns), why, "" if seconds is None else ", the read took %.1f s" % seconds))
     return True
 
 
-def _tell(table, columns, said):
-    """An ask's outcome on the log, and each of its columns' last word in this process (`last_word`)."""
-    logger.info("[Indexes] %s", said)
+def tell(table, columns, said, level=logging.INFO):
+    """An ask's outcome on the log, and each of its columns' last word in this process (`last_word`) - and a walk's word
+    on a key column it does not ask (`trace_router._engine_reading`)."""
+    logger.log(level, "[Indexes] %s", said)
     with _LOCK:
         for column in columns:
             _WORDS[(table, column)] = said

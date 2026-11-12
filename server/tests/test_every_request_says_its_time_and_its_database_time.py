@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 import main
 from database import database
-from runtime import request_timing
+from runtime import request_timing, stages
 
 PROBE = "/__request_timing_probe"
 SHAPE = re.compile(r'^total;dur=(\d+\.\d), db;dur=(\d+\.\d);desc="(\d+) queries"$')
@@ -33,7 +33,7 @@ def fixture_declare(monkeypatch, tmp_path):
         session = database.SessionLocal()
         try:
             session.execute(text("SELECT 1"))
-            with request_timing.stage("probe"):
+            with stages.stage("probe"):
                 session.execute(text("SELECT 1"))
                 session.execute(text(SLOW_QUERY))
                 time.sleep(sleep)
@@ -110,7 +110,7 @@ def test_a_request_over_the_budget_says_so_in_one_line_and_one_under_it_does_not
 def test_a_part_that_does_not_read_says_a_question_mark_and_the_line_goes_on(monkeypatch, caplog):
     monkeypatch.setattr(request_timing, "slow_request_ms", lambda: 0)
     began = request_timing.begin("/x")
-    with request_timing.stage("built"):
+    with stages.stage("built"):
         pass
     request_timing.add(0.0, 0, stages=[("broken",)])
 

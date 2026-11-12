@@ -714,19 +714,6 @@
               ],
               "limit": 5
             }
-          },
-          "memory": {
-            "table": "ai_memory",
-            "columns": {
-              "purpose": "purpose",
-              "key": "situation",
-              "cell": "cell",
-              "ai": "ai",
-              "right": "right",
-              "memo": "memo",
-              "who": "who",
-              "when": "at"
-            }
           }
         }
       }
@@ -805,19 +792,6 @@
                 "product"
               ],
               "limit": 5
-            }
-          },
-          "memory": {
-            "table": "ai_memory",
-            "columns": {
-              "purpose": "purpose",
-              "key": "situation",
-              "cell": "cell",
-              "ai": "ai",
-              "right": "right",
-              "memo": "memo",
-              "who": "who",
-              "when": "at"
             }
           }
         }
@@ -1023,19 +997,6 @@
                 "wafer"
               ],
               "limit": 5
-            }
-          },
-          "memory": {
-            "table": "ai_memory",
-            "columns": {
-              "purpose": "purpose",
-              "key": "situation",
-              "cell": "cell",
-              "ai": "ai",
-              "right": "right",
-              "memo": "memo",
-              "who": "who",
-              "when": "at"
             }
           },
           "loop": {

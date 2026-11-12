@@ -19,6 +19,7 @@ import importlib
 import logging
 import multiprocessing
 import os
+import queue
 import reprlib
 import threading
 import time
@@ -92,6 +93,9 @@ _idle, _taken, _modules, _cond = WALK.idle, WALK.taken, WALK.modules, WALK.cond 
 _generation, _busy, _ended = WALK.generation, WALK.busy, WALK.ended
 _said = set()                   # a wrong setting value is said once
 _warmed = [False]               # warm() was called here - the server's start; a daemon running the same reload never
+#: How many pool processes start at once over both pools (총괄 11-10 ㄴ: as many as the two pools' one each did - a
+#: reload under load hits the reads no more than before).
+WARM_AT_ONCE = 2
 
 
 def _settings():
@@ -219,32 +223,48 @@ def in_pool(body, pinned_by=None, gone=None, pool=None, prepare=None):
 
 def warm():
     """Start each pool's `size()` processes behind the server's start and after a reload (lead b47388fde), so the first
-    body does not pay for one. A body that comes first starts its own, as before; a failure is one log line. Testing
-    mode starts none."""
+    body does not pay for one: WARM_AT_ONCE at a time over both pools, taking turns - each pool's first in the first
+    turn. A body that comes first starts its own, as before; a failure is one log line. Testing mode starts none."""
     _warmed[0] = True
     if os.getenv("TESTING") == "True":
         return
-    for pool in POOLS:
-        threading.Thread(target=_start_all, args=(pool,), name="%s-pool-warm" % pool.name, daemon=True).start()
+    wanted = {pool.name: size(pool=pool) for pool in POOLS}
+    turns = queue.SimpleQueue()
+    for turn in range(max(wanted.values(), default=0)):
+        for pool in POOLS:
+            if turn < wanted[pool.name]:
+                turns.put(pool)
+    for n in range(WARM_AT_ONCE):
+        threading.Thread(target=_start_turns, args=(turns,), name="pool-warm-%d" % n, daemon=True).start()
 
 
-def _start_all(pool):
+def _start_turns(turns):
+    """The pools' starts `turns` holds, one after another, until none is left."""
+    while True:
+        try:
+            pool = turns.get_nowait()
+        except queue.Empty:
+            return
+        _start_one(pool)
+
+
+def _start_one(pool):
+    """One process of `pool`, unless it already has its `size()` - kept as an idle one."""
     try:
-        while True:
+        with pool.cond:
+            if len(pool.idle) + pool.taken[0] >= size(pool=pool):
+                return
+            pool.taken[0] += 1
+        worker = None
+        try:
+            worker = _start(wait_seconds(pool=pool), pool)
+        finally:
             with pool.cond:
-                if len(pool.idle) + pool.taken[0] >= size(pool=pool):
-                    return
-                pool.taken[0] += 1
-            worker = None
-            try:
-                worker = _start(wait_seconds(pool=pool), pool)
-            finally:
-                with pool.cond:
-                    pool.taken[0] -= 1
-                    _keep_or_end(worker, size(pool=pool), pool)
-                    pool.cond.notify_all()              # a pinned request waits for its own process
+                pool.taken[0] -= 1
+                _keep_or_end(worker, size(pool=pool), pool)
+                pool.cond.notify_all()                  # a pinned request waits for its own process
     except Exception as exc:                                    # noqa: BLE001 - the server goes on all the same
-        logger.error("[Pool] %s processes not started ahead - the first %s starts one: %s: %s",
+        logger.error("[Pool] a %s process not started ahead - the first %s starts one: %s: %s",
                      pool.name, pool.name, type(exc).__name__, told(exc), exc_info=exc)
 
 

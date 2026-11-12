@@ -1,5 +1,309 @@
 # 지금 돌리면 되는 것
 
+> ## [11-11i] **표 걷기(Tables 화면) — 행을 + / − 로 찍어 다음 표로 걷고, 마지막 표를 축 하나로 «축 | + | −» 표로 접는다** — 번들 적용 · api 재기동
+>
+> ```
+> 무엇     Tables 화면(source_tables.html): 표를 고르고 검색 -> 행을 눌러 + (Shift 는 −) -> 다음 표 막대에서 길을 골라 걷기
+>          -> 마지막 표의 + 행과 − 행이 고른 축으로 한 표에 접힌다. 글자는 UniqueConcatenate, 수는 Avg
+>          마킹 값: 숫자 칸은 숫자로, 글자 칸은 온 글자 그대로(숫자는 그 숫자를 적은 글자)로 견준다
+>          (전: 화면이 행 번호를 숫자로 보내면 PostgreSQL 이 «character varying = integer» 로 거절해 첫 걸음에서 멈췄다)
+>          걷기 값 필터: 걷기 API 에 edge_filter · node_filter 가 생겼다. 화면 손잡이는 아직 없다
+>          헤드 바: Last 줄이 상태 버튼 바로 앞에 한 줄 (Last · 상태 · ⋯)
+> 돌릴 것   번들 적용 -> api 재기동 -> Tables 화면에서 행 몇 개 찍고 다음 표로 한 걸음
+> 답의 뜻   다음 표에 행이 나온다 -> 됨
+>          «character varying = integer» 가 보인다 -> 옛 api 가 돌고 있다(재기동이 안 됨)
+>          «... is not a list of numbers for '<칸>'» -> 숫자 칸에 숫자 아닌 값을 찍었다. 그 문장을 보낸다
+> 끄기     없음 (화면을 안 쓰면 아무것도 안 바뀐다)
+> ```
+>
+> ---
+>
+> ## [11-11c] **가상 걷기가 소수(number) 칸 수식어 때문에 소스를 통째로 빼던 것 — 이제 수식어로 읽는다. 못 읽는 수식어는 그 문장만 뺀다** — git pull · api 재기동
+>
+> ```
+> 무엇     전: 수식어(qualifier)를 글자 · 정수 칸에서만 읽었다. table_config «number» 칸은 소수(float)라
+>          그런 수식어 하나가 있으면 그 소스 «전체»가 가상 걷기에서 빠졌다 (화면: 전부 Not read)
+>          지금: 수식어는 값 객체와 같은 칸(글자 · 정수 · 소수 · numeric)을 읽는다. 9.0 · 0.1 은 저장 원장과 같은 값,
+>          빈 칸은 수식어 없음
+>          그래도 못 읽는 수식어(시간대를 안 적은 zone 없는 시각 칸 등)는 그 «문장»만 빼고 소스의 다른 문장은 걷는다
+> 돌릴 것   git pull -> api 재기동 -> 걷기 한 번
+> 볼 것    걷기 답의 engine.left_out (화면의 Not read 목록)
+>          <문장>: qualifier <이름> not read   <- 새 줄. 그 문장만 빠짐, 소스는 걷힘
+>          <자리>: column '<칸>' not built yet   <- table_config 에 적힌 칸이 DB 표에 아직 없다(업그레이드 뒤 스키마 동기화 전).
+>          그 문장 · 그 속성만 빠지고 소스는 걸린다. 스키마 동기화(재기동)가 칸을 지으면 사라진다 — 남아 있으면 그 줄을 보낸다
+>          시각 · 참거짓 칸 속성과 수식어, 참거짓 · 날짜 칸 키, 날짜 칸 이벤트 시각도 이제 읽힌다 (전엔 «not read»)
+>          전처럼 «...: a qualifier read from a float column» 줄이 보이면 -> 옛 api 가 돌고 있다(재기동이 안 됨)
+> 답의 뜻   left_out 이 비거나 줄었다 -> 고쳐짐
+>          «qualifier <이름> not read» 가 남는다 -> 그 수식어가 시간대를 안 적은 zone 없는 시각 칸이다.
+>          그 문장의 선언(그 수식어의 칸)을 보낸다
+> 11-11f 뒤  numeric 칸 수식어 · 속성이 있으면 걷기가 «Decimal is not JSON serializable» 로 실패했다 -> 이 릴리스로 풀린다
+>          찾기  Select-String -Path server\*.log -Pattern "Decimal is not JSON"  — 재기동 뒤 새 줄이 없어야 한다
+> 남은 것   소수 칸에 NaN 이 든 행: 저장 원장은 그 행을 거절하고, 가상 걷기는 수식어 없이 그린다 (판정 대기)
+> 끄기     없음
+> ```
+>
+> ---
+>
+> ## [11-11] **표 읽는 법이 바뀌어도(스크립트 · 외부 소스 항목 · table_config) 읽은 파일을 저절로 다시 읽지 않는다 — 파일 화면 Read all again 으로만** — git pull · 와처 재기동
+>
+> ```
+> 무엇     전: 표 scripts\*.py 를 고치면(주석 한 줄도 — 수정 시각을 봄) 와처가 그 표의 읽은 파일을 체크 해제하고
+>          곧바로 다시 읽었다(외부 저장소 포함). 외부 소스 항목이 바뀌어도 같았다
+>          지금: 무엇이 바뀌든 읽은 파일은 읽은 채, 수만 한 줄로 남는다 (소유자 11-11 — 10-21 «그 테이블 키만 체크 해제» 를 뒤집음)
+> 돌릴 것   git pull -> 와처 재기동
+> 볼 줄    watcher.log  [Watcher] <표>: its reading changed (<부분>) - N read file(s) kept as read (Read all again on the
+>          file page applies the change to them), failed files are not read again by themselves (Retry on the file page)
+>          - D new or changed file(s) dispatched
+>          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
+> 답의 뜻   N = 그 표 훑기 폴더(raws · 외부 저장소)에 «제자리에 있는» 읽은 파일 수 — 실패 · 기다리는 파일과
+>          archives/ 로 옮겨진 파일은 안 셈. archive 를 켠 raws 표는 0 이어도 Read all again 은 옮겨진 파일까지 읽는다
+>          D = 그 표에 새로 왔거나 다시 저장된 파일 수(보통 0)
+>          멈춘 다시 읽기(Stopped: 3 failed in a row)도 스크립트를 고쳐서는 안 풀린다 -> 고친 뒤 그 쌍에 Read all again · Retry
+>          «... unchecked» 가 보이면 -> 옛 와처가 돌고 있다(재기동이 안 됨)
+> 다시 읽기  파일 화면에서 그 표 · 폴더 -> «Read all again» -> 미리보기 수 확인 -> 실행
+> 재기동 뒤  꺼져 있는 동안 고친 스크립트도 기동 첫 틱에 위 줄이 한 번 — 다시 읽지는 않음
+> 끄기     없음
+> ```
+>
+> ---
+>
+> ## [11-11b] **감사 로그 패널이 오래 «Updating» 이면 — 인덱스가 있는지 읽고, 없으면 짓는다** — git pull · 재기동 필요 없음
+>
+> ```
+> 무엇     감사 패널의 첫 걷기가 쓰는 인덱스 idx_audit_recent_groups 가 옛 DB 에는 없다 (create_all 은 있는 표에
+>          인덱스를 더하지 않는다). 없으면 걷기가 audit_logs 전체를 정렬하다 5 s 에 끊기고 처음부터 다시 걷는다
+>          같은 문이 행 · 셀 이력 인덱스 둘(idx_audit_row_history · idx_audit_cell_history)도 같이 보고 짓는다
+> 명령     cd server
+>          python migrations/add_audit_recent_groups_index.py            <- 먼저. 읽기만 한다
+>          python migrations/add_audit_recent_groups_index.py --apply    <- missing 이 있을 때만
+> 답의 뜻  present  있다. 할 일 없음 — 그래도 패널이 오래 «Updating» 이면 api 로그의 «[Audit] recent walk cut» 줄을 보낸다
+>          missing  없다 -> --apply. 몇 분 걸릴 수 있다 (CONCURRENTLY — 그동안 쓰기는 안 막힌다)
+>          invalid  지어지다 끊긴 인덱스다. 읽기에 안 쓰이고 쓰기만 무겁게 한다 -> --apply.
+>                   «<이름>: invalid» · «dropping» · «building» 을 한 줄씩 찍고 지운 뒤 다시 짓는다 (읽기에 해 없음)
+>                   --apply 뒤에도 invalid 면 그 줄을 총괄에게 보낸다 (끝 코드 1)
+>          Not PostgreSQL  SQLite 다. 할 일 없음
+> 볼 것    --apply 뒤 «=== after ===» 아래 셋이 present. 그 뒤 패널 첫 열기가 얼마나 빨라지는지는 운영에서 안 쟀다
+> 끄기     없음 — 인자 없이는 읽기만 하고 아무것도 안 바꾼다
+> 다리     셀소스 갈아엎기 뒤에는 감사 패널이 audit_batches 를 읽는다. 이 문은 그때까지의 다리다
+> ```
+>
+> ---
+>
+> ## [11-11] **AI 규칙이 설정 없이 사람 교정을 기억하고 다음 물음에 싣는다 · AI 표 넷은 «AI» 그룹** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 재기동 전  Chain 탭에서 memory 를 적은 ask · report 규칙을 하나씩 열어 그대로 Save
+>          거절되면(«<규칙>: memory.columns: …» · «<규칙>: memory.table … is not a declared table» · «… may not end in ':target'»)
+>          그 칸을 표에 맞추거나 memory.columns 를 지우고(기본 칸) · 이름 꼬리를 떼고 Save 한 뒤 재기동
+>          저장 검사(ledger/admin.save_chain_rule_raw)와 로더(chain/ingestion_worker.load_chain_rules)는
+>          같은 함수 rule_shape.expand_declaration 로 판정 — Save 가 받으면 재기동 뒤에도 그 규칙이 섬
+>          (꺼 둔 규칙도 Save 는 «켰다면» 으로 판정한다)
+> 무엇     ask · report 규칙이 memory 블록을 안 적었으면 교정을 sys_ai_memory 에 쓰고(반쪽 규칙이 섬),
+>          memory 블록도 prompts.memory 도 안 적은 규칙은 그 규칙의 교정 최근 5 개를 프롬프트에 싣는다
+>          운영에서 이미 memory 블록을 적은 규칙은 그대로(읽기는 prompts.memory 를 적었을 때만, 전처럼) —
+>          아래 저장 거절에 걸리는 규칙만 빼고, 그리고 memory.columns 의 빈 칸("" · 공백 · null · NaN)은 이제 그 역할의 기본 칸에 씀
+>          (전: 그 역할을 안 씀 — 그 기본 칸이 표에 없으면 이제 거절),
+>          안 적은 ask/report 규칙은 이제 sys_ai_memory 에 쓰고 읽음
+>          저장 거절 여섯: 이름이 «:target» 으로 끝나는 규칙 · memory.table 이 선언 안 된 표
+>          · memory.columns 가 그 표에 없는 칸을 댈 때(칸 이름을 댐) · memory.columns 가 {역할: 칸} 이 아닐 때
+>          · 칸 값이 있는데 글자가 아닐 때(숫자 · 목록 · dict, «who=5» 처럼 역할을 댐)
+>          · memory.columns 를 적었는데 purpose 나 key 가 없을 때(«key not named (default: situation)», 역할과 기본 칸을 댐)
+>          🔴 이 거절은 «로드» 때도 같음 — 운영에 이미 그런 AI 규칙이 있으면 재기동 뒤 그 규칙이 «통째로» 안 섬
+>          (전: 규칙은 답하고 기억 쓰기만 실패)
+>          AI 표 넷(sys_ai_actions · sys_ai_action_kinds · sys_ai_judge_tests · sys_ai_memory) 그룹 System -> AI, 이름 그대로
+>          선언 폼: memory.table · columns 는 안 적어도 됨, 빈 칸의 기본값은 골격에 실림(화면에 보이는 것은 클라B 착지 뒤)
+>          적었다 지운 칸("")은 그 기본값으로 돎 · 손대지 않은 역할은 안 씀(purpose · key 는 빠지면 거절)
+>          샘플: AI 규칙 셋의 memory 블록 · 샘플 ai_memory 표 선언을 지움 — 운영 라이브 설정은 샘플을 안 읽어 운영 바뀜 0
+> 재기동 뒤 chain_worker.log «[ChainRules] <규칙>: memory.columns: …» · «[ChainRules] <규칙>: memory.table … is not a declared table»
+>          또는 «[ChainRules] … may not end in ':target'» — 보이면 그 AI 규칙 «하나»가 빠진 것(같은 파일의 다른 규칙은 섬)
+>          «[ChainRules] unified grammar unreadable» 이 보이면 새 문법 규칙이 «전부» 빠진 것
+>          칸 이름을 표에 맞추거나 memory.columns 를 지우면(기본 칸) 다시 섬 · 이름은 «:target» 꼬리를 떼면 섬
+> 볼 것    AI 출력 칸을 사람이 고치면 sys_ai_memory 에 행 하나 · 그 규칙의 Test run 프롬프트에 «Past corrections»
+>          체인 규칙 목록에 memory 를 안 적은 AI 규칙의 반쪽 규칙 «<규칙 이름>:target» 이 새로 보임
+> 이 박스  샘플 ask/report 4 중 memory 없던 것 1 · 박스 설정 1 중 0 (박스 수 — 운영 주장 아님)
+> 끄기     없음 (다른 표에 쓰려면 그 규칙의 memory.table 에 적음)
+> ```
+>
+> ---
+>
+> ## [11-09] **수집 확장: iframe 안 목록 · ↑↓ 부모 넓히기 · Shift+클릭 영역 더하기 · 숨은 사본 건너뛰기 · 표 없이 Preview · 템플릿 Delete** — git pull · 크롬 확장 새로 고침(chrome://extensions 의 ↻), API 재기동(sys_templates 칸 하나 선언)
+>
+> ```
+> 무엇     sys_templates.frame_pattern — 목록과 내용이 페이지 안 프레임(iframe)에 있으면 그 프레임의 주소. 고를 때 저절로 적힘, 빈칸 = 페이지 자체
+>          고르는 동안 ↑ 부모로 넓힘 · ↓ 되돌림 · Enter/클릭 정함 · 내용 영역 Shift+클릭 = 영역 하나 더(타이틀 · 본문 따로인 사이트)
+>          같은 선택자의 숨은 사본(열리지 않은 탭 등)은 건너뜀 — 보이는 것 · 여럿이면 누른 뒤 글이 바뀐 것
+>          Preview 는 넣을 표 · 키가 비어도 읽은 값을 보여 줌 · 카드의 Delete → 확인 한 줄 → 템플릿 두 표 행 지움(모은 행 · 기록은 남음)
+> 볼 줄    패널 Edit 화면 Address 아래 «Frame» 칸 · 고르는 동안 위 띠에 «↑ ↓ widen · Shift+click adds an area · Esc stops»
+> 답의 뜻  «no frame on this page matches <패턴>» → 그 프레임 주소가 바뀜. Frame 칸을 비우고 다시 고르면 다시 적힘
+>          Preview 에 «Table not set - keys not checked» → 표나 키 칸이 빔(읽기는 됨, 중복 확인만 안 함)
+> 끄기     확장 폴더를 이 착지 전으로 되돌리고 ↻ (서버 칸은 비어 있으면 아무 일도 안 함)
+> ```
+>
+> ---
+>
+> ## [11-11] **도움말이 운영 안내서 12 개를 더 읽는다 (9 -> 21)** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
+>
+> ```
+> 무엇     수집기(AUTO_UPDATE) · 소급(BACKFILL) · 파일 인제스트 · 원장 · 텍스트 연결 · 체인 · 표기 규칙 · 맵 프리셋 · 맵 오버레이
+>          · DOE · 유효 다이 맵 · 롤백 안내서가 Help 답의 근거와 Guide 목록에 든다
+>          맵 · DOE · 유효 다이 · 롤백은 어드민 탭이 아니라 Guide 의 «All N» 에만 보임
+> 볼 것    Help 에서 «수집기 하나 만들기» 를 물으면 AUTO_UPDATE_GUIDE.md 의 «0. 한눈에 보기 — 수집기 하나 만들기» 절이 답에 실림
+>          Auto Update 탭 Guide 칩에 AUTO_UPDATE_GUIDE.md
+> 답의 뜻  안 나오면 API 가 재기동 전
+>          체인(chain_ingestion_guide) · 소급(BACKFILL) 은 낡은 문장을 고쳐서 넣음
+>          (BACKFILL 이 이제 말함: ledger.backfill --source · --catch-up 과 run_here 줄은 --apply 없이 바로 씀)
+>          소급 연산의 pace 도움말이 «ONE AT A TIME» 대신 «같은 곳에 쓰는 run 만 기다린다» 로 나옴
+>          11-11 셈의 낡은 문장(약 70)은 고침 — 그래도 도우미가 지금과 다른 문장을 인용하면 그 안내서가 낡은 것
+> 끄기     server/admin/help_guides.json 에서 그 줄을 빼고 API 재기동
+> ```
+>
+> ---
+>
+> ## [11-11] **필수 한정어 칸이 빈 행도 그 문장만 빠진다 — 행째 거절 아님** — git pull · API 재기동
+>
+> ```
+> 무엇     전: 술어의 required 한정어 칸이 빈 행은 그 행이 든 원장 묶음이 «missing_binding_value» 로 실패했다
+>          (가상 걷기는 그런 소스를 통째로 못 읽었다)
+>          지금: 그 행에서 그 문장만 빠지고 행의 엣지 · 노드는 남는다 — 빈 엔티티 칸 · 빈 값 칸과 같은 규칙
+>          (소유자 10-12 «빈 거는 무시» · 11-01 «빈키행은 무시»). 원장 · 가상 걷기 같게
+> 볼 것    api 로그에 «[LedgerFollowUp] ... column '<칸>' contains a missing value» 가 한정어 칸 때문에는 안 나온다
+>          행의 모든 문장이 빠지면 그 행은 «blank key <칸>» 으로 빠진 행 수에 셈
+> 소급     그런 행은 지금까지 원장에 없다. 차려면 그 소스를 소급 화면에서 다시 읽힌다 — 몇 행인지 안 셌다
+> 끄기     없음 (가상 걷기가 이상하면 engine=stored)
+> ```
+>
+> ---
+>
+> ## [11-11] **값 객체(object.kind value)를 가상 걷기가 원장과 같은 값으로 읽고, 원장도 글자 · 참거짓 값을 다시 받는다** — git pull · API 재기동
+>
+> ```
+> 무엇     원장: 값 종류가 string · boolean 인 술어는 값 칸이 «필수 한정어»로 잘못 세어져
+>          그 문장을 쓰는 소스의 행이 전부 «predicate requires qualifier 'value'» 로 거절됐다 -> 이제 번역된다
+>          가상 걷기: 값 객체 문장을 «not read» 로 빼지 않고 원장과 같은 꼴(object_kind value, {"value": 값})로 읽는다
+>          값 칸이 빈 행: 전에는 원장이 그 행을 «통째로» 거절했다(그 행의 엣지까지) -> 이제 그 값 문장만 빠지고
+>          같은 행의 엣지 · 노드는 남는다(빈 엔티티 칸 · 빈 키 행과 같은 규칙, 소유자 10-12 · 11-01). 가상 걷기도 같다
+> 볼 것    걷기 답 engine.left_out 에서 «<문장>: a value object not read» 가 사라짐
+>          api 로그에 «[LedgerFollowUp] ... column '<칸>' contains a missing value» 가 값 칸 때문에는 더는 안 나온다
+> 답의 뜻  재기동 «뒤» 들어오는 행부터 원장에 값이 찬다. 지난 거절 행이 다시 번역되는지는 안 쟀다 —
+>          원장 걷기(engine=stored)에서 값이 비어 보이면 소급 화면에서 그 소스를 다시 읽힌다
+> 소급     값 칸이 빈 행은 지금까지 엣지까지 거절돼 원장에 없다. 그 행의 엣지가 차려면 그 소스를 다시 읽어야 한다 —
+>          몇 행인지 안 셌다. 소급 화면에서 그 소스를 다시 읽히고, 진행은 그 소급 줄에서 본다
+> 끄기     없음 (가상 걷기가 이상하면 engine=stored)
+> ```
+>
+> ---
+>
+> ## [11-11] **가상 걷기가 노드 속성 값도 읽는다 — 원장과 같은 값 · 같은 등록** — git pull · API 재기동
+>
+> ```
+> 무엇     전(1단): 속성을 쓰는 소스는 노드 · 엣지만 읽고 속성 값은 비었다(«attributes of <type> not read»)
+>          지금: 속성 값을 원장과 같은 길로 읽는다 — 등록 문장의 주어 속성은 그 한정어로,
+>          속성이 달린 역할은 그 노드의 등록(register)으로(한 행에 한 노드 한 번, 값이 하나라도 있는 행만)
+> 볼 것    노드 화면의 속성 칸이 원장 걷기(engine=stored)와 같다 · engine.left_out 에서 «attributes of … not read» 가 사라짐
+>          남는 것: 텍스트 · 정수가 아닌 칸(소수 · 시각)에서 읽는 속성 — 그 타입만 «not read» 로 남는다
+> 끄기     없음 — 걷기에 engine=stored 를 적으면 원장을 읽는다
+> ```
+>
+> ---
+>
+> ## [11-10] **도우미가 «리포트 메모리 · 코멘트» 선언 예와 «derive» decide 선언 예를 가이드에서 건넨다** — git pull · API 재기동
+>
+> ```
+> 무엇     ai_ask_tables.md A-3 절 머리에 «리포트 메모리 · 코멘트», 메모리 + comment 를 단 리포트 규칙 하나(저장 검사 통과)
+>          enrichment_rules.md «0. derive 로 파생 행 만들기» decide 선언 예도 이 착지에 같이 들어간다
+>          절을 고르는 법(모델 검색어, 없으면 물음)은 그대로
+> 볼 것    도우미에 «리포트 메모리 선언법» · «derive 로 stack_height 를 UniqueCount 로 모으는 규칙»
+>          답의 Sections 에 «리포트 메모리 · 코멘트 — 사람 교정을 기억하는 칸 (A-3)» / «0. derive 로 파생 행 만들기 …» 가 있나
+> 답의 뜻  없다 → 모델이 다시 쓴 검색어가 그 절을 못 찾은 것. 그 물음과 Sections 줄을 총괄에게
+> 끄기     없음 — 되돌리려면 이 커밋을 revert
+> ```
+>
+> ---
+>
+> ## [11-10] **노드 속성(entity attributes)을 쓰는 소스가 가상 걷기에서 통째로 빠지지 않는다 — 노드 · 엣지는 읽고 속성 값만 아직 안 읽음** — git pull · API 재기동
+>
+> ```
+> 무엇     전: 소스의 어느 역할에 속성(bind.entities.<type>.attributes)이 하나라도 있으면 그 소스의 문장 «전부»가 빠짐
+>          -> 걷기가 빈 답(«아무것도 안 나옴»)
+>          지금: 그 소스의 노드와 엣지는 걷는다. 속성 값과 그 속성이 만드는 등록(register)만 아직 안 읽는다
+> 볼 것    걷기 답 engine.left_out 에 소스마다 «attributes of <type> not read» — 소스 빠짐이 아니라 «값 안 읽음» 알림
+>          노드 화면의 속성 칸이 비어 있다(값이 필요하면 engine=stored)
+> 답의 뜻  «attributes of … not read» -> 다음 착지(속성 값 읽기) 몫
+>          «a value object» -> 그다음 몫 · «not planned: … (view)» -> 선언 거절(운영에서는 뷰 안 씀)
+> 끄기     없음 — 걷기에 engine=stored 를 적으면 원장을 읽는다
+> ```
+>
+> ---
+>
+> ## [11-10] **가상 걷기가 «목적어 없는 문장»(등록, object.kind none)도 읽는다 — 그 소스가 빠지지 않는다** — git pull · API 재기동
+>
+> ```
+> 무엇     선언의 register 같은 문장(목적어 없음, 노드 속성 없음)이 가상 걷기에서 빠지지 않고 읽힌다
+>          원자는 원장의 것과 같다: 주어만, object_kind 없음, payload {}
+>          노드 속성(entity attributes)을 단 등록 · 값 객체(value) 문장은 아직 빠진다 — 다음 착지
+> 볼 것    걷기 답 engine.left_out 에 «a none object» 사유가 사라짐
+>          박스(엔진 virtual): system 세계 빠짐 15/17 -> 12/17 (남은 12 는 노드 속성)
+> 답의 뜻  left_out 에 «entity attributes» -> 다음 착지 몫 · «a value object» -> 그다음 몫
+>          «not planned: … (view)» -> 선언 거절(운영에서는 뷰 안 씀) — 엔진과 무관
+> 끄기     없음 — 걷기에 engine=stored 를 적으면 원장을 읽는다
+> ```
+>
+> ---
+>
+> ## [11-10] **읽기 뒤에서 세는 일이 한 기제 — 컬럼 고르기는 바로 답하고, 어드민 결손 수는 서버가 쥔 수** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     그리드 전체 행 수 · 최근 이력 따라잡기 · 컬럼 고르기의 정확한 셈 · 자동 확정 결손 수 · Overview 재교정률 · 공수 점수가 한 기제(runtime.behind)
+>          일꾼은 다섯 따로: whole-counter · queue-counter · audit-recent · column-counts · dashboard-figures — 하나가 길어도 다른 것을 안 묶음
+>          Overview 의 두 수: 어드민 둘이 동시에 열어도 audit_logs 셈은 한 번(60 초마다 다시), 요청은 최대 2 초 기다림
+> 새로 보임 컬럼 고르기(/columns): 바로 추정치(exact false, updating true) → 셈이 끝나면 exact true · counted_at
+>          GET /enrichment/rules: 규칙마다 missing{count, capped, counted_at, failed} · 최상위 missing{total, capped, counted_at, updating, unknown}
+>          Running(지금 도는 일)에 «column-counts · <표>» · «queue-counter · <표…>» — where api
+> 볼 줄    [Columns] the exact counts of <표> were not counted: … · [Count] the queue count of … was not counted: …
+>          Overview 의 재교정률 · 공수 칸이 «still being worked out» → 셈이 2 초를 넘어 아직 도는 중(Running 의 dashboard-figures 줄), 다음 열기에 값
+>          — 셈 실패. 지난 수는 남고 답에 failed
+> 답의 뜻  컬럼 고르기가 계속 추정치 + count_cut → 그 표 셈이 column_count_seconds(기본 120)를 넘어 끊김.
+>            적재가 끝난 뒤 recount=true 로 다시, 또는 설정을 올림. 끊긴 셈은 «스스로» 다시 세지 않음
+>          결손 수 updating 이 안 끝남 → Running 의 queue-counter 줄 초. 그리드 개수는 그동안도 움직여야 정상
+>          그리드 개수가 오래 counting → Running 의 whole-counter 줄(결손 셈과 무관 — 일꾼이 다름)
+> 바뀐 것  다시 세기 쉼(count_recount_seconds · 이력 CATCH_UP_GAP_SECONDS)은 지난 셈이 «끝난» 때부터 셈(전엔 시작부터)
+> 설정     ingestion_settings.json  column_count_seconds(기본 120) · count_recount_seconds(결손 수도 이 간격)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ```
+>
+> ---
+>
+> ## [11-10] **구간 기록이 한 함수 — 소급 비트 · 느린 요청 줄에 구간이 더 보인다** — git pull · 런처 재기동(전부)
+>
+> ```
+> 무엇     소급 실행 단계 줄 · 체인 그룹 줄 · 느린 요청 줄이 같은 구간 기록을 씀. 한 구간은 그때 열린 줄 «전부»에 감
+> 새로 보임 소급 비트 · 단계 줄(retroactive_debug 켜면): 규칙 다시 돌리기 · 재생 fold 안의 체인 구간 — «Page 1: mapper» · «Page 1: write:<표>»
+>          느린 요청 줄 [Slow] … · <구간> s (SQL s · 행 · Python s): 실패 파일 재시도 → parse · apply · commit,
+>          소급 count 미리보기 · 선언 Test run → withdrawal count · translate · sql translate · event frames · dry run · row refs,
+>          파일 다시 읽기 미리보기 → walk · sources · lookup · judge
+> 그대로   그룹 줄 · [Reread] 줄 · 요청 줄의 db 초 · 질의 수 · 바이트. 줄을 합하는 쪽(그룹 · 요청)은 바깥 구간만 셈 — 구간 초 합 ≤ 전체
+> 답의 뜻  소급 비트가 «Page N: write:<표>» 에 오래 머묾 = 그 표 쓰기가 느림(체인 워커의 같은 구간과 같은 뜻)
+> 끄기     없음(되돌리려면 이 착지를 되돌린 뒤 재기동)
+> ## [11-11] **맵퍼가 값으로 지은 키가 둘로 갈렸나 — 읽기 전용 질의 (코드 변경 없음)** — 재기동 없음
+>
+> ```
+> 무엇     lot_lineage_mapper · lot_slot_wafer_mapper 는 사건의 값을 str() 로 이어 키를 짓는다(«a|b|c|시각»)
+>          같은 행의 사건이 값을 다른 철자로 실으면(숫자 2 · 2.0, 시각 시간대 있음 · 없음) 같은 사건이 키 둘 = 행 둘이 된다
+>          키 철자는 바꾸지 않는다(총괄 11-11 ㄷ) — 갈린 행이 이미 있는지 이 질의로 본다
+> 질의     그 규칙의 target 표와 params 의 target_* 칸 이름으로 바꿔 넣는다 (박스 예: lot_slot_wafer)
+>          SELECT lot, slot, wafer, event_time, count(*) AS n, array_agg(lot_slot_wafer_key) AS keys
+>            FROM lot_slot_wafer GROUP BY 1, 2, 3, 4 HAVING count(*) > 1 LIMIT 20;
+>          lot_lineage 의 target 이면 GROUP BY 가 (부모, 자식, 종류, 시각) 네 칸
+> 답의 뜻  0 행   갈린 키 없음
+>          1 행 이상  같은 사건이 키 둘로 들어가 있다 — keys 칸에서 어느 철자가 갈렸는지 본다
+>                   다시 돌리기 · 지우기는 소유자 판단. 이 질의는 아무것도 안 바꾼다
+> 못 세는 것 운영의 gitignore 된 맵퍼(.py)는 저장소에 없어 우리가 셀 수 없다
+>          값을 str() 로 이어 키를 짓는 맵퍼가 거기 있으면 같은 질의를 그 target 표에 돌린다
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-11] **줄 표가 다 지어져야 뜬다 — 거절된 표가 있으면 런처가 아무것도 안 띄운다 · 선언 저장은 400** — git pull · 런처로 전체 재기동
 >
 > ```
@@ -4070,7 +4374,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동
-> 볼 것    표 스크립트를 고친 뒤 watcher.log «<표>: its reading changed (...) - N read file(s) unchecked, failed files are not
+> 볼 것    표 스크립트를 고친 뒤 watcher.log «<표>: its reading changed (...) - N read file(s) kept as read (Read all again on the file page applies the change to them), failed files are not
 >          read again by themselves» -> 그 표의 FAILED 는 파일 화면에 FAILED 로 남음 = 고쳐진 것. 읽히려면 Retry
 >          (전: 줄은 그렇게 말하고 실패 파일이 저절로 읽혀 SUCCESS 가 됨)
 >          기동 한 번 «read files stamped N · failed files stamped K (...)» -> 첫 기동만. 이미 채운 박스엔 안 나옴
@@ -4358,7 +4662,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 돌릴 것   git pull -> 런처 재기동
 > 실패 파일  읽는 법(스크립트 · table_config · 외부 원천)이 바뀌어도 저절로 안 읽음. 파일 화면 Retry · Read now · Read all again 으로만
->          줄  [Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)
+>          줄  [Watcher] <표>: its reading changed (<부분>) - N read file(s) kept as read (Read all again on the file page applies the change to them), failed files are not read again by themselves (Retry on the file page)
 > 지운 파일  Retry skipped for checklist row #N (<파일>): the file is not on the disk any more - <경로>
 >          -> 디스크에 없어서 안 읽음. FAILED «the file is not on the disk any more» 로 남음 (트레이스백 없음)
 > 맵 교체   와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
@@ -4488,7 +4792,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> (기본 3 이 아니면) ingestion_settings.json 에 "reread_stop_after_failures": N
 > 뜻      파일 화면 진행 줄 Last sweep 에 «Stopped: 3 failed in a row - <첫 줄> · waiting N» -> 그 쌍의 다시 읽기를 와처가 멈춤
->            파서를 고치면(스크립트 변경) 풀리고 다시 읽음. 고치지 않고 Read all again · Retry · Read now 를 누르면 풀리되 3 개 뒤 다시 멈춤
+>            파서를 고친 뒤 Read all again · Retry · Read now 를 누르면 풀리고 다시 읽음(스크립트 변경만으로는 안 풀림). 고치지 않고 누르면 3 개 뒤 다시 멈춤
 >            기다리는 파일을 아예 물리려면 그 행의 Cancel waiting re-reads
 >          파일이 여럿 실패하는데 안 멈춤 -> 그 다시 읽기에서 읽힌 파일이 하나라도 있었음(불량 파일 몇 개 - 지금처럼 하나씩 실패)
 > 끄기    ingestion_settings.json "reread_stop_after_failures": 0
@@ -4794,13 +5098,13 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 낱말의 뜻과 할 일
 >   new           기록 없는 파일 - 처음 보는 것. 다 읽힌 폴더에서 계속 나오면 그 경로의 기록이 지워진 것(시작 정리 줄을 봄)
 >   changed       읽은 때와 수정 시각 · 크기가 다름 - 원천이 파일을 다시 씀. 같은 파일이 계속 나오면 원천이 계속 쓰는 것
->   unstamped     기록은 있는데 도장 없음 - 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기
+>   unstamped     기록은 있는데 도장 없음 - 손으로 체크 해제됨(replay_ingestion --apply), 또는 잠금 대기로 끝난 읽기
 >   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 새 한 줄)
 >   retry         실패 파일을 다시 넘김(Retry · 읽기 바뀜)
 >   read now      기록 없던 파일을 Read now 로 넘김
 >   checklist not read   체크리스트를 못 읽어 일단 읽음 - 그 앞 WARNING 줄이 사유
 > 🔴 voids 표가 끝없이 읽히면  이 줄의 낱말 하나로 갈림: read again · retry 가 계속이면 아래 «대기 중인 다시 읽기를 되돌린다» 블록,
->          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 체크 해제가 되풀이되는 것
+>          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 누가 손으로 체크 해제를 되풀이하는 것
 > 파일 화면  GET /admin/file-ingestion/tables 의 sources[].sweep - state(sweeping · rested · unavailable) · age_seconds(지난 기록
 >          뒤 초) · seconds(훑기에 걸린 초) · looked · already_read · dispatched · why. 화면 줄은 클라 착지 뒤
 > 급할 때   끄는 스위치 없음 - 읽을지 말지는 그대로, 말만 바뀜
@@ -4955,14 +5259,11 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
 > 바뀐 것   table_config.json 의 그 표 항목만 바꾸면(칸 더함 등) 와처는 실패 파일만 다시 넘기고, 읽은 파일은 그대로 둠
->          플러그인 스크립트 · 외부 소스 칸이 바뀌면(표 선언과 같이 바뀌어도) 지금처럼 읽은 파일을 다시 읽음
 > 답의 뜻   watcher.log
 >          [Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again   (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김: 이 꼬리 없음)
 >            N  다시 읽지 않고 둔 파일 수 — 새 선언(예: 더한 칸)은 이 파일들의 행에 아직 안 들어감
 >            M  다시 넘긴 실패 파일 수
->          [Watcher] <표>: its reading changed (scripts\<파일>.py ...) - N read file(s) unchecked, ...        전과 같음 — 다시 읽음
 > 반영할 때  파일 화면에서 그 표 · 폴더를 골라 «Read all again» -> 미리보기 수 확인 -> 실행
-> 되돌리기  git revert 53d547bbb -> 런처 재기동 (표 선언이 바뀌면 다시 전부 다시 읽음)
 > ```
 >
 
@@ -5848,8 +6149,6 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 층 순위   파일 머리에 있는 칸은 파일이 그 맵의 진술이라 표의 source_priority 대로 섬 — 같은 칸의 체인 값을 가릴 수 있음
 >          사람이 적은 값(층 0)은 그대로 위
 > 확인     맵 교체 파일을 넣고 그리드에서 그 다이의 빈 칸이 비었는지 · 와처 로그 «[Map Diff] … Written: W | Removed: M»
-> 세기     cd server ; python scripts/count_absent_null_layers.py
->          이 칸들은 «replaced» 로 따로 셈(정상) — «→ 다음»의 가림 수에 안 듦. absent 수가 늘면 다른 원인
 > 되돌리기  git revert 338dffcf7 -> 런처 재기동. 이미 비운 칸은 남음 — 다음 파일이 값을 적으면 그 값
 > ```
 >
@@ -5875,15 +6174,12 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 무엇     «이미 읽었나»의 답이 하나: 같은 (경로, 표) 로그 행이 파일의 (수정 시각, 크기)를 들면 안 읽음, 바뀌면 읽음
->          재기동해도 다시 안 읽음. 표 스크립트 · table_config 항목 · 외장 소스 항목이 바뀌면 «그 표»만 다시 읽음
+>          재기동해도 다시 안 읽음
 > 돌릴 것   git pull -> 와처 재기동 -> 서버 재기동 (새 칸 둘은 기동이 더함)
 > 확인     와처 로그에 «한 번»: [Watcher] read files stamped N · left for re-read M (failed K · changed since read C) (10-21 가벼운 와처 뒤: 첫 훑기 끝에)
 >          그다음 훑기: «External sweep: … X already read, Y dispatched» — 다시 기동해도 Y 는 새로 온 파일 수
 > 뜻      M = 배포 뒤 한 번 다시 읽히는 수(실패했던 파일 · 읽은 뒤 바뀐 파일). 그 뒤로는 안 읽힘
 >          stamped 가 0 인데 파일이 많음 -> 로그 행의 경로가 지금 훑는 폴더와 다름(공유 경로 바뀜) -> 그 파일들은 한 번 다시 읽힘
->          «its reading changed (...) - N read file(s) unchecked» -> 그 표 스크립트 · 설정이 바뀜 -> 그 표만 다시 읽음(정상)
->          표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다 — 그 수는 같은 줄의 «N read file(s) unchecked, K failed file(s) handed again - D dispatched to be read again» (reread_max_files 는 이제 화면 Retry 의 상한만)
->          옮겨진(archives/) 파일은 표 읽기가 바뀌어도 다시 안 읽음 — 제자리 파일(외장 · archive 끈 raws)만
 >          한 파일을 다시 -> 파일 화면 Retry. 여럿 -> python server/scripts/replay_ingestion.py --path <파일> --path ... --apply
 >          __force__ 파일 이름 · dedup_by_signature · dedup_by_path_stat 는 은퇴(값은 안 읽힘)
 > 급할 때   외장 소스 하나 멈춤: ingestion_settings.json 그 항목에 "enabled": false 저장(재기동 없이 · 다시 켜도 다시 안 읽음)
@@ -6210,8 +6506,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇     와처가 3 초마다 표마다 «읽기 모양»을 잰다 — table_config 의 그 표 항목(display_columns · search_columns · source_priority 빼고 전부)
 >          · ingestion_settings 의 그 표 external_sources 항목 · 그 표 scripts\*.py 파일(이름 · 수정 시각 · 크기)
 >          (⚰️ 10-24 부터 안 넘김) 바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
-> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) unchecked, ~~K failed file(s) handed again~~ (10-24 부터 «failed files are not read again by themselves (Retry on the file page)») - D dispatched to be read again» (10-21 4492b8813 부터)
->          10-21 부터 상한 없음: 표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다
+> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) kept as read (Read all again on the file page applies the change to them), ~~K failed file(s) handed again~~ (10-24 부터 «failed files are not read again by themselves (Retry on the file page)») - D new or changed file(s) dispatched» (10-21 4492b8813 부터)
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
 > 못 읽음   table_config.json 이 쓰는 중이라 못 읽히는 틱은 견주지 않는다 · ingestion_settings.json 이 못 읽히면 외부 소스 부분만 지난 기억 그대로(플러그인 · 표 항목은 그대로 견줌)
@@ -9256,20 +9551,11 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ---
 >
-> ## [10-11] **소급 대기열이 안 빠질 때 — 은퇴한 «Re-read files» 실행이 관문을 잡고 있나 (총괄 a276bcb8b) — 이주 «없음» · 재기동 «없음»**
+> ## [10-11] **소급 대기열이 안 빠질 때 — 은퇴한 «Re-read files» 실행이 관문을 잡고 있나 (총괄 a276bcb8b) — 이주 «없음» · 재기동 «서버»**
 >
 > ```
-> 읽기만      SELECT run_id, op, state, runner, started_at, last_progress_at FROM retroactive_runs WHERE state IN ('queued', 'running', 'cancel_requested') ORDER BY queued_at;
-> 답의 뜻      op=reread_files · state running 또는 cancel_requested -> 이 줄이 관문을 잡고 있음, 그 밑 queued 줄은 전부 뒤에서 기다림
->             op=reread_files · state queued -> 막는 것 아님 — 스케줄러 다음 틱에 스스로 failed(unknown retroactive operation)
->             running · cancel_requested 줄이 0 -> 관문은 열려 있음 — 다른 원인
-> 푸는 한 줄   curl.exe --noproxy "*" -X POST "http://127.0.0.1:8080/admin/retroactive/runs/<run_id>/cancel" -H "X-Admin-Token: <토큰>"
->             화면엔 이 줄의 × 가 없음 — 은퇴 op 은 «취소가 안 닿음»으로 판정돼 × 를 안 그림. 「restart the scheduler」 안내로는 안 풀림
-> 답의 뜻      "released": true, "state": "failed" -> 주인 프로세스가 죽은 줄을 놓음, 스케줄러 다음 틱에 뒤 줄이 돎
->             "released": false, "state": "cancel_requested" -> 10-09 빌드의 자식이 살아서 감시기를 기다리는 중 — 3 초마다 멈춤을 읽고
->             받은 파일의 상태를 되돌린 뒤 cancelled. 1 분 뒤 «읽기만» 줄을 다시
-> 최후 수단    curl 이 거절할 때만(4xx · 5xx): stop_retroactive.bat <run_id> (server/scripts/stop_retroactive.py) — 이 호스트의 그 실행
->             프로세스를 끄고, 남은 줄은 같은 UPDATE(state failed · 사유 «released by hand (stop_retroactive)»)로 놓는다 — 손 SQL 대신
+> 이제 화면 × 로   대기열 화면 그 running 줄의 × — 돌리는 프로세스가 없으면 놓임(failed), 살아 있으면 × 없음
+> queued 는 그대로  화면에 줄 없음 — 스케줄러 다음 틱이 집어 자식이 failed(unknown retroactive operation 'reread_files')로 끝냄, 뒤 줄 안 막음
 > ```
 >
 > ---
@@ -10407,7 +10693,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 재기동 뒤        새 합치기(쓰기 문 · 키 고치기 --apply · 표기 소급)는 넘어가는 행에 없던 칸의 층을 만들지 않는다
-> 센다(읽기만)      python server/scripts/count_absent_null_layers.py
+> 센다(읽기만)      은퇴 (11-12) — 옛 층 표가 줄 표로 옮겨 가며 빈 층도 줄로 옮겨짐(지워지지 않음). 세는 대본은 없앰
 > 세 수의 뜻        ① 비울 수 없는 쓴 이(파일 등)의 빈 층 — 전부터 세던 그 수(S-243-b), 판정 405 이전에 쌓인 부재
 >                ② 합치기가 남긴 빈 사본, 비울 수 없는 쓴 이 — 부재로 확정. 이번 결함이 남긴 것
 >                ③ 합치기가 남긴 빈 사본, 사람 · 체인 — 부재이거나 사람이 일부러 비운 칸의 사본. 구별이 안 된다

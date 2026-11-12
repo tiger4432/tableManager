@@ -200,7 +200,7 @@ const MUTANTS = [
   { id: 'X4', what: 'and is not three-valued: null and false says null', catches: 'V[and.null.false]', file: E,
     mutate: (t) => swap(t, 'return a === false || b === false ? false : a && b ? true : null; }', 'return a && b ? true : a === null || b === null ? null : false; }') },
   { id: 'X5', what: 'an If branch folds every row, not the rows its condition sends it', catches: 'V[if.branch.subset]', file: E,
-    mutate: (t) => swap(t, '  return value(cv ? a : b, { ...ctx, rows: ctx.rows.filter((_, i) => conds[i] === cv) });', '  return value(cv ? a : b, ctx);') },
+    mutate: (t) => swap(t, '  return value(branch, { ...ctx, rows: ctx.rows.filter((_, i) => conds[i] === cv) });', '  return value(branch, ctx);') },
   { id: 'X6', what: 'a case then folds every row', catches: 'V[case.then.subset.min]', file: E,
     mutate: (t) => swap(t, '  return value(branch, { ...ctx, rows: ctx.rows.filter((_, i) => firstTrue[i] === k) });', '  return value(branch, ctx);') },
   { id: 'X7', what: 'StdDev divides by n', catches: 'V[stddev.col]', file: E,

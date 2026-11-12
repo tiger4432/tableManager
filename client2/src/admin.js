@@ -30,8 +30,6 @@ import {
   ADMIN_TOKEN_KEY, ADMIN_TOKEN_HEADER, adminFetch as sendWithAdminToken,
   isGateRejection, tokenGeneration, bumpTokenGeneration,
 } from './admin_token.js';
-// Enrichment 결손 카운트는 큐를 세는 것이다. 그 요청의 유일한 철자 (ui.js·enrichment.js 공용).
-import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel, skipLine, resumeRun, resumeLine, cutRunFor } from './chain_queue_panel.js';
@@ -54,9 +52,11 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView, ruleStateView } from './rule_outcome.js';
+import { ChainRuleGroups, FILTER_WORD, pickerGroups } from './chain_rule_groups.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
-import { countNumberText, countOf } from './match_count.js';
+import { countNumberText } from './match_count.js';
+import { ReadAgain } from './read_again.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -87,7 +87,7 @@ import { planDryRunView } from './plan_dry_run.js';
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView, runsPollBusy,
-  buildConfirmActions, groupExtras, retroCountUrl,
+  buildConfirmActions, groupExtras, retroCountRequest,
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
 import { collectorBackfillView, BACKFILL_OP } from './collector_backfill.js';
@@ -106,6 +106,7 @@ import { takeRescopeHandoff } from './rescope_handoff.js';
 import { HelpPanel } from './help_panel.js';
 import { StallLine, stallOf } from './stall_line.js';
 import { NotAdopted, notAdoptedOf } from './not_adopted.js';
+import { ListField, listValues } from './list_field.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -1179,6 +1180,9 @@ async function refreshChainRule(name, extra = {}) {
       onOpen: (rule, extra) => refreshChainRule(rule, extra || {}),
       onSave: (payload) => saveChainRule(payload),
       onConvert: (payload) => convertChainRuleGrammar(payload),
+      // its picker in the Chain Rules list's groups, by the list's key, under the same filter (owner 11-11)
+      pickGroups: (names, query) => pickerGroups(chainData, names, { by: chainGroupsPart ? chainGroupsPart.groupBy() : 'trigger', query }),
+      pickFilter: FILTER_WORD,
     });
   }
   // C-86 ③. 목록은 «패널이 그리기 전»에 넣습니다. 한 번 읽고 기억합니다 — 규칙을 열 때마다
@@ -1995,6 +1999,80 @@ function chainRuleNarrative(rule) {
   return lines.join('\n');
 }
 
+// One rule's row in the Chain Rules list - the groups part (chain_rule_groups.js) places it under its table.
+function chainRuleRow(rule) {
+  const row = document.createElement('tr');
+  row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
+  row.dataset.name = rule.name;
+
+  const ruleState = ruleStateView(rule);
+  const stateBadge = `<span class="badge ${ruleState.badge}">${escapeHtml(ruleState.state)}</span>`;
+  // The server's why is a sentence, so it lives where the table's long text does - not in the State cell (lead 10-28 ㄴ).
+  const stateDetail = ruleState.detail ? `<div class="meta">${escapeHtml(ruleState.detail)}</div>` : '';
+  // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
+  //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 running 이면서 `skipped:disabled` 입니다 —
+  //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
+  const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
+  const outcomeBadge = outcome.read
+    ? `<span class="badge ${outcome.badge}">${escapeHtml(outcome.outcome)}</span>` : '';
+  // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
+  // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
+  //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
+  const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
+    .filter(Boolean).map(escapeHtml);
+  const outcomeNote = outcomeBits.length
+    ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
+  const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
+  const source = rule.trigger_table || '-';
+  const target = rule.target_table || '-';
+  const sourceNote = rule.source_table && rule.source_table !== source
+    ? `reads ${rule.source_table}` : 'uses trigger rows';
+
+  row.innerHTML = `
+    <td>${escapeHtml(rule.kind || ABSENT)}</td>
+    <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
+    <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
+    <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
+    <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
+    <td><div class="chain-capabilities">${[
+      rule.allow_map_metadata_upsert ? '<span class="badge badge-warning">META UPSERT</span>' : '',
+      rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
+      !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
+    ].join('')}</div></td>
+  `;
+
+  row.addEventListener('click', () => {
+    selectChainRow(rule);
+  });
+  // the rule into the editor below (owner 11-11); a press on the row itself still opens its details
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'admin-btn ctl-small chain-rule-edit';
+  edit.textContent = 'Edit';
+  edit.setAttribute('aria-label', `Edit ${rule.name} in the rule editor`);
+  edit.addEventListener('click', (e) => { e.stopPropagation(); editChainRule(rule.name); });
+  row.querySelector('.chain-rule-name').appendChild(edit);
+
+  return row;
+}
+
+// A list row's Edit: the rule opens in the editor by the editor's own door (its picker's - unsaved text asks first).
+function editChainRule(name) {
+  const went = chainRulePanel ? chainRulePanel.pick(name) : (refreshChainRule(name), true);
+  const mount = byId('chain-rule-mount');
+  if (went && mount && mount.scrollIntoView) mount.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// The Chain Rules list folded by a table, with its filter (owner 11-11, lead).
+let chainGroupsPart = null;
+function chainGroups() {
+  if (!chainGroupsPart) {
+    chainGroupsPart = new ChainRuleGroups(byId('chain-rule-groups-mount'), { doc: document, body: chainListBody,
+      rowOf: chainRuleRow, columns: 6, key: 'admin.chainRules' });
+  }
+  return chainGroupsPart;
+}
+
 function renderChainTable() {
   chainListBody.innerHTML = '';
   const runningCount = chainData.filter(rule => ruleStateView(rule).running).length;
@@ -2008,53 +2086,7 @@ function renderChainTable() {
 
   chainEmptyState.style.display = 'none';
 
-  chainData.forEach(rule => {
-    const row = document.createElement('tr');
-    row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
-    row.dataset.name = rule.name;
-
-    const ruleState = ruleStateView(rule);
-    const stateBadge = `<span class="badge ${ruleState.badge}">${escapeHtml(ruleState.state)}</span>`;
-    // The server's why is a sentence, so it lives where the table's long text does - not in the State cell (lead 10-28 ㄴ).
-    const stateDetail = ruleState.detail ? `<div class="meta">${escapeHtml(ruleState.detail)}</div>` : '';
-    // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
-    //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 running 이면서 `skipped:disabled` 입니다 —
-    //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
-    const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
-    const outcomeBadge = outcome.read
-      ? `<span class="badge ${outcome.badge}">${escapeHtml(outcome.outcome)}</span>` : '';
-    // 사유와 나이는 «서버가 준 것»만. 없으면 «없는 채로** — 「없음」도 「0초」도 안 지어냅니다.
-    // ⚠️ 기준 시각은 «같은 응답»의 `generated_at` 이고, 그 줄은 이 탭의 큐 패널이 이미
-    //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
-    const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
-      .filter(Boolean).map(escapeHtml);
-    const outcomeNote = outcomeBits.length
-      ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
-    const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
-    const source = rule.trigger_table || '-';
-    const target = rule.target_table || '-';
-    const sourceNote = rule.source_table && rule.source_table !== source
-      ? `reads ${rule.source_table}` : 'uses trigger rows';
-
-    row.innerHTML = `
-      <td>${escapeHtml(rule.kind || ABSENT)}</td>
-      <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
-      <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
-      <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
-      <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
-      <td><div class="chain-capabilities">${[
-        rule.allow_map_metadata_upsert ? '<span class="badge badge-warning">META UPSERT</span>' : '',
-        rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
-        !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
-      ].join('')}</div></td>
-    `;
-
-    row.addEventListener('click', () => {
-      selectChainRow(rule);
-    });
-
-    chainListBody.appendChild(row);
-  });
+  chainGroups().render(chainData, chainRuleOutcomes || {});
 
   if (selectedChainName && !isInlineEditorActive) {
     const exists = chainData.find(c => c.name === selectedChainName);
@@ -3433,15 +3465,22 @@ function retroParamsEl(op) {
       wrap.appendChild(field);
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'retro-input';
+    // a list parameter (declared "type": "csv", lead 11-11): the base layer's list field - one value a line, comma or tab -
+    // sent as before, comma-joined; any other: one line
+    const list = param.list ? new ListField(document.createElement('div'), { doc: document, rows: 4,
+      values: listValues(state.params[param.key]).values, onChange: (values) => typed(values.join(',')) }) : null;
+    const input = list ? list.box : document.createElement('input');
+    if (!list) {
+      input.type = 'text';
+      input.value = state.params[param.key] || '';
+      input.addEventListener('input', () => typed(input.value));
+    }
+    input.classList.add('retro-input');
     input.dataset.param = param.key;
-    input.value = state.params[param.key] || '';
     input.classList.toggle('is-help', helpFilled(state, param.key));
-    input.addEventListener('input', () => {
+    function typed(value) {
       const wasStale = resolveCount(state, op).stale;
-      state.params[param.key] = input.value;
+      state.params[param.key] = value;
       input.classList.toggle('is-help', helpFilled(state, param.key));
       // 카드를 통째로 다시 그리면 타이핑 중에 포커스가 날아가므로, **측정의 유효성이 실제로
       // 뒤집힌 타이핑에서만** 다시 그린다 — 한 글자 고쳤다 되돌리면 측정은 다시 유효해지고
@@ -3450,8 +3489,8 @@ function retroParamsEl(op) {
       const caret = input.selectionStart;
       renderRetroOperation(op.op);
       retroFocusParam(op.op, param.key, caret);
-    });
-    field.appendChild(input);
+    }
+    field.appendChild(list ? list.root : input);
     // 서버가 준 help는 **입력칸 안(placeholder)이 아니라 아래 줄**에 둔다. placeholder는
     // 폭에 잘리고 타이핑을 시작하면 사라진다 — 「자르지 말고 줄을 하나 더 써라」.
     // 없으면 비워 둔다: 여기서 지어내면 그 순간 클라가 파라미터의 뜻을 자기가 정한다.
@@ -3492,7 +3531,7 @@ function retroChoiceEl(op, param, state) {
 /** 재렌더 뒤 커서를 원래 칸으로 돌려놓는다. 입력칸은 `data-param`으로 자기를 밝힌다. */
 function retroFocusParam(opId, paramKey, caret) {
   const target = document.querySelector(
-    `article.retro-op[data-op="${CSS.escape(opId)}"] input[data-param="${CSS.escape(paramKey)}"]`);
+    `article.retro-op[data-op="${CSS.escape(opId)}"] :is(input, textarea)[data-param="${CSS.escape(paramKey)}"]`);
   if (!target) return;
   target.focus();
   try { target.setSelectionRange(caret, caret); } catch (e) { /* not a text input */ }
@@ -3673,7 +3712,8 @@ async function runRetroactiveCount(op) {
   renderRetroOperation(op.op);
   let failure = null;
   try {
-    const res = await adminFetch(retroCountUrl(API_BASE, op.op, entries));
+    const asked = retroCountRequest(API_BASE, op.op, entries);
+    const res = await adminFetch(asked.url, asked.init);
     failure = failureFactOf(res);
     if (!res.ok) {
       state.count = {
@@ -3883,6 +3923,7 @@ async function fetchOverview(isStale) {
   }
 
   renderOverview({ failed, outbox, rules, mappers, auto, enrich, active });
+  readEnrichmentAgain(enrich);
 }
 
 // 시안 A ② Status — 판은 한 번 만들고 재사용한다. 줄 판정은 `overview_status` 한 자리이고,
@@ -4815,6 +4856,7 @@ function closeInlineEditor() {
 // ── Enrichment 상태 (규칙 + 결손 카운트) — Overview 의 Enrichment 줄이 쓴다, 15s TTL 캐시 ──
 
 let enrichmentStatusCache = null; // { ts, data }
+const enrichmentAgain = new ReadAgain();
 
 async function fetchEnrichmentStatus(force = false) {
   const now = Date.now();
@@ -4824,38 +4866,21 @@ async function fetchEnrichmentStatus(force = false) {
   const res = await fetch(`${API_BASE}/enrichment/rules`);
   if (!res.ok) throw new Error('enrichment rules fetch failed');
   const r = await res.json();
-  const rules = r.rules || [];
-  // Missing count: composed by `queueQuery` (enrichment_queue.js), the SAME named server
-  // queue predicate the worklist itself is fetched with, re-asked per rule with limit=1 so
-  // only `total` is read. The shared predicate is what makes this number and the worklist's
-  // count the same population; a filter dict spelled here instead would be AND-ed by the
-  // consumer into "every target blank" and undercount any rule with two targets.
-  const perRule = [];
-  let totalMissing = 0;
-  // A narrowed read counts up to 10,000 (ㄱ-1): past it the sum is «at least» - said «10,000+».
-  let missingCapped = false;
-  for (const rule of rules) {
-    // 큐 조건을 만들 수 없으면 missing = null(조회 실패 표기). 조건을 떼고 물으면
-    // 파생 테이블 전체 행 수가 「결손」이라는 이름으로 카드에 실린다.
-    const queue = queueQuery(rule);
-    let missing = null;
-    if (queue) {
-      try {
-        const url = `${API_BASE}/tables/${encodeURIComponent(rule.derived_table)}/data` +
-          `?skip=0&limit=1&${queue}`;
-        const cres = await fetch(url);
-        if (cres.ok) {
-          const cr = await cres.json();
-          const counted = countOf(cr);
-          missing = counted.total || 0;
-          missingCapped = missingCapped || counted.capped;
-          totalMissing += missing;
-        }
-      } catch (e) { /* missing = null → 카드/배지에서 조회 실패 표기 */ }
-    }
-    perRule.push({ rule, missing });
-  }
-  const data = { rules, perRule, totalMissing, missingCapped };
+  // The missing count is the server's, counted behind this answer one rule at a time (owner 11-10 «1 ㄱ», D): this read
+  // only reads it - no per-rule /tables/<derived>/data count from here, however many pages ask.
+  const data = { rules: r.rules || [], missing: r.missing && typeof r.missing === 'object' ? r.missing : null };
   enrichmentStatusCache = { ts: now, data };
   return data;
+}
+
+/** While the server counts behind its answer (`missing.updating`) the Enrichment row alone is read again - the one
+ *  read-again judge (read_again.js), as long as the Overview is the tab shown; the 30 s round reads the rest. */
+function readEnrichmentAgain(enrich) {
+  enrichmentAgain.after(enrich && enrich.missing, () => !document.hidden && currentTab === 'overview', async () => {
+    let next = null;
+    try { next = await fetchEnrichmentStatus(true); } catch (e) { /* the 30 s round reads it again */ }
+    if (!next || currentTab !== 'overview') return;
+    overviewBoard().update(enrichmentRow(next));
+    readEnrichmentAgain(next);
+  });
 }

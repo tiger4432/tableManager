@@ -191,9 +191,9 @@ SYSTEM_TABLE_COLUMNS = {
     "auth_login_states": ('code_verifier', 'created_at', 'next_path', 'nonce', 'state'),
     "auth_sessions": ('created_at', 'expires_at', 'id_hash', 'user_name'),
     "cell_overwrites": ('column_name', 'id', 'is_overwrite', 'manual_priority_source', 'row_id', 'table_name', 'updated_at', 'updated_by'),
-    # confirmation_uid: migrations/add_frame_confirmation.py
+    # confirmation_uid: added by migrations/add_frame_confirmation.py until the old layer table retired (11-12)
     # origin_row_id:    migrations/add_cell_source_origin_row.sql  (S-280 · 판정 434)
-    # owner_key, owner_rule: added at boot until the old layer table retired (lead 11-11); a layer write without them refuses (require_owner_columns)
+    # owner_key, owner_rule: added at boot until the old layer table retired (lead 11-11); the migration copy refuses a table without them (line_migration._copyable)
     "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'origin_row_id', 'owner_key', 'owner_rule', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
     # NEW TABLE, not a new column: `fefe2905` declared `RetroactiveRun` so every
     # request-type operation gets one run row and one way to stop it. A whole table IS

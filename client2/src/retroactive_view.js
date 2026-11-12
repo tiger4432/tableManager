@@ -219,6 +219,8 @@ function buildParam(param) {
     name: text(param && param.name),
     help: text(param && param.help),
     required: Boolean(param && param.required),
+    // a list of values (the declaration's "type": "csv") - drawn as the base layer's list field, sent comma-joined
+    list: Boolean(param && param.type === 'csv'),
     requiredLabel: chrome(RETRO_CHROME.REQUIRED),
     // 🔴 «닫힌 집합»을 가진 파라미터는 선언이 그 집합을 실어 보냅니다. 없으면 «자유 문자열»이고
     //    입력칸 그대로입니다 — 여기에 «대체 목록을 들지 않습니다». 그것이 이 필드가 생긴 이유고,
@@ -339,11 +341,21 @@ export function groupExtras(extras) {
   return places;
 }
 
-/** `GET /admin/retroactive/{op}/count`'s address with its parameters (`entries` [{key, value}]) - the one spelling;
- *  the admin's Retroactive tab and the grid's redo banner both ask it. */
-export function retroCountUrl(base, op, entries) {
-  const query = (entries || []).map((e) => `${encodeURIComponent(e.key)}=${encodeURIComponent(e.value)}`).join('&');
-  return `${base}/admin/retroactive/${encodeURIComponent(op)}/count${query ? `?${query}` : ''}`;
+/** `POST /admin/retroactive/{op}/count` with its parameters (`entries` [{key, value}]) as the run's own body
+ *  `{"params": {...}}` - picked row_ids no longer go in the address (ops 414, lead 11-10); `scan_limit` stays in the
+ *  query. The one spelling: the admin's Retroactive tab and the grid's redo banner both ask it. -> {url, init} */
+export function retroCountRequest(base, op, entries) {
+  const params = {};
+  let scanLimit = null;
+  for (const e of entries || []) {
+    if (e.key === 'scan_limit') scanLimit = e.value;
+    else params[e.key] = e.value;
+  }
+  const query = scanLimit == null ? '' : `?scan_limit=${encodeURIComponent(scanLimit)}`;
+  return {
+    url: `${base}/admin/retroactive/${encodeURIComponent(op)}/count${query}`,
+    init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }) },
+  };
 }
 
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.

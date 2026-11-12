@@ -91,7 +91,6 @@ from tests.support.isolated_pg import scratch_schema
 
 import db_safety
 import migrations.add_business_key_unique_index as mig
-import migrations.drop_redundant_layering_indexes as dropidx
 import scripts.audit_schema_canon as canon
 import scripts.check_missing_business_key as checkbk
 import scripts.dev_env.snapshot_db as snapshot
@@ -137,7 +136,6 @@ def _door_snapshot(url):
 
 DOORS = [
     pytest.param(_door_connect_time(mig), id="add_business_key_unique_index"),
-    pytest.param(_door_connect_time(dropidx), id="drop_redundant_layering_indexes"),
     pytest.param(_door_connect_time(rebuild), id="rebuild_blank_business_keys"),
     pytest.param(_door_connect_time(checkbk), id="check_missing_business_key"),
     pytest.param(_door_snapshot, id="dev_env.snapshot_db"),
@@ -154,7 +152,6 @@ SHARED_NAMES = ("assert_readonly", "assert_writable", "open_readonly_connection"
 
 CONSOLIDATED = [
     pytest.param(mig, id="add_business_key_unique_index"),
-    pytest.param(dropidx, id="drop_redundant_layering_indexes"),
     pytest.param(rebuild, id="rebuild_blank_business_keys"),
     pytest.param(checkbk, id="check_missing_business_key"),
     pytest.param(snapshot, id="dev_env.snapshot_db"),
@@ -773,7 +770,7 @@ def test_injecting_spelling_c_into_the_home_turns_every_door_red(
                         _spelling_c_connection)
     # The scripts import the names directly, so the module-level bindings have to
     # be redirected too - which is itself a check that they ARE the home's object.
-    for module in (mig, dropidx, rebuild, checkbk):
+    for module in (mig, rebuild, checkbk):
         if hasattr(module, "open_readonly_connection"):
             monkeypatch.setattr(module, "open_readonly_connection",
                                 _spelling_c_connection)

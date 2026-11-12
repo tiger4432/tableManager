@@ -4,6 +4,7 @@
 // it as they took them. The Condition tab is AG Grid's text and number filter again, two conditions and AND/OR (lead: today's
 // capability does not shrink); its floating cell types as theirs did (lead: «floating typing stays as today»).
 // Community AG Grid has no set filter and lends none of its filters to another, so this is the one filter of every column.
+import { ListField } from './list_field.js';
 
 /** AG Grid 35's own option lists (DEFAULT_TEXT_FILTER_OPTIONS · DEFAULT_NUMBER_FILTER_OPTIONS, not exported). */
 export const TEXT_OPTIONS = Object.freeze(['contains', 'notContains', 'equals', 'notEqual', 'startsWith', 'endsWith', 'blank', 'notBlank']);
@@ -96,21 +97,6 @@ export function floatingText(model) {
   return model.filter != null ? `${model.filter}` : `${model.type}`;
 }
 
-/** A pasted list: one value per line, comma or tab; trimmed, the empty dropped, each once. A number column's values go as
- *  numbers when they read as one - the server says which do not (422), the screen does not judge them. */
-export function pasteValues(kind, text) {
-  const seen = new Set();
-  const values = [];
-  let duplicates = 0;
-  for (const part of String(text || '').split(/[\r\n\t,]+/)) {
-    const word = part.trim();
-    if (!word) continue;
-    if (seen.has(word)) { duplicates += 1; continue; }
-    seen.add(word);
-    values.push(kind === 'number' && word !== '' && Number.isFinite(Number(word)) ? Number(word) : word);
-  }
-  return { values, duplicates };
-}
 
 /** A value's key in a pick: null is the blank cells; a number column's values are numbers. */
 const pickKey = (v) => (v == null ? '\u0000blank' : `${typeof v}:${v}`);
@@ -244,14 +230,11 @@ export class ValueFilter {
   buildPaste() {
     this.paste = this.el('div', 'value-filter__pane');
     const label = this.el('label', 'form-label', 'One value per line, comma or tab');
-    this.pasteArea = this.el('textarea', 'value-filter__paste');
-    this.pasteArea.rows = 9;
-    this.pasteArea.addEventListener('input', () => this.drawPasteCount());
-    const line = this.el('div', 'value-filter__line');
-    this.pasteCount = this.el('span', 'value-filter__count');
-    this.pasteDup = this.el('span', 'meta');
-    line.append(this.pasteCount, this.pasteDup);
-    this.paste.append(label, this.pasteArea, line);
+    const field = this.el('div');
+    // the base layer's list field (list_field.js) - the same box the retroactive form's lists and the explorer's adder read
+    this.pasteField = new ListField(field, { doc: this.doc, kind: this.kind, rows: 9, say: (n) => `${n} · equals any`,
+      onChange: () => this.drawPasteCount() });
+    this.paste.append(label, field);
   }
 
   buildCondition() {
@@ -296,7 +279,9 @@ export class ValueFilter {
   isFilterActive() { return this.model != null; }
   getModel() { return this.model; }
   setModel(model) { this.model = model || null; }
-  doesFilterPass(params) { return passes(this.kind, this.model, this.params.getValue(params.node)); }
+  // a pivot's carried column (owner 11-11 ㄴ): the server kept the group if any of its long rows passes - a group row
+  // holds one value or only how many, so every row it sent passes here
+  doesFilterPass(params) { return this.params.server || passes(this.kind, this.model, this.params.getValue(params.node)); }
 
   /** The floating cell typed (AG Grid's onFloatingFilterChanged): one condition of `type`, or none. */
   onFloatingFilterChanged(type, value) {
@@ -309,7 +294,7 @@ export class ValueFilter {
     const m = this.model;
     this.picked = new Map(m && m.filterType === 'set' ? (m.values || []).map((v) => [pickKey(v), v]) : []);
     this.search.value = '';
-    this.pasteArea.value = '';
+    this.pasteField.setValues([]);
     const { rows, operator } = rowsOf(m, this.defaultOption);
     rows.forEach((r, i) => { this.conds[i].type.value = r.type; this.conds[i].from.value = r.from; this.conds[i].to.value = r.to; });
     this.joinBoxes.forEach((radio) => { radio.checked = radio.value === operator; });
@@ -401,9 +386,7 @@ export class ValueFilter {
   }
 
   drawPasteCount() {
-    const { values, duplicates } = pasteValues(this.kind, this.pasteArea.value);
-    this.pasteCount.textContent = `${values.length.toLocaleString('en-US')} values · equals any`;
-    this.pasteDup.textContent = duplicates ? `${duplicates} duplicate${duplicates === 1 ? '' : 's'} removed` : '';
+    const values = this.pasteField.values();
     if (this.tab === 'paste') this.applyButton.disabled = !values.length;
   }
 
@@ -427,7 +410,7 @@ export class ValueFilter {
 
   applyTab() {
     if (this.tab === 'pick') return this.apply({ filterType: 'set', values: [...this.picked.values()] });
-    if (this.tab === 'paste') return this.apply({ filterType: 'set', values: pasteValues(this.kind, this.pasteArea.value).values });
+    if (this.tab === 'paste') return this.apply({ filterType: 'set', values: this.pasteField.values() });
     const rows = this.conditionRows();
     const first = conditionOf(this.kind, rows[0]);
     const operator = (this.joinBoxes.find((r) => r.checked) || {}).value || 'AND';

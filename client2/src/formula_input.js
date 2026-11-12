@@ -34,9 +34,9 @@ function scan(text, caret) {
 
 /** What the caret stands in, for the list under the formula: a column's name after an open «[», or a function's name -
  *  {kind: 'column' | 'function', from, prefix}, `from` where the name begins; null in a text in quotes or elsewhere. */
-/** The one «this is a formula» mark (lead 11-10): every formula field wears it, and a folded line that shows a formula
- *  wears the same - a formula beside its column's name read as a plain word. */
-export const FORMULA_MARK = 'ƒ';
+/** The one «this is a formula» mark, the owner's word since 10-28 (the grid header's «fx», option A): the header's
+ *  button, every formula field, and a folded line or a read-only leaf that shows a formula all say it (lead 11-10). */
+export const FORMULA_MARK = 'fx';
 export function formulaMark(doc) {
   const mark = doc.createElement('span');
   mark.className = 'formula-mark';
@@ -44,6 +44,9 @@ export function formulaMark(doc) {
   mark.setAttribute('aria-hidden', 'true');
   return mark;
 }
+
+/** How a formula is applied now that Enter writes a new line (owner 11-11 «1 ㄱ»): beside the field while it is typed in. */
+export const APPLY_KEYS = 'Ctrl+Enter to apply';
 
 export function completionAt(text, caret) {
   const { before, quote, bracket } = scan(text, caret);
@@ -87,14 +90,23 @@ export function offerAt(text, caret, columns = [], words = []) {
     side: column || s.word ? '' : signatureText(s) })) };
 }
 
-/** `value` taken into `text` for the name the caret stands in: a function as «Name(», a word as itself, a column as
- *  «name]» (over a «]» already there) - {text, caret}. */
+/** «Name(, , )» - a call with a slot for each argument it needs (a «[…]» one may be left out, «...» takes more). */
+export function callSkeleton(name) {
+  const s = signatureOf(name);
+  const slots = s ? s.args.filter((a) => a !== '...' && !/^\[.*\]$/.test(a)).length : 0;
+  return `${name}(${', '.repeat(Math.max(0, slots - 1))})`;
+}
+
+/** `value` taken into `text` for the name the caret stands in: a function as its call's skeleton, the caret in its first
+ *  slot (owner 11-11 «1 ㄱ»); a word as itself; a column as «name]» (over a «]» already there) - {text, caret}. */
 export function acceptAt(text, caret, offer, value, word = false) {
   const t = String(text || '');
   const after = t.slice(caret);
   const rest = offer.kind === 'function' ? /^[A-Za-z0-9_.]*/.exec(after)[0] : (/^[^[\](),]*\]/.exec(after) || [''])[0];
-  const piece = offer.kind === 'function' ? (word ? value : `${value}(`) : `${value}]`;
-  return { text: t.slice(0, offer.from) + piece + after.slice(rest.length), caret: offer.from + piece.length };
+  const call = offer.kind === 'function' && !word;
+  const piece = offer.kind === 'function' ? (word ? value : callSkeleton(value)) : `${value}]`;
+  return { text: t.slice(0, offer.from) + piece + after.slice(rest.length),
+    caret: offer.from + (call ? value.length + 1 : piece.length) };
 }
 
 /**
@@ -114,8 +126,9 @@ export class FormulaInput {
     this.offer = null;
     const el = (tag, cls) => { const node = this.doc.createElement(tag); node.className = cls; return node; };
     this.root = el('div', 'formula-input');
-    this.input = el('input', `formula-input__input${deps.cls ? ` ${deps.cls}` : ''}`);
-    this.input.type = 'text';
+    // many lines (owner 11-11 «1 ㄱ»): Enter writes a new line, Ctrl+Enter applies
+    this.input = el('textarea', `formula-input__input${deps.cls ? ` ${deps.cls}` : ''}`);
+    this.input.rows = 1;
     this.input.spellcheck = false;
     this.input.autocomplete = 'off';
     if (deps.placeholder) this.input.placeholder = deps.placeholder;
@@ -147,6 +160,9 @@ export class FormulaInput {
     const field = el('div', 'formula-input__field');
     field.appendChild(formulaMark(this.doc));
     field.appendChild(this.input);
+    this.keys = el('span', 'formula-input__keys');
+    this.keys.textContent = APPLY_KEYS;
+    field.appendChild(this.keys);
     field.appendChild(this.list);
     this.root.appendChild(field);
     this.root.appendChild(this.why);
@@ -248,10 +264,16 @@ export class FormulaInput {
     this.told();
   }
 
-  /** With the list open, ↑↓ move its lit row, Enter or Tab take it and Esc closes the list alone; else Enter is the
-   *  owner's. A key that closes a Korean syllable is the input method's. */
+  /** Ctrl+Enter (⌘+Enter) applies. With the list open, ↑↓ move its lit row, Enter or Tab take it and Esc closes the list
+   *  alone; else Enter is a new line. A key that closes a Korean syllable is the input method's. */
   key(e) {
     if (!e || e.isComposing === true || e.keyCode === 229) return;
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      if (e.preventDefault) e.preventDefault();
+      this.closeList();
+      this.apply();
+      return;
+    }
     const open = !this.list.hidden && this.options.size > 0;
     if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       if (e.preventDefault) e.preventDefault();
@@ -263,10 +285,15 @@ export class FormulaInput {
       // the owner stays open: its press-outside-or-Esc watch is on the document, this key does not reach it
       if (e.stopPropagation) e.stopPropagation();
       this.closeList();
-    } else if (e.key === 'Enter' && this.deps.onEnter) {
-      if (e.preventDefault) e.preventDefault();
-      this.deps.onEnter(this.value);
     }
+  }
+
+  /** What Enter did while the field was one line: the owner's apply, else the box's `change` and its form sent. */
+  apply() {
+    if (this.deps.onEnter) { this.deps.onEnter(this.value); return; }
+    const Ev = this.doc.defaultView && this.doc.defaultView.Event;
+    if (Ev && this.input.dispatchEvent) this.input.dispatchEvent(new Ev('change', { bubbles: true }));
+    if (this.input.form && this.input.form.requestSubmit) this.input.form.requestSubmit();
   }
 
   typed() {

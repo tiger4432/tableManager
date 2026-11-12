@@ -19,7 +19,7 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 const stat = (v, k, tone = '') => h('div', { class: 'stat' }, h('span', { class: `v ${tone}` }, v), h('span', { class: 'k' }, k));
-const blank = () => ({ name: '', address: '', listArea: '', item: '', clickTarget: '', opens: 'in_place', content: '', waitSeconds: 10, close: '',
+const blank = () => ({ name: '', address: '', frame: '', listArea: '', item: '', clickTarget: '', opens: 'in_place', content: '', waitSeconds: 10, close: '',
   next: { how: 'button', selector: '' }, endSeconds: 5, max: 0, pair: null, pairText: '', keys: [], table: '', fields: [] });
 const copy = (t) => JSON.parse(JSON.stringify(t));
 const REASONS = [['no_key', 'No key'], ['not_opened', 'Did not open'], ['refused', 'Refused']];
@@ -40,6 +40,12 @@ class Panel {
     this.problem = null;
     this.filter = 'all';
     chrome.runtime.onMessage.addListener((m) => { this.heard(m); return false; });
+    // picking keys pressed while the panel has the focus go to the page
+    document.addEventListener('keydown', (e) => {
+      if (!this.picking || !this.tab || !['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
+      e.preventDefault();
+      ask({ type: 'tab.pick.key', tabId: this.tab.id, key: e.key, shift: e.shiftKey }).catch(() => {});
+    });
     chrome.tabs.onActivated.addListener(() => this.readTab());
     chrome.tabs.onUpdated.addListener((_id, info) => { if (info.url || info.status === 'complete') this.readTab(); });
     setInterval(() => { if (this.run && this.run.waiting && this.view === 'run') this.draw(); }, 1000);
@@ -107,7 +113,14 @@ class Panel {
       h('div', { class: 'row' },
         mine ? h('button', { class: 'primary', onclick: () => this.startRun(t) }, 'Run') : null,
         mine ? h('button', { onclick: () => this.startPreview(t) }, 'Preview') : null,
-        h('button', { onclick: () => this.edit(t) }, 'Edit')));
+        h('button', { onclick: () => this.edit(t) }, 'Edit'),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'stop', onclick: () => { this.deleting = { name: t.name }; this.draw(); } }, 'Delete')),
+      this.deleting && this.deleting.name === t.name ? h('div', { class: 'alert' },
+        h('span', { class: 'say' }, this.deleting.detail || `Delete template ${t.name} and its ${t.fields.length} columns? Rows already collected stay`),
+        h('div', { class: 'row' },
+          this.deleting.detail ? null : h('button', { class: 'stop', onclick: () => this.remove(t) }, 'Delete'),
+          h('button', { onclick: () => { this.deleting = null; this.draw(); } }, this.deleting.detail ? 'Close' : 'Cancel'))) : null);
     return [
       this.head('Collector'),
       h('div', { class: 'body' },
@@ -141,9 +154,11 @@ class Panel {
   picked(m) {
     const p = this.picking;
     this.picking = null;
+    if (this.tab) ask({ type: 'tab.unpick', tabId: this.tab.id }).catch(() => {});   // the other frames still pick
     if (!p || m.cancelled) { this.draw(); return; }
     if (m.refused) { this.saved = { ok: false, detail: m.refused }; this.draw(); return; }
     const d = this.draft;
+    d.frame = m.frame ? patternOf(m.frame) : '';
     if (p.kind === 'column') {
       const at = p.index ?? d.fields.length;
       const f = d.fields[at] || { column: '', read: 'text', regex: '' };
@@ -151,7 +166,7 @@ class Panel {
       this.attrs[at] = m.attrs;
       this.samples = { ...(this.samples || {}), [at]: m.sample };
     } else if (p.kind === 'next') d.next.selector = m.selector;
-    else { d[p.kind] = m.selector; if (p.kind === 'item') this.itemCount = m.count; }
+    else { d[p.kind] = m.add && d[p.kind] ? `${d[p.kind]}, ${m.selector}` : m.selector; if (p.kind === 'item') this.itemCount = m.count; }
     this.draw();
   }
   draw_edit() {
@@ -179,11 +194,13 @@ class Panel {
       h('td', {}, h('button', { class: 'small', 'aria-label': 'Remove column', onclick: () => { d.fields.splice(i, 1); this.draw(); } }, '×')));
     return [
       this.head(`Edit · ${d.name || 'new template'}`, () => this.go('list')),
-      this.picking ? h('div', { class: 'banner' }, h('b', {}, `Picking · ${this.picking.kind}`), h('span', { class: 'grow' }), h('span', {}, 'Esc stops')) : null,
+      this.picking ? h('div', { class: 'banner' }, h('b', {}, `Picking · ${this.picking.kind}`), h('span', { class: 'grow' }),
+        h('span', {}, `↑ ↓ widen${this.picking.kind === 'content' ? ' · Shift+click adds an area' : ''} · Esc stops`)) : null,
       h('div', { class: 'body' },
         h('div', { class: 'kv' },
           h('label', { class: 'k', for: 'f-name' }, 'Name'), input(d.name, (v) => { d.name = v; }, { id: 'f-name' }),
-          h('label', { class: 'k', for: 'f-addr' }, 'Address'), input(d.address, (v) => { d.address = v; }, { id: 'f-addr', class: 'mono' })),
+          h('label', { class: 'k', for: 'f-addr' }, 'Address'), input(d.address, (v) => { d.address = v; }, { id: 'f-addr', class: 'mono' }),
+          h('label', { class: 'k', for: 'f-frame' }, 'Frame'), input(d.frame, (v) => { d.frame = v; }, { id: 'f-frame', class: 'mono', placeholder: 'empty = the page' })),
         h('div', { class: 'form' },
           h('span', { class: 'step' }, '1'), h('span', { class: 'k' }, 'List area'), shown(d.listArea, 'the whole page'), pickBtn('listArea'),
           h('span', { class: 'step' }, '2'), h('span', { class: 'k' }, 'List item'), shown(d.item, 'not picked', this.itemCount ?? null), pickBtn('item'),
@@ -219,6 +236,13 @@ class Panel {
         h('button', { onclick: () => { if (this.tab) ask({ type: 'tab.unpick', tabId: this.tab.id }).catch(() => {}); this.picking = null; this.go('list'); } }, 'Cancel')),
     ];
   }
+  async remove(t) {
+    let a;
+    try { a = await ask({ type: 'template.delete', t }); } catch (e) { a = { ok: false, detail: e.message }; }
+    this.deleting = a.ok ? null : { name: t.name, detail: a.detail };
+    if (a.ok) await this.load();
+    this.draw();
+  }
   async save() {
     try { this.saved = await ask({ type: 'template.save', t: this.draft }); } catch (e) { this.saved = { ok: false, detail: e.message }; }
     if (this.saved.ok) await this.load();
@@ -242,7 +266,8 @@ class Panel {
       h('div', { class: 'body' },
         p.busy ? h('span', { class: 'empty-line' }, 'Reading the first 5 items…') : null,
         p.problem ? h('div', { class: 'alert' }, h('span', { class: 'say' }, p.problem)) : null,
-        b ? h('div', { class: 'stats' }, stat(b.read, 'items read'), stat(b.rows.length, 'rows'), stat(b.skipped, 'key in table'), stat(b.misses.length, 'kept', b.misses.length ? 'warn' : '')) : null,
+        b ? h('div', { class: 'stats' }, stat(b.read, 'items read'), stat(b.rows.length, 'rows'), stat(b.unchecked ? '-' : b.skipped, 'key in table'), stat(b.misses.length, 'kept', b.misses.length ? 'warn' : '')) : null,
+        b && b.unchecked ? h('span', { class: 'meta' }, `${p.t.table ? 'Key' : 'Table'} not set - keys not checked`) : null,
         b ? h('div', { class: 'box' }, h('table', {},
           h('thead', {}, h('tr', {}, cols.map((c) => h('th', {}, c)))),
           h('tbody', {}, b.rows.map((r) => h('tr', {}, cols.map((c) => (r.cells[c] === null ? h('td', { class: 'empty' }, 'empty') : h('td', {}, r.cells[c])))))))) : null,

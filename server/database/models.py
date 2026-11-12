@@ -54,8 +54,8 @@ class AuditLog(Base):
     # that was already located, which an index cannot help. 10.3 MB on assy_qa, 0 scans.
     #
     # ⚠️ Same caveat as `idx_sources_lookup` above: `create_all` does not drop, so this
-    # only stops NEW databases from growing it. Existing ones are cleaned by
-    # `server/migrations/drop_redundant_layering_indexes.py --apply`. Rollback:
+    # only stops NEW databases from growing it. Existing ones keep it -
+    # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. Rollback:
     #   CREATE INDEX CONCURRENTLY ix_audit_logs_business_key
     #       ON public.audit_logs USING btree (business_key);
     business_key = Column(String, nullable=True)
@@ -681,37 +681,6 @@ def ensure_run_columns(engine, add=True):
 #: The databases `ensure_run_columns` found or made the columns on, in this process.
 _RUN_COLUMNS = weakref.WeakSet()
 
-#: The chain layer's owner (owner 11-06 step 2) - `CellSource.owner_rule` · `owner_key`.
-OWNER_COLUMNS = ("owner_rule", "owner_key")
-
-
-def _owner_columns_missing(bind) -> list:
-    """The owner columns `cell_sources` lacks - [] at once for a database this process has seen them on. `bind` an
-    Engine or a Connection - a session bound to one (lead 11-09) - read through itself, remembered by its Engine."""
-    engine = bind.engine
-    if engine in _OWNER_COLUMNS:
-        return []
-    from sqlalchemy import inspect
-
-    have = {c["name"] for c in inspect(bind).get_columns("cell_sources")}
-    missing = [name for name in OWNER_COLUMNS if name not in have]
-    if not missing:
-        _OWNER_COLUMNS.add(engine)
-    return missing
-
-
-def require_owner_columns(engine):
-    """The layer write's question: the owner columns are there, or a refusal that says why and what to do - never a
-    write that fails inside the ORM."""
-    if _owner_columns_missing(engine):
-        raise RuntimeError("cell_sources has no owner_rule / owner_key - the old layer table is retired (the cell-"
-                           "source overhaul) and nothing adds them any more; a write to it cannot run here")
-
-
-#: The databases the owner columns were found on, in this process.
-_OWNER_COLUMNS = weakref.WeakSet()
-
-
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
                        "reader", "source", "reason", "failed_at", "took_seconds", "transaction_id")
@@ -881,7 +850,7 @@ class CellSource(Base):
     # [D3] no index=True on a PK column - see AuditLog.id
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     # 🔴 NO `index=True` ON `table_name` · `column_name` (총괄 10-09). Their indexes are RETIRED -
-    #    `migrations/drop_redundant_layering_indexes.py` RETIRE_UNUSED drops them - and a flag left
+    #    the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped - and a flag left
     #    here declared them still, so the boot's own build would have made them again.
     table_name = Column(String, nullable=False)
     row_id = Column(String, nullable=False)
@@ -954,10 +923,8 @@ class CellSource(Base):
         # ⚠️ REMOVING IT HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never drops an
         # index, and never adds one to a table that already exists, so this edit only
         # stops a BRAND NEW database from growing it. Existing databases - production
-        # included - are cleaned by
-        # `server/migrations/drop_redundant_layering_indexes.py --apply`, which
-        # re-proves the prefix relationship against the live catalogue before it drops
-        # anything. Rollback, if it is ever needed:
+        # included - keep it -
+        # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. Rollback, if it is ever needed:
         #   CREATE INDEX CONCURRENTLY idx_sources_lookup
         #       ON public.cell_sources USING btree (table_name, row_id, column_name);
         Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True,
@@ -1001,9 +968,8 @@ class CellSource(Base):
         # A withdraw is rare and batched, so seconds there buys a btree off every ingest.
         #
         # ⚠️ REMOVING THE OLD ONE HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never
-        # drops an index. An existing database keeps it until a person runs
-        # `server/migrations/drop_redundant_layering_indexes.py --apply`, whose REPLACED
-        # section refuses to drop it until this index exists and is valid. `create_all` builds this one on a new
+        # drops an index. An existing database keeps it -
+        # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. `create_all` builds this one on a new
         # database; nothing builds it at boot any more (the old layer table retires - lead 11-11).
         Index(HUMAN_CLAIMS_INDEX, "table_name", "row_id", "column_name",
               postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME),

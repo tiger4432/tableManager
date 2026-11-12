@@ -7,8 +7,9 @@ import logging
 import pytest
 from sqlalchemy import text
 
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from maps import alignment_batch_counts
+from tests.support import line_tables
 
 T = "zztx_line"
 CONFIG = {"business_key": "k", "column_types": {"k": "string", "a": "string", "b": "string"}}
@@ -19,8 +20,10 @@ def table(db_session):
     crud.TABLE_CONFIG[T] = CONFIG
     models.init_dynamic_models({T: CONFIG})
     models.create_missing_dynamic_tables(db_session.get_bind())
+    line_tables.build(db_session.get_bind(), T)              # the product's shape: a table keeps lines (owner 11-11)
     yield db_session
     db_session.rollback()
+    line_tables.drop(db_session.get_bind(), T)
     crud.TABLE_CONFIG.pop(T, None)
 
 
@@ -41,12 +44,12 @@ def test_a_write_says_its_statements_its_hold_its_commit_and_its_tables(table):
     said = _written(table, _batch("x"))
     tx = said["transaction"]
     assert tx["statements"] > 0 and tx["held"] > 0 and tx["commit"] >= 0
-    assert {"cell_sources", T, alignment_batch_counts.READS} <= set(tx["db"]), tx["db"]
+    assert {lines.lines_relation(T), T, alignment_batch_counts.READS} <= set(tx["db"]), tx["db"]
     assert tx["rows"] == {}, "per-table row versions are PostgreSQL's"
     assert said["write_counts"]["cells offered"] == [9, "cells offered"]
     line = alignment_batch_counts.write_steps_text(said)
     assert " · 9 cells offered" in line and " · TRANSACTION %d statement(s) · held " % tx["statements"] in line
-    assert " cell_sources " in line.split(" · db")[1]
+    assert " %s " % lines.lines_relation(T) in line.split(" · db")[1]
 
 
 def test_nothing_is_counted_outside_a_scope_and_an_unchanged_write_holds_nothing(table):

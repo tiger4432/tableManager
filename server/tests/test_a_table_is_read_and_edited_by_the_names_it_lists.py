@@ -160,11 +160,14 @@ def test_a_delete_door_judges_an_edit_by_row_on_the_table_it_names(grid, door):
 def _recent(client):
     """The recent changes as the route lists them - it walks behind its read (owner 11-09): the first read starts
     the walk, this waits for it and reads again."""
-    from admin.audit_cache import audit_cache
+    import time
+
+    from admin.audit_cache import RECENT, audit_cache
 
     client.get("/audit_logs/recent")
-    if audit_cache._behind is not None:
-        audit_cache._behind.join(30)
+    deadline = time.monotonic() + 30
+    while audit_cache._behind.busy(RECENT) and time.monotonic() < deadline:
+        time.sleep(0.02)
     return client.get("/audit_logs/recent").json()["groups"]
 
 

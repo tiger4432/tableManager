@@ -549,7 +549,8 @@ class LedgerStore:
             raise TypeError(_REASONS_REQUIRED)
         if enforce_translator_version and not advance_cursor:
             raise TypeError(_VERSION_GUARD_NEEDS_CURSOR)
-        from chain.keyset_scan import debugging, stage
+        from chain.keyset_scan import debugging
+        from runtime.stages import stage
 
         connection = self.connection()
         try:

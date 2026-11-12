@@ -46,6 +46,15 @@ def test_a_table_copies_to_its_end_and_a_second_run_says_already_copied():
     assert said[-1].startswith("t: already copied")
 
 
+def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():
+    engine, said = build("b"), []
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE cell_sources DROP COLUMN owner_key"))
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append)
+    assert out["stopped"] and copied_rows(engine) == []
+    assert said == ["REFUSED - t: cell_sources has no owner_key - the copy reads them; this database cannot be copied"]
+
+
 @pytest.mark.parametrize("page", [1, 2])
 def test_a_page_whose_lines_do_not_give_t_is_rolled_back_and_stops_the_table(page):
     engine, said = build("not b"), []

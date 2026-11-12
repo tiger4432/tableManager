@@ -1,15 +1,31 @@
 // A picked element as a selector the template keeps: a list item's selector names it and its alike siblings (the classes
 // most of them carry), any other element's names it alone under its base (the document, the item or the content area).
 
+import { shownAll } from './open_check.js';
+
 const NAME = /^[A-Za-z_-][\w-]*$/;
+
+/** A selector list's areas: «a, b» -> ['a', 'b'] - a comma inside ( ) or [ ] is not a split. */
+export function areasOf(selector) {
+  const out = [''];
+  let depth = 0;
+  for (const ch of String(selector || '')) {
+    if (ch === '(' || ch === '[') depth += 1;
+    if (ch === ')' || ch === ']') depth -= 1;
+    if (ch === ',' && depth === 0) out.push(''); else out[out.length - 1] += ch;
+  }
+  return out.map((s) => s.trim()).filter(Boolean);
+}
 const esc = (s) => (globalThis.CSS && CSS.escape ? CSS.escape(s) : s);
 const classes = (el) => [...el.classList].filter((c) => NAME.test(c));
 const segment = (el, keep = classes(el)) => el.tagName.toLowerCase() + keep.map((c) => `.${esc(c)}`).join('');
 
-/** `el` alone under `base` (null: the document) - the shortest path of tag.class steps that names only it. */
+/** `el` alone under `base` (null: the document - among the shown, as the run finds it: shownAll) - the shortest path of
+ *  tag.class steps that names only it. A hidden copy (a tab not open) does not make the path longer. */
 export function selectorFor(el, base = null) {
   if (el === base) return '';
   const root = base || el.ownerDocument;
+  const named = (sel) => (base ? root.querySelectorAll(sel).length : shownAll(root, sel, root.defaultView).length);
   const steps = [];
   for (let n = el; n && n !== base && n.nodeType === 1; n = n.parentElement) {
     if (!base && n.id && NAME.test(n.id)) { steps.unshift(`#${esc(n.id)}`); return steps.join(' > '); }
@@ -20,7 +36,7 @@ export function selectorFor(el, base = null) {
     }
     steps.unshift(step);
     const sel = (base ? ':scope ' : '') + steps.join(' > ');
-    if (root.querySelectorAll(sel).length === 1) return sel;
+    if (named(sel) === 1) return sel;
   }
   return (base ? ':scope > ' : '') + steps.join(' > ');
 }

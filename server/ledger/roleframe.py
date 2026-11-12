@@ -392,7 +392,7 @@ def declared_emissions(context: MapperContext, profile: ProfileDescriptor, unit_
     from .event_frame import sentence_rows
 
     unit = None             # every reading below takes `columns=`; the frame is not asked
-    said = sentence_rows(context.source_plan, context.snapshot.entities, unit_columns, range(rows))
+    said = sentence_rows(context.source_plan, context.snapshot, unit_columns, range(rows))
     out = []
     for sentence, mapping in profile.mappings.items():
         # S-99. The declaration says WHEN this sentence applies; a unit that does not

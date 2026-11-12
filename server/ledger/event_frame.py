@@ -34,7 +34,7 @@ from .roleframe import (
     read_columns_once,
     unit_positions,
 )
-from .setup_bundle import entity_type_column, exclusion_columns, executes_the_bindings
+from .setup_bundle import VALUE_ROLE, entity_type_column, exclusion_columns, executes_the_bindings
 from database.crud import is_blank_key_part
 from .setup_registry import (
     LedgerSetupSnapshot,
@@ -327,7 +327,7 @@ def blank_key_cause(context: SourcePreparationContext, cells, position: int):
                    if is_blank_key_part(cells[column][position]))
     if not blank and executes_the_bindings(driver.mapper.implementation.implementation_id):
         hard = {*driver.identity, driver.occurred_at.column}
-        needs = [_blank_cells(mapping, context.snapshot.entities, cells, position, hard)
+        needs = [_blank_cells(mapping, context.snapshot, cells, position, hard)
                  for mapping in plan.profile.mappings.values() if _applies(mapping, cells, (position,))]
         if needs and all(needs):
             blank = sorted(set().union(*needs))
@@ -453,17 +453,22 @@ def _binding_cells(binding, entities=None, cells=None, position=None) -> frozens
     return frozenset(columns)
 
 
-def _blank_cells(mapping, entities, cells, position, hard) -> set:
-    """The cells naming `mapping`'s entities that are blank at the row (`crud.is_blank_key_part`), the read's identity
-    and time (`hard`) aside."""
+def _blank_cells(mapping, snapshot, cells, position, hard) -> set:
+    """The cells `mapping` needs that are blank at the row, the read's identity and time (`hard`) aside: those naming
+    its entities (`crud.is_blank_key_part`), and its value object's and required qualifiers' columns (`_is_missing`,
+    the judge that refused the row before, 총괄 11-10 - a blank one unsays its sentence, not the row's others)."""
+    needed = (VALUE_ROLE, *snapshot.vocabulary[mapping.predicate_id].required_qualifiers)
+    valued = {binding.get("column") for binding in (mapping.bindings.get(role) for role in needed)
+              if isinstance(binding, Mapping) and binding.get("kind") == "column"} - hard
     return {column for binding in mapping.bindings.values()
-            for column in _binding_cells(binding, entities, cells, position)
-            if column not in hard and column in cells and is_blank_key_part(cells[column][position])}
+            for column in _binding_cells(binding, snapshot.entities, cells, position)
+            if column not in hard and column in cells and is_blank_key_part(cells[column][position])} | {
+        column for column in valued if column in cells and _is_missing(cells[column][position])}
 
 
-def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> tuple:
-    """-> (`(position, column)` blank entity cells, which refuse nothing; each sentence's rows - those whose cells
-    naming its entities are all filled) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
+def blank_entity_cells(source_plan: SourcePlan, snapshot, cells, positions) -> tuple:
+    """-> (`(position, column)` blank cells, which refuse nothing; each sentence's rows - those whose cells naming
+    its entities, and its value's, are all filled) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
     `_refuse_molecule`, `_row_type_refusal` and the declarative mapper (`sentence_rows`).
 
     A sentence is said from its rows: a row leaving one of its entity cells blank is not one of them, and a sentence
@@ -480,7 +485,7 @@ def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> t
     for sentence, mapping in source_plan.profile.mappings.items():
         rows[sentence] = []
         for position in positions:
-            blank = _blank_cells(mapping, entities, cells, position, hard)
+            blank = _blank_cells(mapping, snapshot, cells, position, hard)
             excused |= {(position, column) for column in blank}
             if not blank:
                 rows[sentence].append(position)
@@ -494,17 +499,17 @@ def _applies(mapping, cells, positions) -> bool:
          for column in mapping.when if column in cells}, mapping.when)
 
 
-def sentence_rows(source_plan: SourcePlan, entities, cells, positions) -> dict:
+def sentence_rows(source_plan: SourcePlan, snapshot, cells, positions) -> dict:
     """The sentences this unit says, each with its rows (`blank_entity_cells`) - those left and whose `when` holds
     over them. The declarative mapper says exactly these; `says_nothing` asks it."""
-    rows = blank_entity_cells(source_plan, entities, cells, positions)[1]
+    rows = blank_entity_cells(source_plan, snapshot, cells, positions)[1]
     return {sentence: rows[sentence] for sentence, mapping in source_plan.profile.mappings.items()
             if rows.get(sentence) and _applies(mapping, cells, rows[sentence])}
 
 
-def sentences_said(source_plan: SourcePlan, entities, cells, positions) -> tuple:
+def sentences_said(source_plan: SourcePlan, snapshot, cells, positions) -> tuple:
     """The sentences this unit says (`sentence_rows`)."""
-    return tuple(sentence_rows(source_plan, entities, cells, positions))
+    return tuple(sentence_rows(source_plan, snapshot, cells, positions))
 
 
 def says_nothing(context: SourcePreparationContext, cells, positions) -> bool:
@@ -514,7 +519,7 @@ def says_nothing(context: SourcePreparationContext, cells, positions) -> bool:
     plan = context.source_plan
     return (executes_the_bindings(plan.driver.mapper.implementation.implementation_id)
             and _read_molecule(context, cells, positions)[0] is None
-            and not any(sentences_said(plan, context.snapshot.entities, cells, unit)
+            and not any(sentences_said(plan, context.snapshot, cells, unit)
                         for unit in unit_positions(plan.driver.mapper, cells, positions)))
 
 
@@ -644,7 +649,7 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
 
     # a declared mapper's blank entity cell refuses nothing - its sentences leave that row (소유자 10-12 · 11-01,
     # `blank_entity_cells`), judged per mapper unit (총괄 10-12 QA2 ①); a key is blank by the key judge, a time by its own
-    soft = frozenset().union(*(blank_entity_cells(plan, context.snapshot.entities, cells, unit)[0]
+    soft = frozenset().union(*(blank_entity_cells(plan, context.snapshot, cells, unit)[0]
                                for unit in unit_positions(driver.mapper, cells, positions)))
     checks = (
         (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity), is_blank_key_part),
