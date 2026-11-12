@@ -161,19 +161,25 @@ _PARTITIONS_HELD = ("SELECT c.oid::regclass::text, c.reloptions, obj_description
 def _storage_tables(db):
     """Every table with a declared storage, as it is now: [(table, how SQL names it, source, {parameter: (declared,
     held or None, held | owed | follows | differs)}, the product's record, why refused or None)] - source model (a
-    model's `info["storage"]`), table (its table_config.json entry's) or ledger (each world's partitions,
-    `ledger.schema.partition_storage`)."""
+    model's `info["storage"]`), table (its table_config.json entry's), ledger (each world's partitions,
+    `ledger.schema.partition_storage`) or lines (each declared table's line table, `lines.line_storage`)."""
     import json
 
     from sqlalchemy import text
 
     from database import crud
+    from database import lines as line_tables
     from database.database import Base
     from ledger import schema
 
     wanted = [(t.name, "model", t.info["storage"]) for t in Base.metadata.sorted_tables if t.info.get("storage")]
     wanted += [(name, "table", entry["storage"]) for name, entry in sorted((crud.TABLE_CONFIG or {}).items())
                if isinstance(entry, dict) and entry.get("storage") is not None]
+    held_lines = line_tables.line_storage()
+    if held_lines:
+        wanted += [(line_tables.lines_relation(name), "lines", held_lines) for name, entry
+                   in sorted((crud.TABLE_CONFIG or {}).items())
+                   if isinstance(entry, dict) and line_tables.keeps_lines(name, entry)]
     held = {row[0]: row[1:] for row in db.execute(text(_STORAGE_HELD), {"names": [name for name, *_ in wanted]})}
     found = [(name, '"%s"' % name.replace('"', '""'), source, storage) + tuple(held[name])
              for name, source, storage in wanted if name in held]          # not made in this schema yet: none
@@ -279,10 +285,28 @@ def apply_table_storage(db_session_factory, take=None, by="product"):
 
 #: (table, how) said already - a table set by hand or refused is said once a process, not every merge.
 _SAID_STORAGE = set()
+#: the line tables' last summary said - said again only when it changes
+_SAID_LINES = []
+_LINES_WORDS = {"set": "set now", "differs": "by hand", "busy": "not set (lock busy)", "failed": "not set (failed)",
+                "refused": "refused"}
 
 
 def _storage_and_say(db_session_factory):
-    for table, how in sorted(apply_table_storage(db_session_factory).items()):
+    from database import lines as line_tables
+
+    done = apply_table_storage(db_session_factory)
+    counts = {}
+    for table, how in done.items():
+        if line_tables.is_line_table(table) and how in _LINES_WORDS:
+            counts[_LINES_WORDS[how]] = counts.get(_LINES_WORDS[how], 0) + 1
+    if counts and counts != (_SAID_LINES[-1] if _SAID_LINES else None):      # silent while every line table holds
+        held = line_tables.line_storage() or {}
+        logger.info("[Lines] autovacuum on line tables (%s): %s - the [Indexes] lines name the tables",
+                    ", ".join("%s = %s" % each for each in sorted(held.items())),
+                    " · ".join("%s %d" % each for each in sorted(counts.items())))
+    if counts or _SAID_LINES:
+        _SAID_LINES[:] = [counts]
+    for table, how in sorted(done.items()):
         if how == "busy":
             logger.warning("[Indexes] %s storage not set - its lock was busy (the [DDL] line names who held it); "
                            "tried again at the next merge", table)

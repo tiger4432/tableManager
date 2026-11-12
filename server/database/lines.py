@@ -235,6 +235,35 @@ def insert_lines(db, ln, rows: list, ids: bool = False) -> list:
         cursor.close()
 
 
+#: ingestion_settings.json - every line table autovacuums after this many dead lines (lead 11-12 나): a write's head
+#: UPDATE leaves a dead line for each earlier line it moves, never HOT (the head columns are in _h's condition), and
+#: PostgreSQL's own 20 % of a 7.9 M-line table waited for 1.6 M. Absent: the default; null: the line tables' own left
+#: alone. Held by the declared storage line (`maintenance_line`, source «lines») - a value set by hand is kept.
+LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT = "lines_autovacuum_threshold", 50000
+#: wrong values said already - the storage line asks at every merge, the line is said once a process
+_SAID_SETTING = set()
+
+
+def line_storage():
+    """{parameter: value} a line table is held at, or None (the setting null): autovacuum at a fixed count of dead
+    lines (scale 0) and no end truncation (owner 11-09, as cell_sources and the ledger partitions)."""
+    import logging
+
+    from ingestion.settings import read_ingestion_settings
+
+    value = read_ingestion_settings().get(LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2147483647:
+        if repr(value) not in _SAID_SETTING:
+            _SAID_SETTING.add(repr(value))
+            logging.getLogger(__name__).warning(
+                "[Lines] ingestion_settings.json: %s is %r - a whole number of dead lines from 0, or null to leave the "
+                "line tables alone; read as %s", LINES_AUTOVACUUM_SETTING, value, LINES_AUTOVACUUM_DEFAULT)
+        value = LINES_AUTOVACUUM_DEFAULT
+    return {"autovacuum_vacuum_scale_factor": 0, "autovacuum_vacuum_threshold": value, "vacuum_truncate": "false"}
+
+
 def keeps_lines(table_name: str, table_cfg) -> bool:
     """Does t keep lines (`won_by` + `t__lines`) - THE answer the copy job, the catalogue and the report ask: an
     operator-declared table (kind table). Not a view, not a table the product ships (system tables), and not an
