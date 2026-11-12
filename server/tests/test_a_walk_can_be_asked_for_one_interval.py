@@ -104,6 +104,13 @@ def test_until_is_exclusive_and_since_is_inclusive():
 
 # ------------------------------------------------------------------ the route's refusals
 
+class _NoRead:
+    """A database a refused interval must not open (lead 11-12: a refusal that needs no data comes before any
+    read) - its connection() raises, so the order is pinned, not only the answer."""
+    def connection(self):
+        raise AssertionError("a refused interval opened a connection")
+
+
 def test_a_bound_that_is_not_a_time_is_refused_by_name(monkeypatch):
     """⛔ REFUSED, NOT IGNORED. A dropped bound answers the WHOLE history to a caller who
     asked for a window, and they read that as 「there is nothing outside my window」 - the
@@ -121,7 +128,7 @@ def test_a_bound_that_is_not_a_time_is_refused_by_name(monkeypatch):
         trace_router.evidence_subgraph(
             node_id=SEED, hops=4, direction="both", node_limit=100, edge_limit=200,
             since="yesterday", until=None, positive=None, negative=None,
-            follow=None, backbone_hops=0, db=None)
+            follow=None, backbone_hops=0, db=_NoRead())
     assert raised.value.status_code == 422
     assert raised.value.detail["reason"] == "interval_not_iso8601"
     assert raised.value.detail["argument"] == "since"
@@ -143,7 +150,7 @@ def test_a_window_that_cannot_contain_anything_is_refused(monkeypatch):
         trace_router.evidence_subgraph(
             node_id=SEED, hops=4, direction="both", node_limit=100, edge_limit=200,
             since="2026-09-09T12:00:00Z", until="2026-09-01T00:00:00Z",
-            positive=None, negative=None, follow=None, backbone_hops=0, db=None)
+            positive=None, negative=None, follow=None, backbone_hops=0, db=_NoRead())
     assert raised.value.detail["reason"] == "interval_empty"
 
 
