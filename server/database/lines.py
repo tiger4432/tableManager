@@ -57,17 +57,20 @@ class LineColumn(Base):
 class LineSource(Base):
     """Source name -> the name it ranks as (crud.layer_ranks_as) - one row per distinct source name, not one per line,
     so the rank's first term is a plain CASE in both dialects (lead 11-11 ㄷ). Rules for splitting a name change ->
-    refill this table only."""
+    refill this table only. `copy_of`: the name a key merge's copy was made of - the merge stamps it, the rank puts
+    the copy behind the row's own layers (lead 11-12 ㄴ); None for every other name."""
 
     __tablename__ = "line_sources"
 
     source_name = Column(String, primary_key=True)
     ranks_as = Column(String, nullable=False)
+    copy_of = Column(String, nullable=True)
 
 
-def note_sources(db, names) -> None:
+def note_sources(db, names, copies=None) -> None:
     """Give each source name not yet in line_sources its row - write_lines and the migration call this before they
-    write lines. A name two writers meet at once lands once (insert or ignore)."""
+    write lines. A name two writers meet at once lands once (insert or ignore). `copies`: {copy's name: the name it
+    copies} - a key merge's (lead 11-12 ㄴ)."""
     from sqlalchemy import insert
 
     from . import crud
@@ -76,7 +79,9 @@ def note_sources(db, names) -> None:
     if not names:
         return
     known = set(db.execute(select(LineSource.source_name).where(LineSource.source_name.in_(names))).scalars())
-    fresh = [{"source_name": n, "ranks_as": crud.layer_ranks_as(n)} for n in sorted(names - known)]
+    copies = copies or {}
+    fresh = [{"source_name": n, "ranks_as": crud.layer_ranks_as(n), "copy_of": copies.get(n)}
+             for n in sorted(names - known)]
     if not fresh:
         return
     stmt = insert(LineSource).values(fresh)
@@ -616,7 +621,7 @@ def _columns_of(chunk_values, by_bit) -> set:
 
 def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
     """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by", "origin_row_id", "line_id",
-    "owner_rule", "owner_key"}}} - each source's standing word on each cell: its head line, unless that line withdrew
+    "owner_rule", "owner_key", "copy_of"}}} - each source's standing word on each cell: its head line, unless that line withdrew
     the column. THE layer read after the overhaul (lead 11-11): what cell_sources answered, in the same shape, from
     t__lines; values read back as t's stored kind. Reads only - no slots, no shape: `s` is the shape a write already
     holds (A 11-11), else the built table, its slots and kinds are read here."""
@@ -640,10 +645,11 @@ def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
                  for n in own],
                *[Column(n, BigInteger) for n in heads + gone], *[Column(value_column(c), String) for c in cells])
     kinds = s["kinds"] if s is not None else value_types(db, table_name)
+    src = LineSource.__table__
     out = {}
     for i in range(0, len(row_ids), 1000):
-        for r in db.execute(select(lt).where(lt.c.row_id.in_(row_ids[i:i + 1000]),
-                                             or_(*[lt.c[h] != 0 for h in heads]))).mappings():
+        for r in db.execute(select(lt, src.c.copy_of).select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
+                            .where(lt.c.row_id.in_(row_ids[i:i + 1000]), or_(*[lt.c[h] != 0 for h in heads]))).mappings():
             said = _columns_of([r[h] for h in heads], by_bit) - _columns_of([r[g] for g in gone], by_bit)
             for col in said:
                 if col not in cells:
@@ -651,12 +657,13 @@ def layers(db, table_name: str, row_ids, columns=None, s: dict = None) -> dict:
                 out.setdefault((r["row_id"], col), {})[r["source_name"]] = {
                     "value": crud.line_value(r[value_column(col)], kinds.get(col, "string")),
                     "ingested_at": r["at"], "updated_by": r["written_by"], "origin_row_id": r["input_row"],
-                    "line_id": r["line_id"], "owner_rule": r["owner_rule"], "owner_key": r["owner_key"]}
+                    "line_id": r["line_id"], "owner_rule": r["owner_rule"], "owner_key": r["owner_key"],
+                    "copy_of": r["copy_of"]}
     return out
 
 
 def rank(line, terms, unowned) -> tuple:
-    """A line's place in `crud.rank_terms`' order - the line {ranks_as, owner_rule, source_name, at, line_id}. THE one
+    """A line's place in `crud.rank_terms`' order - the line {ranks_as, copy_of, owner_rule, source_name, at, line_id}. THE one
     walk of the terms: lines.merge and crud.compute_priority_value (write_lines._others, file_layer_fold, a formula's
     candidate) rank here, so a line's owner_rule ranks alike in every one (lead 11-12 ㄴ)."""
     return tuple(term(line, unowned) for term in terms)
@@ -701,11 +708,12 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
             .where(ov.c.table_name == table_name, ov.c.row_id.in_(part), ov.c.manual_priority_source.isnot(None)))}
         cells = {}                                                     # (row, col) -> [(line, says, value)]
         for r in db.execute(select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at,
-                                   src.c.ranks_as, *[lt.c[n] for n in heads + gone],
+                                   src.c.ranks_as, src.c.copy_of, *[lt.c[n] for n in heads + gone],
                                    *[lt.c[value_column(c)] for c in by_bit.values()])
                             .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
                             .where(lt.c.row_id.in_(part), or_(*[lt.c[h] != 0 for h in heads]))).mappings():
-            line = {"ranks_as": r["ranks_as"], "owner_rule": r["owner_rule"], "source_name": r["source_name"],
+            line = {"ranks_as": r["ranks_as"], "copy_of": r["copy_of"], "owner_rule": r["owner_rule"],
+                    "source_name": r["source_name"],
                     "at": crud.resolution_ingested_at({"ingested_at": r["at"]}), "line_id": r["line_id"]}
             withdrawn = _columns_of([r[g] for g in gone], by_bit)
             for col in _columns_of([r[h] for h in heads], by_bit):
