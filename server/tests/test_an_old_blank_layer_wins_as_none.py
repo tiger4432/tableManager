@@ -102,3 +102,20 @@ def test_a_key_merge_moves_a_blank_as_it_moves_none(db, held):
     _write(db, {"job": "J0"}, "chain:m", row_id=merged)                   # J5 re-keyed onto J0: merged into it
     assert [row.row_id for row in db.query(models.DYNAMIC_TABLES[TABLE])] == [holder]
     assert _shown(db, holder) == "h"
+
+
+def test_a_key_merge_copy_ranks_behind_the_holders_own_once_its_person_withdraws(db):
+    """A merged row's copy stays a layer and ranks behind the holder's own (lead 11-12 ㄴ): the holder kept its
+    person's value over the merged row's file layer; once the person withdraws, the holder's own file layer shows -
+    not the newer copy of the merged row's."""
+    model = models.DYNAMIC_TABLES[TABLE]
+    _write(db, {"job": "J0", "n": "h"}, "file_c.csv")
+    holder = db.query(model).filter_by(job="J0").one().row_id
+    _write(db, {"job": "J0", "n": "hp"}, crud.USER_SOURCE, row_id=holder)
+    _write(db, {"job": "J5", "n": "f"}, "file_a.csv")
+    merged = db.query(model).filter_by(job="J5").one().row_id
+    _write(db, {"job": "J0"}, "chain:m", row_id=merged)                   # J5 re-keyed onto J0: merged into it
+    assert [row.row_id for row in db.query(model)] == [holder] and _shown(db, holder) == "hp"
+    crud.delete_cell_source_batch(db, TABLE, [{"row_id": holder, "column_name": "n"}], crud.USER_SOURCE)
+    db.commit()
+    assert _shown(db, holder) == "h"

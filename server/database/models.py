@@ -791,8 +791,11 @@ SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint, Databa
 
 
 def schema_synced_tables() -> dict:
-    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables and the system ones above."""
-    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES}}
+    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables, the system ones above and
+    line_sources (database.lines - imported at the end of this module; copy_of, lead 11-12 ㄴ)."""
+    from database import lines
+
+    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES + (lines.LineSource,)}}
 
 
 class CellOverwrite(Base):

@@ -21,7 +21,7 @@ import event_constants                                              # noqa: E402
 import rebuild_blank_business_keys as rekey                         # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
-from support import line_tables                                     # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 pytestmark = pytest.mark.pg
 T_ONLY, T_KEY = "zz_rekey_only", "zz_rekey_key"

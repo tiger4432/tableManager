@@ -20,7 +20,7 @@ if SERVER_DIR not in sys.path:
 from admin import retroactive                                        # noqa: E402
 from chain import replay                                             # noqa: E402
 from database import crud, models, schemas                           # noqa: E402
-from database.lines import lines_relation                            # noqa: E402
+from database.lines import layers, lines_relation                    # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
 from support import line_tables                                      # noqa: E402
 
@@ -55,6 +55,13 @@ def _seeded(world):
 
 def _count(world, sql, **params):
     return world["db"].execute(text(sql), params).scalar()
+
+
+def _log_layers(world):
+    """How many standing layers the log's rows carry (lines.layers - one a row, column and source)."""
+    db = world["db"]
+    ids = [r for (r,) in db.execute(text('SELECT row_id FROM "%s"' % hw.LOG))]
+    return sum(len(said) for said in layers(db, hw.LOG, ids).values())
 
 
 def _reset(world, **kw):
@@ -99,7 +106,7 @@ def test_the_dry_run_says_what_goes_and_writes_nothing(world):
 
 def test_apply_takes_rows_layers_overwrites_and_atoms_and_wakes_nothing(world):
     _seeded(world)
-    log_layers = _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG)
+    log_layers = _log_layers(world)
     outbox = _count(world, "SELECT coalesce(max(id), 0) FROM database_outbox")
     history = "SELECT count(*) FROM audit_logs WHERE table_name = :t AND source_name = :s"
     lines = _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE)
@@ -114,8 +121,7 @@ def test_apply_takes_rows_layers_overwrites_and_atoms_and_wakes_nothing(world):
                 "SELECT count(*) FROM database_outbox WHERE id > %d" % outbox):
         assert _count(world, sql) == 0, sql
     assert hw.said(world) == []
-    assert _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG) \
-        == log_layers                                                 # the other table untouched
+    assert _log_layers(world) == log_layers                          # the other table untouched
     assert _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE) == lines + 1
 
 

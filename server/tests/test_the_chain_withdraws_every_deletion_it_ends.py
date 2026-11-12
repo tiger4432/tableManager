@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import event_constants                                              # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import set_aside                                         # noqa: E402
-from database import models                                        # noqa: E402
+from database import lines, models                                 # noqa: E402
 from support import hold_world as hw                                # noqa: E402
 from utils import heartbeat                                         # noqa: E402
 
@@ -34,8 +34,7 @@ def _fed_by_l1(world):
     """(the log row L1's id, the layers it fed)."""
     db = world["db"]
     row_id = db.execute(text('SELECT row_id FROM "%s" WHERE log_id = \'L1\'' % hw.LOG)).scalar()
-    return row_id, db.execute(text("SELECT count(*) FROM cell_sources WHERE origin_row_id = :r"),
-                              {"r": row_id}).scalar()
+    return row_id, _fed(world, row_id)
 
 
 def _deletion_waiting(world):
@@ -53,8 +52,8 @@ def _deletion_waiting(world):
 
 
 def _fed(world, row_id):
-    return world["db"].execute(text("SELECT count(*) FROM cell_sources WHERE origin_row_id = :r"),
-                               {"r": row_id}).scalar()
+    """The standing layers on the world's tables that carry `row_id` as their source row (lines.stamped_by)."""
+    return len(lines.stamped_by(world["db"], list(hw.TABLES), [row_id]))
 
 
 @pytest.mark.pg

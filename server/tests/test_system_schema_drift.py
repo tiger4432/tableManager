@@ -205,7 +205,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   table it finds.
     # a whole replay's named maps - new, created whole (총괄 c67aa93bb ㄴ)
     "line_columns": ('bit', 'column_name', 'retired_at', 'table_name'),
-    "line_sources": ('ranks_as', 'source_name'),
+    # copy_of: the boot schema sync (models.schema_synced_tables) adds it to a line_sources made before it (lead 11-12 ㄴ)
+    "line_sources": ('copy_of', 'ranks_as', 'source_name'),
     "replay_named_maps": ('rows', 'rule', 'run_id', 'scope'),
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event

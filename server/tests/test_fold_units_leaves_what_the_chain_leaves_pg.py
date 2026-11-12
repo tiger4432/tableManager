@@ -12,7 +12,7 @@ import os
 import sys
 
 import pytest
-from sqlalchemy import MetaData, text
+from sqlalchemy import MetaData, select, text
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -21,8 +21,9 @@ from admin.audit_cache import audit_cache                           # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import keyset_scan, replay, rule_run                     # noqa: E402
 from conftest import PG_TEST_SCHEMA, _declared_as_test_database, _resolve_pg_test_url   # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 from mappers import fold_unit                                       # noqa: E402
+from support import line_tables                                     # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 pytestmark = pytest.mark.pg
@@ -86,7 +87,9 @@ def _seed(db):
                                         updated_by="op")])
     db.query(models.DatabaseOutbox).update({"processed_chain": True})     # the seed feeds no rule
     db.commit()
-    return db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+    # (the log's last line, the last audit batch) - the history after the seed is what comes after both
+    return (db.execute(text('SELECT coalesce(max(line_id), 0) FROM "%s"' % lines.lines_relation(LOG))).scalar(),
+            db.query(lines.AuditBatch.id).order_by(lines.AuditBatch.id.desc()).limit(1).scalar() or 0)
 
 
 def _drain(db):
@@ -107,7 +110,31 @@ def _drain(db):
     raise AssertionError("the chain did not settle")
 
 
-def _state(db, after_id):
+def _history(db, after, said, names):
+    """The log's lines after `after` (row, kind, source, written by, source row, key, written columns, withdrawn
+    columns, the written values) and its audit batches' (work kind, who) - a line is a cell's trail since the overhaul,
+    an audit batch the write's receipt (ids, times, transactions and how many batches a write took left out)."""
+    line_mark, batch_mark = after
+    ln, bits = lines.built_lines(db, LOG)
+    by_bit = {bit: col for col, bit in bits.items()}
+
+    def cols(row, family):
+        chunks = sum(1 for c in ln.c if c.name.startswith(family + "_") and c.name.rsplit("_", 1)[-1].isdigit())
+        return tuple(sorted(lines._columns_of([row[c] for c in lines.bit_columns(family, chunks)], by_bit)))
+
+    out = []
+    for r in db.execute(select(ln).where(ln.c.line_id > line_mark)).mappings():
+        written = cols(r, "written")
+        out.append((names.get(r["row_id"]), r["line_kind"], said(r["source_name"]), said(r["written_by"]),
+                    names.get(r["input_row"]), r["business_key_val"], written, cols(r, "withdrawn"),
+                    tuple(said(r[lines.value_column(c)]) for c in written)))
+    ab = lines.AuditBatch
+    out += sorted({("receipt", b.work_kind, said(b.written_by))
+                   for b in db.query(ab).filter(ab.table_name == LOG, ab.id > batch_mark)})
+    return sorted(out, key=repr)
+
+
+def _state(db, after):
     """What a copy holds, every row id put back to its job or record and ids · times · transaction left out."""
     db.expire_all()
     names = {r.row_id: r.dt_job for r in db.query(models.DYNAMIC_TABLES[INV])}
@@ -119,17 +146,17 @@ def _state(db, after_id):
             text_ = text_.replace(row_id, name)
         return text_
 
-    cs, co, al = models.CellSource, models.CellOverwrite, models.AuditLog
+    co = models.CellOverwrite
+    log_rows = [r.row_id for r in db.query(models.DYNAMIC_TABLES[LOG])]
     return {
         "shown": sorted((names[r.row_id], r.business_key_val, r.fold_mark)
                         for r in db.query(models.DYNAMIC_TABLES[LOG])),
-        "layers": sorted((names[c.row_id], said(c.source_name), said(c.value), names.get(c.origin_row_id),
-                          c.updated_by) for c in db.query(cs).filter(cs.table_name == LOG, cs.column_name == MARK)),
+        "layers": sorted((names[row_id], said(source), said(d["value"]), names.get(d["origin_row_id"]), d["updated_by"])
+                         for (row_id, _c), by in lines.layers(db, LOG, log_rows, [MARK]).items()
+                         for source, d in by.items()),
         "overwrites": sorted((names[o.row_id], o.is_overwrite, o.updated_by, o.manual_priority_source)
                              for o in db.query(co).filter(co.table_name == LOG, co.column_name == MARK)),
-        "history": sorted((names.get(a.row_id), a.column_name, said(a.old_value), said(a.new_value),
-                           said(a.source_name), said(a.updated_by), a.business_key)
-                          for a in db.query(al).filter(al.table_name == LOG, al.id > after_id)),
+        "history": _history(db, after, said, names),
     }
 
 
@@ -141,12 +168,14 @@ def _public(engine):
     """Rows about these tables in `public` - must not move. None where public has no such table."""
     out = {}
     with engine.connect() as conn:
-        for table in ("cell_sources", "cell_overwrites", "audit_logs", "database_outbox"):
+        for table in ("cell_overwrites", "audit_batches", "database_outbox"):
             if conn.execute(text("SELECT to_regclass(:t)"), {"t": "public.%s" % table}).scalar():
                 out[table] = conn.execute(text("SELECT count(*) FROM public.%s WHERE table_name IN (:a, :b)" % table),
                                           {"a": INV, "b": LOG}).scalar()
         out["tables"] = conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = "
-                                          "'public' AND table_name IN (:a, :b)"), {"a": INV, "b": LOG}).scalar()
+                                          "'public' AND table_name IN (:a, :b, :c, :d)"),
+                                     {"a": INV, "b": LOG, "c": lines.lines_relation(INV),
+                                      "d": lines.lines_relation(LOG)}).scalar()
     return out
 
 
@@ -160,8 +189,10 @@ def copies(pg_engine):
     fold_unit._register()
     scratch = MetaData(schema=PG_TEST_SCHEMA)
     made = [models.DYNAMIC_TABLES[t].__table__.to_metadata(scratch, schema=None) for t in TABLES]
+    # not line_columns / line_sources: the slot map every later write reads
     emptied = ", ".join('"%s"."%s"' % (PG_TEST_SCHEMA, t) for t in
-                        ("cell_sources", "cell_overwrites", "audit_logs", "database_outbox", *TABLES))
+                        ("cell_overwrites", "audit_batches", "database_outbox", *TABLES,
+                         *(lines.lines_relation(t) for t in TABLES)))
     Session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     out = {"public_before": _public(pg_engine)}
     with _declared_as_test_database(url), pytest.MonkeyPatch.context() as mp:
@@ -178,6 +209,8 @@ def copies(pg_engine):
             return answer
         mp.setattr(rule_run, "run_rule", run_rule)
         scratch.create_all(pg_engine)
+        for t in TABLES:
+            line_tables.build(pg_engine, t)                 # the tables keep lines, as ops builds them
         try:
             db = Session()
             out["schema"] = db.execute(text("SELECT current_schema()")).scalar()
@@ -193,11 +226,11 @@ def copies(pg_engine):
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
             db = Session()
             seeded = _seed(db)
-            lines = out["B_dry_lines"] = []
+            steps = out["B_dry_lines"] = []
 
             def hook(_processed, _total):
                 return False
-            hook.step = lambda name, page, pages, rows: lines.append((name, page, rows))
+            hook.step = lambda name, page, pages, rows: steps.append((name, page, rows))
             out["B_dry"] = replay.fold_units(db, RULES[0]["name"], log=lambda m: None, checkpoint=hook)
             out["B_after_dry"] = _state(db, seeded)
             out["B_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)   # B
@@ -207,28 +240,17 @@ def copies(pg_engine):
             replay.withdraw_source(db, LOG, "chain_ingestion", columns=[MARK], apply=True, log=lambda *a: None)
             out["B_reset"] = _state(db, seeded)
             db.close()
-            with pg_engine.begin() as conn:
-                conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
-            db = Session()
-            seeded = _seed(db)
-            with pytest.MonkeyPatch.context() as door_only:                      # every cell through the door
-                door_only.setattr(replay, "_fold_units_forced", lambda *a, **k: None)
-                out["B_door_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
-            out["B_door"] = _state(db, seeded)
-            db.close()
-            # the mark kept without history (`no_history_columns`, lead 11-09 ②) - by the decided cells and by the
-            # door; «loud» keeps it, the canary - and the recent changes' cache loaded all along
-            for name, quiet, forced in (("B_loud", False, True), ("B_quiet", True, True), ("B_quiet_door", True, False)):
+            # the mark kept without history (`no_history_columns`, lead 11-09 ②); «loud» keeps it, the canary - and
+            # the recent changes' cache loaded all along
+            for name, quiet in (("B_loud", False), ("B_quiet", True)):
                 with pg_engine.begin() as conn:
                     conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
                 db = Session()
                 seeded = _seed(db)
                 with pytest.MonkeyPatch.context() as run:
-                    run.setattr(rule_run, "run_rule", real_run)          # «answers» stays the four runs' above
+                    run.setattr(rule_run, "run_rule", real_run)          # «answers» stays the three runs' above
                     if quiet:
                         run.setitem(crud.TABLE_CONFIG[LOG], "no_history_columns", [MARK])
-                    if not forced:
-                        run.setattr(replay, "_fold_units_forced", lambda *a, **k: None)
                     run.setattr(audit_cache, "is_loaded", True)
                     run.setattr(audit_cache, "groups", [])
                     out[name + "_stats"] = replay.fold_units(db, RULES[0]["name"], apply=True, log=lambda m: None)
@@ -239,6 +261,8 @@ def copies(pg_engine):
             db.close()                      # a failed run's session holds locks the TRUNCATE below would wait on
             with pg_engine.begin() as conn:
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
+            for t in TABLES:
+                line_tables.drop(pg_engine, t)
             scratch.drop_all(pg_engine)
             for t in TABLES:
                 crud.TABLE_CONFIG.pop(t, None)
@@ -288,9 +312,9 @@ def test_a_rerun_writes_nothing(copies):
     # step 2) and the old one taken back - it is no longer «marked so already»
     assert copies["B_stats"]["rows_marked"] == 12, "CANARY: the first run wrote"
     assert copies["answers"][0] == (5, [12]), "CANARY: the mapper answers in pages (A, the chain's copy)"
-    # fold-units asks the rule seat whole groups at a time - 1, then 2, then 2 of the 5 - in each of its 4 runs, so its
+    # fold-units asks the rule seat whole groups at a time - 1, then 2, then 2 of the 5 - in each of its 3 runs, so its
     # first page does not wait on every group's answer (총괄 2ea5ee2a7)
-    assert len(copies["answers"]) == 1 + 4 * 3, copies["answers"]
+    assert len(copies["answers"]) == 1 + 3 * 3, copies["answers"]
     assert (copies["B_stats"]["rows_proposed"], copies["B_stats"]["pages"] >= 3) == (12, True), "every mapper page followed"  # pages of at most 5, from one row
     assert (again["rows_marked"], again["marks_withdrawn"], again["rows_already_marked"]) == (0, 0, 12)
     assert copies["B_after_again"] == copies["B"]
@@ -302,12 +326,6 @@ def test_the_reset_line_clears_both_alike(copies):
     assert [one for one in copies["B_reset"]["layers"] if one[1].startswith("chain_ingestion")] == []
 
 
-def test_the_decided_cells_take_the_doors_answer(copies):
-    """`_fold_units_forced` off - every cell judged by `crud.apply_row_update_internal` - leaves the same."""
-    assert copies["B_door"] == copies["B"]
-    assert {k: copies["B_door_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")} ==         {k: copies["B_stats"][k] for k in ("rows_to_mark", "rows_already_marked", "rows_higher_layer")}
-
-
 def test_the_first_line_comes_once_one_group_is_asked(copies):
     """총괄 10-12 (응용: «fold_units 가 그룹을 한 번에 다 물음» 변이가 살아남음): the first line is the rule seat's
     answer for the first group alone - not the whole answer before anything is said."""
@@ -317,17 +335,20 @@ def test_the_first_line_comes_once_one_group_is_asked(copies):
 
 
 def test_a_mark_kept_without_history_is_named_in_no_line_and_in_no_cache(copies):
-    """Lead 11-09 ②: the replay's row lines - the decided cells' and the door's - are made by `crud.row_update_line`,
-    which names no column its table keeps no history for: none stored, none in the recent changes' cache, none handed
-    back (the run hands back its counts). The marks themselves are written all the same."""
+    """Lead 11-09 ②: the replay's row lines - the door's, the one path since ba5c5c167 - are the write's lines, which
+    name no column its table keeps no history for (`write_lines._plain`): none stored, no edit in the recent changes'
+    cache, none handed back (the run hands back its counts). The marks themselves are written all the same."""
     def named(state):
-        return [h for h in state["history"] if h[1] == "ROW_UPDATE" and MARK in h[3]]
+        return [h for h in state["history"] if h[1] == "write" and MARK in h[6]]
 
-    assert named(copies["B_loud"]) and named(copies["B_door"]), "CANARY: both paths name the mark when it keeps history"
-    assert (named(copies["B_quiet"]), named(copies["B_quiet_door"])) == ([], [])
-    assert copies["B_quiet"]["shown"] == copies["B_quiet_door"]["shown"] == copies["B"]["shown"], "the marks are written"
-    assert [g["summary"]["columns"] for g in copies["B_loud_cache"]] == [{MARK}], "CANARY: the cache was recording"
-    assert (copies["B_quiet_cache"], copies["B_quiet_door_cache"]) == ([], [])
-    for name in ("B_loud", "B_quiet", "B_quiet_door"):
+    def edits(cache):                   # an audit batch names no column since the overhaul - the log's edits, then
+        return [k for g in cache for k in (g["tables"].get(LOG) or {}).get("kinds", ()) if k == "edit"]
+
+    assert named(copies["B_loud"]), "CANARY: the door names the mark when it keeps history"
+    assert named(copies["B_quiet"]) == []
+    assert copies["B_quiet"]["shown"] == copies["B"]["shown"], "the marks are written"
+    assert edits(copies["B_loud_cache"]), "CANARY: the cache was recording"
+    assert edits(copies["B_quiet_cache"]) == []
+    for name in ("B_loud", "B_quiet"):
         assert not [v for v in copies[name + "_stats"].values()
                     if isinstance(v, list) and any(isinstance(one, dict) and "column_name" in one for one in v)], name

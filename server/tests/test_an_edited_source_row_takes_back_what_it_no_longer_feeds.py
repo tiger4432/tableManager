@@ -16,7 +16,7 @@ import sys
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
@@ -29,6 +29,7 @@ from chain import ingestion_worker as worker                        # noqa: E402
 from database import crud, lines, models, schemas                   # noqa: E402
 from database.database import Base                                  # noqa: E402
 from support import hold_world as hw                                # noqa: E402
+from support import line_tables                                     # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 T = "er_self"
@@ -291,7 +292,13 @@ def test_a_decorated_mapper_stamps_the_row_each_output_row_was_read_from(monkeyp
 
 @pytest.fixture(name="world", params=[False, True], ids=["one_row", "batch"])
 def fixture_world(request, pg_engine, monkeypatch, tmp_path):
-    yield from hw.build(pg_engine, monkeypatch, tmp_path, batch=request.param)
+    for world in hw.build(pg_engine, monkeypatch, tmp_path, batch=request.param):
+        line_tables.build(pg_engine, hw.OFFICIAL)          # its shape for a planted line (line_tables.line)
+        try:
+            yield world
+        finally:
+            world["db"].rollback()                        # its open read would hold the drop's lock
+            line_tables.drop(pg_engine, hw.OFFICIAL)
 
 
 def _official(world):
@@ -307,26 +314,29 @@ def _log_row(world, log_id):
 
 
 def _layers_of(world, row_id, origin=None):
-    with world["engine"].connect() as conn:
-        found = sorted((c, s, o) for c, s, o in conn.execute(text(
-            "SELECT column_name, source_name, origin_row_id FROM cell_sources WHERE table_name = :t AND row_id = :r"),
-            {"t": hw.OFFICIAL, "r": row_id}))
+    """(column, source, source row) of the official row's standing layers (lines.layers)."""
+    with Session(world["engine"]) as s:
+        found = sorted((c, src, d["origin_row_id"]) for (_r, c), said in lines.layers(s, hw.OFFICIAL, [row_id]).items()
+                       for src, d in said.items())
     return [layer for layer in found if origin is None or layer[2] == origin]
 
 
-def _withdrawals_since(world, audit_from, outbox_from):
+def _withdrawals_since(world, lines_from, outbox_from):
+    """The withdraw lines written on either table since `lines_from` ({table: line_id}), and the withdrawal's
+    events since `outbox_from`."""
     with world["engine"].connect() as conn:
-        audit = conn.execute(text("SELECT count(*) FROM audit_logs WHERE id > :a AND source_name = :s"),
-                             {"a": audit_from, "s": cell_layer.R2_AUDIT_SOURCE}).scalar()
+        said = sum(conn.execute(text('SELECT count(*) FROM "%s" WHERE line_id > :a AND line_kind = \'withdraw\''
+                                     % lines.lines_relation(t)), {"a": lines_from[t]}).scalar() for t in hw.TABLES)
         events = [p for (p,) in conn.execute(text("SELECT payload FROM database_outbox WHERE id > :o"),
                                              {"o": outbox_from})]
-    return audit + sum(1 for p in events if str(get_payload_dict(p).get("transaction_id") or "")
-                       .startswith(cell_layer.R2_AUDIT_SOURCE))
+    return said + sum(1 for p in events if str(get_payload_dict(p).get("transaction_id") or "")
+                      .startswith(cell_layer.R2_AUDIT_SOURCE))
 
 
 def _marks(world):
     with world["engine"].connect() as conn:
-        return (conn.execute(text("SELECT coalesce(max(id), 0) FROM audit_logs")).scalar(),
+        return ({t: conn.execute(text('SELECT coalesce(max(line_id), 0) FROM "%s"' % lines.lines_relation(t))).scalar()
+                 for t in hw.TABLES},
                 conn.execute(text("SELECT coalesce(max(id), 0) FROM database_outbox")).scalar())
 
 
@@ -339,9 +349,9 @@ def test_a_moved_source_row_leaves_its_old_key(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
     hw.settle(world)
     a, old = _log_row(world, "A"), _official(world)[OLD][0]
-    world["db"].add(models.CellSource(table_name=hw.OFFICIAL, row_id=old, column_name="note",
-                                      source_name="user", value="typed", origin_row_id=a))
-    world["db"].commit()
+    with world["engine"].begin() as conn:               # a person's layer carrying A as its source row
+        line_tables.line(conn, hw.OFFICIAL, line_tables.bits_of(hw.OFFICIAL), old, source="user",
+                         values={"note": "typed"}, input_row=a)
 
     hw.push(world, [MOVED])
     hw.settle(world)
@@ -459,10 +469,10 @@ def fixture_join_world(pg_engine, monkeypatch, tmp_path):
     def clean():
         with pg_engine.begin() as conn:
             for name in JOIN_TABLES:
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, lines.lines_relation(name))))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
-            for table in ("cell_sources", "database_outbox"):
-                conn.execute(text('DELETE FROM "%s".%s WHERE table_name IN (:a, :b)' % (PG_TEST_SCHEMA, table)),
-                             {"a": JL, "b": JR})
+            conn.execute(text('DELETE FROM "%s".database_outbox WHERE table_name IN (:a, :b)' % PG_TEST_SCHEMA),
+                         {"a": JL, "b": JR})
             for table in (schema.LEDGER_TABLE, schema.ROW_REF_TABLE):
                 conn.execute(text('DELETE FROM "%s".%s WHERE source_who = :s' % (PG_TEST_SCHEMA, table)),
                              {"s": JOIN_SOURCE})
@@ -481,6 +491,8 @@ def fixture_join_world(pg_engine, monkeypatch, tmp_path):
     for name in JOIN_TABLES:
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    for name in JOIN_TABLES:
+        line_tables.build(pg_engine, name)              # the tables keep lines, as ops builds them
     rules_path = tmp_path / "chain_rules.json"
     rules_path.write_text(json.dumps({"rules": [JOIN]}), encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
