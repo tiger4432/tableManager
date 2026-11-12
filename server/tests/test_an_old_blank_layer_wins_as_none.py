@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from conftest import retire_dynamic_model
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from database.database import Base
 
 TABLE = "zz_old_blank"
@@ -33,6 +33,9 @@ def fixture_db():
     crud.TABLE_CONFIG.update(CONFIG)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    from tests.support import line_tables
+
+    line_tables.build(engine, TABLE)                                   # the product's shape: a table keeps lines
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
         yield session
@@ -51,13 +54,17 @@ def _write(db, updates, source, row_id=None):
 
 
 def _old_blank(db, job="J1", shown=None):
-    """A row whose «n» holds a person's "" layer stored before the fold, beside a file's «f» - planted as it sits on
-    the box. `shown`: what the row itself holds («f» until a door re-answers the cell)."""
+    """A row whose «n» holds a person's "" layer stored before the fold, beside a file's «f» - planted as the copy
+    carries it: a line saying the cell, its text through crud.line_text. `shown`: what the row itself holds («f»
+    until a door re-answers the cell)."""
+    from tests.support import line_tables
+
     model = models.DYNAMIC_TABLES[TABLE]
     _write(db, {"job": job, "n": "f"}, "file_a.csv")
     row = db.query(model).filter_by(job=job).one()
-    db.add(models.CellSource(table_name=TABLE, row_id=row.row_id, column_name="n", source_name=crud.USER_SOURCE,
-                             value="", updated_by="probe", ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc)))
+    line_tables.line(db.connection(), TABLE, line_tables.bits_of(TABLE), row.row_id, source=crud.USER_SOURCE,
+                     at=datetime(2026, 7, 17, tzinfo=timezone.utc), values={"n": ""})
+    lines.note_sources(db, {crud.USER_SOURCE})                        # the copy registers its sources
     if shown is not None:
         db.query(model).filter_by(row_id=row.row_id).update({"n": shown})
     db.commit()
