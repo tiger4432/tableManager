@@ -233,6 +233,16 @@ class CatalogueConn(FlagConn):
         return _Rows([])
 
 
+@pytest.fixture(autouse=True)
+def _base_tables_of_the_fake(monkeypatch):
+    """The picker asks lines.base_tables (lead 11-12) - the fake answers it with the tables it was given."""
+    from database import lines
+
+    real = lines.base_tables
+    monkeypatch.setattr(lines, "base_tables", lambda conn, *a, **k: list(conn._tables)
+                        if isinstance(conn, CatalogueConn) else real(conn, *a, **k))
+
+
 class FakeEngine:
     def __init__(self, conn):
         self._conn = conn

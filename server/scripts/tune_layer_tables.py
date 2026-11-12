@@ -67,10 +67,9 @@ def default_tables() -> tuple:
             return LAYER_TABLES
         conn = db_safety.open_readonly_connection(engine)
         try:
-            found = [r[0] for r in conn.exec_driver_sql(
-                "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-                "WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p') "
-                "AND c.relname LIKE '%%\\_\\_lines' ORDER BY c.relname")]
+            from database.lines import base_tables, is_line_table     # one judgement of «a line table»
+
+            found = [t for t in base_tables(conn, lines=True) if is_line_table(t)]
         finally:
             db_safety.close_readonly_connection(conn)
         return tuple(found) + LAYER_TABLES

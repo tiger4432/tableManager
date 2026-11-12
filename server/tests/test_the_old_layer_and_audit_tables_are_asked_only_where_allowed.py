@@ -20,7 +20,7 @@ CELL_SOURCES_ALLOWED = {# 까닭: 운영 복사 전 - the copy retires the round
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
                         # the migration command that drives the copy - same reason (lead 11-12)
                         "scripts/copy_layers_to_lines.py:<module>", "scripts/copy_layers_to_lines.py:_one",
-                        "scripts/copy_layers_to_lines.py:check_table", "scripts/copy_layers_to_lines.py:copy_table", "scripts/copy_layers_to_lines.py:main",
+                        "scripts/copy_layers_to_lines.py:check_table", "scripts/copy_layers_to_lines.py:copy_table", "scripts/copy_layers_to_lines.py:estimate", "scripts/copy_layers_to_lines.py:sample", "scripts/copy_layers_to_lines.py:main",
                         "scripts/copy_layers_to_lines.py:plan",
                         "*:write_back",
                         # snapshot check - cold table compare, lead 11-11 (lines count compare after the bundle)

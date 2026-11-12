@@ -1,3 +1,4 @@
+-- Counts line tables (<t>__lines, their v_<column> cells) too - a hand-run census, not filtered (lead 11-12).
 -- =====================================================================
 -- WF / lot / slot spelling census -- READ ONLY
 --

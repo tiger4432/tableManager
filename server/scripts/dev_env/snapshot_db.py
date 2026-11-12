@@ -127,9 +127,9 @@ def open_source_readonly(url):
 # ------------------------------------------------------------------- inventory
 def list_tables(conn, schema="public"):
     """Base tables only: a view (an operator view table, the ledger's views) holds no rows of its own."""
-    return [r[0] for r in conn.execute(text(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = :s AND table_type = 'BASE TABLE' ORDER BY table_name"), {"s": schema})]
+    from database.lines import base_tables
+
+    return base_tables(conn, lines=True, schema=schema)      # its line tables too: the copy scopes them, run() asks
 
 
 def columns_of(conn, table):

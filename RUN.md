@@ -3,6 +3,8 @@
 > ## [11-12c] **옛 층 표를 줄 표로 옮기기 — 이주 명령 (서버를 끈 채 한 번) · 시작 검사가 줄 표 인덱스를 다 짓는다** — 새 릴리스로 올린 뒤
 >
 > ```
+> 번들 전   이름이 __lines 로 끝나는 표 선언은 이 릴리스부터 거절된다 — 먼저 이름을 바꾼다 (Tables 목록이 이름을 보여 준다)
+>          거절 문장: «… its name ends in __lines, which names a table's line table - rename <표> …»
 > 순서     ① 새 릴리스로 올리고 런처를 한 번 띄웠다가 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
 >          ② 미리보기   cd server ; python scripts/copy_layers_to_lines.py
 >          ③ (고를 때) 점검  python scripts/copy_layers_to_lines.py --check     옮겨 보고 쪽마다 되돌린다. 남는 것 없음
@@ -35,6 +37,19 @@
 > 이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ④ 를 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
 > 시간     조용한 박스 판(30 열 표 · 행마다 층 30 + 사람 층 20 칸에 하나 · 1 프로세스): 약 800 행/s · 25,000 층/s
 >          운영 표는 그 표의 «행당 층 수»로 돈다 — 미리보기의 layer(s) ÷ row(s) 로 견준다. 진행 줄의 남은 시간을 본다
+> 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 안에 들어가는지 먼저 본다
+>          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
+>              표마다 층 수(DB 통계에서 — 표를 읽지 않는다)와 시간. 끝 줄:
+>              total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - at R layers/s, ...
+>              «at least B h» = 가장 큰 표 하나가 정하는 바닥이다. 4 시간 창에 copy 외(인덱스 · 첫 부팅)도 들어간다
+>              끝 줄이 «a quiet box's rate» 면 박스 속도로 셈한 것이다 — 이 디스크 속도는 아래 --sample 로
+>          refused: no statistics for cell_sources - run again with --analyze ...
+>              통계가 없다. --estimate --analyze 로 다시(표본만 읽는다, 약 1 분)
+>          python scripts/copy_layers_to_lines.py --estimate --sample --workers 4      «업무 시간 밖에» — 디스크를 쓴다
+>              가장 큰 표를 90 초 동안 옮겨 보고 되돌린다. 남는 것 없음. 끝 줄의 «this disk's rate, from the sample» 이
+>              이 디스크로 셈한 시간이다. 4 시간을 넘으면 그 줄을 총괄께
+>          refused: ... is built here already - the sample is for a database before the window
+>              이미 새 릴리스로 줄 표를 지은 DB 다. --sample 은 창 전 DB 에서만 돈다
 > 되돌리기  옛 릴리스로 되돌린다. 옛 층 표는 읽기만 했으니 그대로다. 되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
 > 끄기     없음 — 이 명령은 사람이 돌릴 때만 돈다
 >

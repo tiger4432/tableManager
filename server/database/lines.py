@@ -154,6 +154,9 @@ def table_name_refusal(table_name: str):
     """None when t's name can carry line tables; else «reason - action» - the name half of `build_refusal`."""
     if '"' in table_name or "$" in table_name:
         return "its name carries a quote or a dollar sign - declare it under a plain name"
+    if is_line_table(table_name):        # the name says «a line table» (is_line_table) - a main table may not say it
+        return (f"its name ends in {LINES_SUFFIX}, which names a table's line table - rename {table_name} "
+                f"(the Tables list shows the names) and declare it again")
     size = len(table_name.encode("utf-8"))
     if size <= MAX_TABLE_NAME_BYTES:
         return None
@@ -166,9 +169,21 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def base_tables(conn, lines: bool = False, schema=None) -> list:
+    """The base tables of this connection's current schema (or `schema`), sorted - THE one seat that enumerates the
+    catalogue's tables (lead 11-12: a line table carries t's columns, so a seat listing tables by catalogue or column
+    took t__lines for a main table). Line tables left out unless `lines` (is_line_table)."""
+    from sqlalchemy import inspect
+
+    if schema is None and conn.dialect.name == "postgresql":
+        schema = conn.execute(text("SELECT current_schema()")).scalar()
+    return sorted(t for t in inspect(conn).get_table_names(schema=schema) if lines or not is_line_table(t))
+
+
 def is_line_table(name: str) -> bool:
-    """Whether a table of the database is a declared table's line table (`lines_relation`'s name) - the one seat
-    every catalogue reader asks (lead 11-12: the business key picker built a UNIQUE on t__lines)."""
+    """Whether a table of the database is a line table (`lines_relation`'s name) - the one seat every catalogue reader
+    asks (lead 11-12: the business key picker built a UNIQUE on t__lines). Exact by name: a declared name ending in
+    the suffix is refused (`table_name_refusal`), and an orphaned t__lines - its t no longer declared - still says yes."""
     return name.endswith(LINES_SUFFIX) and len(name) > len(LINES_SUFFIX)
 
 
@@ -552,7 +567,8 @@ def drop_every_line_table(engine) -> list:
     Base.metadata.drop_all, which never sees them (each lives on shape's own MetaData). -> the names dropped."""
     from sqlalchemy import inspect
 
-    names = [n for n in inspect(engine).get_table_names() if is_line_table(n)]
+    with engine.connect() as conn:
+        names = [n for n in base_tables(conn, lines=True) if is_line_table(n)]
     with engine.begin() as conn:
         for name in names:
             conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{_checked(name)}"')
