@@ -155,7 +155,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         if it["line_kind"] in (WRITE, WITHDRAW) and it.get("source_name") is None:   # a head with no source (C 11-11)
             raise ValueError("write_lines: a %s line of %r names no source" % (it["line_kind"], table))
     at = _instant(db, table)
-    targets, old, keys = _claim(db, table, cfg, now, items)
+    targets, old, keys, fresh = _claim(db, table, cfg, now, items)
     claimed = dict(targets)
     gated, before = _version_gate(table, cfg, items, targets, old)
     held = shape["kinds"]                          # a line's text by what t holds, not the declaration (C)
@@ -202,8 +202,25 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     touched = ({c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
                | {c for _r, c in unpinned} | {c for i in again for c in items[i].get("blank") or ()}
                | {c for i in list(kept) + sorted(again) for c in items[i].get("scope") or ()})
-    new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
-                     at, old, rows_plain, keeps, blank, touched)
+    new, lost = _merge_now(db, table, cfg, shape,
+                           sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
+                           at, old, rows_plain, keeps, blank, touched, fresh)
+    if lost:                                       # a new key another writer put meanwhile: its row takes this write
+        onto = _take_over(db, table, shape, keeps, now, lost, old, keys)
+        for i in list(targets):
+            if targets[i] in onto:
+                targets[i] = onto[targets[i]]
+                if work.get(i) == "new":
+                    work[i] = "edit"                   # the row was there when this write landed
+        claimed = {i: onto.get(r, r) for i, r in claimed.items()}
+        for minted, holder in onto.items():
+            new.pop(minted, None)
+            if minted in rows_plain:
+                rows_plain.setdefault(holder, {}).update(rows_plain.pop(minted))
+            if minted in blank:
+                blank.setdefault(holder, set()).update(blank.pop(minted))
+        new.update(_merge_now(db, table, cfg, shape, sorted(set(onto.values())), at, old, rows_plain, keeps, blank,
+                              touched)[0])
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
     changed = {}
     for i in sorted(list(kept) + moved):
@@ -335,12 +352,13 @@ def _plain(table, cfg, items, targets, before, held, bits) -> dict:
 
 
 def _claim(db, table, cfg, now, items):
-    """Step 1 - lock the entities' current lines in row_id order. A new key is put in its current line first (keys
-    sorted, ON CONFLICT DO NOTHING, the put answering its rows); a key another writer took meanwhile is read under
-    lock, so two writers of one new key end on one row_id and no line is orphaned. Returns ({item index: row_id}, {row_id: its current line before}, {row_id: its business
-    key}). An item naming no current line is left out unless it writes a value - a write to a gone row_id makes it
+    """Step 1 - lock the entities' current lines in row_id order; a key that has a row is read under the same lock. A
+    new key's row is named here and put by step 5 with its values (one INSERT, no dead row - lead 11-13 ㄱ); a key
+    another writer puts meanwhile is that writer's row, and this write's lines go there (`_take_over`). Returns
+    ({item index: row_id}, {row_id: its current line before}, {row_id: its business key}, {new row_id: its key or
+    None}). An item naming no current line is left out unless it writes a value - a write to a gone row_id makes it
     again, as the old write door did."""
-    targets, old = {}, {}
+    targets, old, fresh = {}, {}, {}
     named = sorted({it["row_id"] for it in items if it.get("row_id")})
     for page in _pages(named, 1):
         for row in db.execute(select(now).where(now.c.row_id.in_(page)).order_by(now.c.row_id)
@@ -376,29 +394,12 @@ def _claim(db, table, cfg, now, items):
     _by_old_key(db, now, items, targets, old, wanted, by_key)
     keys = {row_id: row.get("business_key_val") for row_id, row in old.items()}
     if wanted or looked:
-        # every key asked read once, under lock - a key that has a row is not put, so an unchanged re-push writes
-        # nothing (lead 11-12); the rest are put, each answering its row (RETURNING), one statement a page. With the
-        # key's unique index ON CONFLICT DO NOTHING - a writer of the same new key meanwhile still ends on one row
-        # (11-11 ㄹ): the key it took answers nothing here and is read again. Without it (lines.key_index_next says
-        # why - the rules list shows it): inserted, with its race window - two writers of one new key in the same
-        # instant can make two rows (D3, as before; lead 11-11 ㄴ - collection never stops)
+        # every key asked read once, under lock - a key that has a row is that row's (an unchanged re-push writes
+        # nothing - lead 11-12); a key no row holds is a new row, named here, put by step 5 with its values
         holder = key_owners(db, now, set(wanted) | set(looked.values()), lock=True, read=list(now.c))
-        missing = sorted(set(wanted) - set(holder))
-        if missing:
-            put = insert(now)
-            if lines.key_index_standing(db.connection(), table):
-                if db.get_bind().dialect.name == "postgresql":
-                    from sqlalchemy.dialects.postgresql import insert as upsert
-                else:
-                    from sqlalchemy.dialects.sqlite import insert as upsert
-                put = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
-            for page in _pages(missing, 2):
-                for row_id, bk in db.execute(put.values([{"row_id": wanted[bk], "business_key_val": bk} for bk in page])
-                                             .returning(now.c.row_id, now.c.business_key_val)):
-                    holder[bk] = {"row_id": row_id, "business_key_val": bk}
-            taken = [bk for bk in missing if bk not in holder]     # put by another writer meanwhile
-            if taken:
-                holder.update(key_owners(db, now, taken, lock=True, read=list(now.c)))
+        for bk in sorted(set(wanted) - set(holder)):
+            holder[bk] = {"row_id": wanted[bk], "business_key_val": bk}
+            fresh[wanted[bk]] = bk
         for bk, row in holder.items():
             keys[row["row_id"]] = bk
             if row["row_id"] != wanted.get(bk):
@@ -410,9 +411,8 @@ def _claim(db, table, cfg, now, items):
         for i, bk in looked.items():
             if bk in holder:
                 targets[i] = holder[bk]["row_id"]
-    for page in _pages(bare, 1):
-        db.execute(insert(now), [{"row_id": row_id} for row_id in page])
-    return targets, old, keys
+    fresh.update(dict.fromkeys(bare))            # a row of no key, put by step 5 too
+    return targets, old, keys, fresh
 
 
 def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:
@@ -784,19 +784,21 @@ def _marks(db, table, shape, items, kept, targets, asked, marked=None):
     return unpinned
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None, columns=None):
+def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None, columns=None, fresh=None):
     """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge, ranked by crud.rank_terms):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
     with won_by; updated_at is the write's instant on a new row or one whose values moved (`_moved`), else it stays -
     a line that moved nothing shown is no change of the row (the old write's rule, lead 11-11 ㄱ). `blank` {row_id:
     columns}: of those, a column the merge leaves out goes blank (a removed formula's). `columns`: the columns the
-    write touched - only those are merged, every other keeps its value and won_by (lead 11-12 b); None, all. Returns
-    {row_id: {column: value}} as written."""
+    write touched - only those are merged, every other keeps its value and won_by (lead 11-12 b); None, all. `fresh`
+    {row_id: key or None}: the new rows step 1 named - each inserted once with its values (lead 11-13 ㄱ), with the
+    key's unique index ON CONFLICT DO NOTHING. Returns ({row_id: {column: value}} as written, {row_id: key} of the new
+    rows another writer's row of the same key took meanwhile - nothing written for them)."""
     now = shape["table"]
     data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
     if not row_ids:
-        return {}
+        return {}, {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
     won_by = {row_id: {} if columns is None else {c: w for c, w in ((old.get(row_id) or {}).get("won_by") or {}).items()
                                                   if c not in columns} for row_id in row_ids}
@@ -829,12 +831,33 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
     if keeps:
         _formulas_won(db, table, shape, row_ids, data, merged, won_by)
     moved, only_won = [], []                       # a row where neither moved is not written - no dead row
+    # new rows in key order - two writers of the same new keys wait at the key index in one order, no deadlock (총괄
+    # 5c0a86cec); a row of no key after
+    put = sorted((row_id for row_id in row_ids if row_id not in old),
+                 key=lambda r: ((fresh or {}).get(r) is None, (fresh or {}).get(r) or "", r))
     for row_id in row_ids:
-        if row_id not in old or _moved(old[row_id], merged[row_id], data, types):
+        if row_id in old and _moved(old[row_id], merged[row_id], data, types):
             moved.append(row_id)
-        elif keeps and (old[row_id].get("won_by") or {}) != won_by[row_id]:
+        elif row_id in old and keeps and (old[row_id].get("won_by") or {}) != won_by[row_id]:
             only_won.append(row_id)
     names = data + (["won_by"] if keeps else [])
+    lost = {}
+    if put:                                        # a new row, once, with its values (lead 11-13 ㄱ)
+        fresh = fresh or {}
+        statement = insert(now)
+        if any(fresh.get(r) is not None for r in put) and lines.key_index_standing(db.connection(), table):
+            if db.get_bind().dialect.name == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as upsert
+            else:
+                from sqlalchemy.dialects.sqlite import insert as upsert
+            statement = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
+        for page in _pages(put, len(names) + 3):
+            got = set(db.execute(statement.values([
+                {"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
+                 **({"won_by": won_by[r]} if keeps else {})} for r in page]).returning(now.c.row_id)).scalars())
+            lost.update({r: fresh.get(r) for r in page if r not in got})
+        for r in lost:
+            merged.pop(r, None)
     if lines.sets_at_once(db) and all(
             crud.one_kind([merged[r][c] for r in moved + only_won]) for c in data):
         # one statement a page (crud.update_by_arrays, the set door - lead 11-12 ㄴ): psycopg2 sends an UPDATE's
@@ -843,7 +866,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
             for page in _pages(ids, 1):
                 crud.update_by_arrays(db, now, names + stamp, [
                     [r] + [merged[r][c] for c in data] + ([won_by[r]] if keeps else []) for r in page], at)
-        return merged
+        return merged, lost
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     if moved or only_won:
         stamped = set(moved)
@@ -853,7 +876,72 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
             [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
               "__at": at if row_id in stamped else old[row_id].get("updated_at")}
              for row_id in moved + only_won])
-    return merged
+    return merged, lost
+
+
+def _take_over(db, table, shape, keeps, now, lost, old, keys) -> dict:
+    """Step 5's new rows whose key another writer put meanwhile (PostgreSQL - the key is not locked before step 5's
+    INSERT; lead 11-13 ㄱ): each such key's row, read under lock, takes this write's lines and cell_overwrites rows
+    of the row step 1 named; a mark the row already has on that cell stays. The two writers' lines interleave, so a
+    moved line can be older than the row's own line of its source - the heads of the moved cells are decided again:
+    of a (row, source, column), the largest line_id among the write and withdraw lines naming it heads, when it is a
+    moved line or already a head (one a fold or a merge took the head off keeps none). `old` and `keys` take the
+    rows. -> {row_id step 1 named: the row that holds its key}."""
+    from database import models
+
+    held = key_owners(db, now, set(lost.values()), lock=True, read=list(now.c))
+    onto = {minted: held[key]["row_id"] for minted, key in lost.items()}
+    for minted, key in lost.items():
+        old.setdefault(onto[minted], held[key])
+        keys[onto[minted]] = key
+    ov = models.CellOverwrite.__table__
+    for minted, holder in onto.items():
+        theirs = select(ov.c.column_name).where(ov.c.table_name == table, ov.c.row_id == holder)
+        db.execute(delete(ov).where(ov.c.table_name == table, ov.c.row_id == minted, ov.c.column_name.in_(theirs)))
+        db.execute(update(ov).where(ov.c.table_name == table, ov.c.row_id == minted).values(row_id=holder))
+    if not keeps:
+        return onto
+    ln, chunks = shape["lines"], shape["chunks"]
+    heads = ["head_%d" % k for k in range(chunks)]
+    written = ["written_%d" % k for k in range(chunks)]
+    movers = {}                                    # line_id -> its row on the holder
+    for minted, holder in onto.items():
+        ids = db.execute(select(ln.c.line_id).where(ln.c.row_id == minted)).scalars().all()
+        db.execute(update(ln).where(ln.c.row_id == minted).values(row_id=holder))
+        movers.update(dict.fromkeys(ids, holder))
+    if not movers:
+        return onto
+    found = db.execute(select(ln.c.line_id, ln.c.row_id, ln.c.source_name, *[ln.c[n] for n in written + heads]).where(
+        ln.c.row_id.in_(sorted(set(onto.values()))), ln.c.line_kind.in_((WRITE, WITHDRAW)))).mappings().all()
+    moved_cols = {}                                # (row, source) -> masks the moved lines wrote
+    for line in found:
+        if line["line_id"] in movers:
+            masks = moved_cols.setdefault((line["row_id"], line["source_name"]), [0] * chunks)
+            for k in range(chunks):
+                masks[k] |= int(line[written[k]] or 0) & ((1 << 64) - 1)
+    new_heads = {line["line_id"]: [int(line[h] or 0) & ((1 << 64) - 1) for h in heads] for line in found
+                 if (line["row_id"], line["source_name"]) in moved_cols}
+    for (row, source), masks in moved_cols.items():
+        said = [line for line in found if line["row_id"] == row and line["source_name"] == source]
+        for k in range(chunks):
+            for b in range(BITS_A_CHUNK):
+                m = 1 << b
+                if not masks[k] & m:
+                    continue
+                naming = [line for line in said if int(line[written[k]] or 0) & ((1 << 64) - 1) & m]
+                top = max(naming, key=lambda line: line["line_id"])
+                heads_it = top["line_id"] in movers or new_heads[top["line_id"]][k] & m
+                for line in naming:
+                    if line is top and heads_it:
+                        new_heads[line["line_id"]][k] |= m
+                    else:
+                        new_heads[line["line_id"]][k] &= ~m
+    for line in found:
+        if line["line_id"] in new_heads and new_heads[line["line_id"]] != [
+                int(line[h] or 0) & ((1 << 64) - 1) for h in heads]:
+            signed = [v - (1 << 64) if v >= 1 << 63 else v for v in new_heads[line["line_id"]]]
+            db.execute(update(ln).where(ln.c.line_id == line["line_id"]).values(dict(zip(heads, signed))))
+    return onto
 
 
 def _formulas_won(db, table, shape, row_ids, data, merged, won_by) -> None:
@@ -1126,8 +1214,8 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
     # the holder's columns this merge can move (main's merge body moved only these): what the shell's lines spoke,
     # the merge's own lines, its chosen and person cells - any other keeps its winner (lead 11-12)
     touched = (set(spoke) | {c for it in said for c in it.get("values") or ()} | set(chosen) | set(person)) if keeps else None
-    merged = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {}, keeps,
-                        columns=touched)
+    merged, _lost = _merge_now(db, table, cfg, shape, [holder], at, {holder: h_now}, {holder: plain} if plain else {},
+                               keeps, columns=touched)
     return s_now, h_now, merged[holder]
 
 

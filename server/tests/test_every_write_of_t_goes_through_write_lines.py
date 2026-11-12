@@ -43,7 +43,7 @@ NOT_T = {
     "scripts/archive/migrate_updated_at.py:migrate": "the retired DataRow model",
 }
 CANARY = {"database/write_lines.py:" + name
-          for name in ("_claim", "_heads", "_merge_into", "_merge_now", "_put_keys", "write_lines")} | {
+          for name in ("_heads", "_merge_into", "_merge_now", "_put_keys", "_take_over", "write_lines")} | {
     "database/lines.py:insert_lines"}                    # _lines sends its lines through it (lead 11-12)
 
 
