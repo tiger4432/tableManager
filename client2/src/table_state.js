@@ -64,15 +64,18 @@ export class TableStateStore {
     while (this.data.size > this.keep) this.data.delete(this.data.keys().next().value);
   }
 
-  /** What a table was left as: its settings (or null, never seen) and its rows (or null, read them again). */
-  take(table) {
-    const settings = this.settings.get(table) ?? this._read(settingsKey(table), null);
-    const data = this.data.get(table) || null;
-    if (data) { this.data.delete(table); this.data.set(table, data); }   // the newest again
-    return { settings, data };
+  /** A table's settings (or null, never seen) - read only: the tab strip's note reads this, and a draw promotes nothing. */
+  settingsOf(table) {
+    return this.settings.get(table) ?? this._read(settingsKey(table), null);
   }
 
-  /** A tab closed: the table leaves the row, its rows the memory; its settings stay for the next time it is opened. */
+  /** A table opened again: what it was left as - its settings and its rows (or null, read them again); its rows the newest. */
+  take(table) {
+    const data = this.data.get(table) || null;
+    if (data) { this.data.delete(table); this.data.set(table, data); }   // the newest again
+    return { settings: this.settingsOf(table), data };
+  }
+
   /** A tab closed: off the row and forgotten, rows and settings (owner 11-11 × = forget). */
   close(table) {
     this.open = this.open.filter((t) => t !== table);

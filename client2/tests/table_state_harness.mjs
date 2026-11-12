@@ -44,6 +44,17 @@ console.log('[S] the store');
     [['b'], { settings: null, data: null }, false, { settings: null, data: null }]);
 }
 
+console.log('[D] the tab strip drawn reads notes and moves no table up (lead 11-12)');
+{
+  const store = new TableStateStore({ storage: memoryStorage() });
+  for (const t of ['t1', 't2', 't3', 't4', 't5']) store.park(t, snap(t));
+  store.take('t1');   // t1 opened again: the newest; t2 the least recently used
+  for (let i = 0; i < 10; i += 1) for (const t of ['t1', 't2', 't3', 't4', 't5']) store.settingsOf(t);   // ten draws, t1 first
+  store.park('t6', snap('t6'));
+  eq('D1 six tables, ten draws: the rows let go at the sixth are the least recently used (t2), not the table drawn first (t1); notes read',
+    [store.take('t1').data !== null, store.take('t2').data, store.settingsOf('t2').scrollTop], [true, null, 40]);
+}
+
 console.log('[I] two stores on one page');
 {
   const one = new TableStateStore({ storage: memoryStorage() });

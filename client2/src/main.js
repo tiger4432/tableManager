@@ -251,7 +251,7 @@ async function init() {
         },
         noteOf: (table) => tableNote(table === state.currentTable ? {
           filterModel: state.gridApi ? state.gridApi.getFilterModel() : null, pivot: state.pivotView,
-        } : tableStates.take(table).settings),
+        } : tableStates.settingsOf(table)),
       }) : null;
       // ← → walk the tables opened in this tab, and the address says the table (?table=) - a reload opens it again
       const steps = tableSteps({ back: document.getElementById('table-back'), forward: document.getElementById('table-forward'),
