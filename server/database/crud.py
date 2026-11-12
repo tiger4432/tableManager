@@ -4259,8 +4259,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         items_report: Optional[list] = None):
     """Batch write - its cells as lines (`write_lines`, through `_apply_batch_updates_once`).
 
-    items_report: optional out-param (list) - one {"row_id", "work"} an item `write_lines` was handed, in its order:
-    the row it was claimed as and what became of it (a work, or "left_out" / "gated" / None) - lead 11-12 a.
+    items_report: optional out-param (list) - one {"row_id", "work", "new"} an item `write_lines` was handed, in its
+    order: the row it was claimed as, what became of it (a work, or "left_out" / "gated" / None) - lead 11-12 a - and
+    the row's shown values after the write for the columns the item asked, None when the write did not change the row
+    (the caller's read from before stands; a read after the door's commit is a second checkout - lead 11-12).
 
     returning_rows: False - the written rows are not read back (results and serialized_logs come back empty), for a
     caller that reads neither (lead 11-12 d). The write itself is the same.
@@ -4618,7 +4620,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                  transaction_id=tx_id)
             resolved = answer["items"]
             if items_report is not None:
-                items_report.extend({"row_id": got["row_id"], "work": got["work"]} for got in resolved)
+                items_report.extend(
+                    {"row_id": got["row_id"], "work": got["work"],
+                     "new": None if (answer["changed"].get(got["row_id"]) or {}).get("new") is None else
+                     {c: answer["changed"][got["row_id"]]["new"].get(c) for c in item.updates}}
+                    for item, got in zip(batch.updates, resolved))
             total_changed_cells = _changed_cells(answer, resolved)
             count(len(total_changed_cells))
 
