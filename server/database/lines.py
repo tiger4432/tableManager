@@ -172,6 +172,48 @@ def sets_at_once(db) -> bool:
     return db.get_bind().dialect.name == "postgresql"
 
 
+#: rows a statement of insert_lines carries
+INSERT_PAGE = 1000
+
+
+def insert_lines(db, ln, rows: list, ids: bool = False) -> list:
+    """The one writer of t__lines rows (write_lines._lines, line_migration.copy_page - lead 11-12 ㄴ). `rows`: dicts
+    with one key set, the first row's. PostgreSQL: rows go as tuples in the table's column order, each cell cast to
+    its column type, through psycopg2's execute_values - SQLAlchemy's parameter building was 40 % of a copied page's
+    insert (C, py-spy 11-12); sqlite: SQLAlchemy's insert. -> with `ids`, the new line_ids in row order (on
+    PostgreSQL the rows enter ORDER BY their place, the sequence numbers them in that order, so the ids sorted are the
+    rows' - what SQLAlchemy's sort_by_parameter_order does), else []."""
+    from sqlalchemy import insert
+
+    if not rows:
+        return []
+    if not sets_at_once(db):
+        if ids:
+            return db.execute(insert(ln).returning(ln.c.line_id, sort_by_parameter_order=True), rows).scalars().all()
+        db.execute(insert(ln), rows)
+        return []
+    from psycopg2.extras import execute_values
+
+    dialect = db.get_bind().dialect
+    cols = [c for c in ln.columns if c.name in rows[0]]
+    names = ", ".join('"%s"' % c.name for c in cols)
+    casts = ["(%%s)::%s" % c.type.compile(dialect=dialect) for c in cols]      # (-2^63)::BIGINT - :: binds before minus
+    values = [tuple(r[c.name] for c in cols) for r in rows]
+    cursor = db.connection().connection.cursor()
+    try:
+        if not ids:
+            execute_values(cursor, 'INSERT INTO "%s" (%s) VALUES %%s' % (ln.name, names), values,
+                           template="(%s)" % ", ".join(casts), page_size=INSERT_PAGE)
+            return []
+        got = execute_values(
+            cursor, 'INSERT INTO "%s" (%s) SELECT %s FROM (VALUES %%s) AS v(%s, n) ORDER BY n RETURNING line_id'
+            % (ln.name, names, names, names), [v + (n,) for n, v in enumerate(values)],
+            template="(%s, %%s)" % ", ".join(casts), page_size=INSERT_PAGE, fetch=True)
+        return sorted(r[0] for r in got)
+    finally:
+        cursor.close()
+
+
 def keeps_lines(table_name: str, table_cfg) -> bool:
     """Does t keep lines (`won_by` + `t__lines`) - THE answer the copy job, the catalogue and the report ask: an
     operator-declared table (kind table). Not a view, not a table the product ships (system tables), and not an

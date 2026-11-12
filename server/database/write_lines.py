@@ -661,7 +661,7 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
     if not rows:
         return [], {}
     line_ids = {}
-    ids = db.execute(insert(ln).returning(ln.c.line_id, sort_by_parameter_order=True), rows).scalars().all()
+    ids = lines.insert_lines(db, ln, rows, ids=True)
     out = []
     for line_id, i, row in zip(ids, order, rows):
         line_ids[i] = line_id

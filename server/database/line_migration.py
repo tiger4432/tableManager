@@ -183,7 +183,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         names = sorted({o["source_name"] for o in out})
         lines.note_sources(db, names, copies={n: crud.merged_layer_origin(n) for n in names
                                               if crud.merged_layer_origin(n) is not None})
-        db.execute(lt.insert(), out)
+        lines.insert_lines(db, lt, out)
         shown = {r[0]: r for r in db.execute(select(t).where(t.c.row_id.in_(rows)))}
         named = []
         for row_id, cols in lines.merge(db, table, table_cfg, sorted(rows)).items():
