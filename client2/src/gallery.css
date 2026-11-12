@@ -7,6 +7,8 @@
 .gallery-pick { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-label); color: var(--text-dim); }
 .gallery-select { font-size: var(--fs-button); padding: var(--space-1) var(--space-2); background: var(--bg-surface); color: var(--text); border: 1px solid var(--border); border-radius: 0; }
 .gallery-count { font-size: var(--fs-label); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.gallery-zip__say { font-size: var(--fs-label); color: var(--danger); }
+.gallery-zip__say:empty { display: none; }
 .gallery-say { padding: var(--space-4); font-size: var(--fs-body); color: var(--text-dim); }
 .gallery-body { flex: 1 1 0; min-height: 0; display: flex; gap: var(--space-3); }
 .gallery-scroll { flex: 1 1 0; min-width: 0; overflow: auto; contain: strict; }

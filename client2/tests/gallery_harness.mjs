@@ -24,6 +24,13 @@
 //   B8 two boards on one page: a cell opened on one leaves the other's
 //   B9 + Column adds the first column not used to Rows by
 //   B10 Columns by alone: one line «All rows», a column a value adding up to the rows held; Filter hands the column alone
+// Download zip (owner 11-12, lead; the route C's - POST /api/images/zip {filename, folders: [{path, refs: [{ref, name?}]}]}):
+//   Z1 Rows by: a folder a group with an image, its value its path («(Empty)» for a blank), its tiles' refs in the gallery's
+//      order, each named by its file name; a row with no image no ref, a group with none no folder
+//   Z2 no grouping: one folder «All rows»; the file <table>_<YYYYMMDD-HHmm>.zip
+//   Z3 a board: a folder a cell with an image, its path [its line, its column]
+//   Z4 the button: its title the images it holds; none - off, its reason said
+//   Z5 pressed: the folders of the rows drawn sent, the zip saved under its file name; a refusal said as the server says it
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -432,6 +439,51 @@ async function suite(M) {
   ok('P4 a board has no popup - its row stays under the opened cell\'s tiles', !byClass(pb.mount, 'gallery-popup').length && !byClass(pb.seat, 'gallery-popup').length
     && byClass(pb.seat, 'gallery-body').some((b) => byClass(b, 'gallery-side').some((n) => !n.hidden)),
     `${byClass(pb.mount, 'gallery-popup').length} popups`);
+  // Z - Download zip
+  const ZR = [
+    { id: 'z0', data: { defect: 'A', step: 'S1', pic: 'src:dir/a1.png' } },
+    { id: 'z1', data: { defect: '', step: 'S2', pic: 'src:x/e1.png' } },
+    { id: 'z2', data: { defect: 'A', step: 'S2', pic: '' } },
+    { id: 'z3', data: { defect: 'B', step: 'S1', pic: 'https://h/p/b1.jpg?v=2' } },
+    { id: 'z4', data: { defect: 'A', step: 'S1', pic: 'db:777' } },
+    { id: 'z5', data: { defect: 'C', step: 'S2', pic: '' } },
+  ];
+  const zv = (row, col) => row.data[col];
+  const A_REFS = [{ ref: 'src:dir/a1.png', name: 'a1.png' }, { ref: 'db:777', name: '777' }];
+  const byRows = M.zipBody(ZR, { table: 'T', rowsBy: ['defect'], image: 'pic', valueOf: zv });
+  ok('Z1 Rows by: a folder a group with an image, «(Empty)» for a blank, its refs named by their file names; no image no ref, no folder',
+    JSON.stringify(byRows.folders) === JSON.stringify([{ path: ['A'], refs: A_REFS }, { path: ['(Empty)'], refs: [{ ref: 'src:x/e1.png', name: 'e1.png' }] },
+      { path: ['B'], refs: [{ ref: 'https://h/p/b1.jpg?v=2', name: 'b1.jpg' }] }]), JSON.stringify(byRows.folders));
+  const none = M.zipBody(ZR, { table: 'T', image: 'pic', valueOf: zv, at: new Date('2026-11-12T01:05:00Z') });
+  ok('Z2 no grouping: one folder «All rows» of every ref in the rows\' order; the file <table>_<YYYYMMDD-HHmm>.zip',
+    JSON.stringify(none.folders.map((f) => [f.path, f.refs.map((r) => r.ref)])) === JSON.stringify([[['All rows'], ['src:dir/a1.png', 'src:x/e1.png', 'https://h/p/b1.jpg?v=2', 'db:777']]])
+      && /^T_\d{8}-\d{4}\.zip$/.test(none.filename), `${JSON.stringify(none.folders)} · ${none.filename}`);
+  const board = M.zipBody(ZR, { table: 'T', rowsBy: ['defect'], columnBy: 'step', image: 'pic', valueOf: zv });
+  ok('Z3 a board: a folder a cell with an image, its path [its line, its column]',
+    JSON.stringify(board.folders) === JSON.stringify([{ path: ['A', 'S1'], refs: A_REFS }, { path: ['(Empty)', 'S2'], refs: [{ ref: 'src:x/e1.png', name: 'e1.png' }] },
+      { path: ['B', 'S1'], refs: [{ ref: 'https://h/p/b1.jpg?v=2', name: 'b1.jpg' }] }]), JSON.stringify(board.folders));
+  const zipOf = (root) => byClass(root, 'gallery-zip')[0];
+  const zs = seat(M, { rows: rowsOf(9, 3), storage: keptAs({ groupBy: 'defect' }) });
+  const blank = seat(M, { rows: rowsOf(3, 1) });
+  ok('Z4 the button: its title the images the rows drawn hold; none - off, its reason said',
+    zipOf(zs.mount).getAttribute('title') === 'Download 6 images (zip)' && !zipOf(zs.mount).disabled
+      && zipOf(blank.mount).disabled === true && zipOf(blank.mount).getAttribute('title') === 'No image in the rows shown',
+    `${zipOf(zs.mount).getAttribute('title')} · ${zipOf(blank.mount).disabled} ${zipOf(blank.mount).getAttribute('title')}`);
+  const sent = [];
+  const saved = [];
+  const made = zs.doc.createElement.bind(zs.doc);
+  zs.doc.createElement = (tag) => { const n = made(tag); if (tag === 'a') n.click = () => saved.push(n.download); return n; };
+  zs.part.deps.fetch = async (url, init) => { sent.push([url, JSON.parse(init.body)]); return { ok: true, status: 200, blob: async () => new Blob(['zip']) }; };
+  zipOf(zs.mount).dispatch('click');
+  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  const body = sent[0] && sent[0][1];
+  zs.part.deps.fetch = async () => ({ ok: false, status: 413, json: async () => ({ detail: 'Over the zip cap: 5,000 images' }) });
+  zipOf(zs.mount).dispatch('click');
+  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+  ok('Z5 pressed: the rows\' folders sent to the zip route, saved under its file name; a refusal said as the server says it',
+    !!body && sent[0][0].endsWith('/api/images/zip') && JSON.stringify(body.folders.map((f) => [f.path, f.refs.length])) === JSON.stringify([[['B'], 3], [['C'], 3]])
+      && saved[0] === body.filename && textOf(byClass(zs.mount, 'gallery-zip__say')[0]) === 'Over the zip cap: 5,000 images' && !zipOf(zs.mount).disabled,
+    `${JSON.stringify(body && body.folders.map((f) => [f.path, f.refs.length]))} · saved ${saved[0]} · said ${textOf(byClass(zs.mount, 'gallery-zip__say')[0])}`);
   return { ran, failed: failed.slice() };
 }
 
@@ -477,6 +529,12 @@ const MUTANTS = [
   { name: '+ Column adds no column', catches: ['B9'], mutate: swap('rowsKept([...rowsBy, unused[0]])', 'rowsKept([...rowsBy])') },
   { name: 'no Rows by leaves the corner without its line\'s words', catches: ['B10'],
     mutate: swap("${rowsBy.length ? rowsBy.join(' · ') : WORDS.all} \\\\ ${columnBy}", "${rowsBy.join(' · ')} \\\\ ${columnBy}") },
+  { name: 'a board cell foldered under its column alone', catches: ['Z3'], mutate: swap('folders.push({ path: [line.label, board.columns[k].label], refs: refsOf(cell) })', 'folders.push({ path: [board.columns[k].label], refs: refsOf(cell) })') },
+  { name: 'a group with no image still a folder', catches: ['Z1'], mutate: swap('      if (group.tiles.length) folders.push', '      folders.push') },
+  { name: 'a name keeps its query', catches: ['Z1'], mutate: swap("const s = String(ref ?? '').split(/[?#]/)[0];", "const s = String(ref ?? '');") },
+  { name: 'the title counts the rows, not their images', catches: ['Z4'], mutate: swap('const images = body().folders.reduce((n, f) => n + f.refs.length, 0);', 'const images = (this.deps.rows() || []).length;') },
+  { name: 'a refusal said in the screen\'s words', catches: ['Z5'], mutate: swap('say.textContent = await refusalText(res, WORDS.zipFailed);', 'say.textContent = WORDS.zipFailed;') },
+  { name: 'the zip saved under no name', catches: ['Z5'], mutate: swap('        a.download = asked.filename;\n', '') },
   { name: 'the side panel shows every column', catches: ['G12'], mutate: swap('(this.deps.shown ? this.deps.shown() : (this.deps.columns() || []).map((c) => c.name))', '(this.deps.columns() || []).map((c) => c.name)') },
 ];
 
