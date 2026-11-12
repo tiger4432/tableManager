@@ -1980,12 +1980,18 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     if not apply:                                  # the one place the preview stops before the write (lead 11-12)
         after, shown = _fold_units_judged(db, table_name, model, mark, judged, before, report)
     elif judged:
+        work = []
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             crud.apply_batch_updates(db, table_name, schemas.GeneralUpdateBatch(updates=judged, transaction_id=tx_id),
-                                     drop_report=report)
+                                     drop_report=report, returning_rows=False, items_report=work)
     on_fold()
-    if apply:
-        after = lines.layers(db, table_name, sorted(there), [mark])
+    if apply:                                      # the write's own answer, not a re-read (lead 11-12 a)
+        wrote = {got["row_id"] for got in (work if judged else ()) if got["work"] not in (None, "left_out", "gated")}
+        after = {cell: dict(said) for cell, said in before.items()}
+        for item in judged:
+            if item.row_id in wrote:
+                after.setdefault((item.row_id, mark), {})[item.source_name] = {
+                    "value": crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)}
         shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
     for item in judged:
         clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)

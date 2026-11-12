@@ -676,7 +676,8 @@ def chain_unowned(lines_) -> bool:
     return any(ln["ranks_as"] == crud.CHAIN_SOURCE and ln["owner_rule"] is None for ln in lines_)
 
 
-def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None) -> dict:
+def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = None, s: dict = None,
+          columns=None) -> dict:
     """{row_id: {column: (value, line_id)}} for the columns whose shown value the lines decide:
        a column no line spoke in is absent (t keeps its value - «끊음»);
        a pinned column whose pinned source has no head line is absent (t keeps its value - lead 11-11);
@@ -685,7 +686,8 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
     The head lines are read once (1,000 rows a statement) and ranked here by crud.rank_terms - the one order
     compute_priority_value walks (C board 2 11-11: the ranking in SQL was 1.0 s for 1,000 rows x 30 columns). «An
     unowned chain layer sits on the cell» counts the head lines that say it, pinned or excluded or not. Values read
-    back as t's stored kind (crud.line_value). `s`: the shape the caller already holds (a write - A 11-11)."""
+    back as t's stored kind (crud.line_value). `s`: the shape the caller already holds (a write - A 11-11).
+    `columns`: only these are decided (a write's touched columns - lead 11-12 b); None, every column."""
     from sqlalchemy import or_
 
     from . import crud
@@ -696,7 +698,8 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
         return {}
     s = s if s is not None else shape(db, table_name, table_cfg)
     lt, kinds, chunks = s["lines"], s["kinds"], s["chunks"]
-    by_bit = {bit: c for c, bit in s["bits"].items() if value_column(c) in lt.c and bit // BITS_PER_CHUNK < chunks}
+    by_bit = {bit: c for c, bit in s["bits"].items() if value_column(c) in lt.c and bit // BITS_PER_CHUNK < chunks
+              and (columns is None or c in columns)}
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     src, ov = LineSource.__table__, CellOverwrite.__table__
     terms = crud.rank_terms(table_name)

@@ -76,7 +76,7 @@ def _script(monkeypatch, *outcomes):
     """Replace the inner write with a scripted sequence; return the attempt log."""
     calls = []
 
-    def fake_once(db, table_name, batch, replace_report=None, drop_report=None, deleted_edits=None):
+    def fake_once(db, table_name, batch, replace_report=None, drop_report=None, deleted_edits=None, *_rest):
         outcome = outcomes[len(calls)] if len(calls) < len(outcomes) else outcomes[-1]
         calls.append(table_name)
         if isinstance(outcome, Exception):

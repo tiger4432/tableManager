@@ -3610,7 +3610,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "created", "source_name": update_item.source_name,
                  "written_by": update_item.updated_by}, [])   # makes (the boundary test_write_path_drop_report pins)
-    values, formulas = {}, []
+    values, cast, formulas = {}, {}, []
     for col_name, val in update_item.updates.items():
         reason = (DROP_SYSTEM_COLUMN if col_name in SYSTEM_COLUMNS
                   else DROP_UNDECLARED_COLUMN if col_name not in plan["loadable"] else None)
@@ -3652,12 +3652,14 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
                                  clean_val)
             continue
         values[col_name] = val
+        cast[col_name] = clean_val
     if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
                  "written_by": update_item.updated_by, "work": "formula"}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
+             "cast": cast,                          # what it cast - write_lines does not cast it again (lead 11-12 c)
              "source_name": update_item.source_name, "written_by": update_item.updated_by,
              "input_row": update_item.origin_row_id, "version_judged": plan.get("map_judged", False)}, formulas)
 
@@ -4222,8 +4224,16 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         replace_report: Optional[dict] = None,
                         drop_report: Optional[dict] = None,
                         notation_report: Optional[dict] = None,
-                        deleted_edits: Optional[dict] = None):
+                        deleted_edits: Optional[dict] = None,
+                        returning_rows: bool = True,
+                        items_report: Optional[list] = None):
     """Batch write - its cells as lines (`write_lines`, through `_apply_batch_updates_once`).
+
+    items_report: optional out-param (list) - one {"row_id", "work"} an item `write_lines` was handed, in its order:
+    the row it was claimed as and what became of it (a work, or "left_out" / "gated" / None) - lead 11-12 a.
+
+    returning_rows: False - the written rows are not read back (results and serialized_logs come back empty), for a
+    caller that reads neither (lead 11-12 d). The write itself is the same.
 
     notation_report: optional out-param (dict) - `{verdict: count}` of the time values a
     `write` column's `time` rule left as written (`notation_norm.TIME_LEFT_AS_WRITTEN`), for
@@ -4252,10 +4262,13 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     _fold_written_notation(db, table_name, batch, notation_report)
     if drop_report is not None:
         drop_report.clear()
+    if items_report is not None:
+        items_report.clear()
     if deleted_edits is not None:
         deleted_edits.clear()
     try:
-        return _apply_batch_updates_once(db, table_name, batch, replace_report, drop_report, deleted_edits)
+        return _apply_batch_updates_once(db, table_name, batch, replace_report, drop_report, deleted_edits,
+                                         returning_rows, items_report)
     except IntegrityError as exc:
         # 🔴 [S-269] REFUSED BY NAME, AND AFTER A ROLLBACK - raising on an aborted transaction leaves the caller's next
         # read saying 「Instance is not bound to a Session」 instead of the constraint (owner 2026-09-16).
@@ -4344,7 +4357,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                               batch: schemas.GeneralUpdateBatch,
                               replace_report: Optional[dict] = None,
                               drop_report: Optional[dict] = None,
-                              deleted_edits: Optional[dict] = None):
+                              deleted_edits: Optional[dict] = None,
+                              returning_rows: bool = True,
+                              items_report: Optional[list] = None):
     """통합 업데이트를 배치로 처리합니다.
 
     replace_report: optional out-param (dict). When batch.replace_map is set and a dict
@@ -4571,6 +4586,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             answer = write_lines(db, table_name, [it for it, _formulas in said], kind="funnel",
                                  transaction_id=tx_id)
             resolved = answer["items"]
+            if items_report is not None:
+                items_report.extend({"row_id": got["row_id"], "work": got["work"]} for got in resolved)
             total_changed_cells = _changed_cells(answer, resolved)
             count(len(total_changed_cells))
 
@@ -4685,6 +4702,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         # 🔴 판정 187 ④ / 192 / 207: the answer holds a row this request made, changed, or only dropped cells on -
         # an unchanged save has no item. The rows are read once, as t holds them now.
+        if not returning_rows:
+            return [], total_changed_cells, [], deleted_row_ids
         shown = [r for r, was_new in unique_results.items()
                  if was_new or r in rows_with_content or r in reported_only_for_drops]
         rows = {}

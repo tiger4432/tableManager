@@ -12,6 +12,7 @@ An item is a dict:
     line_kind     "write" (default) · "withdraw" · "deleted" · "created" (a row made with no value - the grid's
                   «add row»; the pair of «deleted», C 11-11) · "mark"
     values        {column: value} for a write - cast here by `crud.cast_value_by_type`
+    cast          {column: value already cast} - the funnel's own cast, not cast again (lead 11-12 c)
     columns       [column] for a withdraw
     source_name · written_by · input_row · owner_rule · owner_key · confirmed
     acted_by      who did this write when it is not the value's author (written_by) - a retroactive op re-spelling a
@@ -97,6 +98,15 @@ def _owner(item) -> tuple:
     return crud.layer_owner(item.get("source_name")) or (None, None)
 
 
+def _cast(table, types, item, column, value):
+    """`value` cast as every write casts it (`crud.cast_value_by_type`) - the item's own cast where it carries one
+    (the funnel's «cast», lead 11-12 c: a value is cast once)."""
+    done = item.get("cast")
+    if done is not None and column in done:
+        return done[column]
+    return crud.cast_value_by_type(value, types.get(column, "string"), column, table)
+
+
 def _pages(seq, width: int, most=None):
     seq = list(seq)
     size = max(1, min(PARAMS_MOST // max(1, width), most or PARAMS_MOST))
@@ -180,7 +190,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
         _heads(db, ln, chunks, written)
         unpinned = _marks(db, table, shape, items, kept, targets, asked)
     for i in sorted(targets):                      # a pin taken off moves the row's merge whatever the line did
-        if targets[i] in unpinned and i not in work and i not in split:
+        if targets[i] in {r for r, _c in unpinned} and i not in work and i not in split:
             work[i] = "edit"
             moved.append(i)
             left_out -= 1
@@ -193,8 +203,12 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     blank = {}
     for i in sorted(again):
         blank.setdefault(targets[i], set()).update(items[i].get("blank") or ())
+    # the columns this write touched - its kept lines' and the cells a pin came off (lead 11-12 b); a mark merges all
+    touched = None if again or any(items[i]["line_kind"] == MARK for i in kept) else (
+        {c for i in kept for c in list(items[i].get("values") or ()) + list(items[i].get("columns") or ())}
+        | {c for _r, c in unpinned})
     new = _merge_now(db, table, cfg, shape, sorted({targets[i] for i in list(kept) + moved + sorted(again)} - set(gone)),
-                     at, old, rows_plain, keeps, blank)
+                     at, old, rows_plain, keeps, blank, touched)
     merged = _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id)
     changed = {}
     for i in sorted(list(kept) + moved):
@@ -306,8 +320,8 @@ def _plain(table, cfg, items, targets, before, held, keeps) -> dict:
             continue
         it["values"] = {c: v for c, v in it["values"].items() if c not in free}
         was = before.get(i)                        # the row this item meets (`_version_gate`), None: new
-        said = {c: crud.line_value(crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
-                                                  held.get(c, "string")), held.get(c, "string"))
+        said = {c: crud.line_value(crud.line_text(_cast(table, types, it, c, v), held.get(c, "string")),
+                                   held.get(c, "string"))
                 for c, v in free.items()}
         said = {c: v for c, v in said.items() if was is None or was.get(c) != v}
         if said:
@@ -469,8 +483,7 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
     types = cfg.get("column_types") or {}
     writes = [i for i in sorted(targets) if items[i]["line_kind"] == WRITE]
     for i in writes:                               # a line stores its value as text - one seat writes it (C 11-10)
-        items[i]["values"] = {c: crud.line_text(crud.cast_value_by_type(v, types.get(c, "string"), c, table),
-                                                held.get(c, "string"))
+        items[i]["values"] = {c: crud.line_text(_cast(table, types, items[i], c, v), held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
     heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at, line_id)}}}
@@ -704,8 +717,8 @@ def _marks(db, table, shape, items, kept, targets, asked):
     this landing - design «셀소스 · 감사 이력 · 고정이 어디로»; lead 11-11), before step 5's merge reads the pins: a
     person's write ("user") takes its cells' pin off, the cells it repeats included; a cell a person's head line or a
     pin sits on is marked (is_overwrite, by the writer), any other cell's mark goes. A mark already saying exactly that
-    on a cell whose line did not move is left - the old write door's rule, cell for cell. -> the rows a pin
-    was taken off - their merge moves though no line did."""
+    on a cell whose line did not move is left - the old write door's rule, cell for cell. -> the cells (row_id,
+    column) a pin was taken off - their merge moves though no line did."""
     from datetime import datetime
 
     cells, freed = {}, set()                       # (row_id, column) -> (item, its line moved); a person's cells
@@ -738,7 +751,7 @@ def _marks(db, table, shape, items, kept, targets, asked):
         was = held.get((r, c))
         pin = None if (r, c) in freed else (was[2] if was else None)
         if was and was[2] is not None and pin is None:
-            unpinned.add(r)
+            unpinned.add((r, c))
         who = it.get("written_by") or "system"
         if (r, c) in person or pin is not None:
             if moved or not (was and was[0] is True and was[1] == who and was[2] == pin):
@@ -751,21 +764,29 @@ def _marks(db, table, shape, items, kept, targets, asked):
     return unpinned
 
 
-def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None):
+def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None, columns=None):
     """Step 5 - the touched rows of t merged again by `lines.merge` (C - the one merge, ranked by crud.rank_terms):
     a column it decides takes its value and won_by; a column it leaves out (no line spoke in it, or its pinned source
     has no head line) keeps t's value and no won_by; then a column of no history takes its value (`_plain`). Written
     with won_by; updated_at is the write's instant on a new row or one whose values moved (`_moved`), else it stays -
     a line that moved nothing shown is no change of the row (the old write's rule, lead 11-11 ㄱ). `blank` {row_id:
-    columns}: of those, a column the merge leaves out goes blank (a removed formula's). Returns {row_id: {column:
-    value}} as written."""
+    columns}: of those, a column the merge leaves out goes blank (a removed formula's). `columns`: the columns the
+    write touched - only those are merged, every other keeps its value and won_by (lead 11-12 b); None, all. Returns
+    {row_id: {column: value}} as written."""
     now = shape["table"]
     data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
     if not row_ids:
         return {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
-    won_by = {row_id: {} for row_id in row_ids}
-    spoke = lines.merge(db, table, cfg, row_ids, s=shape) if keeps else {}
+    won_by = {row_id: {} if columns is None else {c: w for c, w in ((old.get(row_id) or {}).get("won_by") or {}).items()
+                                                  if c not in columns} for row_id in row_ids}
+    if columns is not None:                        # a column not merged reads as its line reads it (lead 11-11: 2, not 2.0)
+        numbers = [c for c in data if c not in columns and shape["kinds"].get(c) == "number"]
+        for row_id in row_ids:
+            for c in numbers:
+                if merged[row_id][c] is not None:
+                    merged[row_id][c] = crud.line_value(crud.line_text(merged[row_id][c], "number"), "number")
+    spoke = lines.merge(db, table, cfg, row_ids, s=shape, columns=columns) if keeps else {}
     for row_id, decided in spoke.items():
         for c, (value, line_id) in decided.items():
             merged[row_id][c] = value
