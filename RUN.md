@@ -46,6 +46,9 @@
 >   LineTablesRefused ... <표>: index <이름> not built (<답>) - the line above says why; start again once it is free
 >          인덱스를 못 지어 시작을 «거절»했다. 바로 위 줄이 이유다(다른 세션이 표를 잡고 있음 · 짓기 실패)
 >          할 일: 그 세션이 끝난 뒤 런처를 다시. 실패가 반복되면 그 두 줄을 총괄께
+>   [Lines] <표>__lines: dropped uq_bk_<표>__lines - a business key index on a line table refuses ...
+>          앞선 시작이 줄 표에 업무 키 고유 인덱스를 지었었다 — 그대로 두면 한 행의 두 번째 쓰기를 거절한다
+>          이번 시작이 그것을 지웠다. 할 일 없음. 시작할 때마다 이 줄이 나오면 그 줄을 총괄께
 > ```
 >
 > ---
