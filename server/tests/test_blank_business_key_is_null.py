@@ -10,11 +10,11 @@ That is not a duplicate-row problem. It is a **collision** problem, and the UNIQ
 from `migrations/add_business_key_unique_index.py` turns it into an outage:
 
   * Five such rows in ONE batch collide with EACH OTHER.
-  * `apply_batch_updates`' `IntegrityError` recovery cannot resolve it. Its recovery is
-    "roll back, re-read the database in a new snapshot, resolve onto the row the winner
-    committed" - and none of the colliding rows was ever committed, so the replay
-    reproduces the identical collision.
-  * After `BK_CONFLICT_MAX_RETRIES` the batch is REFUSED.
+  * `apply_batch_updates`' `IntegrityError` recovery of the time (a replay, retired 11-11)
+    could not resolve it. Its recovery was "roll back, re-read the database in a new
+    snapshot, resolve onto the row the winner committed" - and none of the colliding rows
+    was ever committed, so the replay reproduced the identical collision.
+  * After its retry bound the batch was REFUSED.
 
 Measured on this workstation against real PostgreSQL with the index installed (a
 simulation, not production), three pushes of a 5-row payload whose key column arrived
