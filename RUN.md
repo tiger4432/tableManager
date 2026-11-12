@@ -3,8 +3,7 @@
 > ## [11-12c] **옛 층 표를 줄 표로 옮기기 — 이주 명령 (서버를 끈 채 한 번) · 시작 검사가 줄 표 인덱스를 다 짓는다** — 새 릴리스로 올린 뒤
 >
 > ```
-> 번들 전   이름이 __lines 로 끝나는 표 선언은 이 릴리스부터 거절된다 — 먼저 이름을 바꾼다 (Tables 목록이 이름을 보여 준다)
->          거절 문장: «… its name ends in __lines, which names a table's line table - rename <표> …»
+> 번들 전   이름이 __lines 로 끝나는 표 선언은 이 릴리스부터 거절된다 (운영엔 그런 표 없음 - 소유자 11-12, 할 일 없음)
 > 순서     ① 새 릴리스로 올리고 런처를 한 번 띄웠다가 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
 >          ② 미리보기   cd server ; python scripts/copy_layers_to_lines.py
 >          ③ (고를 때) 점검  python scripts/copy_layers_to_lines.py --check     옮겨 보고 쪽마다 되돌린다. 남는 것 없음
