@@ -407,21 +407,33 @@ def deleted_line_rows(db, table_name, row_ids) -> set:
     return found
 
 
-def changed_rows(db, table_name, group) -> int:
-    """How many rows history group `group` changed in `table_name` - its lines' distinct rows (the (batch) index;
-    owner 11-10 «바뀐 행수», counted, never stored) and the rows its receipts name with no line of the group
-    (`crud.receipt_row_ids` - a formula's write, owner 11-12 ㄴ)."""
+def _unlined_receipts(db, t, table_name, group) -> list:
+    """[(row_id, receipt entry)] - the rows the group's receipts name in `table_name` and no line of the group does (a
+    formula's write keeps its receipt and no line, owner 11-12 ㄴ), as named."""
     from admin.audit_cache import in_group
     from database import crud
 
-    t = line_table(table_name, {})
-    n = db.execute(sa.select(sa.func.count(sa.distinct(t.c.row_id))).where(in_group(t.c.batch, group))).scalar()
-    named = list(crud.receipt_row_ids(db, table_name, group))
-    lined = set()
-    for i in range(0, len(named), 1000):
+    named = crud.receipt_row_ids(db, table_name, group)
+    ids, lined = list(named), set()
+    for i in range(0, len(ids), 1000):
         lined.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
-            in_group(t.c.batch, group), t.c.row_id.in_(named[i:i + 1000]))))
-    return n + len(set(named) - lined)
+            in_group(t.c.batch, group), t.c.row_id.in_(ids[i:i + 1000]))))
+    return [(row_id, r) for row_id, r in named.items() if row_id not in lined]
+
+
+def changed_rows(db, table_name, group, cap: int = None):
+    """How many rows history group `group` changed in `table_name`, as `(count, is_floor)` - its lines' distinct rows
+    and its receipt-only rows, counted (owner 11-10 «바뀐 행수») up to ROW_TOTAL_PROBE_CAP, `count_row_lines`' bound:
+    past it the answer is the floor («1,000+») - a whole-group count of a migration's 7.9 M lines was 11 s an open
+    (D 11-12 after_r1); the transaction route and the recent list both ask it here."""
+    from admin.audit_cache import in_group
+
+    cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    t = line_table(table_name, {})
+    lined = len(db.execute(sa.select(t.c.row_id).where(in_group(t.c.batch, group)).distinct()
+                           .limit(cap + 1)).fetchall())
+    n = lined if lined > cap else lined + len(_unlined_receipts(db, t, table_name, group))
+    return (cap, True) if n > cap else (n, False)
 
 
 def group_line_rows(table_name, group):
@@ -433,18 +445,39 @@ def group_line_rows(table_name, group):
     return sa.select(t.c.row_id).where(in_group(t.c.batch, group))
 
 
-def group_rows(db, table_name, group, limit) -> list:
-    """The rows history group `group` changed in `table_name`, the first written first (its first line's line_id -
-    C 11-10), each with that line - who wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no
-    value: owner 11-10 «바뀐 행 네비»). -> [entry fields]"""
+#: lines read a step when a page is picked - a page's rows are found among them, so a step's work is bound to the page,
+#: never to the group (a migration group is 7.9 M lines - D 11-12)
+GROUP_STEP_LINES = 1000
+
+
+def group_rows(db, table_name, group, limit, after=None):
+    """A page of the rows history group `group` changed in `table_name`, each with its first line of the group - who
+    wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no value: owner 11-10 «바뀐 행 네비») -:
+    the lined rows first written first (C 11-10), then the receipt-only rows as named. `after` is where the page
+    before ended - ("lines", line_id) or ("receipts", how many were given). -> (entries, where this page ended or None
+    at the group's end)
+
+    Two steps, no group-wide statement (D 11-12, lead ㄴ): the group's next lines by line_id, then those lines' rows'
+    first line of the group - a row is given at its first line, so a page never repeats an earlier one's row."""
     from admin.audit_cache import in_group
 
     t = line_table(table_name, {})
-    first = sa.func.min(t.c.line_id)
-    from database import crud
-
-    picked = db.execute(sa.select(t.c.row_id, first).where(in_group(t.c.batch, group))
-                        .group_by(t.c.row_id).order_by(first.asc()).limit(limit)).fetchall()
+    part, pos = after or ("lines", 0)
+    picked = []
+    while part == "lines" and len(picked) < limit:
+        step = db.execute(sa.select(t.c.line_id, t.c.row_id).where(in_group(t.c.batch, group), t.c.line_id > pos)
+                          .order_by(t.c.line_id).limit(GROUP_STEP_LINES)).fetchall()
+        rows = list(dict.fromkeys(row_id for _line, row_id in step))
+        first = dict(db.execute(sa.select(t.c.row_id, sa.func.min(t.c.line_id)).where(
+            t.c.row_id.in_(rows), in_group(t.c.batch, group)).group_by(t.c.row_id)).fetchall()) if rows else {}
+        for line_id, row_id in step:
+            pos = line_id
+            if first[row_id] == line_id:
+                picked.append((row_id, line_id))
+                if len(picked) == limit:
+                    break
+        if len(step) < GROUP_STEP_LINES and pos == (step[-1][0] if step else pos):
+            part, pos = "receipts", 0
     said = {row.line_id: row for row in db.execute(sa.select(
         t.c.line_id, t.c.source_name, t.c.written_by, t.c.at, t.c.batch, t.c.business_key_val).where(
         t.c.line_id.in_([line_id for _row, line_id in picked]))).fetchall()} if picked else {}
@@ -452,18 +485,37 @@ def group_rows(db, table_name, group, limit) -> list:
             "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
             "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
             "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
-    # then the rows its receipts name and no line of the group does (a formula's write, owner 11-12 ㄴ), as named
-    lined = {row_id for row_id, _line in picked}
-    named = [(row_id, r) for row_id, r in crud.receipt_row_ids(db, table_name, group).items() if row_id not in lined]
-    named = named[:max(limit - len(out), 0)]
-    if named:
+    if part == "lines":
+        return out, ("lines", pos)
+    named = _unlined_receipts(db, t, table_name, group)
+    page = named[pos:pos + max(limit - len(out), 0)]
+    if page:
         now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String), sa.Column("business_key_val",
                                                                                             sa.String))
         keys = dict(db.execute(sa.select(now.c.row_id, now.c.business_key_val).where(
-            now.c.row_id.in_([row_id for row_id, _r in named]))).fetchall())
+            now.c.row_id.in_([row_id for row_id, _r in page]))).fetchall())
         out += [dict(r, id="%s:%s" % (r["id"], row_id), table_name=table_name, row_id=row_id,  # one entry, one id (D)
-                     business_key=keys.get(row_id)) for row_id, r in named]
-    return out
+                     business_key=keys.get(row_id)) for row_id, r in page]
+    pos += len(page)
+    return out, (("receipts", pos) if pos < len(named) else None)
+
+
+def encode_group_cursor(table_name, after) -> str:
+    """Where a transaction page ended - its table and `group_rows`' («lines», line_id) or («receipts», given) - as an
+    opaque token."""
+    raw = json.dumps([table_name, after[0], int(after[1])])
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def decode_group_cursor(token: str):
+    """`(table, (part, position))` from a transaction page's token, or raise CursorError."""
+    try:
+        table_name, part, pos = json.loads(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, ValueError, TypeError) as e:
+        raise CursorError(f"transaction cursor is not readable ({e})")
+    if not isinstance(table_name, str) or part not in ("lines", "receipts") or not isinstance(pos, int) or pos < 0:
+        raise CursorError("transaction cursor names no page")
+    return table_name, (part, pos)
 
 
 def winners(db, table_name, row_ids) -> dict:

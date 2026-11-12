@@ -650,22 +650,24 @@ export function createGlobalTimelineItemDom(group) {
             //    throw both tells the truth and leaves the group retryable.
             const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
             if (!res.ok) throw new Error(`transaction ${res.status}`);
-            const txDetail = await res.json();
-            group.logs = txDetail.logs;
+            // a page and its cursor (lead 11-12 ㄴ) - the rest by the «more» at its end
+            const page = readHistoryPage(await res.json(), 'logs');
+            group.logs = page.logs;
+            group.nextCursor = page.truncated ? page.nextCursor : null;
             state.fetchingTransactions.delete(txId);
             // 이제 그룹의 로그를 «전부» 들고 있습니다. 그러면 접힌 줄의 … 가 거짓말이 됩니다 --
             // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
             // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
             const keyEl = li.querySelector('.audit-target-table');
             if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
-            renderSubDetails(detailsContainer, group.logs);
+            renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId));
           } catch (err) {
             console.error('Failed to load transaction details', err);
             detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
             state.fetchingTransactions.delete(txId);
           }
         } else {
-          renderSubDetails(detailsContainer, group.logs);
+          renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId));
         }
       }
     };
@@ -1208,7 +1210,64 @@ export function installAuditFilters() {
   });
 }
 
-export function renderSubDetails(container, logs) {
+/** The pane of an unfolded transaction's rows (lead 11-12 ㄴ): the route answers a page and its cursor, and the same
+ *  «more» the history lists use reads the next one into this group's list - its lined rows, then its receipt-only
+ *  rows. A group read whole carries no cursor and no control. */
+export function transactionPane(group, txId) {
+  return {
+    label: () => `Partial (${group.logs.length}) · more`,
+    cursor: () => group.nextCursor || null,
+    session: () => state.historyReads.ticket,
+    live: () => state.expandedTransactions.has(txId),
+    url: (cursor) => `${API_BASE}/audit_logs/transaction/${txId}?cursor=${encodeURIComponent(cursor)}`,
+    listKey: 'logs',
+    absorb(page, btn) {
+      const list = btn.closest('.tx-details-container').querySelector('.sub-timeline-list');
+      page.logs.forEach((log) => {
+        group.logs.push(log);
+        list.appendChild(createSubDetailItemDom(log));
+      });
+      group.nextCursor = page.truncated ? page.nextCursor : null;
+    },
+    redraw: null,
+  };
+}
+
+export function createSubDetailItemDom(log) {
+  const li = document.createElement('li');
+  li.className = 'sub-timeline-item';
+
+  const col = log.column_name;
+  const val = formatVal(log.new_value);
+  const bk = log.business_key;
+  const targetId = bk ? (bk.length > 10 ? bk.slice(0, 10) + '...' : bk) : (log.row_id ? log.row_id.slice(0, 8) : '');
+
+  let labelText = '';
+  if (col === 'ROW_UPDATE') {
+    labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
+  } else {
+    labelText = `[${col}] ${val} (ID: ${targetId})`;
+  }
+
+  // 🔴 C-14. `labelText` is assembled from a column name, a business key and the value an
+  //    operator last typed — all three arrive from the server and none is authored here.
+  //    Escaped at the interpolation, which is where this file already escapes (`:224`), so
+  //    `formatVal` stays a formatter and does not become a second escaping author.
+  li.innerHTML = `
+    <span class="sub-bullet">└</span>
+    <span class="sub-log-text">${escapeHtml(labelText)}</span>
+  `;
+
+  li.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (log.row_id !== '_BATCH_') {
+      navigateToLog(log);
+    }
+  });
+  return li;
+}
+
+export function renderSubDetails(container, logs, pane = null) {
   container.innerHTML = '';
   const ul = document.createElement('ul');
   ul.className = 'sub-timeline-list';
@@ -1216,41 +1275,7 @@ export function renderSubDetails(container, logs) {
   const renderLimit = 500;
   const initialLogs = logs.slice(0, renderLimit);
   const remainingLogs = logs.slice(renderLimit);
-
-  function appendLogItem(log) {
-    const li = document.createElement('li');
-    li.className = 'sub-timeline-item';
-
-    const col = log.column_name;
-    const val = formatVal(log.new_value);
-    const bk = log.business_key;
-    const targetId = bk ? (bk.length > 10 ? bk.slice(0, 10) + '...' : bk) : (log.row_id ? log.row_id.slice(0, 8) : '');
-
-    let labelText = '';
-    if (col === 'ROW_UPDATE') {
-      labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
-    } else {
-      labelText = `[${col}] ${val} (ID: ${targetId})`;
-    }
-
-    // 🔴 C-14. `labelText` is assembled from a column name, a business key and the value an
-    //    operator last typed — all three arrive from the server and none is authored here.
-    //    Escaped at the interpolation, which is where this file already escapes (`:224`), so
-    //    `formatVal` stays a formatter and does not become a second escaping author.
-    li.innerHTML = `
-      <span class="sub-bullet">└</span>
-      <span class="sub-log-text">${escapeHtml(labelText)}</span>
-    `;
-
-    li.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (log.row_id !== '_BATCH_') {
-        navigateToLog(log);
-      }
-    });
-
-    ul.appendChild(li);
-  }
+  const appendLogItem = (log) => ul.appendChild(createSubDetailItemDom(log));
 
   initialLogs.forEach(appendLogItem);
   container.appendChild(ul);
@@ -1273,6 +1298,13 @@ export function renderSubDetails(container, logs) {
     });
     
     container.appendChild(moreBtn);
+  }
+
+  if (pane && pane.cursor()) {
+    const tail = document.createElement('ul');
+    tail.className = 'sub-timeline-more';
+    tail.appendChild(createHistoryMoreDom(pane));
+    container.appendChild(tail);
   }
 }
 

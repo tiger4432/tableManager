@@ -109,6 +109,8 @@ class ChangedTable(BaseModel):
     타입»): the rows counted from its lines - distinct, None while not counted -, the kinds and writers as written."""
     table_name: str
     changed_rows: Optional[int] = None
+    #: True == `changed_rows` is the floor - counted up to `audit_history.ROW_TOTAL_PROBE_CAP` («1,000+»)
+    changed_rows_truncated: bool = False
     kinds: list[str] = []
     written_by: list[str] = []
     at: Optional[datetime] = None
@@ -122,8 +124,13 @@ class ChangedTable(BaseModel):
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
     total_count: int = 0
-    #: the rows it changed - GET /audit_logs/transaction/{tx_id}; the recent list's groups carry none
+    #: GET /audit_logs/transaction/{tx_id}: True == `total_count` is the floor (counted up to ROW_TOTAL_PROBE_CAP)
+    total_truncated: bool = False
+    #: the rows it changed - GET /audit_logs/transaction/{tx_id}, a page; the recent list's groups carry none
     logs: list[AuditLogResponse]
+    #: GET /audit_logs/transaction/{tx_id}: more rows after this page, read with `?cursor=<next_cursor>`
+    truncated: bool = False
+    next_cursor: Optional[str] = None
     #: the recent list: the tables its audit batches name, the newest first
     changed: Optional[list[ChangedTable]] = None
 

@@ -92,9 +92,9 @@ class AuditLogCache:
         floor = audit_history.decode_cursor(start) if start else None
         keys, more, scanned, cut = _batch_walk(db, floor, limit_groups, settings)
         facts = _batch_facts(db, keys)
-        changed = _changed(db, facts)
-        groups = [{"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})}
-                  for key in keys]
+        changed, floors = _changed(db, facts)
+        groups = [{"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {}),
+                   "floors": floors.get(key, set())} for key in keys]
         cursor = None
         if more and keys:
             at, batch_id = _newest(facts.get(keys[-1], {}))
@@ -222,14 +222,14 @@ class AuditLogCache:
         b = lines.AuditBatch
         keys = list({group_of(tid) for (tid,) in db.query(b.transaction_id).filter(b.id > previous, b.id <= latest)})
         facts = _batch_facts(db, keys)
-        changed = _changed(db, facts)
+        changed, floors = _changed(db, facts)
         touched = sorted(keys, key=lambda key: _newest(facts.get(key, {})), reverse=True)[:limit_groups]
         with self._lock:
             if (self._batch_max_id or 0) != previous:
                 return None
             for key in reversed(touched):           # the newest ends on top
-                self._to_top({"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {})},
-                             limit_groups)
+                self._to_top({"transaction_id": key, "tables": facts.get(key, {}), "changed": changed.get(key, {}),
+                              "floors": floors.get(key, set())}, limit_groups)
             self._batch_max_id = latest
         return bool(keys)
 
@@ -385,16 +385,20 @@ def _batch_facts(db: Session, keys) -> Dict[str, dict]:
     return facts
 
 
-def _changed(db: Session, facts) -> Dict[str, dict]:
-    """{group: {table: rows changed}} - counted from each table's lines; None for a relation without lines."""
+def _changed(db: Session, facts):
+    """({group: {table: rows changed}}, {group: {tables whose count is the floor}}) - `audit_history.changed_rows`,
+    counted up to its cap; None for a relation without lines."""
     lined = {}
-    out = {}
+    out, floors = {}, {}
     for key, tables in facts.items():
         for name in tables:
             if name not in lined:
                 lined[name] = lines.has_lines(db, name)
-            out.setdefault(key, {})[name] = audit_history.changed_rows(db, name, key) if lined[name] else None
-    return out
+            n, floor = audit_history.changed_rows(db, name, key) if lined[name] else (None, False)
+            out.setdefault(key, {})[name] = n
+            if floor:
+                floors.setdefault(key, set()).add(name)
+    return out, floors
 
 
 audit_cache = AuditLogCache()

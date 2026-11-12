@@ -1561,7 +1561,8 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
             "transaction_id": g["transaction_id"],
             "total_count": sum(one["records"] for _name, one in tables),
             "logs": [],
-            "changed": [{"table_name": name, "changed_rows": g["changed"].get(name), "kinds": one["kinds"],
+            "changed": [{"table_name": name, "changed_rows": g["changed"].get(name),
+                         "changed_rows_truncated": name in g.get("floors", ()), "kinds": one["kinds"],
                          "written_by": one["written_by"], "at": one["at"]} for name, one in tables],
         })
     return {
@@ -1573,11 +1574,13 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     }
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
-def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000,
-                         table: str = None):
+def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 200,
+                         table: str = None, cursor: str = None):
     """The rows a transaction changed (owner 11-10 «바뀐 행 네비») - one entry a row, in each table its audit batches
-    name that keeps lines, the first written first (`audit_history.group_rows`). `table` narrows it to one table:
-    `?table=<t>&limit=1` is the row a panel line jumps to. A transaction with no batch is a 404."""
+    name that keeps lines, the first written first (`audit_history.group_rows`), a page of `limit` at a time: `cursor`
+    is the page before's `next_cursor` (null at the end, `truncated` false). `table` narrows it to one table:
+    `?table=<t>&limit=1` is the row a panel line jumps to. `total_count` is counted up to ROW_TOTAL_PROBE_CAP,
+    `total_truncated` says it is the floor. A transaction with no batch is a 404; a cursor it cannot read, a 400."""
     from database import lines
 
     person = access.person(request)
@@ -1588,18 +1591,29 @@ def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get
     if not named:
         raise HTTPException(status_code=404, detail="Transaction not found")
     lined = [name for name in named if access.may(person, name, access.READ) and lines.has_lines(db, name)]
-    logs = []
+    try:
+        at_table, after = audit_history.decode_group_cursor(cursor) if cursor else (None, None)
+    except audit_history.CursorError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid transaction cursor: {e}")
+    logs, ended = [], None
     for name in lined:
-        if len(logs) >= limit:
-            break
-        rows = audit_history.group_rows(db, name, tx_id, limit - len(logs))
+        if at_table is not None and name < at_table:
+            continue                                    # a table an earlier page ended
+        rows, ended = audit_history.group_rows(db, name, tx_id, limit - len(logs), after if name == at_table else None)
         gone = crud.deleted_rows(db, name, [entry["row_id"] for entry in rows])
         logs += [schemas.AuditLogResponse.model_validate(dict(entry, is_row_deleted=entry["row_id"] in gone))
                  for entry in rows]
+        if ended is not None:                           # a full page: a table at the limit ends it before its rows
+            ended = audit_history.encode_group_cursor(name, ended)
+            break
+    counted = [audit_history.changed_rows(db, name, tx_id) for name in lined]
     return {
         "transaction_id": tx_id,
-        "total_count": sum(audit_history.changed_rows(db, name, tx_id) for name in lined),
+        "total_count": sum(n for n, _floor in counted),
+        "total_truncated": any(floor for _n, floor in counted),
         "logs": logs,
+        "truncated": ended is not None,
+        "next_cursor": ended,
     }
 
 
