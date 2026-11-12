@@ -506,12 +506,14 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
                 kept.add(len(items))
                 items.append(kid)
                 same |= cs
+                rule = _owner(kid)[0]
                 for c in cs:
-                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i, _owner(kid)[0])
+                    row.setdefault(source, {})[c] = hand + (kid["values"][c], when, UNNUMBERED + i, rule)
             it["folds"] = {s: f - same for s, f in folds.items() if f - same}
             it["values"] = {c: value for c, value in it["values"].items() if c not in same}
+            rule = _owner(it)[0]
             for c, value in it["values"].items():
-                own[c] = hand + (value, when, UNNUMBERED + i, _owner(it)[0])
+                own[c] = hand + (value, when, UNNUMBERED + i, rule)
             for s, f in folds.items():             # a folded source no longer heads the column, whichever line took it
                 for c in f:
                     row.get(s, {}).pop(c, None)
@@ -632,9 +634,10 @@ def _lines(db, ln, bits, chunks, items, kept, targets, keys, at, transaction_id)
         it = items[i]
         said = it.get("values") if it["line_kind"] == WRITE else it.get("columns") if it["line_kind"] == WITHDRAW else ()
         masks = _masks(bits, chunks, said or ())
+        rule, key = _owner(it)
         row = {"line_kind": it["line_kind"], "source_name": it.get("source_name"), "at": it.get("at") or at,
                "written_by": it.get("written_by"), "batch": transaction_id, "input_row": it.get("input_row"),
-               "owner_rule": _owner(it)[0], "owner_key": _owner(it)[1], "confirmed": it.get("confirmed"),
+               "owner_rule": rule, "owner_key": key, "confirmed": it.get("confirmed"),
                "row_id": targets[i], "business_key_val": keys.get(targets[i])}
         for k in range(chunks):
             row["written_%d" % k] = masks[k]
