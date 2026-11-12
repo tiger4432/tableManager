@@ -86,10 +86,13 @@ def _data(bits: dict) -> list:
 def _owner(item) -> tuple:
     """(owner_rule, owner_key) a line of `item` carries: as the item names them, else as its source's name says them
     (`crud.layer_owner` - a layer `owned_layer_name` built; (None, None) for any other) - so the rank's «declared rule
-    first» reads every chain line the funnel writes (lead 11-12 ㄱ; 83de1715e)."""
+    first» reads every chain line the funnel writes (lead 11-12 ㄱ; 83de1715e). The name is read once an item: the
+    funnel's item carries it (`owner`, crud.update_item_as_line), else it is kept there on the first read."""
     if item.get("owner_rule") is not None:
         return item.get("owner_rule"), item.get("owner_key")
-    return crud.layer_owner(item.get("source_name")) or (None, None)
+    if item.get("owner") is None:
+        item["owner"] = crud.layer_owner(item.get("source_name")) or (None, None)
+    return item["owner"]
 
 
 def _cast(table, types, item, column, value):
@@ -480,9 +483,11 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
         items[i]["values"] = {c: crud.line_text(_cast(table, types, items[i], c, v), held.get(c, "string"))
                               for c, v in (items[i].get("values") or {}).items()}
     columns = sorted({c for i in writes for c in items[i]["values"]})
+    asked = sorted(set(columns) | {c for i in targets if items[i]["line_kind"] == WITHDRAW
+                                   for c in items[i].get("columns") or ()})
     heads = {}                                     # {row_id: {source: {column: (hand, input row, text, at, line_id)}}}
     for (row_id, source), said in _spoken(db, ln, bits, chunks, {targets[i] for i in targets if items[i]["line_kind"]
-                                                                 in (WRITE, WITHDRAW)}, columns).items():
+                                                                 in (WRITE, WITHDRAW)}, columns, asked).items():
         heads.setdefault(row_id, {})[source] = said
     asking = [i for i in writes if _asks_others(items[i], before.get(i) is not None)]   # `_version_gate`'s seat
     pins = ({cell: was[2] for cell, was in _overwrites(db, table, {targets[i] for i in asking},
@@ -502,12 +507,14 @@ def _leave_out(db, table, cfg, ln, bits, chunks, items, targets, held, before, a
             if it.get("source_name") == "user" and not it.get("respelled"):  # takes the pin off (`_marks`) - for the items after
                 for c in it["values"]:
                     pins.pop((row_id, c), None)
+            # the head's text as stored first: a line's text is line_text's, so an equal text is the same value
+            # (lead 11-12); a differing one is read again - a column retyped since, a zone changed since
             same = {c for c, value in it["values"].items() if c in own and own[c][:2] == hand
-                    and _head_text(own[c][2], held.get(c, "string")) == value}
+                    and (own[c][2] == value or _head_text(own[c][2], held.get(c, "string")) == value)}
             folds, moves = (_others(table, it, row_id, row, held, pins, same, ranks) if i in asking else ({}, {}))
             when = it.get("at") or at
             for source, cs in sorted(moves.items()):   # its share's layer of the value, under its own source
-                kid = dict(it, source_name=source, values={c: it["values"][c] for c in cs}, of=i,
+                kid = dict(it, source_name=source, values={c: it["values"][c] for c in cs}, of=i, owner=None,
                            folds={s: f & cs for s, f in folds.items() if f & cs})
                 targets[len(items)] = row_id
                 kept.add(len(items))
@@ -547,8 +554,9 @@ def _head_text(text, kind):
     return text if kind == "string" else crud.line_text(text, kind)
 
 
-def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
-    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - the columns each source heads on the row
+def _spoken(db, ln, bits, chunks, row_ids, columns, asked) -> dict:
+    """{(row_id, source): {column: (written_by, input_row, value text, at, line_id, owner_rule, copy_of)}} - of the
+    `asked` columns (the write's and its withdraws' - lead 11-12: not the table's every column), those each source heads on the row
     and has not withdrawn (what a withdraw can take back, the cell's layers), each with its head line's hand, input
     row, «when» and - for `columns` - its value. One read of the rows' head lines, one statement (no literal per
     item, 11-11; compiled once a write - lines.shape builds its Table anew)."""
@@ -556,6 +564,7 @@ def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
     withdrawn = [ln.c["withdrawn_%d" % k] for k in range(chunks)]
     values = [ln.c[lines.value_column(c)] for c in columns]
     src = lines.LineSource.__table__
+    masks = [(c,) + _bit(bits, c) for c in asked if c in bits]
     out = {}
     for page in _pages(sorted(row_ids), 1):
         for row in db.execute(select(ln.c.row_id, ln.c.source_name, ln.c.written_by, ln.c.input_row, ln.c.at,
@@ -563,8 +572,7 @@ def _spoken(db, ln, bits, chunks, row_ids, columns) -> dict:
                               .select_from(ln.outerjoin(src, src.c.source_name == ln.c.source_name))
                               .where(ln.c.row_id.in_(page), ln.c.line_kind == WRITE, or_(*[h != 0 for h in heads]))):
             said = dict(zip(columns, row[8 + 2 * chunks:]))
-            for c in bits:
-                k, m = _bit(bits, c)
+            for c, k, m in masks:
                 if row[8 + k] & m and not row[8 + chunks + k] & m:
                     out.setdefault((row[0], row[1]), {})[c] = (row[2], row[3], said.get(c), row[4], row[5], row[6],
                                                                row[7])
@@ -820,11 +828,12 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         return merged
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
     if moved or only_won:
+        stamped = set(moved)
         db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
             {**{c: bindparam("__%d" % n) for n, c in enumerate(data)},
              **({"won_by": bindparam("__won")} if keeps else {}), "updated_at": bindparam("__at")}),
             [{"__row": row_id, "__won": won_by[row_id], **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
-              "__at": at if row_id in set(moved) else old[row_id].get("updated_at")}
+              "__at": at if row_id in stamped else old[row_id].get("updated_at")}
              for row_id in moved + only_won])
     return merged
 
@@ -864,8 +873,11 @@ def _merges_again(item) -> bool:
 
 
 def _moved(old, new, columns, types) -> list:
-    """The `columns` whose value moved from the row `old` to `new` - what a reader of t sees change."""
-    return [c for c in columns if crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
+    """The `columns` whose value moved from the row `old` to `new` - what a reader of t sees change. A value that is
+    still the very object `old` holds was not touched and is not compared (lead 11-12 - a merge keeps the columns it
+    did not decide as they were read)."""
+    return [c for c in columns if old.get(c) is not new.get(c)
+            and crud.values_differ(old.get(c), new.get(c), types.get(c, "string"))]
 
 
 def _rekey(db, table, cfg, shape, keeps, items, targets, given, new, old, keys, at, transaction_id) -> dict:
