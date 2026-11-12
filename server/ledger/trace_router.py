@@ -1027,8 +1027,9 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
         raise HTTPException(status_code=422, detail={"reason": "filter_refused", "message": str(refused)}) from None
     rows = [row for (row,) in connection.execute(select(model.row_id).where(kept))]
     compared, number = column_filter.filter_column(model, column)
-    there = set(connection.execute(select(compared).where(kept).distinct()).scalars())
-    gone = [value for value in values if value is not None and (float(value) if number else value) not in there]
+    there = set(column_filter.set_values(connection.execute(select(compared).where(kept).distinct()).scalars(),
+                                         number, column))
+    gone = [value for value in column_filter.set_values(values, number, column) if value not in there]
     if gone:
         left_out.append({"why": "not in the table", "table": table, "values": len(gone)})
 

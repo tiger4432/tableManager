@@ -94,6 +94,21 @@ def filter_column(table_model, col_name):
     return (raw_col if is_numeric else models.search_text(raw_col)), is_numeric
 
 
+def set_values(values, is_numeric, col_name):
+    """A set filter's values as its column compares them (`filter_column`'s `is_numeric`) - the one reading of «is this
+    value that cell» for a set: the filter's and reach's «not in the table». A number column's as numbers
+    (FilterRefused naming a list that is not); any other's as text - a text as it came ('007' stays '007'), a number or
+    a bool in the spelling a text cell holds (`crud.comparison_text_value`, 3.0 -> '3'), so a row id sent as a number
+    meets the text row id (lead 11-11i: «character varying = integer»). None - the blank cells - left out."""
+    given = [value for value in values if value is not None]
+    if is_numeric:
+        try:
+            return [float(value) for value in given]
+        except (ValueError, TypeError):
+            raise FilterRefused("%s is not a list of numbers for '%s'" % (json_text(given), col_name)) from None
+    return [value if isinstance(value, str) else crud.comparison_text_value(value) for value in given]
+
+
 def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_expr_override=None):
     """AG-Grid filter spec -> SQLAlchemy condition.
 
@@ -196,14 +211,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # compares against `''`, so the caller owns making the expression text-typed. Every
     # caller here does.
     if f_type == SET:                     # each value as `equals` reads it, a null the blank cells (총괄 11-05)
-        given = [value for value in f_val if value is not None]
-        if is_numeric:
-            try:
-                given = [float(value) for value in given]
-            except (ValueError, TypeError):
-                raise FilterRefused("%s is not a list of numbers for '%s'" % (json_text(given), col_name)) from None
-        elif col_expr_override is not None:
-            given = [value if isinstance(value, str) else crud.comparison_text_value(value) for value in given]
+        given = set_values(f_val, is_numeric, col_name)
         met = [col_expr.in_(given)] if given else []
         if len(given) < len(f_val):
             met.append(crud.blank_sql_condition(models.search_text(col_expr) if is_numeric else col_expr))
