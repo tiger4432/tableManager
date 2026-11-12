@@ -700,6 +700,14 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     src, ov = LineSource.__table__, CellOverwrite.__table__
     terms = crud.rank_terms(table_name)
+    ranked = {}                                    # (line_id, unowned) -> its rank: a line is ranked once, not a cell
+
+    def ranks(line, unowned):
+        key = (line["line_id"], unowned)
+        if key not in ranked:
+            ranked[key] = rank(line, terms, unowned)
+        return ranked[key]
+
     out = {}
     for i in range(0, len(row_ids), 1000):
         part = row_ids[i:i + 1000]
@@ -720,11 +728,14 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
                 cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[value_column(col)]))
         for (row, col), said in cells.items():
             pin = pins.get((row, col))
-            unowned = chain_unowned([ln for ln, ok, _ in said if ok])
             left = [(ln, v) for ln, ok, v in said if ok and (pin is None or ln["source_name"] == pin)
                     and ln["source_name"] != exclude_source]
+            if len(left) == 1:                     # one candidate is the winner - no rank asked (main's 11-06 shortcut)
+                ln, value = left[0]
+            elif left:
+                unowned = chain_unowned([ln for ln, ok, _ in said if ok])
+                ln, value = min(left, key=lambda c: ranks(c[0], unowned))
             if left:
-                ln, value = min(left, key=lambda c: rank(c[0], terms, unowned))
                 out.setdefault(row, {})[col] = (crud.line_value(value, kinds.get(col, "string")), ln["line_id"])
             elif pin is None:
                 out.setdefault(row, {})[col] = (None, None)
