@@ -15,7 +15,11 @@
 
 ## 표 모양
 
-- 어느 표가 줄을 갖나 — 한 좌석 `lines.py:keeps_lines`: 운영자가 선언한 표. 보기(kind view)와 제품이 싣는 표(`shipped.names()`)는 갖지 않는다. 원장 자체 표는 선언이 아니라 갖지 않는다.
+- 어느 표가 줄을 갖나 — 한 좌석 `lines.py:keeps_lines`: 운영자가 선언한 표. 갖지 않는 것은 셋이다.
+  - 보기(kind view).
+  - 제품이 싣는 `sys_*` 표(`shipped.names()` — `server/declarations/table_config.json`, 17 개).
+  - 선언에 없는 관계(원장 자체 표 등) — TABLE_CONFIG 에 항목이 없다.
+  이런 표의 칸은 이력도 없다(`crud.py:keeps_history`).
 - 줄이 지어졌나 — 한 좌석 `lines.py:_catalogue`(`has_lines` 가 묻는다): `t__lines` 가 있고 t 에 won_by 가 있다. 표가 몇 개든 카탈로그를 한 번 읽는다.
 - 짓기 — 한 좌석 `lines.py:ensure_declared`. 스키마 동기화 · 키 인덱스 짓기 끝 · 시험 고정물이 부른다.
   - 선언된 표마다 빈 `t__lines` 와 won_by 를 짓고, 칸이 늘면 따라잡는다(`alter_columns`). DDL 은 `db_safety.short_ddl` 로 잠금 기다림에 상한을 둔다.
@@ -53,6 +57,8 @@
 5½. 키 다시 짓기(`_rekey`): 키 칸 값이 움직인 행은 키를 다시 짓고, 그 키를 다른 행이 쥐면 그 행으로 합친다 — «업무 키가 바뀔 때».
 6. 감사(`_audit`): (작업 종류, 누가)마다 `audit_batches` 한 행.
 7. outbox(`_stage`): 같은 트랜잭션에 CREATE · EDIT · DELETE 사건. 방송과 같은 답을 읽는다.
+
+표기 소급은 새 줄을 쓰되 «언제»(at)는 고친 줄의 것을 그대로 둔다 — 순위가 안 바뀐다. 그 줄은 새 손이 아니라서 고정 · 사람 표시를 옮기지 않는다(항목의 `at` · `respelled`).
 
 줄을 안 갖는 표는 t 만 쓴다 — 지움 · 만듦 · 다시 합치기는 그대로 하고, 줄과 감사 행은 없다.
 
@@ -98,7 +104,9 @@
 - 한 행 = (트랜잭션, 표, 누가, 작업 종류)(`write_lines.py:_audit`). 바뀐 행 수는 저장하지 않는다 — 그 트랜잭션의 줄(`_b`)에서 센다.
 - 작업 종류: edit · new · delete · withdraw · merge · mark, 이주의 copy, 그리고 부르는 쪽이 정한 낱말(formula 등).
 - 패널 클릭 → 그 트랜잭션의 줄 → row_id → 행.
-- `audit_logs` 에는 칸 줄을 안 쓴다(`crud.py:create_audit_log` 가 이력 없는 칸에 None). 남는 것은 칸이 아닌 기록(«*» 기록 · 영수증)이다.
+- 칸의 쓰기는 `audit_batches` 로 간다. `audit_logs` 에 남는 것은 관문 시험(`AUDIT_EVENTS_ALLOWED` · `EVENT_COLUMNS`)이 허용한 자리뿐이다.
+  - 칸이 아닌 기록(«*» 기록 · 영수증): `crud.create_audit_log` · `crud.bulk_insert_audit_logs` · `ledger/store._insert_audit_row`.
+  - 칸 줄 하나: 순위 다시 합치기(R3)가 보이는 값을 바꾼 칸의 «전 → 후»(`chain/replay.py:_write_resolved`, 총괄 11-11 허용).
 
 ## 이주
 
