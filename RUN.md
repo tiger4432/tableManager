@@ -92,14 +92,17 @@
 >          할 일: 지금 운영 중인 릴리스(옛 릴리스)로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) 새 릴리스로 올리고 ① 부터
 >
 > 이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ④ 를 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
-> 시간     조용한 박스 판(30 열 표 · 행마다 층 30 + 사람 층 20 칸에 하나 · 1 프로세스): 약 800 행/s · 25,000 층/s
+> 시간     박스의 전체 다시 옮기기(11-13, 30 열 표 sb_wide 217 만 행 · 층 7,331 만 · 1 프로세스, 다른 일과 같이):
+>            복사 100 만 행에 34.4 분 (층 16,348/s) · 표 끝의 VACUUM (ANALYZE) 100 만 행에 0.2 분 (t 0.18 + 줄 표 0.02)
+>            --estimate 가 이 두 수(BOX_RATE · VACUUM_MIN_PER_MILLION_ROWS)로 센다. 조용한 한 표 판(11-12)은 층 25,000/s
 >          운영 표는 그 표의 «행당 층 수»로 돈다 — 미리보기의 layer(s) ÷ row(s) 로 견준다. 진행 줄의 남은 시간을 본다
 > 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 안에 들어가는지 먼저 본다
 >          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
->              표마다 층 수(DB 통계에서 — 표를 읽지 않는다)와 시간. 끝 줄:
->              total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - at R layers/s, ...
+>              표마다 층 수와 행 수(DB 통계에서 — 표를 읽지 않는다), 복사 시간과 «+ vacuum N row(s) M min». 끝 줄:
+>              total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - at R layers/s and 0.2 min of vacuum a million rows, ...
+>              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다
 >              «at least B h» = 가장 큰 표 하나가 정하는 바닥이다. 4 시간 창에 copy 외(인덱스 · 첫 부팅)도 들어간다
->              끝 줄이 «a quiet box's rate» 면 박스 속도로 셈한 것이다 — 이 디스크 속도는 아래 --sample 로
+>              끝 줄이 «the box's re-migration rate» 면 박스 속도로 셈한 것이다 — 이 디스크 속도는 아래 --sample 로
 >          refused: no statistics for cell_sources - run again with --analyze ...
 >              통계가 없다. --estimate --analyze 로 다시(표본만 읽는다, 약 1 분)
 >          python scripts/copy_layers_to_lines.py --estimate --sample --workers 4      «업무 시간 밖에» — 디스크를 쓴다

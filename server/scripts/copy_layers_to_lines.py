@@ -46,8 +46,12 @@ RECORD = "copy_mismatch_%s.csv"
 RECORD_COLUMNS = ("table", "row_id", "column", "t_value", "lines_value")
 #: seconds between a table's progress lines
 SAY_EVERY = 10.0
-#: layers a second --estimate counts hours at: a quiet box, one 30-column table, one process (C, lead 11-12)
-BOX_RATE = 25000
+#: layers a second --estimate counts hours at: the box's full re-migration 11-13 (f481bf4a0, one process, other work
+#: beside it) - sb_wide 2,174,000 rows, 73,311,771 layers in 4,484 s (34.4 min per million rows); a quiet one-table
+#: board 11-12 had 25,000. RUN.md quotes it
+BOX_RATE = 16348
+#: minutes a million rows of t take at a table's end - VACUUM (ANALYZE) of t (0.18) and of t__lines (0.02), the same run
+VACUUM_MIN_PER_MILLION_ROWS = 0.2
 #: --sample: the schema it copies in (gone with its rollback), how long it copies, rows of t it brings in at a time
 SAMPLE_SCHEMA = "c_copy_sample"
 SAMPLE_SECONDS = 90.0
@@ -89,6 +93,15 @@ def estimate(engine) -> tuple:
                           % line_migration.OLD_LAYERS)
     per = {t: round(f * total) for t, f in common}
     return per, max(0, round(total) - sum(per.values())), round(total)
+
+
+def t_rows(engine, tables) -> dict:
+    """{table: its rows} from pg_class.reltuples - the catalogue, no row read; a table never analysed is 0."""
+    with engine.connect() as c:
+        got = dict(c.execute(text("SELECT relname, reltuples FROM pg_class WHERE relname = ANY(:t) AND relnamespace = "
+                                  "(SELECT oid FROM pg_namespace WHERE nspname = current_schema())"),
+                             {"t": list(tables)}).all())
+    return {t: max(0, round(got.get(t) or 0)) for t in tables}
 
 
 def sample(engine, table: str, cfg: dict, seconds: float = SAMPLE_SECONDS, page: int = 1000, during=None) -> dict:
@@ -337,7 +350,7 @@ def main(argv=None) -> int:
             print("refused: %s" % none)
             return 2
         shown = {t: n for t, n in per.items() if t in tables}
-        rate, whose = BOX_RATE, "a quiet box's rate; this disk's own is not measured - add --sample"
+        rate, whose = BOX_RATE, "the box's re-migration rate; this disk's own is not measured - add --sample"
         if args.sample and shown:
             biggest_table = max(shown, key=shown.get)
             print("sample: copying %s for %.0f s and rolling it back ..." % (biggest_table, SAMPLE_SECONDS), flush=True)
@@ -350,14 +363,20 @@ def main(argv=None) -> int:
                   % (biggest_table, got["pages"], got["layers"], got["seconds"], got["rate"]))
             if got["rate"]:
                 rate, whose = got["rate"], "this disk's rate, from the sample"
+        rows = t_rows(engine, shown)
+        vacuum = {t: rows[t] / 1e6 * VACUUM_MIN_PER_MILLION_ROWS / 60 for t in shown}    # hours
         for t in sorted(shown, key=lambda t: -shown[t]):
-            print("%-32s about %12d layer(s)  %6.2f h" % (t, shown[t], shown[t] / rate / 3600))
+            print("%-32s about %12d layer(s)  %6.2f h  + vacuum %d row(s) %.1f min" % (
+                t, shown[t], shown[t] / rate / 3600, rows[t], vacuum[t] * 60))
         print("%-32s about %12d layer(s) in tables too small for the statistics' list" % ("(the rest)", rest))
-        biggest = max(shown.values(), default=0)
+        hours = {t: shown[t] / rate / 3600 + vacuum[t] for t in shown}
+        rest_h = rest / rate / 3600
+        whole = sum(hours.values()) + rest_h
+        biggest = max(hours.values(), default=0.0)
         print("total about %d layer(s): %.1f h with 1 process, at least %.1f h with %d (the biggest table alone %.1f h)"
-              " - at %.0f layers/s, %s"
-              % (total, total / rate / 3600, max(biggest, total / max(1, args.workers)) / rate / 3600,
-                 args.workers, biggest / rate / 3600, rate, whose))
+              " - at %.0f layers/s and %.1f min of vacuum a million rows, %s"
+              % (total, whole, max(biggest, whole / max(1, args.workers)), args.workers, biggest, rate,
+                 VACUUM_MIN_PER_MILLION_ROWS, whose))
         return 0
     running = servers_on(engine)
     if running:
