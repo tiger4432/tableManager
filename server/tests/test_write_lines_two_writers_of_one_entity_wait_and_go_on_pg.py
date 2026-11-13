@@ -210,3 +210,23 @@ def test_at_one_instant_step_two_asks_the_later_line_on_postgresql(sessions, mon
     finally:
         s.rollback()
         s.close()
+
+
+def test_each_audit_item_names_the_batch_row_of_its_own_writer(sessions):
+    """The history list adds a batch once by its id (audit_cache.add_changed, lead 11-14): `_audit` inserts a batch a
+    (work kind, who) with INSERT ... RETURNING under PostgreSQL's insertmanyvalues - each answer item's batch_id is the
+    stored row of ITS kind and writer, matched by those columns, not by position."""
+    db = sessions()
+    try:
+        out = write_lines(db, TABLE, [{"key": {"k": "K%02d" % i}, "values": {"k": "K%02d" % i, "a": "x"},
+                                       "source_name": "f1", "written_by": "w%02d" % i} for i in range(12)],
+                          kind="funnel", transaction_id="tx-ids")
+        db.commit()
+        ab = lines.AuditBatch.__table__
+        stored = {r.id: (r.work_kind, r.written_by) for r in db.execute(select(ab).where(ab.c.transaction_id == "tx-ids"))}
+        said = {a["batch_id"]: (a["kind"], a["written_by"]) for a in out["audit"]}
+        assert len(stored) == 12 and len({who for _kind, who in stored.values()}) == 12, "canary: a batch a writer"
+        assert said == stored, "each item names the batch row of its own writer"
+    finally:
+        db.rollback()
+        db.close()
