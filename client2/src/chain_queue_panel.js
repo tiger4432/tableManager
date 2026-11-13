@@ -66,9 +66,12 @@ export function cancelOf(cancel) {
   return null;
 }
 
+/** A line's count as drawn: «N+» when the server stopped counting the line (`counted_to`, lead 11-13), else the int. */
+const lineCount = (v, stopped) => (stopped && isCount(v) ? `${localeCountText(v)}+` : countText(v));
+
 /** What a × carries: the cancel and the one question asked before it goes. */
-const skipOf = (cancel, events) => (cancel ? Object.freeze({ cancel,
-  question: isCount(events) ? `Skip ${unitText(countText(events), 'event')}?` : 'Skip this line?' }) : null);
+const skipOf = (cancel, events, stopped) => (cancel ? Object.freeze({ cancel,
+  question: isCount(events) ? `Skip ${unitText(lineCount(events, stopped), 'event')}?` : 'Skip this line?' }) : null);
 
 /** What a × says of a line that had already stopped waiting - the server's `already` (lead be5457365) - or ''. */
 const ALREADY = Object.freeze({ processed: 'Already ran', set_aside: 'Already set aside', gone: 'Gone' });
@@ -544,13 +547,14 @@ export function queueView(payload, opts = {}) {
   const splitByOwner = byOwner.length > 1;
 
   const src = Array.isArray(payload.waiting_transactions) ? payload.waiting_transactions : [];
-  const rows = src.map(t => Object.freeze({
+  const rows = src.map((t) => { const stopped = isCount(t.counted_to); return Object.freeze({
     ...lineName(t),
     // `rows` is the rows the line carries; `events` its outbox events (lead b3a4334db). The event
-    // count is said only where it is not the row count — a 「1 event」 on every plain row is noise.
-    rows: countOf(t.rows),
-    eventsNote: isCount(t.events) && Number(t.events) !== Number(t.rows)
-      ? unitText(countOf(t.events), 'event') : '',
+    // count is said only where it is not the row count — a 「1 event」 on every plain row is noise —
+    // or where the line was counted only to `counted_to` (lead 11-13).
+    rows: lineCount(t.rows, stopped),
+    eventsNote: isCount(t.events) && (stopped || Number(t.events) !== Number(t.rows))
+      ? unitText(lineCount(t.events, stopped), 'event') : '',
     // 🔴 S-36. A RETROACTIVE ROW SAYS WHAT IT IS, IN THE SLOT THAT SAID 「—」. Its `tables` is
     //    empty by construction (the run is not about one table), so this column was a dash on
     //    exactly the rows an operator most needs to identify — and the answer was already in
@@ -571,11 +575,11 @@ export function queueView(payload, opts = {}) {
     // An empty string means zero retries. The badge exists to surface the NON-zero ones,
     // and a 「0」 on every row is noise that hides the one row that is not 0.
     maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
-    skip: skipOf(cancelOf(t.cancel), t.events),
+    skip: skipOf(cancelOf(t.cancel), t.events, stopped),
     // The server's `{state, why}` (248ae20cd), drawn under the age - no sixth column (d886307b6, lead 10-08).
     chainState: t.chain_state || null,
     slotPid: t.slot_pid ?? null,
-  }));
+  }); });
 
   // Cut replays (총괄 fc1e1e385): no event waits for them, so no line above - one line each, after the waiting ones.
   const cutRows = Array.isArray(payload.interrupted_runs) ? payload.interrupted_runs.map(interruptedRow) : [];

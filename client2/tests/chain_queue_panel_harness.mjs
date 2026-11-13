@@ -862,6 +862,20 @@ async function xSuite(m, say) {
   const bare = seat({ ...BODY, waiting_transactions: BODY.waiting_transactions.map(({ cancel, ...t }) => t) });
   say('X7 a table with no × on any line keeps its five columns', byTag(bare.host, 'TH').length === 5
     && rowXs(bare.host).every((x) => !x), String(byTag(bare.host, 'TH').length));
+  // A line the server counted only to `counted_to` says so in its badge, its Rows and its question; a line without the
+  // key is exact, drawn as before (lead 11-13).
+  const seatCounted = (extra) => seat({ ...BODY, waiting_transactions: [{ transaction_id: 'dddddddd-1111', events: 1000,
+    rows: 1000, tables: ['wafer_process'], waiting_seconds: 40, cancel: { key: 'tx:dddddddd-1111' }, ...extra }] });
+  const rowsDrawn = (s) => [...[...rowsOf(s.host)[0].children].find((td) => td.getAttribute('data-col') === 'rows').children]
+    .map((n) => n.textContent);
+  const stoppedSeat = seatCounted({ counted_to: 1000 });
+  press(rowXs(stoppedSeat.host)[0]);
+  say('XC1 a line counted only to 1,000: «1,000+ events» beside Rows «1,000+», its × asks «Skip 1,000+ events?»',
+    same([rowsDrawn(stoppedSeat), stoppedSeat.asked], [['1,000+ events', '1,000+'], ['Skip 1,000+ events?']]), JSON.stringify([rowsDrawn(stoppedSeat), stoppedSeat.asked]));
+  const exactSeat = seatCounted({});
+  press(rowXs(exactSeat.host)[0]);
+  say('XC2 the same line without the key is exact, drawn as before',
+    same([rowsDrawn(exactSeat), exactSeat.asked], [['1000'], ['Skip 1000 events?']]), JSON.stringify([rowsDrawn(exactSeat), exactSeat.asked]));
   const sent = [];
   const answer = (status, body) => async (url, init) => {
     sent.push({ url, method: init.method, body: init.body });
@@ -1086,7 +1100,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'XM3', what: 'no question is asked', catches: 'X3',
       mutate: swap('if (skip && this.confirm(skip.question)) this.onCancel(skip.cancel);', 'if (skip) this.onCancel(skip.cancel);') },
     { id: 'XM4', what: 'the question does not say how many', catches: 'X2',
-      mutate: swap("`Skip ${unitText(countText(events), 'event')}?`", "'Skip this line?'") },
+      mutate: swap("`Skip ${unitText(lineCount(events, stopped), 'event')}?`", "'Skip this line?'") },
+    { id: 'XM11', what: 'a line counted only to counted_to is drawn as exact', catches: 'XC1',
+      mutate: swap('const stopped = isCount(t.counted_to);', 'const stopped = false;') },
     { id: 'XM5', what: 'the × column always stands', catches: 'X7',
       mutate: swap('const act = rows.some((r) => r.skip || r.resume);', 'const act = true;') },
     { id: 'XM6', what: 'the POST carries no key', catches: 'X8', mutate: swap('body: JSON.stringify({ key })', 'body: JSON.stringify({})') },
