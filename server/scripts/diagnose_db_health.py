@@ -178,6 +178,11 @@ with engine.connect() as conn:
     #    would have caught `database_outbox` on the day this tool called it clean.
     print(f"\n4. BLOAT (dead tuples over {int(BLOAT_RATIO_FLAG * 100)}% of live or over "
           f"{DEAD_ABSOLUTE_FLAG:,} absolute; page density judged separately)")
+    from database import lines
+
+    # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
+    schemas = sa.inspect(conn).get_schema_names()
+    names = sorted({t for s in schemas for t in lines.base_tables(conn, lines=True, schema=s)})
     rows = conn.execute(sa.text("""
         SELECT s.relname, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.last_autoanalyze,
                s.last_analyze, s.n_mod_since_analyze, c.reltuples::bigint, c.relpages,
@@ -190,10 +195,11 @@ with engine.connect() as conn:
         --    조건을 더한다 — 카운터가 유실되면 `n_dead_tup`도 0으로 읽히므로 데드 기준만으로는
         --    **가장 부푼 테이블이 조회 자체에서 빠진다**(database_outbox가 정확히 그랬다).
         --    페이지 수는 카운터가 아니라 pg_class에서 오므로 그 구멍을 메운다.
-        WHERE s.n_dead_tup > :dead OR s.last_autoanalyze IS NULL OR c.relpages > :pages
+        WHERE (s.n_dead_tup > :dead OR s.last_autoanalyze IS NULL OR c.relpages > :pages)
+          AND s.schemaname = ANY(:schemas) AND s.relname = ANY(:names)
         ORDER BY c.relpages DESC
         LIMIT 20
-    """), {"dead": DEAD_ABSOLUTE_FLAG, "pages": DENSITY_MIN_PAGES}).fetchall()
+    """), {"dead": DEAD_ABSOLUTE_FLAG, "pages": DENSITY_MIN_PAGES, "schemas": schemas, "names": names}).fetchall()
 
     def exact_count(table_name):
         """The real row count, bounded. `None` means 'could not settle it in time'.

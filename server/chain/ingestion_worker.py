@@ -4161,7 +4161,8 @@ LAYER_HEALTH_JOB = "layer_health"
 #: asks every table's files - 21 s on the box's 1,183 tables against 16 ms, the same eight first.
 LAYER_HEALTH_TABLES = ("SELECT s.relid::regclass::text, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.autovacuum_count, "
                        "age(c.relfrozenxid) FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid "
-                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 ORDER BY c.relpages DESC LIMIT :n")
+                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 "
+                       "AND s.schemaname = ANY(:schemas) AND s.relname = ANY(:names) ORDER BY c.relpages DESC LIMIT :n")
 
 
 def _report_layer_table_health():
@@ -4201,8 +4202,16 @@ def _report_layer_table_health():
     if engine is None:
         return rest
     try:
+        from sqlalchemy import inspect as _inspect
+
+        from database import lines
+
         with engine.connect() as conn:
-            tables = conn.execute(_text(LAYER_HEALTH_TABLES), {"n": int(units or 1)}).fetchall()
+            # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
+            schemas = _inspect(conn).get_schema_names()
+            names = sorted({t for s in schemas for t in lines.base_tables(conn, lines=True, schema=s)})
+            tables = conn.execute(_text(LAYER_HEALTH_TABLES),
+                                  {"n": int(units or 1), "schemas": schemas, "names": names}).fetchall()
     except Exception as exc:                                           # noqa: BLE001 - the watch alone goes quiet
         logger.warning("[LayerHealth] tables ? - %s", told(exc))
         return rest
