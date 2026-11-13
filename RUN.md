@@ -40,7 +40,22 @@
 >             LineTablesRefused ... <표>: index <이름> not built (<답>)   시작을 거절했다. 바로 위 줄이 이유. 그 세션이 끝난 뒤 다시
 >             [Lines] <표>__lines: dropped uq_bk_<표>__lines - ...        할 일 없음. 시작마다 나오면 그 줄을 총괄께
 >   /health   응답이 오면 api 가 떴다
->   화면 넷    큰 표의 grid · 이력 패널 · 큐 · 갤러리 (D 의 점검표 — 리허설에서 이 자리에 붙인다)
+>   화면 넷    이 순서로 연다. «볼 것» 이 아니면 그 화면의 로그 줄과 시각을 총괄께 (D 의 점검표)
+>             ① 큰 표의 grid  index.html -> 표 고르기
+>                볼 것  Loaded: 1 - 1000 · Matches «N rows · 10s ago» 또는 «10,000+ rows» · 작성자 색이 첫 그림에 같이
+>             ② 이력 패널  index.html 오른쪽 Global 탭
+>                볼 것  묶음 줄들 + 끝에 «Partial (100) · more» · 접힌 줄의 «N rows» (1,000 을 넘으면 «1,000+ rows»)
+>             ③ 큐  admin.html -> Overview 의 Queue
+>                볼 것  «Read N s ago» 가 5 s 마다 0 으로 돌아간다 · Waiting 카드 «N events · 10s ago»
+>             ④ 갤러리  grid 아래 Gallery (이미지 칸이 있는 표에서만 보인다)
+>                볼 것  «N rows» 또는 «312 of 1,200 loaded» + «Load more» · 썸네일 타일
+>             화면에 «[null] Deleted» 나 «Empty →» 가 보이면 브라우저가 옛 번들을 쥐고 있다: Ctrl+F5
+>             박스 리허설 (총괄 11-14 02:5x, 번들 main-BR3B7LNN.js):
+>                ① grid    착지 뒤 쓴 값이 보인다
+>                ② 이력    Global 목록이 그려진다 · 두 표 트랜잭션이 한 줄 «text_doc +1 · 2 ROWS» · 표 이름을 누르면
+>                          그 행으로 간다 · 펼치면 «K0000001 · by …» · Row 탭은 새 값만
+>                ③ 큐      Waiting 카드 «N events · Ns ago»
+>                ④ 갤러리  안 열었다 (리허설 표에 이미지 칸이 없다)
 >   알려진 것  Global history no longer shows ledger batch receipts (owner 11-13: not needed). Table-wide (*) records:
 >             not shown yet – still recorded, they show once the history reads them (after 11-14)
 >             파일 하나가 끝날 때 남는 FILE 줄과 chunk 줄은 아직 옛 표 (audit logs · cell sources) 를 세고 있어서
