@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""총괄 5c0a86cec ② (소유자 10-20): a batch's changed rows are locked first, a table's all in row_id order, before the
-shape groups write them (`database.write_changed_rows_by_shape`). The groups lock group by group, so two writers that
-change other columns of the same rows took them in crossing orders and deadlocked (40P01, which nothing retries)."""
+"""총괄 5c0a86cec ② (소유자 10-20): a batch's changed rows are locked first, a table's all in row_id order (on the
+overhaul write_lines' claim, step 1; the before_flush shape hook that did it is retired there, lead 11-13 ㄱ). Locked
+group by group, two writers that change other columns of the same rows took them in crossing orders and deadlocked
+(40P01, which nothing retries)."""
 import threading
 import time
 import uuid

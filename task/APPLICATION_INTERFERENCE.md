@@ -37,7 +37,7 @@
 |---|---|---|---|
 | 체인 표 잠금 — advisory 두 열쇠 `(70190408, hashtext(표))`, 따로 연결 · 정렬 순 | `chain/table_locks.py` `hold` | 슬롯 그룹(`_claimed_group_sync`) · 리플레이 스윕(`replay.sweep_finished_replays`) — `git grep` 으로 `hold(` 부르는 곳 «둘» | API 저장 · 와처 · 소급 직접 op · 그룹 끝 거두기 · 명령줄 |
 | 소급 게이트 — advisory 한 열쇠 `hashtext('retroactive_gate')` + 런 행 상태 | `admin/retroactive.py` `claim` · `in_flight_rows` | 소급끼리(스케줄러 · 디스패처 리플레이 · `run_here` 명령줄) | 체인 슬롯 · API · 와처. 한 열쇠와 두 열쇠는 PostgreSQL 에서 «다른 공간»이라 표 잠금과 절대 안 겹침 |
-| 플러시 행 잠금 — 바뀐 동적 행을 row_id 순 `FOR UPDATE` | `database/database.py` `write_changed_rows_by_shape`(before_flush) | ORM 으로 기존 행을 바꾸는 모든 쓰기 | **읽기 뒤**에 걸림 — 교착은 막고 «잃은 갱신»은 못 막음. 새 행 · 직접 SQL 은 안 걸림 |
+| 플러시 행 잠금 — 바뀐 동적 행을 row_id 순 `FOR UPDATE` (은퇴, 그 자리는 `write_lines._claim` — 총괄 11-13 ㄱ) | `database/database.py` `write_changed_rows_by_shape`(before_flush) | ORM 으로 기존 행을 바꾸는 모든 쓰기 | **읽기 뒤**에 걸림 — 교착은 막고 «잃은 갱신»은 못 막음. 새 행 · 직접 SQL 은 안 걸림 |
 | 키 유일 인덱스 + 다시 읽어 합침 | `crud.apply_batch_updates` · `_is_business_key_unique_violation` | 같은 키 새 행을 동시에 넣는 모든 쓰기 | 인덱스가 «없는» 표 — 중복이 이미 있으면 인덱스를 안 짓는다(`_ensure_business_key_unique_indexes_sync`) |
 | 대기열 행 `FOR UPDATE` id 순 | `ingestion_worker._ran_though_set_aside` · `set_aside._mark` | 그룹 끝 × 운영자 ×(치워 두기) | `POST /admin/outbox/retry-failed` |
 | 줄 열쇠 — 한 줄 = 한 슬롯 | `slots.SlotPool.tick` 의 메모리 `held` | 슬롯끼리 | 디스패처가 «하나»일 때만 참 — 하트비트 파일 가드(`another_chain_loop_is_running`), DB 잠금 아님 |

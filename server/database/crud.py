@@ -3562,8 +3562,8 @@ def one_kind(values) -> bool:
 def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     """`rows` [[key, a value per name but updated_at]] into `table` in one statement - updated_at, when
     named, is the batch's instant as the door stamps it (`batch_write_instant`, else now()). -> the result
-    (its `rowcount`). The one array writer: the notation fold, the unit mark and the flush's changed rows
-    (`database.write_changed_rows_by_shape`, 총괄 8af4d378c) call it."""
+    (its `rowcount`). The one array writer: write_lines._merge_now's changed rows and line_migration's won_by
+    copy call it."""
     from sqlalchemy import text
 
     valued = [name for name in names if name != "updated_at"]

@@ -2373,6 +2373,7 @@
 - **함정**: 원자가 없는 행(모든 소스의 `exclude_when` 이 뺌 · 시각이 빈 칸)은 Latest 의 집합에 안 든다. 원장이 못 읽는 시각은 조용히 빠지지 않고 그 칸 이름으로 실패한다. 소스들이 다른 시각을 읽거나 묶음 시각이면 거절.
 
 ### **바뀐 행 쓰기는 모양별 배열 UPDATE 한 번 — `database.write_changed_rows_by_shape` → `crud.update_by_arrays`** (2026-10-14 등록 · B `15ba5c63b`, 총괄 8af4d378c)
+- ⚰️ **오버홀에서 은퇴 (총괄 11-13 ㄱ)** — 표 t 의 쓰기는 모두 write_lines 를 지나므로 이 훅의 일하는 갈래에 닿는 쓰기가 없었다(정적 셈 0 · PG 탐침 0). 바뀐 행은 `write_lines._merge_now` 가 `crud.update_by_arrays` 로 쓴다. 35685064e 부터 main 이 오버홀이라 main 에서도 은퇴다.
 - **어디**: flush 앞(PostgreSQL)에서 동적 표의 바뀐 행을 (표, 바뀐 칸 묶음)마다 `crud.update_by_arrays` 문장 하나로 쓰고 그 값을 커밋된 것으로 표시한다. 배열 쓰개는 이 하나 — 표기 접기 · 단위 표시도 부른다.
 - **언제 재사용**: 많은 행을 칸 몇 개씩 고치는 새 자리 — 행마다 UPDATE 를 짓지 않는다.
 - **함정**: flush 에 남는 넷 — SQL 식 값 · 바뀐 키 · 한 칸에 두 형(배열은 형 하나) · `updated_at` 이 None 인 행. 아웃박스 기록(`auto_stage_database_outbox`) «뒤»에 걸려야 사건이 옛 값을 먼저 읽는다. 문장이 이름 댄 행을 다 못 건드리면 ORM 처럼 거절.

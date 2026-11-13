@@ -400,68 +400,6 @@ def notify_on_outbox_change(session, flush_context, instances):
                 return
 
 
-@event.listens_for(Session, "before_flush")
-def write_changed_rows_by_shape(session, flush_context, instances):
-    """[PostgreSQL] The changed rows of each dynamic table, ONE array UPDATE per set of changed columns
-    (`crud.update_by_arrays`), then those values marked committed so the flush writes them no more (총괄 8af4d378c ㄱ).
-
-    🔴 THE ORM BATCHES ONLY ROWS THAT CHANGE THE SAME COLUMNS AND STAND NEXT TO EACH OTHER in key order. A chain group
-       whose two rules change different columns on different rows of one table (a join's two, a fold's mark - box c1,
-       2,000 rows) interleaved them, and the flush sent ~1,000 UPDATEs, 1.4 s. Grouped by shape it sends one each.
-    ⚠️ AFTER `auto_stage_database_outbox` - registered below it, so the events and their old values read the
-       history first. Only the columns a row changed are written, as the ORM writes them. A value the ORM would
-       compute in SQL (an expression) and a changed key stay with the flush. Each statement must touch every row it
-       names - fewer is a row gone from under the write, refused as the ORM refuses it (its row count check).
-    ⚠️ LEFT WITH THE FLUSH (총괄 10-14): a group whose column holds values of two kinds (text and a number, a
-       boolean - the ORM casts each row on assignment, one array takes one type), and a row whose `updated_at` is
-       None (the array writes now() for it). In key order, groups by (table, columns).
-    🔴 THE CHANGED ROWS ARE LOCKED FIRST, a table's all in row_id order (총괄 5c0a86cec ②): the groups lock group by
-       group, so two writers changing other columns of the same rows took them in crossing orders - 40P01, which
-       nothing retries (box: 12 of 13 runs, 1,000 rows each way).
-    """
-    from .models import DYNAMIC_TABLES
-    dynamic = tuple(DYNAMIC_TABLES.values())
-    if not dynamic or not session.dirty or session.get_bind().dialect.name != "postgresql":
-        return
-    from sqlalchemy import inspect
-    from sqlalchemy.orm.attributes import set_committed_value
-    from sqlalchemy.sql import ClauseElement
-
-    shapes, locking = {}, {}
-    for obj in session.dirty:
-        if not isinstance(obj, dynamic):
-            continue
-        state = inspect(obj)
-        changed = {attr.key: attr.value for attr in state.attrs if attr.history.has_changes()}
-        if state.persistent and changed:
-            locking.setdefault(obj.__table__, set()).add(obj.row_id)
-        if (not state.persistent or not changed or "row_id" in changed
-                or ("updated_at" in changed and changed["updated_at"] is None)
-                or any(isinstance(value, ClauseElement) for value in changed.values())):
-            continue
-        stamp = changed.get("updated_at")
-        shapes.setdefault((obj.__table__, tuple(sorted(changed)), stamp), []).append((obj, changed))
-    from sqlalchemy import select
-
-    from database import crud
-
-    for table in sorted(locking, key=lambda table: table.name):
-        session.execute(select(table.c.row_id).where(table.c.row_id.in_(sorted(locking[table])))
-                        .order_by(table.c.row_id).with_for_update())
-    for (table, names, stamp) in sorted(shapes, key=lambda shape: (shape[0].name, shape[1], repr(shape[2]))):
-        rows = sorted(shapes[(table, names, stamp)], key=lambda row: row[0].row_id)
-        if not all(crud.one_kind([changed[name] for _obj, changed in rows]) for name in names):
-            continue
-        written = crud.update_by_arrays(session, table, names, [
-            [obj.row_id] + [changed[name] for name in names if name != "updated_at"] for obj, changed in rows], stamp)
-        if written.rowcount != len(rows):
-            raise RuntimeError("[WriteByShape] %s: an UPDATE of %d row(s) changing %s touched %d - a row went from "
-                               "under the write" % (table.name, len(rows), ", ".join(names), written.rowcount))
-        for obj, changed in rows:
-            for name, value in changed.items():
-                set_committed_value(obj, name, value)
-
-
 def _outbox_envelope():
     """The (tx_id, user, source, timestamp) every outbox payload carries.
 
