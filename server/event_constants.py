@@ -343,12 +343,14 @@ def queue_line_rows(outbox, key):
     an indexed narrowing - the primary key for a row's key, `idx_outbox_line` (its run or transaction,
     asked with `processed_chain` false) otherwise - so a × and a slot's window read that line's rows and
     not the whole waiting queue (소유자 10-08, 총괄 c0e6906f1)."""
-    from sqlalchemy import func
+    from sqlalchemy import func, true
 
     row = key[len(QUEUE_ROW_KEY_PREFIX):] if key.startswith(QUEUE_ROW_KEY_PREFIX) else None
-    narrow = (outbox.id == int(row) if row is not None and row.isdigit()
-              else func.coalesce(outbox.run_id, outbox.transaction_id) == key)
-    return narrow, queue_line_key(outbox) == key
+    if row is not None and row.isdigit():
+        return outbox.id == int(row), queue_line_key(outbox) == key
+    # a run's or a transaction's key: the index's expression IS the line - the whole key expression beside it made
+    # the planner expect a few rows and read the whole line, then sort it (11-13, 1.6M waiting: 9.1 ms vs 3.6 ms a line)
+    return func.coalesce(outbox.run_id, outbox.transaction_id) == key, true()
 
 
 def mark_cancelled(event, by: str, reason: str):

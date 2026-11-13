@@ -620,7 +620,7 @@ def test_an_empty_queue_reports_no_age_rather_than_zero(client, db_session):
     db_session.commit()
 
     body = _queue(client)
-    assert body["waiting"] == 0
+    assert body["waiting"]["total"] == 0
     assert body["oldest_waiting_seconds"] is None
     assert body["oldest_waiting_at"] is None
 
@@ -647,7 +647,7 @@ def test_the_age_is_measured_from_the_oldest_waiting_row(client, db_session):
                created_at=now - _dt.timedelta(seconds=age))
 
     body = _queue(client)
-    assert body["waiting"] == 3
+    assert body["waiting"]["total"] == 3
     assert 550 <= body["oldest_waiting_seconds"] <= 700, (
         f"the age must come from the 600s row, not another one: {body}")
 
@@ -675,12 +675,13 @@ def test_a_row_the_chain_has_run_stops_counting(client, db_session):
 
     now = _dt.datetime.now(_dt.timezone.utc)
     _stage(db_session, processed_chain=True, created_at=now - _dt.timedelta(seconds=9999))
-    assert _queue(client)["waiting"] == 0
+    assert _queue(client)["waiting"]["total"] == 0
     assert _queue(client)["oldest_waiting_seconds"] is None
 
     _stage(db_session, processed_chain=False, created_at=now - _dt.timedelta(seconds=42))
+    _main.WAITING_COUNTS.forget()                    # counted behind and kept (lead 11-13): this read asks again
     body = _queue(client)
-    assert body["waiting"] == 1
+    assert body["waiting"]["total"] == 1
     assert 30 <= body["oldest_waiting_seconds"] <= 120, (
         "the processed row's age leaked into the answer")
 
@@ -700,8 +701,8 @@ def test_retries_are_counted_among_the_waiting_only(client, db_session):
     _stage(db_session, processed_chain=True, retry_count=7)      # done: not our business
 
     body = _queue(client)
-    assert body["waiting"] == 2
-    assert body["retried_among_waiting"] == 1
+    assert body["waiting"]["total"] == 2
+    assert body["retried_among_waiting"]["total"] == 1
 
 
 def test_the_route_writes_nothing(client, db_session):
@@ -714,7 +715,7 @@ def test_the_route_writes_nothing(client, db_session):
         _queue(client)
 
     verbs = {str(call.sql).strip().split()[0].upper() for call in recorded if call.sql}
-    assert verbs <= {"SELECT", "BEGIN", "COMMIT", "ROLLBACK", "SET", "PRAGMA"}, (
+    assert verbs <= {"SELECT", "WITH", "BEGIN", "COMMIT", "ROLLBACK", "SET", "PRAGMA"}, (
         f"the queue route issued something other than reads: {sorted(verbs)}")
     assert any(v == "SELECT" for v in verbs), "it did not read anything; test is vacuous"
 

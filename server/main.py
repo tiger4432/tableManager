@@ -1255,6 +1255,9 @@ WHOLE_COUNTS = behind.Behind("whole-counter", _whole_pacing, "[Count] the whole 
 #: The auto-confirm rules' queue counts (`missing_counts`) - the same keys and pacing on a worker of their own: a long
 #: count of a derived table never holds a grid's whole count (lead 11-10).
 QUEUE_COUNTS = behind.Behind("queue-counter", _whole_pacing, "[Count] the queue count of %s was not counted")
+#: The chain queue screen's waiting rows by kind (`queue_lines.waiting_by`) on a worker of their own - a grouping of
+#: every waiting row, 0.44 s at 1.6M of them (lead 11-13, box board), off the request and the grid's counts.
+WAITING_COUNTS = behind.Behind("waiting-counter", _whole_pacing, "[Count] the waiting events by %s were not counted")
 
 
 def _count_again(table_name):
@@ -1334,11 +1337,18 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
 
     held = _kept_count(db, cache_key, functools.partial(_table_rows, table_name, world),
                        directory_watcher.count_max_age_seconds())
+    return count_said(held, held and held.get("total"), held and held.get("capped", False))
+
+
+def count_said(held, total, capped=False):
+    """A count made behind as every screen draws it (client `match_count.js`): its `total` (and `capped`) from `held`,
+    the kept run (`_kept_count`) - None: never counted, `counting`.
+    -> {"total", "capped", "counted_at", "count_seconds", "counting", "failed": None or {"reason", "at"}}"""
     if held is None:
         return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
                 "failed": None}
-    return {"total": held.get("total"), "capped": held.get("capped", False), "counted_at": held.get("at"),
-            "count_seconds": held.get("seconds"), "counting": False, "failed": held["failed"]}
+    return {"total": total, "capped": bool(capped), "counted_at": held.get("at"), "count_seconds": held.get("seconds"),
+            "counting": False, "failed": held["failed"]}
 
 
 def invalidate_table_cache(table_name: str):
@@ -4764,24 +4774,32 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     from sqlalchemy import func as _f
 
     outbox = models.DatabaseOutbox
-    waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
 
-    # 🔴 THE PAYLOAD OF THE WAITING ROWS IS READ ONCE (소유자 10-08 「대기열 화면 로딩 5초」 · 총괄 6d7046a42).
-    #    Two reads where five were, two of them over every payload: the kinds - depth, retries, the
-    #    owners' depth and age - need no payload; the lines and each line's tables and kinds come from
-    #    one grouping by (line, kind, table), ranked by the line's first id and cut at the cap in SQL,
-    #    so only the listed lines come back. Both scan the waiting rows only (`idx_outbox_unprocessed`).
+    # 🔴 NO READ HERE GROWS WITH THE WAITING ROWS (owner 11-13, D's R4 split: 3.8-9.9 s at 1.6-1.9M, 41 stalls).
+    #    The kinds - depth, retries, the owners' depth and age - are counted behind (WAITING_COUNTS); the lines are
+    #    found off their index and only the listed lines are read, each to COUNTED_TO (`chain.queue_lines`).
     # 🔴 이 표를 비우는 것은 «둘»이다 — 깊이와 나이를 «소유자별로» 가른다(2026-09-04, 소급 실행 «한 건»이
     #    나이만 먹는 동안 화면이 사람을 체인으로 보냈다). 줄의 신원과 상한은 `chain.queue_lines` 가 말한다.
     from chain import queue_lines
-    kinds = queue_lines.waiting_by(db, outbox.event_type)
-    waiting = sum(count for _kind, count, _oldest, _retried in kinds)
-    retried = sum(retried_of_kind for _kind, _count, _oldest, retried_of_kind in kinds)
+    from parsers import directory_watcher
+
+    def _kinds(own):
+        """{"kinds": [(event type, events, oldest created_at as UTC text, retried)]} - what WAITING_COUNTS keeps."""
+        return {"kinds": [(kind, int(count or 0), (oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc))
+                           .isoformat() if oldest is not None else None, int(retried or 0))
+                          for kind, count, oldest, retried in queue_lines.waiting_by(own, outbox.event_type)]}
+
+    # counted behind, at most once per count_recount_seconds: the card says when (lead 11-13 (다))
+    kept_kinds = _kept_count(db, "event_type", _kinds, directory_watcher.count_recount_seconds(), counts=WAITING_COUNTS)
+    kinds = (kept_kinds or {}).get("kinds") or []
+    waiting = count_said(kept_kinds, sum(count for _kind, count, _oldest, _retried in kinds))
+    retried = count_said(kept_kinds, sum(retried_of_kind for _kind, _count, _oldest, retried_of_kind in kinds))
     by_type = [(kind, count, oldest) for kind, count, oldest, _retried in kinds]
 
-    line_key = event_constants.queue_line_key(outbox)
-    # the lines - the one grouping the slot dispatcher gives lines from (총괄 19f6a9277)
+    # the lines - the ones the slot dispatcher gives lines from (총괄 19f6a9277)
     lines = queue_lines.waiting_lines(db, _QUEUE_LIST_CAP)
+    # what the screen draws of each listed line, off its first rows only (`queue_lines.line_counts`)
+    counts = queue_lines.line_counts(db, lines)
     # 가장 오래 기다린 줄이 머리다(`id` 는 단조) — 그 줄의 가장 이른 시각이 큐 전체의 것
     oldest = lines[0].created_at if lines else None
 
@@ -4808,7 +4826,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     detail = {key: {"tables": [], "event_types": [], "retroactive": []} for key in keys}
     if keys:
         for key, table_name, event_type in ((line.key, table_name, event_type) for line in lines
-                                            for table_name, event_type in line.pairs):
+                                            for table_name, event_type in counts[line.key].pairs):
             d = detail[key]
             # 🔴 «없는 표 이름»은 표로 안 센다. 표가 없는 행은 자리를 채우려고 이름을 «지어낸다»
             #    (`event_constants.PLACEHOLDER_TABLE_NAMES` — 그 선언이 「이 이름들은 표가 아니다」
@@ -4820,18 +4838,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                 d["event_types"].append(event_type)
         # [S-36] 소급 통제 행은 «자기 payload 에» 누가 · 무슨 op · 어느 인자를 들고 있다.
         #    ⚠️ 키가 «없는» 것(소급 행이 안 섞임)과 칸이 None(아무도 안 적음)은 다르다.
-        #    Asked only for the listed lines that hold one - it read every waiting row to find none.
-        held = [d_key for d_key, d in detail.items()
-                if event_constants.EVENT_RETROACTIVE_RUN in d["event_types"]]
-        for row in (db.query(outbox.id, outbox.payload, line_key)
-                    .filter(waiting_only, line_key.in_(held),
-                            outbox.event_type == event_constants.EVENT_RETROACTIVE_RUN)
-                    .order_by(outbox.id).all() if held else ()):
-            _rp = get_payload_dict(row.payload) or {}
-            detail[row[2]]["retroactive"].append({
-                "run_id": _rp.get("run_id"), "op": _rp.get("op"),
-                "requested_by": _rp.get("requested_by"), "params": _rp.get("params"),
-                "outbox_id": row.id})
+        for key in keys:
+            for outbox_id, payload in counts[key].retroactive:
+                _rp = get_payload_dict(payload) or {}
+                detail[key]["retroactive"].append({
+                    "run_id": _rp.get("run_id"), "op": _rp.get("op"),
+                    "requested_by": _rp.get("requested_by"), "params": _rp.get("params"),
+                    "outbox_id": outbox_id})
     # 잡 이름(op)은 «소급 실행 표»가 답한다 — 통제 행이 없는 잡(체인 재실행)도 있다
     run_ids = [line.run for line in lines if line.run]
     runs, replayed = {}, {}
@@ -4857,14 +4870,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     from chain import ingestion_worker as chain_worker
     from runtime import running as running_seat
     running, paused = running_seat.chain_lines_running(), chain_control.paused()
-    # an attempt charged, or a deadlock with a save that charged none (총괄 09f58844f rule 4)
-    retrying = [line.key for line in lines if line.max_retry or line.retrying]
-    last_failure = {}
-    for key, said, stage in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string(),
-                                      outbox.payload[event_constants.LAST_FAILURE_STAGE].as_string())
-                             .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
-                             .order_by(outbox.id.desc()).all() if retrying else ()):
-        last_failure.setdefault(key, {event_constants.LAST_FAILURE: said, event_constants.LAST_FAILURE_STAGE: stage})
+    last_failure = {line.key: counts[line.key].last_failure for line in lines if counts[line.key].last_failure}
     chain_rules = chain_worker.loaded_chain_rules() if lines else []
 
     # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
@@ -4891,6 +4897,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         is_run = bool(line.run)
         line_rules = chain_worker.rules_of_line(d["tables"], chain_rules, replayed.get(line.run))
         is_row = not is_run and line.key == f"{event_constants.QUEUE_ROW_KEY_PREFIX}{line.first_id}"
+        # an attempt charged, or a deadlock with a save that charged none (총괄 09f58844f rule 4)
+        tried_again = counts[line.key].max_retry or counts[line.key].retrying
         waiting_transactions.append({
             # 줄의 신원 셋 중 하나만 찬다 — 잡(run_id) · 트랜잭션 · 그 행 하나
             "run_id": line.run if is_run else None,
@@ -4898,8 +4906,10 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "transaction_id": None if is_run else event_constants.queue_line_tx(line.key),
             # a one-row line's row as a value, for the screen to copy (총괄 6c678dd13 · 앱 QA 2fdc6b16a)
             **({"outbox_id": line.first_id} if is_row else {}),
-            "events": int(line.events),
-            "rows": int(line.rows or 0),
+            "events": counts[line.key].events,
+            "rows": counts[line.key].rows,
+            # the line has more rows than were counted: the two are of its first `counted_to` (lead 11-13)
+            **({"counted_to": counts[line.key].counted_to} if counts[line.key].counted_to else {}),
             "tables": d["tables"],
             "event_types": d["event_types"],
             # 같은 판정을 줄에도. 화면이 event_type 을 보고 «스스로» 정하면 그 판정의 사본이 생긴다.
@@ -4907,16 +4917,15 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             **({"retroactive": d["retroactive"]} if d["retroactive"] else {}),
             **({"pages": pages.get(line.run)} if is_run else {}),
             "rules": [_rule_on_line(name, running.get(line.key)) for name in line_rules],
-            "max_retry": int(line.max_retry or 0),
+            "max_retry": counts[line.key].max_retry,
             "waiting_seconds": _age(line.created_at),
             "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
             # × on this line: POST /admin/chain/queue/cancel {"key"} (소유자 10-08)
             "cancel": {"key": line.key},
             # {"state", "why"} - the grid queue's rows carry the same (총괄 248ae20cd)
             "chain_state": event_constants.chain_state_of(
-                False, "RETRYING" if line.max_retry or line.retrying else "PENDING", retry_count=int(line.max_retry or 0),
-                attempts_cap=(chain_worker.group_attempts_cap(line_rules, chain_rules)
-                              if line.max_retry or line.retrying else None),
+                False, "RETRYING" if tried_again else "PENDING", retry_count=counts[line.key].max_retry,
+                attempts_cap=chain_worker.group_attempts_cap(line_rules, chain_rules) if tried_again else None,
                 payload=last_failure.get(line.key),
                 waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
             # the slot process running it - killing that pid stops this line only (총괄 19f6a9277)
@@ -4952,15 +4961,15 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         name = event_constants.outbox_owner(event_type)
         bucket = owners.get(name)
         if bucket is None:
-            bucket = owners[name] = {"owner": name, "waiting": 0,
-                                     "oldest_waiting_seconds": None, "event_types": []}
+            bucket = owners[name] = {"owner": name, "waiting": 0, "oldest_at": None, "event_types": []}
         bucket["waiting"] += int(rows_of_type or 0)
         if event_type and event_type not in bucket["event_types"]:
             bucket["event_types"].append(event_type)
-        age = _age(oldest_of_type)
-        if age is not None and (bucket["oldest_waiting_seconds"] is None
-                                or age > bucket["oldest_waiting_seconds"]):
-            bucket["oldest_waiting_seconds"] = age
+        # a time, not an age: the screen ages it from now, so a count 30 s old never shows an age 30 s old
+        if oldest_of_type is not None and (bucket["oldest_at"] is None or oldest_of_type < bucket["oldest_at"]):
+            bucket["oldest_at"] = oldest_of_type
+    for bucket in owners.values():
+        bucket["waiting"] = count_said(kept_kinds, bucket["waiting"])
 
     # 스케줄러 소유 행이 «왜» 기다리는지. 나이만 자라고 이유가 없던 것이 사람을 체인으로
     # 보냈다. 🔴 소급 실행이 «없으면» 이 칸은 null 이고, 그건 「이유를 모른다」이지
@@ -5005,7 +5014,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # 🔴 «그 수를 만든 시각»이지 「이 줄을 실행한 시각」이 아니다 — 나이를 뺀 그 순간을
         #    그대로 낸다(§`now_utc`). 여기서 `now()` 를 다시 부르면 값이 «항상 신선»해 보인다.
         "generated_at": now_utc.isoformat(),
-        "waiting": int(waiting or 0),
+        "waiting": waiting,
         # 🔴 EVERYTHING RUNNING, ONE SHAPE, FOUR SOURCES (총괄 78ebdcfc0 · 5996d7f54) - chain
         #    rules, the retroactive run, collectors, file loads.
         # ⚰️ `running` (the chain rules alone) retired when the screen read this (총괄 c1dc16fdd).
@@ -5027,7 +5036,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,
-        "retried_among_waiting": int(retried or 0),
+        "retried_among_waiting": retried,
         "waiting_transactions": waiting_transactions,
         # 🔴 자른 것을 «말한다». 목록이 짧은 것이 「이것뿐」인지 「여기까지만 봤다」인지
         #    화면이 구별할 수 있어야 한다 — 조용히 자르면 목록이 «전부»로 읽힌다.
