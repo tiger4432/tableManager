@@ -289,7 +289,7 @@ def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
                         lambda name, rows, why=None, forced=False: analysed.append((name, rows)) or True)
 
     from database import lines
-    monkeypatch.setattr(lines, "base_tables", lambda conn, lines=False, schema=None: ["enrich_test_src", "not_ours"])
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], ["enrich_test_src", "not_ours"]))
 
     class _Session:
         def connection(self):
@@ -322,7 +322,7 @@ def test_a_relation_this_application_did_not_declare_is_left_alone(monkeypatch):
                         lambda name, rows, why=None, forced=False: pytest.fail(f"touched {name}"))
 
     from database import lines
-    monkeypatch.setattr(lines, "base_tables", lambda conn, lines=False, schema=None: ["some_other_apps_table"])
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], ["some_other_apps_table"]))
 
     class _Session:
         def connection(self):
@@ -437,8 +437,8 @@ def test_only_partitions_that_exist_are_reached_because_the_database_names_them(
                         lambda name, rows, why=None, forced=False: analysed.append(name) or True)
 
     from database import lines
-    monkeypatch.setattr(lines, "base_tables", lambda conn, lines=False, schema=None: [
-        "ledger_events_2026_08", "ledger_source_row_ref", "someone_elses_table"])
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], [
+        "ledger_events_2026_08", "ledger_source_row_ref", "someone_elses_table"]))
 
     class _Session:
         def connection(self):

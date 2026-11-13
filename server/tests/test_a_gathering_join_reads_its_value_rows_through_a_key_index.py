@@ -68,7 +68,7 @@ def test_a_table_an_index_was_just_built_on_is_analysed_whatever_it_moved(monkey
                         lambda name, rows, why=None, forced=False: analysed.append((name, forced)) or True)
 
     from database import lines
-    monkeypatch.setattr(lines, "base_tables", lambda conn, lines=False, schema=None: ["gk_meas", "gk_tgt"])
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], ["gk_meas", "gk_tgt"]))
 
     class _Session:
         def connection(self):
