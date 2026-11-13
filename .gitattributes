@@ -1,0 +1,2 @@
+# Every lane appends to this list and the off-tree check reads it as a set - both sides of a merge are kept (lead 11-14)
+docs/process/off_tree_dismissed.txt merge=union
