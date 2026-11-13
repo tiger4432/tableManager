@@ -11,6 +11,7 @@ import pytest
 from chain import ask_rule, rule_shape
 from database import crud, models, schemas
 from conftest import retire_dynamic_model
+from tests.support import line_tables
 
 MEMORY_TYPES = {"composite_key_source": ["purpose", "situation", "cell"], "column_types": {
     "purpose": "string", "situation": "string", "cell": "string", "ai": "string", "right": "string",
@@ -53,21 +54,22 @@ def world(db_session, monkeypatch):
     m = models.DYNAMIC_TABLES
     for name, entry in TABLES.items():
         crud.TABLE_CONFIG[name] = entry
-        m[name].__table__.create(bind=db_session.get_bind())
+        line_tables.build(db_session.get_bind(), name)     # the table and its line table (owner 11-11)
     db_session.add(m["am_report"](row_id="W1", business_key_val="W1", wafer_id="W1", report_file="/r/W1.html",
                                   summary_text="scratch led"))
-    db_session.add(models.CellSource(table_name="am_report", row_id="W1", column_name="summary_text",
-                                     source_name=crud.CHAIN_SOURCE, value="scratch led", updated_by="eval_summary"))
-    db_session.add(models.CellSource(table_name="am_report", row_id="W1", column_name="summary_text",
-                                     source_name=crud.USER_SOURCE, value="particle led", updated_by="kim"))
+    conn, bits = db_session.connection(), line_tables.bits_of("am_report")
+    line_tables.line(conn, "am_report", bits, "W1", source=crud.CHAIN_SOURCE, written_by="eval_summary",
+                     values={"summary_text": "scratch led"})
+    line_tables.line(conn, "am_report", bits, "W1", source=crud.USER_SOURCE, written_by="kim",
+                     values={"summary_text": "particle led"})
     db_session.commit()
     shipped = m[ask_rule.MEMORY_TABLE]                      # the declarations ship it - every install has it
     yield db_session
     db_session.rollback()
-    db_session.query(models.CellSource).filter(models.CellSource.table_name == "am_report").delete()
     db_session.query(shipped).delete()
     db_session.commit()
     for name in TABLES:
+        line_tables.drop(db_session.get_bind(), name)
         m[name].__table__.drop(bind=db_session.get_bind())
         retire_dynamic_model(name)
         crud.TABLE_CONFIG.pop(name, None)
