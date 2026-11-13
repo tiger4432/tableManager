@@ -17,7 +17,8 @@ if SERVER_DIR not in sys.path:
 
 from conftest import retire_dynamic_model, run_join_and_write     # noqa: E402
 from database.database import Base                                # noqa: E402
-from database import crud, models, schemas                        # noqa: E402
+from database import crud, lines, models, schemas                 # noqa: E402
+from tests.support import line_tables                             # noqa: E402
 
 LEFT, RIGHT = "join_dt_left", "join_dt_right"
 TABLES = {
@@ -37,10 +38,14 @@ def fixture_db(pg_engine):
     crud.TABLE_CONFIG.update(TABLES)
     with pg_engine.begin() as conn:
         for name in TABLES:
+            conn.execute(text('DROP TABLE IF EXISTS "%s"' % lines.lines_relation(name)))
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
             conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": name})
+            conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": name})
     Base.metadata.create_all(bind=pg_engine,
                              tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
+    for name in TABLES:                                         # a table has its line table (the product's shape)
+        line_tables.build(pg_engine, name)
     session = sessionmaker(bind=pg_engine)()
     try:
         yield session
@@ -53,9 +58,11 @@ def fixture_db(pg_engine):
             retire_dynamic_model(name)
         with pg_engine.begin() as conn:
             for name in TABLES:
+                conn.execute(text('DROP TABLE IF EXISTS "%s"' % lines.lines_relation(name)))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
                 conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
                              {"t": name})
+                conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": name})
 
 
 def _write(db, table, cells):

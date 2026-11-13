@@ -4119,7 +4119,8 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
 
         # the declared tables, their line tables and the ledger's - by the one seat that lists the catalogue
         line_tables = {lines.lines_relation(t) for t in tables}
-        names = [name for name in lines.base_tables(db.connection(), lines=True)
+        # every schema's: the search path decides which one `ANALYZE "<name>"` reaches (the query below)
+        names = [name for name in lines.every_schema_tables(db.connection())[1]
                  if name in tables or name in line_tables or ledger_schema.owns_table(name)]
         # only the relation the name resolves to through the search path - the one `ANALYZE "<name>"` reaches: a
         # name in two schemas is analysed once, one in no schema of the path not at all (C 11-05, lead ㄱ)
