@@ -601,6 +601,7 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
             items = [{"row_id": row_id, "line_kind": "withdraw", "columns": cols, "source_name": source_name,
                       "written_by": R2_AUDIT_SOURCE} for (row_id, source_name), cols in taken.items()]
             answer = write_lines(db, table_name, items, kind="withdraw", transaction_id=tx_id) if items else None
+            types = crud.TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
             for it, said in zip(items, (answer or {}).get("items") or ()):
                 if said["work"] != "withdraw":          # the source spoke in none of these columns any more
                     continue
@@ -611,7 +612,7 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     if withdrawn is not None:
                         withdrawn.add((said["row_id"], col))
                     stats["revealed" if not crud.is_blank_value(now.get(col)) else "emptied"] += 1
-                    moved = was.get(col) != now.get(col)
+                    moved = crud.values_differ(was.get(col), now.get(col), types.get(col, "string"))
                     stats["value_unchanged"] += not moved
                     if len(stats["samples"]) < SAMPLE_LIMIT:
                         stats["samples"].append({"row_id": said["row_id"], "column": col, "action": "withdraw",

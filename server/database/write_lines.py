@@ -345,7 +345,8 @@ def _plain(table, cfg, items, targets, before, held, bits) -> dict:
         said = {c: crud.line_value(crud.line_text(_cast(table, types, it, c, v), held.get(c, "string")),
                                    held.get(c, "string"))
                 for c, v in free.items()}
-        said = {c: v for c, v in said.items() if was is None or was.get(c) != v}
+        said = {c: v for c, v in said.items()
+                if was is None or crud.values_differ(was.get(c), v, held.get(c, "string"))}
         if said:
             out[i] = said
     return out
@@ -872,25 +873,29 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         lost.update({r: fresh.get(r) for r in put if r not in got})
         for r in lost:
             merged.pop(r, None)
+    # a row whose values did not move (only_won) writes its won_by alone - its values stay as t spells them ('' is
+    # absence, 판정 284: a '' cell under a None winner is the same value and is not rewritten)
     if arrays:
         # one statement a page (crud.update_by_arrays, the set door - lead 11-12 ㄴ): psycopg2 sends an UPDATE's
         # parameter sets one round trip each
-        for ids, stamp in ((moved, ["updated_at"]), (only_won, [])):
-            for page in _pages(ids, 1):
-                crud.update_by_arrays(db, now, names + stamp, [
-                    [r] + [merged[r][c] for c in data] + ([lines.won_by_stored(won_by[r], bits)] if keeps else [])
-                    for r in page], at)
+        for page in _pages(moved, 1):
+            crud.update_by_arrays(db, now, names + ["updated_at"], [
+                [r] + [merged[r][c] for c in data] + ([lines.won_by_stored(won_by[r], bits)] if keeps else [])
+                for r in page], at)
+        for page in _pages(only_won, 1):
+            crud.update_by_arrays(db, now, ["won_by"], [[r, lines.won_by_stored(won_by[r], bits)] for r in page], at)
         return merged, lost
     # bound names no column can take - a bound name equal to one of t's columns is refused by SQLAlchemy
-    if moved or only_won:
-        stamped = set(moved)
+    if moved:
         db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(
             {**{c: bindparam("__%d" % n) for n, c in enumerate(data)},
              **({"won_by": bindparam("__won")} if keeps else {}), "updated_at": bindparam("__at")}),
             [{"__row": row_id, "__won": lines.won_by_stored(won_by[row_id], bits),
-              **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)},
-              "__at": at if row_id in stamped else old[row_id].get("updated_at")}
-             for row_id in moved + only_won])
+              **{"__%d" % n: merged[row_id][c] for n, c in enumerate(data)}, "__at": at}
+             for row_id in moved])
+    if only_won:
+        db.execute(update(now).where(now.c.row_id == bindparam("__row")).values(won_by=bindparam("__won")),
+                   [{"__row": row_id, "__won": lines.won_by_stored(won_by[row_id], bits)} for row_id in only_won])
     return merged, lost
 
 
@@ -1266,7 +1271,7 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
             events["CREATE"].append((row_id, sorted(wrote.get(row_id, set()) | {"row_id", "business_key_val"}),
                                      None, (old, new)))
             continue
-        moved = _moved(old, new, shown, types)
+        moved = change["moved"] = _moved(old, new, shown, types)   # the answer's moved cells - its readers ask here
         if moved:
             events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, (old, new)))
     said = []                                      # every event's database_outbox columns, in the order staged

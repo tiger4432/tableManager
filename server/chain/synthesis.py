@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 
+import chain_bindings
 from chain import rule_shape
 
 logger = logging.getLogger("Chain.Builtins")
@@ -293,14 +294,13 @@ def rules_without_key_index(db, rules) -> dict:
     (`models.alignment_decision_key_index_ddl`, no switch) - PostgreSQL only - and, any dialect, the business key of
     a table it writes (`lines.key_index_standing`, the catalogue only - no census on a list read). A fact of the
     database, so every process answers alike. Unreadable: those parts left out."""
-    import chain_bindings
     from chain import join_key_index as vjc
     from chain import unique_key
     from database import crud, lines, models
     from error_said import told
 
     keyless = {}
-    if db is None:                                     # a caller with no session (a test's direct call) reads nothing
+    if not vjc._dialect_of(db):                        # no session to read (a test's direct call of the route): nothing
         return {}
     try:
         stood = {}

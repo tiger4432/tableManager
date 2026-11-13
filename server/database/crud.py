@@ -4674,7 +4674,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                      "new": None if (answer["changed"].get(got["row_id"]) or {}).get("new") is None else
                      {c: answer["changed"][got["row_id"]]["new"].get(c) for c in item.updates}}
                     for item, got in zip(batch.updates, resolved))
-            total_changed_cells = _changed_cells(answer, resolved)
+            total_changed_cells = _changed_cells(table_name, answer, resolved)
             count(len(total_changed_cells))
 
         # an item's row: a new one, one that changed, one only named (left out, refused by its version)
@@ -4801,10 +4801,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         serialized_logs = _said_logs(table_name, answer, resolved, said, tx_id, rows)
         return results, total_changed_cells, serialized_logs, deleted_row_ids
 
-def _changed_cells(answer, resolved) -> list:
+def _changed_cells(table_name, answer, resolved) -> list:
     """(row_id, column) of each cell a funnel write moved - a new row's every column its items named, an edited row's
-    columns whose value t shows now differs from before (a pin taken off moves cells no item named). From
-    `write_lines`' answer - what the API counts, the worker reads for written blanks and the watcher tallies."""
+    columns whose value t shows now differs from before (the answer's «moved», `write_lines._moved` - a pin taken off
+    moves cells no item named; '' and None are one value, 판정 284). From `write_lines`' answer - what the API counts,
+    the worker reads for written blanks and the watcher tallies."""
     named = {}
     for got in resolved:
         if got["row_id"] is not None and got["work"] not in (None, "left_out", "gated"):
@@ -4816,22 +4817,36 @@ def _changed_cells(answer, resolved) -> list:
         if change["work"] == "new":
             out.extend((row_id, c) for c in sorted(named.get(row_id, ())))
         else:
-            old = change["old"] or {}
-            out.extend((row_id, c) for c in sorted(change["new"]) if old.get(c) != change["new"][c])
+            out.extend((row_id, c) for c in _moved_of(table_name, change))
     return out
+
+
+def _moved_of(table_name, change) -> list:
+    """An edited row's moved cells as `write_lines` answered them (`_stage` judged them, `write_lines._moved`); a row
+    `_stage` read as new (a key another writer put meanwhile) judged here by the same function."""
+    if "moved" in change:
+        return sorted(change["moved"])
+    from database.write_lines import _moved
+
+    types = TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
+    return _moved(change["old"] or {}, change["new"], sorted(change["new"]), types)
+
+
+def said_value(value):
+    """A cell value as a said log line carries it to the screens - spelled as the outbox spells it
+    (`database.json_value`: a time its ISO text; the broadcast sends the line as JSON) and cut to the audit cap
+    (`truncate_audit_value`). THE seat of every said line's `new_value` (a write, a pin, a source taken back)."""
+    from database.database import json_value
+
+    return truncate_audit_value(json_value(value))[0]
 
 
 def _said_logs(table_name, answer, resolved, said, transaction_id, rows) -> list:
     """The funnel's `serialized_logs` - the broadcast's payload, not the audit (lead 11-11 ㄱ1; the audit is
     `audit_batches`, written by write_lines): a person's write a line per cell it moved, any other writer one
     ROW_UPDATE line a row, today's shapes, `old_value` empty. A column of no history is not named
-    (`keeps_history`). A value is cut to the audit cap as the audit line cut it (`truncate_audit_value`)."""
+    (`keeps_history`); an edited row's cell is named when its value moved (`_moved_of`). A value is `said_value`."""
     from datetime import datetime
-
-    from event_constants import truncate_audit_value
-
-    def clip(value):
-        return truncate_audit_value(value)[0]
 
     at = datetime.now().isoformat()
     who = {}
@@ -4843,8 +4858,8 @@ def _said_logs(table_name, answer, resolved, said, transaction_id, rows) -> list
         if change["new"] is None:
             continue
         old, new, is_new = change["old"] or {}, change["new"], change["work"] == "new"
-        cols = [c for c in sorted(new) if keeps_history(table_name, c)
-                and ((new[c] is not None) if is_new else old.get(c) != new[c])]
+        cols = [c for c in (sorted(c for c in new if new[c] is not None) if is_new
+                            else _moved_of(table_name, change)) if keeps_history(table_name, c)]
         if not cols:
             continue
         source, by = who.get(row_id, (None, None))
@@ -4853,11 +4868,11 @@ def _said_logs(table_name, answer, resolved, said, transaction_id, rows) -> list
                 "transaction_id": transaction_id, "timestamp": at,
                 "business_key": getattr(row, "business_key_val", None)}
         if source == "user":
-            out.extend(dict(line, column_name=c, new_value=clip(new[c]), updated_by=by or "user") for c in cols)
+            out.extend(dict(line, column_name=c, new_value=said_value(new[c]), updated_by=by or "user") for c in cols)
         else:
-            parts = ", ".join("%s: %s" % (c, "empty" if new[c] is None else clip(new[c])) for c in cols)
-            out.append(dict(line, column_name="ROW_UPDATE", new_value=clip(("New row: " + parts) if is_new else parts),
-                            updated_by=by or "system"))
+            parts = ", ".join("%s: %s" % (c, "empty" if new[c] is None else said_value(new[c])) for c in cols)
+            out.append(dict(line, column_name="ROW_UPDATE",
+                            new_value=said_value(("New row: " + parts) if is_new else parts), updated_by=by or "system"))
     return out
 
 
@@ -5043,12 +5058,13 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     for row_id, cols in by_row.items():
         on.setdefault(answer["merged"].get(row_id, row_id), []).extend(cols)
     logs = []
+    types = TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
     for row_id, change in answer["changed"].items():
         was, now = change["old"] or {}, change["new"] or {}
         for col in dict.fromkeys(on.get(row_id, ())):
-            if was.get(col) != now.get(col) and keeps_history(table_name, col):
+            if values_differ(was.get(col), now.get(col), types.get(col, "string")) and keeps_history(table_name, col):
                 logs.append({"id": 0, "table_name": table_name, "row_id": row_id, "column_name": col,
-                             "old_value": None, "new_value": event_constants.truncate_audit_value(now.get(col))[0],
+                             "old_value": None, "new_value": said_value(now.get(col)),
                              "source_name": "delete_source:%s" % source_name, "updated_by": "system",
                              "transaction_id": tx_id, "timestamp": at, "business_key": was.get("business_key_val")})
     db.commit()
@@ -5137,7 +5153,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         for col, pin in on.get(row_id, {}).items():
             if values_differ(was.get(col), now.get(col), types.get(col, "string")) and keeps_history(table_name, col):
                 logs.append({"id": 0, "table_name": table_name, "row_id": row_id, "column_name": col,
-                             "old_value": None, "new_value": event_constants.truncate_audit_value(now.get(col))[0],
+                             "old_value": None, "new_value": said_value(now.get(col)),
                              "source_name": "set_priority:%s" % pin, "updated_by": updated_by,
                              "transaction_id": tx_id, "timestamp": at, "business_key": was.get("business_key_val")})
     db.commit()

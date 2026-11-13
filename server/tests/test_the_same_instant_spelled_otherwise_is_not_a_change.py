@@ -141,13 +141,35 @@ def _blank_the_stored(db, key):
 
 @pytest.mark.pg
 def test_a_stored_blank_under_an_empty_winner_is_not_rewritten(db):
-    """판정 284: '' is absence. A cell stored '' whose winning layer is None is the same value."""
+    """판정 284: '' is absence. A cell stored '' whose winning layer is None is the same value: no changed cell, no
+    event, t keeps its ''. The chain's line itself is written - a chain blank means «emptied» (crud.can_mean_emptied,
+    판정 405) and is that cell's history (lead 11-13)."""
     _apply(db, LEFT, _file([{"k": "E", "job": "J"}]))
     _blank_the_stored(db, "E")
     emptied = schemas.GeneralUpdateItem(updates={"k": "E", "job": None},
                                         source_name=crud.CHAIN_SOURCE, updated_by="t")
-    assert _apply(db, LEFT, [emptied]) == (0, 0, 0)
+    assert _apply(db, LEFT, [emptied]) == (0, 1, 0)
     assert db.execute(text('SELECT job FROM "%s"' % LEFT)).scalar() == ""
+
+
+@pytest.mark.pg
+def test_a_chain_blank_over_a_stored_blank_says_no_history_line(db):
+    """판정 284 at the line the screens show as history (crud._said_logs, lead 11-13): an empty chain value over a
+    stored '' moved nothing, so it says no line - an operator would read a change that never was. Control: the same
+    cell given a value says it."""
+    _apply(db, LEFT, _file([{"k": "E", "job": "J"}, {"k": "F", "job": "J"}]))
+    _blank_the_stored(db, "E")
+    _blank_the_stored(db, "F")
+
+    def said(key, value):
+        _rows, _changed, logs, _deleted = crud.apply_batch_updates(db, LEFT, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"k": key, "job": value}, source_name=crud.CHAIN_SOURCE,
+                                      updated_by="t")]))
+        db.commit()
+        return [(line["column_name"], line["new_value"]) for line in logs]
+
+    assert said("E", None) == []
+    assert said("F", "K") == [("ROW_UPDATE", "job: K")]
 
 
 @pytest.mark.pg
