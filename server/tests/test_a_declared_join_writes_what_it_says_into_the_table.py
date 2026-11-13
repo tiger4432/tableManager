@@ -28,6 +28,7 @@ if SERVER_DIR not in sys.path:
 
 from chain import join_into, rule_shape, synthesis# noqa: E402
 from conftest import run_join_and_write                        # noqa: E402
+from tests.support import line_tables                          # noqa: E402
 from chain import ingestion_worker as worker                       # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models, schemas                         # noqa: E402
@@ -71,6 +72,8 @@ def fixture_db():
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    for name in TABLES:                    # the overhaul's line tables (old-shape recipe, owner 11-11)
+        line_tables.build(engine, name)
     session = Session()
     try:
         yield session
@@ -227,9 +230,10 @@ def test_the_group_path_actually_calls_the_join(db, caplog):
 
     assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-GROUP"], (
         "the group path did not call the join at all")
-    layers = {s.source_name for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == LEFT,
-        models.CellSource.column_name == "lot_confirmed").all()}
+    from database import lines
+
+    layers = {source for cell in lines.layers(db, LEFT, [r.row_id for r in _rows(db, LEFT)],
+                                              columns=["lot_confirmed"]).values() for source in cell}
     assert {crud.layer_ranks_as(name) for name in layers} == {cell_layer.R1_SOURCE_NAME}, layers
     # 🔴 [S-279] THE LINE'S AUTHOR IS THE SEAT NOW, and the count still has to be on it. The
     #    prefix moved from `[ChainBuiltin]` to one spelling shared with a file mapper -

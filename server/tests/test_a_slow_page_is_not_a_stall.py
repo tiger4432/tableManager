@@ -96,6 +96,6 @@ def test_a_slow_page_reads_progressing_and_a_lock_wait_reads_stalled(pg_engine, 
     assert seen[-1] == (retroactive.MOVING_STALLED, True, ["x-1", "x.2"]), seen
     # the step lines - a page line (`RunControl._page_line`, its rows/s) is the boundary's, not a step's
     assert said[0].startswith("[fold_written_notation] Starting: ")       # the run's start (owner 11-09)
-    lines = [line.rsplit(" · ", 1)[0] for line in said[1:] if "rows/s" not in line]
-    assert lines == ["[fold_written_notation] page %d: %s · 1 rows" % step for step in (
-        (1, "read"), (1, "fold"), (1, "write"), (2, "read"), (2, "fold"), (2, "write"))], lines
+    steps = [line.rsplit(" · ", 1)[0] for line in said[1:] if "rows/s" not in line]
+    assert steps == ["[fold_written_notation] page %d: %s · 1 rows" % step for step in (
+        (1, "read"), (1, "fold"), (1, "write"), (2, "read"), (2, "fold"), (2, "write"))], steps

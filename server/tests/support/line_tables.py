@@ -57,8 +57,9 @@ def _mask(columns, bits):
 
 def line(conn, table, bits, row_id, *, kind="write", source="probe.csv", at=None, written_by="probe", batch=None,
          values=None, withdrawn=(), head=True, business_key=None, input_row=None, owner_rule=None):
-    """One line of `table` - `values` {column: value} said (written bits), `withdrawn` columns said empty. -> line_id"""
-    shape = _BUILT[table]
+    """One line of `table` - `values` {column: value} said (written bits), `withdrawn` columns said empty. -> line_id
+    A table the schema sync built (not `build`) is read as it stands."""
+    shape = _BUILT.get(table) or lines.shape(Session(bind=conn), table, crud.TABLE_CONFIG[table], assign=False)
     values = dict(values or {})
     written = _mask(list(values) + [c for c in withdrawn if c not in values], bits) if kind in ("write", "withdraw") \
         else {}

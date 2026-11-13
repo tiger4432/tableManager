@@ -24,9 +24,10 @@ import mapper_sdk                                                     # noqa: E4
 import paths                                                          # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
 from chain import rule_shape                                          # noqa: E402
-from database import crud, models, schemas                            # noqa: E402
+from database import crud, lines, models, schemas                     # noqa: E402
 from database.context import channel, outbox_mode                     # noqa: E402
 from database.database import Base                                    # noqa: E402
+from tests.support import line_tables                                # noqa: E402
 from utils import heartbeat                                           # noqa: E402
 
 TABLES = {"ja_src": {"business_key": "rid", "composite_key_source": ["rid"],
@@ -75,6 +76,8 @@ def fixture_db(tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    for name in TABLES:                    # the overhaul's line tables (old-shape recipe, owner 11-11)
+        line_tables.build(engine, name)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     monkeypatch.setattr("database.database.SessionLocal", lambda: _NoClose(session))
     try:
@@ -127,8 +130,9 @@ def _cells(db, k, columns=("vs", "cnt", "nmin", "nmax")):
 
 def _origins(db, columns):
     """The origins on the layers this join wrote in `columns` of the target table - a gathered cell carries none."""
-    return {layer.origin_row_id for layer in db.query(models.CellSource).filter(
-        models.CellSource.table_name == "ja_tgt", models.CellSource.column_name.in_(list(columns)))}
+    row_ids = [r.row_id for r in db.query(models.DYNAMIC_TABLES["ja_tgt"])]
+    return {layer.get("origin_row_id") for cell in lines.layers(db, "ja_tgt", row_ids, columns=list(columns)).values()
+            for layer in cell.values()}
 
 
 def test_a_key_s_rows_are_gathered_and_recounted_as_they_come_leave_and_move(db, tmp_path, monkeypatch):
