@@ -3145,7 +3145,9 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     removed the business-key half, because a supplied key switching the assembly off is
     how two payloads with the same composite columns became two rows under one identity.
     Only `row_id` still stops it: a caller naming a row by id is not asking about
-    identity. A supplied key is kept instead - see 판정 191 below.
+    identity. A supplied key is kept instead - see 판정 191 below. A row_id naming NO
+    row is a new row: `write_lines._keys_of_made_rows` keys it here with the row_id
+    cleared (lead 11-13).
 
     It always sets the framework-owned `update_item.business_key_val`. When the table
     ALSO declares a physical `business_key` column - one of its `loadable_columns` - it keeps the

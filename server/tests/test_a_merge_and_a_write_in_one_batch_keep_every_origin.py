@@ -14,7 +14,8 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from conftest import PG_TEST_SCHEMA, retire_dynamic_model            # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
+from tests.support import line_tables                                 # noqa: E402
 
 LOW, HIGH = "00000000-0000-7000-8000-000000000001", "ffffffff-ffff-7fff-bfff-fffffffffff1"
 SHELL = "88888888-8888-7888-8888-888888888888"
@@ -43,9 +44,9 @@ def _scenario(db, table, holder_first):
                        (other, _cell("L9", 9, "o"), "chain:a", "SRC-O")])
     _write(db, table, [(other, {"bn": "o2"}, "chain:b", "SRC-O2"),
                        (SHELL, {"cx": 1}, "chain:b", "SRC-S2")])
-    layers = {(row_id, column, source): origin for row_id, column, source, origin in db.execute(
-        text("SELECT row_id, column_name, source_name, origin_row_id FROM cell_sources "
-             "WHERE table_name = :t"), {"t": table})}
+    layers = {(row_id, column, source): said["origin_row_id"]          # a cell's layers are its lines' (11-11)
+              for (row_id, column), by in lines.layers(db, table, [holder, SHELL, other]).items()
+              for source, said in by.items()}
     rows = sorted(r for (r,) in db.execute(text('SELECT row_id FROM "%s"' % table)))
     return holder, other, rows, layers
 
@@ -62,6 +63,7 @@ def _gate(db, table, holder_first):
 
 @pytest.mark.parametrize("holder_first", [True, False], ids=["holder-sorts-first", "write-sorts-first"])
 def test_a_merge_and_a_write_in_one_batch_keep_every_origin_sqlite(db_session, holder_first):
+    line_tables.build(db_session.get_bind(), SAFE)
     _gate(db_session, SAFE, holder_first)
 
 
@@ -81,11 +83,13 @@ def fixture_pg_db(pg_engine):
     scratch = MetaData(schema=PG_TEST_SCHEMA)
     models.DYNAMIC_TABLES[PG_TABLE].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    line_tables.build(pg_engine, PG_TABLE)
     session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
     try:
         yield session
     finally:
         session.close()
+        line_tables.drop(pg_engine, PG_TABLE)
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, PG_TABLE)))
             for side in ("cell_sources", "cell_overwrites", "audit_logs", "database_outbox"):
