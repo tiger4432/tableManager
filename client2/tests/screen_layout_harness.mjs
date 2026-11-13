@@ -43,6 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
 import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
 import { opensAsPanel } from './lib/screens_panel.mjs';
+import { resourceBufferSource } from './lib/screens_resource_buffer.mjs';
 import { reachPlugin, touchedScreens } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
@@ -2386,6 +2387,8 @@ async function servePage(chrome, dist) {
   await chrome.send('Runtime.enable');
   await chrome.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
   await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('assy.adminToken', '${TOKEN}'); } catch (e) {}` });
+  // every request's timing entry kept, «filter typed» and «set applied» read them (lib/screens_resource_buffer.mjs)
+  await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: resourceBufferSource() });
   return log;
 }
 

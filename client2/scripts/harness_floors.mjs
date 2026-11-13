@@ -1192,6 +1192,8 @@ export const FLOORS = new Map([
   ['mutant_pick_harness.mjs', 7],
   // the screen checker's «is this the pressed button's panel» (lead 11-13): overlays not, popovers wherever they sit, P1-P6
   ['screens_panel_harness.mjs', 6],
+  // the screen checker's page-start buffer for request timings (lead 11-13): set once, past the most a page held, B1-B4
+  ['screens_resource_buffer_harness.mjs', 4],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes
