@@ -23,7 +23,8 @@ from conftest import PG_TEST_SCHEMA, retire_dynamic_model            # noqa: E40
 import event_constants                                              # noqa: E402
 import mapper_sdk                                                   # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from chain import keyset_scan                                      # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 from database.context import channel                                # noqa: E402
 from ledger import followup, schema                                 # noqa: E402
 from ledger.implementations import (role_mapper_registry,           # noqa: E402
@@ -91,9 +92,8 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False, exclude=()):
     def clean():
         with pg_engine.begin() as conn:
             for name in TABLES:
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, lines.lines_relation(name))))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
-            conn.execute(text('DELETE FROM "%s".cell_sources WHERE table_name IN (:a, :b)' % PG_TEST_SCHEMA),
-                         {"a": LOG, "b": OFFICIAL})
             # the whole queue: a cell here reads «the queue's next waiting events» (the withdrawal fold) or every event
             # up to its batch (the ledger follow-up) - an event another test left waiting moved its pages (10-22)
             assert PG_TEST_SCHEMA != "public", "the whole queue is emptied in the tests' own schema only"
@@ -117,6 +117,7 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False, exclude=()):
     for name in TABLES:
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    assert lines.ensure_declared(pg_engine, list(TABLES)) == {}, "the tables keep lines, as ops builds them"
     rules_path = tmp_path / "chain_rules.json"
     rules_path.write_text(json.dumps({"rules": [{**RULE, "is_batch": batch,
                                                  **({"exclude": list(exclude)} if exclude else {})}]}),
@@ -215,8 +216,9 @@ def settle(world, rounds=12):
     """The chain - which withdraws what deleted rows fed where it ends a group - then the ledger
     follow-up from the outbox until nothing is left, as the chain worker and the ledger process run them."""
     run_chain(world, rounds)
+    size = keyset_scan.PageSize()                    # the ledger worker's batch rule (ledger/worker.py)
     while True:
-        done = followup.drain_outbox_once(world["engine"], world["setup"])
+        done = followup.drain_outbox_once(world["engine"], world["setup"], rows=size.next())
         if done is None:
             break
         assert not any("error" in (s or {}) for s in (done or {}).get("sources", {}).values()), done

@@ -18,7 +18,7 @@ REPLAY_STATS = {"mode": "apply", "rule": "r", "trigger_table": "a", "target_tabl
                 "events_staged": 0, "pages_failed": 0, "page_failures": []}
 WITHDRAW_STATS = {"mode": "apply", "source": "s", "table": "t", "cells_matched": 0,
                   "cells_withdrawn": 0, "revealed": 0, "emptied": 0, "value_unchanged": 0,
-                  "pinned_skipped": 0, "samples": []}
+                  "pinned_skipped": 0, "rows_deleted": 0, "samples": []}
 RESOLVE_STATS = {"mode": "apply", "table": "t", "rows_scanned": 0, "pages": 0,
                  "cells_examined": 0, "pinned_examined": 0, "cells_changed": 0,
                  "changed_by_tiebreak": 0, "changed_by_stale_materialisation": 0,

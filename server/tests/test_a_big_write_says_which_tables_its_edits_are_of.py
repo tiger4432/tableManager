@@ -5,6 +5,7 @@ so a screen knows whether its table was painted. Past BROADCAST_ITEM_LIMIT names
 
   doors     data/updates · cells/priority/batch · cells/sources/delete/batch
   sys_looks 1,000 rows over two tables -> edits_of [both] · over 101 tables -> no edits_of, truncated.edits_of cut 101
+            a pin or a layer removal on it is refused by name: a shipped table keeps no lines, no history (lead 11-13 ㄴ)
   no edit_by the same doors on rmscope_test_map -> no edits_of, no truncated (as before)
 """
 import json
@@ -89,12 +90,25 @@ def _then(client, db_session, sent, door, table, column):
     return refreshes[0]
 
 
-@pytest.mark.parametrize("door", ["updates", "priority", "sources_delete"])
-def test_a_big_write_to_an_edit_by_table_says_the_tables_its_rows_are_edits_of(client, db_session, sent, door):
+def test_a_big_write_to_an_edit_by_table_says_the_tables_its_rows_are_edits_of(client, db_session, sent):
     _write(client, LOOKS, _looks(["t_a", "t_b"], ROWS))
-    said = _then(client, db_session, sent, door, LOOKS, "role")
+    said = _then(client, db_session, sent, "updates", LOOKS, "role")
     assert said["edits_of"] == ["t_a", "t_b"]
     assert "truncated" not in said
+
+
+@pytest.mark.parametrize("door", ["priority", "sources_delete"])
+def test_a_pin_or_a_layer_removal_on_the_shipped_look_table_is_refused_by_name(client, db_session, sent, door):
+    _write(client, LOOKS, _looks(["t_a", "t_b"], 3))
+    sent.clear()
+    if door == "priority":
+        answer = client.put("/tables/%s/cells/priority/batch" % LOOKS, json={
+            "updates": _cells(db_session, LOOKS, "role"), "source_name": "user", "updated_by": "probe"})
+    else:
+        answer = client.post("/tables/%s/cells/sources/delete/batch" % LOOKS, json={
+            "cells": _cells(db_session, LOOKS, "role"), "source_name": "user"})
+    assert answer.status_code == 422 and "'role' of 'sys_looks' keeps no history" in answer.text, answer.text
+    assert [m for m in sent if m["event"] == "batch_refresh_required"] == []
 
 
 def test_past_the_limit_of_names_it_is_said_cut():

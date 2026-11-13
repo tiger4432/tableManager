@@ -5,9 +5,9 @@ key is a join of their own column values (`base_x_y`), not something the payload
 carries. A parser, the chain worker and the map editor all send `updates` dicts with
 those source columns and NO `row_id`/`business_key_val`.
 
-The assembly used to run inside `apply_row_update_internal` - per row, and after
+The assembly used to run inside the old write door - per row, and after
 `apply_batch_updates` had already collected `target_bks`. So `target_bks` was empty,
-the prefetch matched nothing, `row_cache` stayed empty, and `_get_or_create_row`
+the prefetch matched nothing, `row_cache` stayed empty, and the old row lookup
 fell through to one full-model SELECT per row.
 
 The intent was already proven in exactly one caller: `enrichment_mapper` pre-assembles
@@ -28,10 +28,10 @@ outcome here.
 TWO THINGS THIS DELIBERATELY DOES NOT FIX, pinned so the numbers are executable:
   * `test_inserting_new_rows_still_probes_once_per_row` - a batch whose rows do not
     exist yet still asks for each one. The prefetch now proves their absence, but
-    `_get_or_create_row` does not read that proof. That includes a `replace_map`
+    the old row lookup does not read that proof. That includes a `replace_map`
     push, which purges first and therefore inserts.
   * The collision-merge conflict row is still resolved mid-batch and still outside
-    the cells read, which is what keeps `LayersRead` load-bearing.
+    the cells read, which is what keeps the old door's read-cell set load-bearing.
 """
 
 import pytest
@@ -129,12 +129,12 @@ def test_an_update_batch_resolves_every_row_in_one_select(key_db):
 
     assert len(selects_from(recorded, DECLARED)) == 1, (
         "one prefetch resolves the whole batch; it used to be that prefetch matching "
-        "nothing plus one get_row_by_business_key per row")
+        "nothing plus one key lookup per row")
 
 
 def test_the_metadata_prefetch_now_covers_those_rows_too(key_db):
     """The larger half of the saving, and it is a consequence rather than a second
-    change: `LayersRead` is built from the rows the prefetch resolved, so
+    change: the old door's read-cell set is built from the rows the prefetch resolved, so
     while these rows were invisible to it, EVERY cell of every row also paid two
     metadata SELECTs to be told it had none. Five columns x 200 rows x 2."""
     crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0")))
@@ -152,7 +152,7 @@ def test_the_metadata_prefetch_now_covers_those_rows_too(key_db):
 def test_inserting_new_rows_costs_one_select_for_the_whole_batch(key_db):
     """🔴 THE DAY THE N+1 DISAPPEARED. This test used to PIN the defect: the prefetch
     proved these rows were absent - it selects on exactly their keys with no other filter -
-    and `_get_or_create_row` did not read that proof, so it asked for each one
+    and the old row lookup did not read that proof, so it asked for each one
     individually before creating it. `ROWS + 1` selects, and a `replace_map` push purges
     first and therefore took that path for every die.
 
@@ -290,7 +290,7 @@ def test_the_guard_assembles_when_and_only_when_it_should(key_db):
     # 🔴 CALLING IT TWICE IS SAFE BECAUSE THE FUNCTION IS PURE, NOT BECAUSE A GUARD
     # STOPS THE SECOND CALL (판정 190). It assembles again and lands on the same value,
     # which is what lets the batch path call it up front while
-    # `apply_row_update_internal` keeps calling it for itself.
+    # the old write door keeps calling it for itself.
     assert crud.assemble_composite_business_key(DECLARED, update_item) is True
     assert update_item.business_key_val == "A_1_2"
     assert update_item._supplied_business_key_val is None, (
@@ -332,7 +332,7 @@ def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):
     🔴 `None` here is load-bearing and `''` would not do (2026-08-07). Empty string is a
     VALUE, so every keyless row in the table would share one identity and collide under
     `uq_bk_<table>`; NULL is treated as distinct by PostgreSQL and any number may
-    coexist. See `crud._update_row_business_key` and `data_model.md` §3.1-bis.
+    coexist. See the old key write and `data_model.md` §3.1-bis.
     """
     crud.apply_batch_updates(key_db, DECLARED, _batch([
         {"updates": {"base": "", "x": "", "leg": "L"}, "source_name": "user"}]))
@@ -458,11 +458,11 @@ def test_replace_map_on_a_declared_scope_is_unchanged(key_db):
 
 def test_collision_merge_still_reads_the_conflict_rows_metadata(key_db):
     """Editing a key SOURCE column re-derives the row's identity mid-batch. If the
-    new key already belongs to another row, `apply_row_update_internal` finds that
+    new key already belongs to another row, the old write door finds that
     row with its own query and merges onto it.
 
     That conflict row is resolved AFTER the prefetch filter was built - its key was
-    never in the payload - so it is outside `LayersRead` and its stored
+    never in the payload - so it is outside the old door's read-cell set and its stored
     metadata must still be read. This is the case that keeps P2's guard load-bearing
     now that the ordinary composite payload is prefetched, and it is the collision
     path P6 could have broken.

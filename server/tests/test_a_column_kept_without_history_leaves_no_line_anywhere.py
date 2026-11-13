@@ -1,23 +1,28 @@
 """A column its table keeps no history for (`no_history_columns`, owner 11-09 ㄴ) leaves no history line, whoever
-writes it (lead 11-09 ㅁ''') - not stored, not in the recent changes' cache (`GET /audit_logs/recent`), not in the lines
-the write hands back. The two seats ask one judgement, `crud.keeps_history`: `create_audit_log` (a cell's line) and
-`crud.row_update_line` (the columns a row's line names). A plain column beside it is the control: every writer leaves
+writes it (lead 11-09 ㅁ''') - not stored, not in the lines the write hands back. The two seats ask one judgement, `crud.keeps_history`: `create_audit_log` (a cell's line) and
+`crud._said_logs` (the columns a row's line names). A plain column beside it is the control: every writer leaves
 its line there.
 
-    writer × column        stored · cached · handed back
+    writer × column        stored · handed back
     a machine's write      state: none         plain: the row's line naming it alone
     a person's write       state: none         plain: the cell's line
-    a priority pin         state: none         plain: the cell's line
-    a layer deleted        state: none         plain: the cell's line
+    a priority pin         state: refused      plain: the cell's line
+    a layer deleted        state: refused      plain: the cell's line
     a collision merge      state: none         plain: the cell's line
-    a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)"""
+    a file's blank         state: t blank      plain: dropped, as any machine's blank
+    a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)
+
+A no-history column keeps no layers: its value is t's, the last write's, a blank included; a pin or a layer removal
+on it is refused by name (lead 11-12 안 1)."""
 import uuid
 
 import pytest
 
-from admin.audit_cache import audit_cache
-from database import crud, models, schemas
+from sqlalchemy import text
+
+from database import crud, lines, models, schemas
 from database.database import Base
+from tests.support import line_tables
 
 TABLE = "gauges"
 CONFIG = {"business_key": "gauge_id", "no_history_columns": ["reading"],
@@ -30,9 +35,9 @@ def db(db_session, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CONFIG)
     models.init_dynamic_models({TABLE: CONFIG})
     Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES[TABLE].__table__])
+    line_tables.build(db_session.get_bind(), TABLE)                      # the product's shape: a table keeps lines
     _write(db_session, {"gauge_id": "G1", "note": "a", "reading": "1"}, "a.csv")
     _write(db_session, {"gauge_id": "G1", "note": "b", "reading": "2"}, "b.csv")
-    monkeypatch.setattr(audit_cache, "is_loaded", True)
     return db_session
 
 
@@ -70,6 +75,7 @@ def delete(db, column):
 def merge(db, column):
     """Two rows one composite-key edit apart; the edit lands the shell on the other's key and the merge writes `bn`."""
     model = models.DYNAMIC_TABLES[MERGED]
+    line_tables.build(db.get_bind(), MERGED)
 
     def add(cx, bn):
         key = crud.compose_business_key(MERGED, ["L1", 1, cx, 1], ["lot", "slot", "cx", "cy"])
@@ -87,39 +93,128 @@ WRITERS = {"a machine's write": machine, "a person's write": person, "a priority
            "a collision merge": merge}
 
 
+def _stored(db, table, after):
+    """The cells of `table`'s lines after line `after`, each as (column, value text) - the overhaul's record (t__lines;
+    audit_logs takes no write - lead 11-11)."""
+    if db.get_bind().dialect.name != "sqlite" and not lines.has_lines(db, table):
+        return []
+    bits = lines.bit_map(db, table)
+    found = db.execute(text('SELECT * FROM "%s" WHERE line_id > :after ORDER BY line_id' % lines.lines_relation(table)),
+                       {"after": after}).mappings().all()
+    return [(c, line[lines.value_column(c)]) for line in found for c, bit in sorted(bits.items(), key=lambda cb: cb[1])
+            if (line["written_%d" % (bit // 64)] & ((1 << 64) - 1)) >> (bit % 64) & 1]
+
+
 def _lines(db, writer, column, monkeypatch):
-    """(stored, cached, handed back) - the lines the writer left, each as (column, new value)."""
+    """(stored, handed back) of the writer's cells in `column` (the merge's: `bn`) - each as (column, new value); a
+    handed row line (ROW_UPDATE) as it is."""
     table = MERGED if writer is merge else TABLE
     if writer is merge and column == "reading":                           # the merge writes `bn`: kept or not
         monkeypatch.setitem(crud.TABLE_CONFIG[MERGED], "no_history_columns", ["bn"])
-    before = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
-    given = []                                     # every line handed to the cache - a group shows its newest alone
-    many, one = audit_cache.add_logs_batch, audit_cache.add_log
-    monkeypatch.setattr(audit_cache, "add_logs_batch", lambda logs, *a, **k: (given.extend(logs), many(logs, *a, **k)))
-    monkeypatch.setattr(audit_cache, "add_log", lambda log: (given.append(log), one(log)))
+    after = db.execute(text('SELECT coalesce(max(line_id), 0) FROM "%s"' % lines.lines_relation(table))).scalar()         if writer is not merge else 0                                     # the merge builds its table's lines afresh
     handed = writer(db, column)
     db.expire_all()
-    stored = [(line.column_name, line.new_value) for line in db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == table, models.AuditLog.id > before).order_by(models.AuditLog.id)]
-    cached = [(line["column_name"], line["new_value"]) for line in given]
+    asked = "bn" if writer is merge else column
+    stored = [cell for cell in _stored(db, table, after) if cell[0] == asked]
     handed = [(line["column_name"], line["new_value"]) for line in handed]
     if writer is merge:                                                  # the edit's own `cx` line is a plain one
-        return tuple([line for line in lines if line[0] == "bn"] for lines in (stored, cached, handed))
-    return stored, cached, handed
+        return stored, [line for line in handed if line[0] == "bn"]
+    return stored, handed
 
 
-@pytest.mark.parametrize("name", WRITERS)
+@pytest.mark.parametrize("name", [name for name, writer in WRITERS.items() if writer not in (pin, delete)])
 def test_a_column_kept_without_history_leaves_no_line_whoever_writes_it(db, name, monkeypatch):
     shown = _row(db).reading
-    assert _lines(db, WRITERS[name], "reading", monkeypatch) == ([], [], [])
+    assert _lines(db, WRITERS[name], "reading", monkeypatch) == ([], [])
     if WRITERS[name] is not merge:
         assert _row(db).reading != shown, "CANARY: the writer moved the cell"
 
 
 @pytest.mark.parametrize("name", WRITERS)
 def test_a_plain_column_keeps_its_line_whoever_writes_it(db, name, monkeypatch):
-    stored, cached, handed = _lines(db, WRITERS[name], "note", monkeypatch)
-    assert stored and cached and handed, (name, stored, cached, handed)
-    named = {column for column, _value in stored + cached + handed}
+    stored, handed = _lines(db, WRITERS[name], "note", monkeypatch)
+    if WRITERS[name] is pin:
+        # a pin says no value: its line is a mark that names no cell (lead 11-12 ㄱ - written bits mean «this line says a
+        # value»); the pin itself is cell_overwrites', the carried line names the cell
+        marks = db.execute(text('SELECT count(*) FROM "%s" WHERE line_kind = :k' % lines.lines_relation(TABLE)),
+                           {"k": "mark"}).scalar()
+        assert (stored, bool(handed), marks) == ([], True, 1), (stored, handed, marks)
+        return
+    assert stored and handed, (name, stored, handed)
+    named = {column for column, _value in stored + handed}
     assert named <= {"note", "bn", "ROW_UPDATE"}, named
-    assert not [value for _c, value in stored + cached + handed if "reading" in str(value)]
+    assert not [value for _c, value in stored + handed if "reading" in str(value)]
+
+
+@pytest.mark.parametrize("name, said", [("a priority pin", "no layers to pin"),
+                                        ("a layer deleted", "no layers to take a source off")])
+def test_a_pin_or_a_layer_removal_on_a_column_of_no_history_is_refused_by_name(db, name, said):
+    table = lines.lines_relation(TABLE)
+    before = (_row(db).reading, db.execute(text('SELECT count(*) FROM "%s"' % table)).scalar())
+    with pytest.raises(crud.ReadOnlyRelation) as refused:                # the route answers it 422 with its reason
+        WRITERS[name](db, "reading")
+    db.rollback()
+    assert "'reading' of 'gauges' keeps no history - " + said in str(refused.value), str(refused.value)
+    assert (_row(db).reading, db.execute(text('SELECT count(*) FROM "%s"' % table)).scalar()) == before == ("2", 2)
+
+
+@pytest.mark.parametrize("column, shown", [("reading", None), ("note", "b")])
+def test_a_files_blank_clears_a_column_of_no_history_and_is_dropped_on_one_that_keeps_it(db, column, shown):
+    assert getattr(_row(db), column) == ("2" if column == "reading" else "b"), "CANARY: the fixture wrote the cell"
+    _write(db, {"gauge_id": "G1", column: ""}, "c.csv")
+    db.expire_all()
+    assert getattr(_row(db), column) == shown
+
+
+@pytest.mark.parametrize("source", ["system_catalog", "user"])
+def test_a_blank_clears_a_cell_of_a_table_that_keeps_no_lines(db_session, monkeypatch, source):
+    """Lead 11-13 ㄴ: a table that keeps no lines (`lines.keeps_lines` - here a shipped sys_* table) keeps no history
+    on any column, so a blank is written, the last write wins: a machine's blank cleared nothing before (dropped as
+    «not yet written», the old value shown on - sys_columns.key_of stayed 'lots' when a key moved), a person's did."""
+    import copy
+
+    import shipped
+
+    entry = copy.deepcopy(shipped.tables()["sys_columns"])
+    monkeypatch.setitem(crud.TABLE_CONFIG, "sys_columns", entry)
+    models.init_dynamic_models({"sys_columns": entry})
+    Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES["sys_columns"].__table__])
+    assert not lines.keeps_lines("sys_columns", entry), "CANARY: a shipped table keeps no lines"
+
+    def write(value):
+        crud.apply_batch_updates(db_session, "sys_columns", schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"table_name": "lots", "column_name": "lot_id", "key_of": value},
+                                      source_name=source, updated_by=source)]))
+        db_session.commit()
+        db_session.expire_all()
+        return [r.key_of for r in db_session.query(models.DYNAMIC_TABLES["sys_columns"]).all()]
+
+    assert write("lots") == ["lots"], "CANARY: the value was written"
+    assert write(None) == [None]
+
+
+def test_a_queue_line_set_aside_on_a_table_that_keeps_no_lines_leaves_its_record(db_session, monkeypatch):
+    """Lead 11-13 ㄱ: a «*» record - here the chain queue's «skipped» line - is an operations record, no cell's
+    history, so a table that keeps no lines (a shipped sys_* table) still gets it: `create_audit_log` asks
+    `keeps_history` of a declared column only."""
+    import copy
+
+    import shipped
+    from chain import set_aside
+
+    entry = copy.deepcopy(shipped.tables()["sys_columns"])
+    monkeypatch.setitem(crud.TABLE_CONFIG, "sys_columns", entry)
+    models.init_dynamic_models({"sys_columns": entry})
+    Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES["sys_columns"].__table__])
+    assert not crud.keeps_history("sys_columns", "key_of"), "CANARY: a shipped table keeps no history"
+    tx = str(uuid.uuid4())
+    crud.apply_batch_updates(db_session, "sys_columns", schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        updates={"table_name": "lots", "column_name": "lot_id", "key_of": "lots"}, source_name=crud.CHAIN_SOURCE,
+        updated_by=crud.CHAIN_SOURCE)], transaction_id=tx))
+    db_session.commit()
+    done = set_aside.set_aside_line(db_session, tx, set_aside.OPERATOR)
+    db_session.commit()
+    assert done["marked"] >= 1, ("CANARY: the write staged a chain event the line set aside", done)
+    said = [(a.table_name, a.row_id, a.column_name) for a in
+            db_session.query(models.AuditLog).filter_by(source_name=set_aside.QUEUE_SKIP_SOURCE)]
+    assert said == [("sys_columns", "*", "*")]

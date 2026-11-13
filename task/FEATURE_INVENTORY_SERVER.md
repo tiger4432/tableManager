@@ -75,7 +75,7 @@
 | 인제션 상태 어휘 | 「실행이 쓸 수 있는 상태 낱말」의 정본 하나 | `ingestion/file_ingestion_status.py` (32줄) | `directory_watcher` · `main.py` 어드민 로그 | ✅ 닿는다 |
 | 원천 «없음» vs 「있는데 빔」 | 두 상태를 가르는 한 자리 | `server/listing_absence.py` (35줄) | 어드민 목록 응답 | ✅ 닿는다 |
 | 외부 읽기 전용 소스 | 관리 워크스페이스 «밖»의 루트를 선언으로 붙이고 원본은 안 옮긴다 | `directory_watcher.validate_external_source_specs` · `SUPPORTED_EXTERNAL_PARSERS = {"voids_json"}` | `ingestion_settings.json.external_sources[]` (선언) | ✅ 닿는다 (파서 종류는 «하나»로 하드코딩 — §C-6) |
-| 느린 선인출 실행계획 자동 인쇄 | 청크의 prefetch 가 임계를 넘으면 제품이 «스스로» EXPLAIN 을 찍는다(파일당 1회, ANALYZE 금지) | `directory_watcher._maybe_explain_slow_prefetch` + `_row_id_without_a_refresh` | `directory_watcher` 청크 루프 «한 자리», `try/except` 로 감싸여 있다 | ✅ 닿는다 · 🔵 09-16 장애의 수리가 착지해 있다 |
+| ⚰️ 느린 선인출 실행계획 자동 인쇄 | 청크의 prefetch 가 임계를 넘으면 제품이 «스스로» EXPLAIN 을 찍었다 | ~~`directory_watcher._maybe_explain_slow_prefetch`~~ | — | 🔴 **은퇴**(11-11 은퇴 — 키였던 `write_steps["prefetch"]` 를 셀소스 갈아엎기의 쓰기가 더 이상 안 내서 발화할 수 없었다. 함수 · 상수 · 호출부 · 시험(`test_a_diagnostic_may_not_kill_what_it_diagnoses.py`) 같이 지웠다) |
 | 파일 업로드 인제션 | 브라우저/데스크톱이 파일을 직접 밀어 넣는다 | `POST /tables/{t}/upload` | `client2/src/main.js` · `desktop/desktop_wrapper.py` | ✅ 닿는다 |
 | 인제션 로그·실패·재시도 | 적재 이력 조회 / 실패 목록 / 진행 중 / 재시도 | `GET /admin/file-ingestion/{logs,failed,active,workspaces}` · `POST /admin/file-ingestion/retry-failed` | `client2/src/admin.js` (File 탭) | ✅ 닿는다 |
 
@@ -408,8 +408,7 @@ E-6  라우트의 «거절률»                각 라우트가 오늘 몇 %를 
    두 문을 직접 부르는 제품 코드가 그 파일 밖에 없고, 로그 접두도 하나다
 ✅ 판정 406 — 체인 루프는 자기 프로세스에서 돈다. 런처는 `ASSY_CHAIN_WORKER=0` 을 주는데,
    `main.py` 는 그 «전»에 `DECOUPLED=True` 로 이미 return 한다(둘째 가드이지 첫째가 아니다)
-✅ 계측 상설 (2026-09-16 장애) — `_maybe_explain_slow_prefetch` 가 `try/except` 로 감싸였고
-   시험(`test_a_diagnostic_may_not_kill_what_it_diagnoses.py`)이 같이 있다
+⚰️ 계측 상설 (2026-09-16 장애)의 좌석 `_maybe_explain_slow_prefetch` 는 11-11 은퇴 — 발화 키가 사라져 발화할 수 없었다. 함수 · 호출부 · 시험 같이 지웠다
 ✅ 판정 427 — 배치 갱신 봉투는 «빌더 하나»가 짓는다(다만 인자가 두 벌 — C-3)
 ✅ 판정 402 — 순환은 «보고»이고 거절이 아니다. 유한성은 `max_chain_depth`
 ✅ 그래프 갈래 은퇴 — 실행 코드·프로세스·라우트 «전부» 없다. 남은 것은 컬럼 셋과 거르는 자리 넷

@@ -42,7 +42,6 @@ RUN_EVENT_TABLE = event_constants.RETROACTIVE_RUN_TABLE
 
 COUNT_EXACT = "exact"
 COUNT_SAMPLE = "sample"
-COUNT_UPPER_BOUND = "upper_bound"
 
 #: Scan budget for the counts that have to walk rows. Same shape and same reason
 #: as `main.ENRICHMENT_DRY_RUN_DEFAULT_LIMIT`: a request path gets a sample.
@@ -248,38 +247,35 @@ def _count_withdraw(db, params, scan_limit):
     table = params["table"]
     source = params["source"]
     written_by, columns = replay.unwritten_scope(params.get("rule"), table, params.get("columns"))
-    c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
+    try:
+        c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
+    except replay.ReplayRefused as e:          # a table with no line table: the run's own sentence
+        raise RetroactiveRefused(str(e)) from None
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
-        # An upper bound is not exhaustive either: fewer cells may actually change.
-        "absence": ABSENCE_NOT_EXHAUSTIVE if affected else ABSENCE_TRULY_NONE,
-        "affected_label": "cells to withdraw (at most)",
-        "count_kind": COUNT_UPPER_BOUND,
+        # exact - the run's cells (the gate test holds them equal), so the exact counts' absence
+        "absence": ABSENCE_TRULY_NONE if not affected else None,
+        "affected_label": "cells to withdraw",
+        "count_kind": COUNT_EXACT,
         "scanned": None,
-        # null, not the requested budget: this count is two aggregates and scans no
-        # rows, so echoing a scan budget would imply a sample it never took.
+        # null, not the requested budget: this count reads every line the source claims
+        # (two grouped reads) and takes no sample, so echoing a scan budget would imply one.
         "scan_limit": None,
         "truncated": False,
         "detail": (
             f"'{source}' claims {c['cells_claimed']} cell(s) in '{table}', and "
             f"{c['pinned']} of them are pinned by a person "
-            f"(manual_priority_source) and will not be touched. At most {affected} "
-            f"are in scope for withdrawal - the number of cells whose VISIBLE value "
-            f"actually changes can be smaller (where the source underneath holds the "
-            f"same value, the display stays as it is). At most {c['rows_emptied']} row(s) "
-            f"are left with no layer and are deleted as shells."
+            f"(manual_priority_source) and will not be touched. "
+            + (f"{affected} are withdrawn - the cells whose visible value changes can be fewer "
+               f"(where the source underneath holds the same value, the display stays as it is). "
+               if affected else "Nothing is withdrawn. ")
+            + "Rows left with nothing that keeps them are deleted too - counted when it runs "
+            "(shown on the run's line)."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
-            "rows_emptied": c["rows_emptied"],
-            "why_upper_bound": (
-                "The number in scope shrinks in only two ways: (1) the row was "
-                "already deleted and only its cell_sources remain, (2) the value "
-                "revealed after the withdrawal equals the current one. Both need a "
-                "cell-by-cell recomputation, which a cheap query cannot answer."
-            ),
         },
     }
 
@@ -1285,64 +1281,6 @@ def _run_withdraw(db, params, log, control=None):
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"], "rows_deleted": s["rows_deleted"]}
 
 
-def _count_fold_file_layers(db, params, scan_limit):
-    from chain import replay
-
-    s = replay.fold_file_layers(db, params["table"], apply=False, limit=scan_limit,
-                                log=lambda m: logger.debug(m))
-    truncated = s["rows_scanned"] >= scan_limit
-    affected = s["layers_deleted"] + s["chain_renamed"] + s["chain_deleted"] + s["shown_changed"]
-
-    def cells(key):
-        return "; ".join("%s · %s" % (cell["row_id"], cell["column"]) for cell in s["first"][key])
-
-    detail = (
-        f"Files: {s['cells_folded']} cell(s) in {s['rows_scanned']} row(s) of '{params['table']}' "
-        f"hold file layers that repeat a newer one: layers {s['layers_before']} -> "
-        f"{s['layers_after']}, the deepest cell {s['deepest_before']} -> {s['deepest_after']}. "
-        f"Chain, outside the key columns: {s['chain_renamed']} plain layer(s) become their source row's layer, "
-        f"{s['chain_deleted']} whose row's layer is already there go, "
-        f"{s['chain_unstamped']} have no source row and stay.")
-    if s["chain_differs"]:
-        detail += (f" {s['chain_differs']} of those hold a value no row layer of the cell holds "
-                   f"(first: {cells('chain_differs')}).")
-    if s["chain_copies"]:
-        detail += (f" {s['chain_copies']} chain layer(s) a collision merge kept now rank as the chain's "
-                   f"(first cells: {cells('chain_copies')}).")
-    detail += (f" Shown values that move: {s['shown_changed']}"
-               + (f" (first: {cells('shown_changed')})" if s["shown_changed"] else "")
-               + " - each gets one history line. Cannot be undone - what goes is the record of which "
-               "older layer said the same value. Afterwards give the space back with: "
-               "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
-    return {
-        "affected": affected,
-        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
-                    else ABSENCE_TRULY_NONE if not affected else None),
-        "affected_label": "layers to fold or rename, and shown values that move",
-        "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
-        "scanned": s["rows_scanned"],
-        "scan_limit": scan_limit,
-        "truncated": truncated,
-        "detail": detail,
-        "extra": {key: s[key] for key in ("cells_folded", "layers_deleted", "layers_before", "layers_after",
-                                          "deepest_before", "deepest_after", "chain_renamed", "chain_deleted",
-                                          "chain_unstamped", "chain_differs", "chain_copies", "shown_changed",
-                                          "first")},
-    }
-
-
-def _run_fold_file_layers(db, params, log, control=None):
-    from chain import replay
-
-    s = replay.fold_file_layers(db, params["table"], apply=True, log=log,
-                                checkpoint=_checkpoint(control),
-                                **_given(params, "limit", "chunk_size", "pace"))
-    _final_progress(control, s.get("rows_scanned"), s)
-    return {key: s[key] for key in ("layers_deleted", "cells_folded", "layers_before",
-                                    "layers_after", "rows_scanned", "chain_renamed", "chain_deleted",
-                                    "chain_unstamped", "chain_differs", "chain_copies", "shown_changed")}
-
-
 def _fold_args(params):
     """The fold's own cells of the operation's params - one spelling for the count, the run and the judge."""
     return {key: params.get(key) for key in ("prefer_column", "prefer_text", "mark_column",
@@ -1464,9 +1402,11 @@ def _count_remove_shell_rows(db, params, scan_limit):
 
 
 def _count_delete_every_row(db, params, scan_limit):
+    from sqlalchemy import func, or_, select
+
     import chain_bindings
     from chain import cell_layer, replay
-    from database import models
+    from database import crud, lines, models
 
     table = params["table"]
     if params.get("how") == FULL_RESET:
@@ -1483,17 +1423,22 @@ def _count_delete_every_row(db, params, scan_limit):
             "scanned": s["rows"],
             "scan_limit": scan_limit,
             "truncated": False,
-            "detail": (f"Full reset of '{table}': {s['rows']} row(s), {s['layers']} cell layer(s) - {s['user_layers']} "
-                       f"of them a person's - and {s['overwrites']} pin(s) go in one transaction. Cannot be undone. "
+            "detail": (f"Full reset of '{table}': {s['rows']} row(s) and {s['overwrites']} pin(s) go in one "
+                       f"transaction; {s['layers']} cell(s) - {s['user_layers']} of them a person's - are shown no "
+                       f"more, their lines stay as history. Cannot be undone. "
                        f"No chain rule is told: {', '.join(s['chain_rules']) or 'none reads it'}. Ledger atoms taken "
                        f"back afterwards: {atoms}. Run it with confirm_rows {s['rows']}."),
             "extra": {key: s[key] for key in ("rows", "layers", "user_layers", "overwrites", "ledger_atoms",
                                               "chain_rules")},
         }
     s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
-    kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
-                                                      models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
-            .distinct().count())
+    kept = 0               # t's rows a person's head line sits on (`crud.human_source_clause` - its backups too)
+    if lines.has_lines(db, table):
+        lt, _bits = cell_layer.claimed_lines(db, table)
+        rows = models.DYNAMIC_TABLES[table].__table__
+        kept = db.execute(select(func.count(lt.c.row_id.distinct())).where(
+            crud.human_source_clause(), or_(*[c != 0 for c in lt.c if c.name.startswith("head_")]),
+            lt.c.row_id.in_(select(rows.c.row_id)))).scalar()
     taking = sorted("%s -> %s" % (rule.get("name"), rule.get("target_table")) for rule in replay.load_rules()
                     if rule.get("trigger_table") == table and chain_bindings.takes_deletions(rule))
     return {
@@ -1525,8 +1470,7 @@ def _run_delete_every_row(db, params, log, control=None):
         except replay.ReplayRefused as e:
             raise RetroactiveRefused(str(e)) from None
         _final_progress(control, s["rows_deleted"], s)
-        return {"rows_deleted": s["rows_deleted"], "layers_deleted": s["layers_deleted"],
-                "overwrites_deleted": s["overwrites_deleted"],
+        return {"rows_deleted": s["rows_deleted"], "overwrites_deleted": s["overwrites_deleted"],
                 "ledger_atoms_withdrawn": sum(s["ledger_withdrawn"].values())}
     s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
                                 checkpoint=_checkpoint(control))
@@ -1626,12 +1570,13 @@ def _count_fold_written_notation(db, params, scan_limit):
     if s["moves_again"]:
         detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
                    f"stops there; fix the declaration first.")
+    if s["pinned_left"]:
+        detail += (f" {s['pinned_left']} pinned cell(s) are left as they are: the pin was set before this table "
+                   f"kept lines and no line holds the pinned value, so the shown value stays.")
     if left:
         detail += (f" The time rule leaves values as written - no matching format: "
                    f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}, "
                    f"no year and no time it came in: {left.get('no_arrival', 0)}.")
-    detail += (" Afterwards run Fold file layers on this table, then give the space back: "
-               "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
     return {
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated else None if affected
@@ -1644,7 +1589,7 @@ def _count_fold_written_notation(db, params, scan_limit):
         "detail": detail,
         "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged", "same_key_groups",
                                           "split_key_groups", "merged", "keys_not_rebuilt", "not_rebuilt",
-                                          "moves_again", "again", "time_left")},
+                                          "moves_again", "again", "time_left", "pinned_left")},
     }
 
 
@@ -1657,7 +1602,7 @@ def _run_fold_written_notation(db, params, log, control=None):
     _final_progress(control, s.get("rows_scanned"), s)
     out = {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
                                    "rows_merged", "same_key_groups", "split_key_groups", "keys_not_rebuilt",
-                                   "moves_again", "stopped_on_moves_again", "rows_scanned")}
+                                   "moves_again", "stopped_on_moves_again", "pinned_left", "rows_scanned")}
     if s.get("row_ids_not_found"):
         out["row_ids_not_found"] = s["row_ids_not_found"]
     if s["rows_merged"] and not s["stopped"]:
@@ -2236,10 +2181,9 @@ OPERATIONS = {
         "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
         "downstream_note": ("The chain follows a withdrawal as it follows a live write - the rules that take chain "
                             "events from this table take back what the withdrawn value fed"),
-        # It deletes a source's CLAIM, not the cell: the revealed value is recomputed and
-        # written, and every changed cell gets an AuditLog entry naming the withdrawn source.
-        # A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
-        "deletes": "cell_sources rows (one source's claim on a cell), and the rows left with no layer",
+        # It withdraws a source's CLAIM, not the cell: a withdraw line per (row, source), the revealed value
+        # shown. A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
+        "deletes": "the rows left with no layer (a withdrawn claim stays as a withdraw line)",
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
@@ -2388,7 +2332,7 @@ OPERATIONS = {
                             "a text column keeps numbers stored before text took them, and a row keyed "
                             "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
         "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
-        "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
+        "next": [],
         "params": [_p("table"),
                    # the cell chain_replay takes (S-254): the grid holds row_id on every table
                    _p("row_ids", required=False, kind="csv",
@@ -2415,37 +2359,6 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": ("one commit per page of rows; a stop lands between pages and "
                                "a re-run folds only what is left"),
-        "cli_only": [],
-    },
-    # The id is the first fold's: old run records and the CLI name it (총괄 10-11) - it folds chain layers too.
-    "fold_file_layers": {
-        "label": "Fold layers that repeat another",
-        "what_is_missing": ("a cell re-delivered file after file keeps one layer per file; the chain's "
-                            "layer is one per source row"),
-        "examples": ["칸마다 파일 층이 여러 겹 쌓여 있다", "소스 창에 같은 값이 수십 줄이야"],
-        "next": ["python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - gives the space back"],
-        "params": [_p("table"),
-                   _pace_param(),
-                   _p("limit", required=False, kind="int", form=False,
-                      help="bound the rows scanned"),
-                   _p("chunk_size", required=False, kind="int", form=False,
-                      help="rows per page")],
-        "count": _count_fold_file_layers,
-        "run": _run_fold_file_layers,
-        "judge": _judge_table,
-        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
-                "'fold_file_layers', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
-                "'chunk_size': N})\" - pace, limit and chunk_size optional"),
-        # Per cell `crud.stacked_layers` (총괄 225b2c658 · 8ec008914): file layers that repeat one go, the
-        # chain's plain layer outside the key columns becomes its source row's or goes when that row's layer is
-        # there; a shown value the layers now answer otherwise is written with one history line (R3's write).
-        "deletes": ("cell_sources rows (file layers that repeat a newer layer's value; plain chain "
-                    "layer stamped with a row whose layer is already there, outside the key columns)"),
-        "reads_as": "number",
-        "cancellable": True,
-        "restartable": True,
-        "commit_granularity": ("one commit per page of rows; a stop lands between pages and "
-                               "a re-run finds only what is left"),
         "cli_only": [],
     },
     "fold_duplicate_rows": {
@@ -4809,7 +4722,7 @@ RESULT_NAMES = {
     "rows_staged": "rows staged", "events_staged": "events staged",
     "rows_scanned": "rows scanned", "rows_read": "rows read",
     "cells_withdrawn": "cells withdrawn", "revealed": "values revealed",
-    "emptied": "cells emptied", "pinned_skipped": "pinned, skipped",
+    "emptied": "cells emptied", "pinned_skipped": "pinned, skipped", "rows_deleted": "rows deleted",
     "cells_changed": "cells changed", "cells_examined": "cells examined",
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",

@@ -100,7 +100,6 @@ LOG_FILENAME = "chain_worker.log"
 logger = get_process_logger("Chain", LOG_FILENAME)
 
 
-
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
 #: The rules file's shape refusal - the loader's line and the save's answer (lead 10-29: one reader, one sentence).
@@ -1522,13 +1521,6 @@ def column_loops(rules) -> list:
     return [(table, list(loop) + [loop[0]], names) for (table, loop), names in sorted(loops.items())]
 
 
-
-
-
-
-
-
-
 #: 🔴 THE SAME FAILURE, ONCE (2026-09-14 outage). A poisoned group is NARROWED down to
 #: single rows on purpose, so one bad row becomes thousands of identical failures - and
 #: each one printed a full traceback. The operator could not read the log at all, which
@@ -1567,11 +1559,6 @@ def log_folded(logger_, rule_name, target_table, reason: str, said="FAILED", sin
 #   `chain_state_of` - the scheduler drains rows too and does not import this module.
 from event_constants import mark_processed  # noqa: E402
 from error_said import told
-
-
-
-
-
 
 
 def _rule_outcome_before_running(rule, events):
@@ -2606,15 +2593,15 @@ UNOWNED_CENSUS_EVERY_SECONDS = 600.0
 
 
 def count_unowned_layers_sync(db_session_factory, log=logger.info):
-    """One lap over `cell_sources` by id, a page at a time at its declared pace: the chain's layers no rule owns, by
-    who wrote them - their count and the three tables they hold most of - recorded as this process's
-    `UNOWNED_CENSUS_LOOP` lap, one line said. A pause stops the lap and records nothing. -> the lap, or None."""
+    """One lap over the head lines of every table that keeps lines, a page at a time at its declared pace: the
+    chain's layers no rule owns, by who wrote them - their count and the three tables they hold most of - recorded
+    as this process's `UNOWNED_CENSUS_LOOP` lap, one line said. A pause stops the lap and records nothing. -> the lap, or None."""
     import pacing
     from collections import Counter
     from chain import cell_layer
 
     units, rest = pacing.job_pace(UNOWNED_CENSUS_JOB)
-    started, after, read, pages = time.monotonic(), 0, 0, 0
+    started, after, read, pages = time.monotonic(), None, 0, 0
     layers, tables = Counter(), defaultdict(Counter)
     while True:
         if chain_control.paused() is not None:
@@ -2637,7 +2624,7 @@ def count_unowned_layers_sync(db_session_factory, log=logger.info):
     seconds = time.monotonic() - started
     heartbeat.record_lap("chain", UNOWNED_CENSUS_LOOP, seconds=seconds, depth=read, pace=rest, not_adopted=names,
                          layers=sum(layers.values()))
-    log("[ChainUnowned] pass: %d layer(s) under %d name(s) no rule owns, %d row(s) read in %.1f s"
+    log("[ChainUnowned] pass: %d layer(s) under %d name(s) no rule owns, %d line(s) read in %.1f s"
         % (sum(layers.values()), len(names), read, seconds))
     return names
 
@@ -2995,10 +2982,6 @@ async def _say_what_a_stalled_group_waits_on(db):
 #   The cache existed because the drain called the selector in a `while` loop and
 #   `load_chain_rules()` costs 3.4 ms; there is no drain-side rule loop any more, so there is
 #   nothing to cache and nothing to invalidate on reload.
-
-
-
-
 
 
 def reload_worker_process_cache():
@@ -3744,8 +3727,6 @@ def another_chain_loop_is_running(now=None):
     return heartbeat.another_process_beats("chain", now)
 
 
-
-
 # ⚰️ [소유자 정본] THE LAP'S THREE HELPERS WENT WITH IT — they had no other caller:
 #       followup_already_served  (29 lines) + `_FOLLOWUP_SERVED` · `MAX_REMEMBERED_CAUSES`
 #       log_followup_folded      (45 lines) + `_FOLLOWUP_SAID` · `FOLLOWUP_LOG_EVERY`
@@ -3791,7 +3772,7 @@ def _withdraw_what_those_rows_fed(db, table, row_ids, why):
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
             # what they fed is settled as an answer of no rule that covers nothing (owner 11-08: one seat)
-            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, row_ids)}):
+            for target in sorted({layer[0] for layer in cell_layer.cells_stamped_by(db, None, row_ids)}):
                 _settle(db, target, [{"declaration": None, "origins": row_ids}], (), (), rows_too=False, why=why)
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
@@ -3997,12 +3978,12 @@ def _unsettled(db, table, settles, items, covers, rows_too=True) -> dict:
     out = {}
     if origins.get(""):
         # every column, its keys too - as the withdrawal by origin stamp always took them; the row left a shell goes
-        gone = [layer for layer in cell_layer.cells_stamped_by(db, sorted(origins.pop(""))) if layer[0] == table
+        gone = [layer for layer in cell_layer.cells_stamped_by(db, table, sorted(origins.pop(""))) if layer[0] == table
                 and (layer[1], layer[2], layer[3]) not in answered]
         if gone:
             out[""] = gone
     for rule in sorted(set(rows) | set(origins) | set(cells)):
-        stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, sorted(origins[rule])) if named == table}
+        stamped = {row for named, row, *_ in cell_layer.cells_stamped_by(db, table, sorted(origins[rule])) if named == table}
         written = {row for row, _column in cells[rule]}
         gone = [layer for layer in cell_layer.cells_written_by(db, table, (), (rule,),
                                                                rows=sorted(rows[rule] | stamped | written))
@@ -4036,7 +4017,7 @@ def _covered_rows(db, table, covers) -> set:
     covers = covers or {}
     found = {str(row) for row in covers.get("rows") or () if row}
     if covers.get("stamped_by"):
-        found.update(row for named, row, *_ in cell_layer.cells_stamped_by(db, covers["stamped_by"]) if named == table)
+        found.update(row for named, row, *_ in cell_layer.cells_stamped_by(db, table, covers["stamped_by"]) if named == table)
     by_columns = defaultdict(list)
     for where in covers.get("where") or ():
         by_columns[tuple(sorted(where))].append(tuple(where[column] for column in sorted(where)))
@@ -4129,16 +4110,25 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     if not tables:
         return []
 
+    from database import lines
+    from ledger import schema as ledger_schema
+
     db = db_session_factory()
     try:
         from sqlalchemy import text as sql_text
 
+        # the declared tables, their line tables and the ledger's - by the one seat that lists the catalogue
+        line_tables = {lines.lines_relation(t) for t in tables}
+        # every schema's: the search path decides which one `ANALYZE "<name>"` reaches (the query below)
+        names = [name for name in lines.every_schema_tables(db.connection())[1]
+                 if name in tables or name in line_tables or ledger_schema.owns_table(name)]
         # only the relation the name resolves to through the search path - the one `ANALYZE "<name>"` reaches: a
         # name in two schemas is analysed once, one in no schema of the path not at all (C 11-05, lead ㄱ)
         rows = db.execute(sql_text(
             "SELECT relname, n_mod_since_analyze FROM pg_stat_user_tables "
-            "WHERE n_mod_since_analyze >= :threshold AND relid = to_regclass(quote_ident(relname))"),
-            {"threshold": threshold}).all()
+            "WHERE n_mod_since_analyze >= :threshold AND relname = ANY(:names) "
+            "AND relid = to_regclass(quote_ident(relname))"),
+            {"threshold": threshold, "names": names}).all()
     except Exception as exc:                                           # noqa: BLE001
         # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
         logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "
@@ -4147,10 +4137,7 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     finally:
         db.close()
 
-    from ledger import schema as ledger_schema
-
-    stale = [(name, int(modified or 0)) for name, modified in rows
-             if name in tables or ledger_schema.owns_table(name)]
+    stale = [(name, int(modified or 0)) for name, modified in rows]
     stale += [(name, 0) for name in sorted(set(built) & tables - {name for name, _m in stale})]
     if not stale:
         logger.info("[Chain] statistics are current on all %d declared table(s) "
@@ -4175,7 +4162,8 @@ LAYER_HEALTH_JOB = "layer_health"
 #: asks every table's files - 21 s on the box's 1,183 tables against 16 ms, the same eight first.
 LAYER_HEALTH_TABLES = ("SELECT s.relid::regclass::text, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.autovacuum_count, "
                        "age(c.relfrozenxid) FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid "
-                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 ORDER BY c.relpages DESC LIMIT :n")
+                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 "
+                       "AND s.schemaname = ANY(:schemas) AND s.relname = ANY(:names) ORDER BY c.relpages DESC LIMIT :n")
 
 
 def _report_layer_table_health():
@@ -4215,8 +4203,12 @@ def _report_layer_table_health():
     if engine is None:
         return rest
     try:
+        from database import lines
+
         with engine.connect() as conn:
-            tables = conn.execute(_text(LAYER_HEALTH_TABLES), {"n": int(units or 1)}).fetchall()
+            schemas, names = lines.every_schema_tables(conn)
+            tables = conn.execute(_text(LAYER_HEALTH_TABLES),
+                                  {"n": int(units or 1), "schemas": schemas, "names": names}).fetchall()
     except Exception as exc:                                           # noqa: BLE001 - the watch alone goes quiet
         logger.warning("[LayerHealth] tables ? - %s", told(exc))
         return rest
@@ -4240,69 +4232,6 @@ def _report_layer_table_health():
     if note:
         logger.warning("[LayerHealth] %s", note)
     return rest
-
-
-def _ensure_human_claims_index_sync(db_session_factory):
-    """Build the human-claims index, and NAME the full-table one it replaces (판정 245-b).
-
-    🔴 CREATION IS AUTOMATIC, DELETION IS A PERSON'S (판정 243). Adding an index only
-    weakens - it costs disk and write time and cannot make a query wrong - so a boot may
-    build one. Dropping 5 GB is not reversible inside a maintenance window, and a box may
-    be mid-replay when this line runs, so the ensure states the name, the size and the
-    exact command and stops there.
-
-    ⚠️ AND IT SPEAKS EITHER WAY. A line only when something happens makes "nothing to do"
-    and "the ensure never ran" the same silence - which is exactly how the decision-key
-    ensure's first failure nearly went unseen.
-    """
-    from sqlalchemy import text as _text
-
-    from database import models
-
-    db = db_session_factory()
-    try:
-        engine = db.get_bind()
-        name, statement = models.human_claims_index_ddl()
-        # 🔴 THE SAME WORDS THE OTHER THREE CALLERS USE. This read the builder's return as
-        # a truth value, and when `False` came to mean "already there" the boot printed
-        # `COULD NOT BE ENSURED` about an index that exists - a false line, in the opposite
-        # direction from the false line the same round had just fixed.
-        state = models._ensure_one_index(engine, name, statement, "human-claims", table="cell_sources")
-        logger.info("[Chain] human-claims index %s: %s", name, {
-            models.INDEX_BUILT: "built",
-            models.INDEX_PRESENT: "already in place",
-            models.INDEX_BUSY: "another session is building it",
-            models.INDEX_DEFERRED: "not built this time - see the line above",
-        }.get(state, "COULD NOT BE ENSURED - see the line above"))
-        # ⚠️ THE LEFTOVER LOOKUP IS A REPORT, NOT A REQUIREMENT. If it cannot run, the
-        # line above has already said whether the index this boot needed is there; letting
-        # the lookup take that line down with it would trade a fact for a warning.
-        leftover = None
-        try:
-            with engine.connect() as connection:
-                leftover = connection.execute(_text(
-                    "SELECT pg_size_pretty(pg_relation_size(c.oid)) FROM pg_class c "
-                    " WHERE c.relname = :name AND c.relkind = 'i'"),
-                    {"name": models.RETIRED_CLAIMS_INDEX}).scalar()
-        except Exception as err:                                       # noqa: BLE001
-            logger.warning("[Chain] could not check whether %s is still present: %s",
-                           models.RETIRED_CLAIMS_INDEX, told(err), exc_info=err)
-    finally:
-        db.close()
-    if leftover:
-        # ⛔ NOT DROPPED HERE. The size is in the line because "an index is redundant" and
-        # "an index is costing you five gigabytes on every cell write" are read very
-        # differently by whoever decides when the window is.
-        # ⚠️ NOT "NOTHING READS IT" - that would be false and an operator would find out
-        # the hard way. The parameterised half of the replay path DOES read it, and drops
-        # to a parallel Seq Scan without it; measured on 34M rows, that costs seconds on a
-        # path that runs by hand. What is true is the trade, so the line states the trade.
-        logger.warning(
-            "[Chain] %s (%s) is retired and still present: every cell write maintains it, "
-            "and what still reads it is the by-hand replay path, which falls back to a "
-            "scan (measured: seconds). Drop it when the box is quiet with: python "
-            "migrations/drop_redundant_layering_indexes.py --apply",
-            models.RETIRED_CLAIMS_INDEX, leftover)
 
 
 def _build_unique_index_waiting(bind, uq, table, name):
@@ -4398,7 +4327,6 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
         return {"built": built, "refused": refused, "invalid": invalid}
     finally:
         db.close()
-
 
 
 def _execute_retroactive(payload):
@@ -4791,8 +4719,12 @@ async def start_chain_ingestion_worker(db_session_factory):
         logger.error("[Chain] could not look for database queries a gone chain worker left "
                      "running, so startup may wait behind them: %s", told(exc), exc_info=exc)
     # Before the dynamic-table indexes - a column stands before its index (5b-2).
+    from database.lines import LineTablesRefused
+
     try:
         await asyncio.to_thread(_starting(steps, _sync_dynamic_tables_schema_sync), db_session_factory)
+    except LineTablesRefused:
+        raise                                       # the process does not start (lead 11-11 ㄴ)
     except Exception as exc:
         logger.error(f"Failed to sync dynamic tables schema: {told(exc)}", exc_info=exc)
 
@@ -4883,6 +4815,9 @@ async def start_chain_ingestion_worker(db_session_factory):
     logger.info("[Chain] startup %.1f s - %s", sum(s for _n, s in steps),
                 " · ".join("%s %.1f s" % step for step in steps))
 
+    from utils.logger import booted
+
+    booted()
     first_beat = True
 
     pool = slots.SlotPool()

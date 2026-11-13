@@ -34,6 +34,9 @@ def main(argv=None):
     # the declarations watched as a slot watches them - applied at the run's page boundaries (총괄 1ff4dcc6c ⑤)
     from database import config_watcher
     config_watcher.start_config_watcher(None, boundary=True)
+    from utils.logger import booted
+
+    booted()
     try:
         retroactive.run_claimed(args[0], log=logger.info)
         return 0
@@ -58,6 +61,9 @@ def _slice(args):
         return 2
     from admin import retroactive
 
+    from utils.logger import booted
+
+    booted()
     try:
         retroactive.run_slice(args[1], sys.stdin, lambda said: answers.write(json.dumps(said, default=str) + "\n"),
                               logger.info)

@@ -49,7 +49,7 @@ out = rows              # list[dict] · DataFrame · CSV 문자열. 없으면 ou
 - CLI: `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"`
 - 🆕 **Auto Update 탭의 수집기 행마다 Backfill**(09-26 `2e5ed8f8e`) — `# window:` 를 적은 수집기만 켜지고(아니면 꺼진 채 「Declare # window: to backfill」), 그 행에서 시작 날을 적어 돌리며 그 수집기의 마지막 소급(상태 · N/M 일 · 실패한 날)이 행에 보입니다.
 
-**⚠️ 창과 주기** — 창이 주기보다 길면(예: 매시간 1d) 같은 행을 여러 번 다시 가져옵니다. 🆕 09-26 `98471a546` 부터 값이 그대로인 칸은 **층을 안 씁니다**(가장 새 파일 층과 같은 값이면 아무것도 안 씀 — [소급 가이드 §1.1](./BACKFILL_GUIDE.md)). 그 전에 쌓인 겹은 소급 `fold_file_layers` 로 한 번 접습니다(§2.6).
+**⚠️ 창과 주기** — 창이 주기보다 길면(예: 매시간 1d) 같은 행을 여러 번 다시 가져옵니다. 🆕 09-26 `98471a546` 부터 값이 그대로인 칸은 **층을 안 씁니다**(가장 새 파일 층과 같은 값이면 아무것도 안 씀 — [소급 가이드 §1.1](./BACKFILL_GUIDE.md)). 그 전에 쌓인 겹을 접던 소급은 11-11 은퇴했습니다 — 남은 것은 뒤의 «오래된 줄 정리»(§2.6).
 
 ---
 

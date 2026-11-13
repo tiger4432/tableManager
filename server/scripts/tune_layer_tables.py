@@ -54,9 +54,27 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError, OSError):
         pass
 
-#: The three tables the layering engine writes on every ingest. Defaults, not a fixture:
-#: `--table` takes any relation, because the next deployment's hot table is not this one.
-LAYER_TABLES = ("cell_sources", "cell_overwrites", "audit_logs")
+#: The tables every write lands in since the cell-source overhaul: each declared table's t__lines (read from the
+#: catalogue - `default_tables`) and these. Defaults, not a fixture: `--table` takes any relation (lead 11-11 ㄱ).
+LAYER_TABLES = ("cell_overwrites",)
+
+
+def default_tables() -> tuple:
+    """Every `<t>__lines` relation of the current schema, by name, then LAYER_TABLES - read-only."""
+    engine = db_safety.open_readonly_engine(application_name="assy_tune_layer_tables")
+    try:
+        if engine.dialect.name != "postgresql":
+            return LAYER_TABLES
+        conn = db_safety.open_readonly_connection(engine)
+        try:
+            from database.lines import base_tables, is_line_table     # one judgement of «a line table»
+
+            found = [t for t in base_tables(conn, lines=True) if is_line_table(t)]
+        finally:
+            db_safety.close_readonly_connection(conn)
+        return tuple(found) + LAYER_TABLES
+    finally:
+        engine.dispose()
 
 #: 🔴 THE THREE `--apply` WRITES, AND WHY THEY ARE THESE. A big table's autovacuum is paced
 #: by a cost budget, and at the shipped delay it can spend longer on one pass than the
@@ -312,7 +330,7 @@ def vacuum(tables) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--table", action="append", dest="tables", metavar="NAME",
-                        help="대상 표 (여러 번 지정 가능). 기본: " + " ".join(LAYER_TABLES))
+                        help="대상 표 (여러 번 지정 가능). 기본: 모든 <표>__lines + " + " ".join(LAYER_TABLES))
     parser.add_argument("--apply", action="store_true",
                         help="② 표별 autovacuum reloptions 를 지정합니다")
     parser.add_argument("--reset", action="store_true",
@@ -335,7 +353,7 @@ def main(argv=None) -> int:
                         help="insert 유발 VACUUM 이 계속 돌 때 «사람이» 지정합니다 (예: 0.05)")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    tables = tuple(args.tables or LAYER_TABLES)
+    tables = tuple(args.tables or default_tables())
     for name in tables:
         quoted_identifier(name)                  # 이름을 «먼저» 거절한다
 

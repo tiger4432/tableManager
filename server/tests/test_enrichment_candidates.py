@@ -20,6 +20,7 @@ import pytest
 from chain import enrichment
 from chain import enrichment
 from database import crud, models, schemas
+from tests.support import line_tables  # noqa: E402
 from tests.support.enrich_decl import rewrite_rules, write_rules  # noqa: E402
 from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
 from tests.support.declaration import use_committed_declaration  # noqa: E402
@@ -115,6 +116,8 @@ def cand_env(db_session, tmp_path, monkeypatch):
     (root / "table_config.json").write_text(json.dumps(CAND_TABLES), encoding="utf-8")
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    for table in CAND_TABLES:
+        line_tables.build(db_session.get_bind(), table)   # a cell's layers are its lines' (A 11-11)
 
     rules_path = write_rules(tmp_path, monkeypatch, {"encand_rule": _rule()})
 
@@ -176,6 +179,13 @@ def _seed_raw(db, table, rows):
 def _loaded_rule(name="encand_rule"):
     rules = enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG)
     return next(r for r in rules if r["name"] == name)
+
+
+def _layers(db, row_id, column):
+    """{source_name: layer} - the cell's standing layers (lines.layers, the layer read after the overhaul)."""
+    from database import lines
+
+    return lines.layers(db, "encand_test_derived", [row_id], columns=[column]).get((row_id, column), {})
 
 
 def _derived(db, bk):
@@ -463,12 +473,9 @@ def test_chain_path_auto_confirms_single_candidate(cand_env):
     assert row.wafer_id == "WF1", "single candidate should have been confirmed automatically"
     # Provenance: lowest priority, so nothing it writes can outrank a human.
     assert crud.get_source_priority(enrichment.candidates.SOURCE_NAME) == 99
-    src = cand_env.query(models.CellSource).filter(
-        models.CellSource.table_name == "encand_test_derived",
-        models.CellSource.row_id == row.row_id,
-        models.CellSource.column_name == "wafer_id").all()
+    src = _layers(cand_env, row.row_id, "wafer_id")
     # owner 11-06 step 2: auto-confirm's layer, owned by its rule and the row's key
-    assert [(crud.layer_writer(s.source_name), crud.layer_owner(s.source_name)) for s in src] == [
+    assert [(crud.layer_writer(name), crud.layer_owner(name)) for name in src] == [
         (enrichment.candidates.SOURCE_NAME, ("enrichment_auto_confirm:encand_rule", "L1_S1"))]
 
 
@@ -494,17 +501,14 @@ def test_following_the_same_rows_twice_confirms_them_once(cand_env):
     row = _derived(cand_env, "L1_S1")
     assert row is not None and row.wafer_id == "WF1"
 
-    def _layers():
-        return cand_env.query(models.CellSource).filter(
-            models.CellSource.table_name == "encand_test_derived",
-            models.CellSource.row_id == row.row_id,
-            models.CellSource.column_name == "wafer_id").all()
+    def _layers_now():
+        return _layers(cand_env, row.row_id, "wafer_id").items()
 
-    after_first = [(crud.layer_writer(s.source_name), s.value) for s in _layers()]
+    after_first = [(crud.layer_writer(name), layer["value"]) for name, layer in _layers_now()]
     assert after_first == [(enrichment.candidates.SOURCE_NAME, "WF1")]
 
     run_followup_auto_confirm(cand_env)              # the SAME rows, a second time
-    assert [(crud.layer_writer(s.source_name), s.value) for s in _layers()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
+    assert [(crud.layer_writer(name), layer["value"]) for name, layer in _layers_now()] == after_first,         "a second follow-up pass wrote a second layer for a cell that already had one"
     assert _derived(cand_env, "L1_S1").wafer_id == "WF1"
 
 
@@ -1389,10 +1393,7 @@ def test_cell_sources_already_says_which_columns_the_sweep_decided(cand_env, tmp
     _confirm(cand_env, rule, ["L2_S1"])
 
     row = _derived(cand_env, "L2_S1")
-    got = dict(cand_env.query(models.CellSource.column_name, models.CellSource.source_name)
-               .filter(models.CellSource.table_name == "encand_test_derived",
-                       models.CellSource.row_id == row.row_id,
-                       models.CellSource.column_name.in_(["wafer_id", "owner"])).all())
+    got = {column: name for column in ("wafer_id", "owner") for name in _layers(cand_env, row.row_id, column)}
     assert got == {"owner": enrichment.candidates.SOURCE_NAME}, \
         "the decided column is named and the refused one has no provenance row"
 

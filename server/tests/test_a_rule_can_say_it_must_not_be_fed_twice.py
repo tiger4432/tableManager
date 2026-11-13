@@ -7,7 +7,7 @@ mapper the same bytes. Whether a mapper survives that was in its author's head, 
 is in a gitignored file.
 
 🔴 AND WHAT MAKES A RETRY SAFE TODAY IS THE BUSINESS KEY, NOT THE MAPPER.
-`crud._get_or_create_row` finds a row by `row_id` or `business_key_val` and MINTS one when
+the old row lookup finds a row by `row_id` or `business_key_val` and MINTS one when
 neither is there, so a mapper emitting rows without an identity grows the table on every
 retry. That is S-226, queued; this round is the cell that lets a rule say 「do not do that to
 me」.

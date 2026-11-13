@@ -592,6 +592,9 @@ def db_session():
     yield db
     
     db.close()
+    from database import lines
+
+    lines.drop_every_line_table(engine)          # Base never sees t__lines - one test's lines must not reach the next
     Base.metadata.drop_all(bind=engine)
     models._RUN_COLUMNS.discard(engine)       # the run table went with its added columns (`ensure_run_columns`)
     crud.TABLE_CONFIG.clear()
@@ -747,6 +750,9 @@ def pg_engine():
                 conn.execute(text(
                     f'CREATE UNIQUE INDEX "{index_name}" ON '
                     f'"{PG_TEST_SCHEMA}"."{table_name}" (business_key_val)'))
+        # each declared table that keeps lines gets its empty line table - after the key index it asks for (C 11-11)
+        from database import lines
+        lines.ensure_declared(engine)
 
         try:
             yield engine

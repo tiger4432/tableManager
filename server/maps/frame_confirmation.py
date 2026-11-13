@@ -704,18 +704,6 @@ def as_payload(db, header) -> dict:
     }
 
 
-def derived_cell_scope(db, confirmation_uid: str):
-    """이 확정 아래에서 파생된 셀 — **질의만 돌려준다. 아무것도 지우지 않는다.**
-
-    스펙 §0.3의 「넷째 철자를 만들지 말 것」이 여기 걸린다. 회수는 이미
-    `chain_replay.withdraw_source`가 하고, 이 함수는 그것이 범위로 쓸 대상을 셀 단위로
-    가리킬 뿐이다(스펙 §0.3 4: 행 컬럼이 아니라 `cell_sources` 단위여야 한다).
-    """
-    from database import models
-    return (db.query(models.CellSource)
-              .filter(models.CellSource.confirmation_uid == confirmation_uid))
-
-
 def _priority_of(source_name: str, table_name: str = None) -> int:
     from database import crud
     return crud.get_source_priority(source_name, table_name)

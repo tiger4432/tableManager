@@ -10,11 +10,11 @@ That is not a duplicate-row problem. It is a **collision** problem, and the UNIQ
 from `migrations/add_business_key_unique_index.py` turns it into an outage:
 
   * Five such rows in ONE batch collide with EACH OTHER.
-  * `apply_batch_updates`' `IntegrityError` recovery cannot resolve it. Its recovery is
-    "roll back, re-read the database in a new snapshot, resolve onto the row the winner
-    committed" - and none of the colliding rows was ever committed, so the replay
-    reproduces the identical collision.
-  * After `BK_CONFLICT_MAX_RETRIES` the batch is REFUSED.
+  * `apply_batch_updates`' `IntegrityError` recovery of the time (a replay, retired 11-11)
+    could not resolve it. Its recovery was "roll back, re-read the database in a new
+    snapshot, resolve onto the row the winner committed" - and none of the colliding rows
+    was ever committed, so the replay reproduced the identical collision.
+  * After its retry bound the batch was REFUSED.
 
 Measured on this workstation against real PostgreSQL with the index installed (a
 simulation, not production), three pushes of a 5-row payload whose key column arrived
@@ -127,7 +127,7 @@ def _row(db, table, row_id):
 
 def test_a_blank_key_column_stores_null_not_the_empty_string(db):
     """KILLS: restoring `row.business_key_val = str_val` for a blank value in
-    `_update_row_business_key`.
+    the old key write.
 
     Asserted with `is None` rather than a falsiness check on purpose - `''` and `None`
     are both falsy in Python, so `assert not row.business_key_val` would pass against
@@ -255,7 +255,7 @@ def test_a_map_payload_survives_an_unchanged_re_push(db):
     "this row has no key".
 
     The trap is on the SECOND push. The rows resolve by their assembled key, so the
-    composite recomputation at the end of `apply_row_update_internal` is skipped
+    composite recomputation at the end of the old write door is skipped
     (`is_src_changed` is False, the row is not new) and nothing puts the key back. Any
     version of this branch that touches `business_key_val` on a blank value therefore
     strips every row of an unchanged map. Measured on real PostgreSQL: push 2 left all

@@ -1,5 +1,99 @@
 # 지금 돌리면 되는 것
 
+> ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
+>
+> ```
+> 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 창에 들어가는지 본다
+>          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
+>              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - ...
+>              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다. 층 16,348/s (BOX_RATE, 박스의 전체 다시 옮기기)와
+>              100 만 행에 VACUUM 0.2 분 (VACUUM_MIN_PER_MILLION_ROWS)으로 센다 — 이 디스크 속도가 아니다
+>              «at least B h» 가 4 h 를 넘으면 창을 열지 않는다. 그 줄을 총괄께
+>          refused: no statistics for cell_sources - run again with --analyze ...   -> --estimate --analyze 로 다시 (약 1 분)
+>          (업무 시간 밖에) --estimate --sample --workers 4   가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다
+>              끝 줄의 «this disk's rate, from the sample» 이 이 디스크로 센 시간이다
+>
+> 창 안 — 이 순서로
+> ① 런처 끄기  run_app 창을 닫는다. 서버 · 체인 워커 · 스케줄러가 다 내려가야 ③ 이 돈다
+> ② 번들 반영  받은 .bundle 을 release\ 에 넣고 apply_release.bat (반영만, 런처는 안 띄움)
+>             볼 줄  [Release] <파일>: <이전 커밋> -> <새 커밋> (back: git reset --hard <이전 커밋>)   이 «이전 커밋» 을 적어 둔다 (⑨)
+> ③ 줄 표 짓기  런처를 한 번 띄웠다가, 시작 검사가 끝나면 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
+>             이 사이에는 아무도 쓰지 않는다 (화면을 열지 않는다)
+> ④ 미리보기   cd server ; python scripts/copy_layers_to_lines.py
+>             <표>  N layer(s) on M row(s) · to copy | copied | lines not built - start the server once
+>             total N layer(s) to copy · preview only - add --apply
+> ⑤ 시간 다시   python scripts/copy_layers_to_lines.py --estimate --workers 4     «at least B h» 가 창의 남은 시간을 넘으면 멈추고 총괄께
+>             시간이 긴 표인데 그 이력이 당장 필요 없으면: ⑥ 에서 그 표만 빼고 (--table <나머지 표> 를 하나씩) 옮기고,
+>             나중에 서버를 끈 채 --apply --table <그 표>. 그 사이 쓴 값은 그대로 이기고 옛 층은 그 밑 이력으로 들어간다
+>             (박스 리허설: 3,000 행 9,504 층, 사람 편집 · 빈 값 위의 새 쓰기 셋 다 그대로 · 어긋남 0)
+> ⑥ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
+>             진행  <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
+>             끝    <표>: done - K layer(s) copied in S s - vacuumed ...   VACUUM (ANALYZE) 는 표 끝마다 스크립트가 한다. 따로 할 일 없음
+>                   copied A table(s), B already, C stopped - this run D · the files now hold H mismatched cell(s) (<파일>…)   C 가 0 이 아니면 exit 1
+>             이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ⑥ 을 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
+>                       첫 줄  <표>: resuming - already copied N / M rows (an earlier run's pages)
+>                       박스 리허설: 58 % 에서 프로세스를 죽이고 다시 돌린 끝이 안 끊긴 판과 같았다(행 · 줄 · copy 감사 행 · 어긋남 98,804)
+>             시간      박스 리허설은 기계를 같이 쓴 판: 죽기 전 43 분 + 이어 하기 24 분 (속도로 읽지 않는다. 시간은 위 81 분 판)
+> ⑦ 런처 띄우기
+> ⑧ 확인
+>   시작 검사  [Indexes] line index '<표>__lines_<x>' ...   빠진 줄 표 인덱스를 짓는 줄 — 짓는 동안 시작이 기다린다. 다 있으면 조용하다
+>             LineTablesRefused ... <표>: index <이름> not built (<답>)   시작을 거절했다. 바로 위 줄이 이유. 그 세션이 끝난 뒤 다시
+>             [Lines] <표>__lines: dropped uq_bk_<표>__lines - ...        할 일 없음. 시작마다 나오면 그 줄을 총괄께
+>   /health   응답이 오면 api 가 떴다
+>   화면 넷    이 순서로 연다. «볼 것» 이 아니면 그 화면의 로그 줄과 시각을 총괄께 (D 의 점검표)
+>             ① 큰 표의 grid  index.html -> 표 고르기
+>                볼 것  Loaded: 1 - 1000 · Matches «N rows · 10s ago» 또는 «10,000+ rows» · 작성자 색이 첫 그림에 같이
+>             ② 이력 패널  index.html 오른쪽 Global 탭
+>                볼 것  묶음 줄들 + 끝에 «Partial (100) · more» · 접힌 줄의 «N rows» (1,000 을 넘으면 «1,000+ rows»)
+>             ③ 큐  admin.html -> Overview 의 Queue
+>                볼 것  «Read N s ago» 가 5 s 마다 0 으로 돌아간다 · Waiting 카드 «N events · 10s ago»
+>             ④ 갤러리  grid 아래 Gallery (이미지 칸이 있는 표에서만 보인다)
+>                볼 것  «N rows» 또는 «312 of 1,200 loaded» + «Load more» · 썸네일 타일
+>             화면에 «[null] Deleted» 나 «Empty →» 가 보이면 브라우저가 옛 번들을 쥐고 있다: Ctrl+F5
+>             박스 리허설 (총괄 11-14 02:5x, 번들 main-BR3B7LNN.js):
+>                ① grid    착지 뒤 쓴 값이 보인다
+>                ② 이력    Global 목록이 그려진다 · 두 표 트랜잭션이 한 줄 «text_doc +1 · 2 ROWS» · 표 이름을 누르면
+>                          그 행으로 간다 · 펼치면 «K0000001 · by …» · Row 탭은 새 값만
+>                ③ 큐      Waiting 카드 «N events · Ns ago»
+>                ④ 갤러리  안 열었다 (리허설 표에 이미지 칸이 없다)
+>   알려진 것  Global history no longer shows ledger batch receipts (owner 11-13: not needed). Table-wide (*) records:
+>             not shown yet – still recorded, they show once the history reads them (after 11-14)
+>             파일 하나가 끝날 때 남는 FILE 줄과 chunk 줄은 아직 옛 표 (audit logs · cell sources) 를 세고 있어서
+>             "audit logs / 0 rows", "side-table rows 0" 으로 나온다. 이력은 줄 표 (<표>__lines) 에 그대로 남는다
+>             (같은 파일에서 main 은 audit_logs 6 행, 착지 트리는 줄 6 개). 11-14 뒤에 FILE 줄이 "history lines / N" 을 싣도록 고친다
+>   ★ 어긋난 칸 파일  copy_mismatch_<표>.csv (⑥ 을 돌린 폴더)
+>             옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸이다. 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다
+>             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
+>             할 일: 파일을 총괄께. 고친 뒤 그 행만 다시  python scripts/copy_layers_to_lines.py --apply --rows <파일>
+>               -> «<표>: N row(s) copied again - ... - every cell matches» 면 끝. 아니면 새 파일(.again-<시각>.csv)
+>
+> 답의 뜻 (⑥)
+>   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
+>   refused: lines not built for <표>                 ③ 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
+>   <표>: already copied (...) - skipped              그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   <표>  N layer(s) on M row(s) · copied            미리보기 · ⑥ 의 표 줄. 이미 다 옮긴 표 — ⑥ 이 건너뛴다. 정상
+>   맨 위의 [Report] causes.values: the ledger declaration was not read + Traceback ... no ledger world '<이름>'
+>          체인 규칙 하나가 선언되지 않은 ledger world 를 이름에 든다(config 의 규칙 쪽 일). 이주와 무관 — 복사는 계속된다
+>   REFUSED - <표>: cell_sources has no owner_rule / owner_key - ...
+>          release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
+>          할 일: 옛 릴리스로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) ② 부터
+>
+> ⑨ ★ 되돌리기 — 옛 릴리스를 같은 DB 위에 (소유자 11-13: 백업 없음). 줄 표 · won_by 칸은 DB 에 남는다
+>          런처를 끈다 -> git reset --hard <② 의 이전 커밋> -> 런처를 띄운다. 옛 층 표는 이주가 읽기만 했다
+>   뜬다          시작 줄 [Schema] no drift - ... (N unmapped column group(s), harmless) — 줄 표 · won_by 를 세고 지나간다. won_by 는 grid 열이 아니다
+>   보이는 것      grid 는 착지 뒤 값을 그대로 보이지만, 착지 뒤 쓴 칸의 셀 소스 · 이력은 옛 층만 보인다
+>                 셀 소스 패널은 옛 파일 층을 «이긴 층» 으로 적는데 칸은 새 값이다. 칸이 맞고 패널이 옛 것이다
+>                 재계산(R3 resolve)은 아무것도 안 바꾼다 (박스, 세 행) · 같은 행의 다른 칸을 써도 그 칸은 그대로
+>   못 잰 것       옛 릴리스에서 체인 리플레이가 착지 뒤 쓴 칸을 지날 때
+>   다시 올리면    ⑥ 은 그 표를 «· copied» 로 건너뛴다. 옛 릴리스 동안 쓴 칸은 값은 남고 그 쓰기 이력은 새 이력에 없다
+>                 그 행의 다른 칸을 새로 써도 그 칸 값은 그대로다 (박스, 한 칸)
+>   되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
+> 끄기     없음 — 이주 명령은 사람이 돌릴 때만 돈다
+> ```
+>
+> ---
+
+
 > ## [11-13 릴리스] **release-2026-11-13 — 갤러리 zip · 그리드 열쇠 읽기 · R&D 보드 hop 타입** — 번들 적용 · api 와 스케줄러 재기동
 >
 > ```
@@ -58,6 +152,75 @@
 >
 > ---
 >
+> ## [11-13g] **grid 쪽 읽기 — 칸의 «누가 썼나» 색을 이름별로 한 번만 따진다** — 새 릴리스로 올린 뒤 (서버만)
+>
+> ```
+> 볼 것    grid 쪽을 열어 «Written by person / merge / ai» 색이 예전과 같은 칸에 칠해지는지
+>          박스 판(1,000 행 x 30 칸, 무부하): 쪽 읽기 0.199 -> 0.171 s
+>
+> 답의 뜻
+>   색이 예전과 같다     정상 - 바뀐 것은 따지는 횟수뿐이다 (칸마다 -> 이름마다)
+>   색이 빠지거나 다르다  이 변경의 결함이다 - 총괄에게
+>
+> 끄기     없음 - 되돌리려면 옛 릴리스로
+> 로그     새 줄 없음
+> ```
+
+> ## [11-13f] **표의 칸을 바꿀 때 — 운영자가 알아 둘 것 (갈아엎기 뒤에도 main 과 같음, 소유자 11-13)** — 새 릴리스부터
+>
+> ```
+> 칸 빼기     선언에서 빼도 그 칸은 데이터 · 쓰기 그대로 살아 있다. 할 일 없음
+> 이름 바꾸기  새 빈 칸이 생긴다. 옛 칸과 그 이력은 옛 이름 아래 그대로 남는다 — 이력은 따라오지 않는다
+> 타입 바꾸기  숫자 -> 문자: 그 칸에 다음 쓰기가 오면 같은 값이어도 이력 줄이 «한 번» 더 생긴다 (7.0 -> 7). 보이는 값은 그대로
+>            그 뒤로는 늘지 않는다. 문자 -> 숫자는 늘지 않는다
+> ```
+
+> ## [11-13e] **grid 의 Next / Prev — row_id 순서에서는 앞 쪽의 마지막 행이 지워져도 키로 읽는다** — 새 릴리스로 올린 뒤 (서버만)
+>
+> ```
+> 볼 것    정렬 없이(row_id 순) 깊은 쪽에서 Next / Prev. 그 사이 앞 쪽의 마지막 행이 지워졌어도 다음 쪽이 바로 온다
+>          박스 판(t 315 만 행): 같은 깊이 키로 5 ms · OFFSET 으로 3.2 s (부하 아래 20~30 s)
+>
+> 답의 뜻
+>   정렬 칸이 있을 때(열 머리 정렬)  그 행이 지워졌으면 그 한 번은 예전처럼 OFFSET 으로 읽는다 - 느릴 수 있다, 정상
+>   쪽 번호로 점프 · 무한 스크롤 · Load All   아직 OFFSET 이다 (클라가 키를 싣는 일은 따로 온다)
+>
+> 끄기     없음 - 되돌리려면 옛 릴리스로
+> 로그     새 줄 없음
+> ```
+
+> ## [11-13] **줄 표 · 선언된 표의 autovacuum — 규칙 하나 (50 + 행 수의 2%, 상한, cost_limit 2000)** — 새 릴리스로 재기동 뒤
+>
+> ```
+> 할 일    없음. 스케줄러가 시작 · 병합 때 건다 (PG 18 이 필요 — 운영 18.3)
+> 볼 줄    scheduler 로그, 시작 뒤 1~2 분 안에 한 번씩:
+>   [Lines] autovacuum on line tables (... max_threshold = 50000 ...): set now N
+>   [Storage] autovacuum on declared tables (... max_threshold = 100000 ...): set now N
+>          뜻: N 개 표에 처음 걸었다. 다음 시작부터는 다 걸려 있어 이 줄이 안 나온다 (조용 = 정상)
+>   ... by hand N        누가 손으로 바꾼 값이 있어 그대로 둠. 인덱스 화면 «Apply declared» 로 덮을 수 있다
+>   ... not set (lock busy) N   그 표 잠금이 바빴다 — 다음 병합(2 분)에 다시. 계속 나오면 [DDL] 줄이 쥔 쪽을 말한다
+>   ... not set (failed) N      PG 가 거절 — 대개 PG 18 아님. [Indexes] <표> storage not set 줄이 사유
+> 확인     인덱스 화면의 Storage 표: 표마다 autovacuum_* 줄이 held
+> 끄기     ingestion_settings.json 에 "lines_autovacuum_threshold": null / "table_autovacuum_threshold": null
+>          -> 그 표들은 손대지 않음 (이미 걸린 값은 남는다 — 총괄께 말하면 되돌리는 법을 드림)
+> 바꾸기   같은 칸에 숫자 (상한, 죽은 행 수). 표 하나만은 table_config 의 그 표 "storage" 에 칸을 적으면 이긴다
+> ```
+
+> ## [11-13d] **느린 요청 줄의 시계 — DB 가 취소한 문장도 SQL 시간으로 센다** — 새 릴리스로 올린 뒤 (서버만)
+>
+> ```
+> 볼 것    server.log 의 [Slow] 줄 중 grid 읽기가 상한(grid_read_timeout_seconds, 기본 10 s)에 잘린 것 (503)
+>          전   ... keys 10.03 s (SQL 0.00 s · 0 rows · Python 10.03 s)      잘린 문장이 «Python» 으로 읽혔다
+>          후   ... keys 10.03 s (SQL 10.0x s · 0 rows · Python 0.0x s)      그 10 s 는 DB 에서 쓴 시간이다
+>
+> 답의 뜻
+>   SQL 이 크고 Python 이 작다   DB 문장이 느리다 (잘렸든 끝났든). 그 줄의 경로·단계로 문장을 찾는다
+>   Python 이 크고 SQL 이 작다   이제는 정말 파이썬 쪽이다 (변환·합치기). 예전 줄과 섞어 읽지 않는다
+>
+> 끄기     없음 - 재는 자리만 바뀐다. 되돌리려면 옛 릴리스로
+> 로그     새 줄 없음. 같은 [Slow] 줄의 SQL / Python 몫만 달라진다
+> ```
+
 > ## [11-11i] **표 걷기(Tables 화면) — 행을 + / − 로 찍어 다음 표로 걷고, 마지막 표를 축 하나로 «축 | + | −» 표로 접는다** — 번들 적용 · api 재기동
 >
 > ```
@@ -362,6 +525,57 @@
 >
 > ---
 >
+> ## [11-11] **줄 표가 다 지어져야 뜬다 — 거절된 표가 있으면 런처가 아무것도 안 띄운다 · 선언 저장은 400** — git pull · 런처로 전체 재기동
+>
+> ```
+> 무엇     런처가 자식을 띄우기 «전»에 선언된 표와 그 줄 표(<표>__lines)를 전부 짓는다
+>          하나라도 거절되면 거절된 표 «전부»를 한 줄씩 찍고 아무것도 안 띄운다(exit 1)
+>          자식(웹 · 워처 · 체인 워커)도 시작 때 같은 동기화를 돌린다 — 다 지어져 있으면 줄 표 DDL 은 0
+>          런처 없이 자식 하나를 띄워도(uvicorn main:app · run_watcher.py · run_chain_worker.py) 거절이면 그 프로세스가 안 뜬다
+>          줄 표만 멈춘다. 스키마 드리프트 배너(다른 종류)는 전처럼 «찍고 뜬다»
+> 런처 줄   <표>: line table not built - <사유> - <할 일>
+>          Nothing started: the tables above keep no history until their line tables are built.
+>
+> 사유와 할 일
+>   이름이 김  its name is 54 bytes; line tables need 53 or fewer - declare it under a shorter name (a non-ASCII character takes 3 bytes)
+>            할 일: 더 짧은 이름으로 선언한다. 옛 표의 데이터를 옮기는 일은 총괄에게
+>            따옴표 · $ 가 든 이름: its name carries a quote or a dollar sign - declare it under a plain name
+>   옛 줄 표   <표>__lines still holds the history of an earlier <표>, which was dropped and made again - rename <표>__lines or drop it (its history goes with it), then start or save again
+>            뜻: 제품 밖에서 <표>를 지우고 다시 만들었다. 옛 이력을 새 표에 붙이지 않는다
+>            할 일: ALTER TABLE "<표>__lines" RENAME TO "<표>__lines_old" (이력 보존) 또는 DROP TABLE "<표>__lines" — 그 뒤 런처 재기동
+>   잠금      its lock was not had (held by pid N <문장 머리>) - end that session or wait for it, then start or save again
+>            뜻: 다른 세션이 그 표를 잡고 있어 잠금 대기 시한 안에 못 얻었다
+>            할 일: 그 pid 의 세션을 끝내거나 끝나기를 기다린 뒤 런처 재기동
+>   표 없음    it is declared but the database has no such table - start the server or save the declaration again; both make it
+>   뷰        it is a view - declare it kind: view
+>            뜻: DB 에서 뷰인 것을 kind: view 없이 표로 선언했다. 뷰는 줄 표를 갖지 않는다
+>   그 밖      <오류 문장> - fix what it names, then start or save again
+>
+> 선언 저장  그 표의 줄 표가 거절될 것이면(이름 · 옛 줄 표 · 뷰) 저장이 400 이고 파일은 그대로다
+>          {"code": "line_table_refused", "path": "tables.<표>", "message": "<표>: line table not built - <사유> - <할 일>"}
+> 리로드    [Reload] declaration refused - <표>: line table not built - <사유> - <할 일> - restarting the server builds it again; if it still cannot be built, the boot stops with that reason
+>          뜻: 파일은 이미 저장됐다. 새 칸 추가가 거절됐으면 <표>와 <표>__lines 둘 다 그 칸이 없다
+>          그때까지 그 표 읽기는 «no such column <칸>» 으로 실패한다
+>          할 일: 사유의 할 일을 한 뒤 다시 저장하거나 런처 재기동
+>          줄 표를 짓는 것은 시작(런처)과 이 리로드뿐 — 리로드 버튼의 워처 · 워커 새로 읽기는 표 모델만 읽는다
+> 볼 것    launcher.log 의 위 줄. 다 지어졌으면 아무 줄 없이 자식이 뜬다
+> 끄기     없음 — 줄 표 없이 띄우는 스위치는 없다
+> ```
+>
+> ---
+>
+> ## [11-11] **셀소스 복사 — 객체 값 · 쓰기가 거절하는 값을 만나면 그 쪽을 거절한다** — 착지(11-14) 뒤 복사를 돌릴 때
+>
+> ```
+> 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds an object value - nothing of this page was copied; tell the lead
+> 뜻        옛 층 값이 JSON 객체다. 박스에는 0 행이었다. 그 쪽은 한 줄도 안 옮겼다
+> 거절 문장  Cannot copy <표>: row <행> column <칸> (source <출처>) holds <값>, which the write refuses: <사유> is expected - nothing of this page was copied; tell the lead
+> 뜻        옛 층 값을 오늘의 쓰기가 받지 않는다(숫자 칸의 글자 · 무한대 숫자). 그 쪽은 한 줄도 안 옮겼다
+> 할 일      그 문장 그대로 총괄에게. 다시 돌리지 않는다
+> 진행 줄     12,400 / 380,000 cells · 2,100 cells/s · ~3 min left — 단위는 «칸(cells)» 이지 행이 아니다
+> 뜻        큰 표를 고르면 오래 걸린다. 남은 시간은 진행 줄의 cells/s 로 본다
+> ```
+
 > ## [11-10] **표를 기다리는 줄이 «누가 잡고 있나»를 말한다 — slot 2 · r9 · 12 s / replay <run> · 12 s** — git pull · 체인 워커 · API 재기동(함께)
 >
 > ```
@@ -986,7 +1200,7 @@
 > 답의 뜻  다음 바퀴부터 1,000 행 읽고 60 s 쉼 — 지금 도는 바퀴는 원래 빠르기로 끝까지 (파일은 바퀴 시작 때 한 번 읽음)
 >          박스 크기면 한 바퀴 약 27 일 → Not adopted 수는 사실상 «마지막 바퀴의 수 · 그 시각» 에 멈춤. 다른 동작은 그대로
 >          되돌리기: "slow" 로 — 역시 다음 바퀴부터
-> 볼 줄    chain_worker.log «[ChainUnowned] pass: … row(s) read in N s» — 바퀴가 끝날 때만 한 줄
+> 볼 줄    chain_worker.log «[ChainUnowned] pass: … line(s) read in N s» — 바퀴가 끝날 때만 한 줄
 > 주의     11-09 부터 server/pacing.json 은 추적 안 함 — 맨 위 블록
 > ## [11-09] **도움말이 브라우저 수집 확장(Collector)을 읽는다** — git pull · API 재기동(도움말 목록은 기동 때 읽음)
 >
@@ -1236,7 +1450,7 @@
 >          (예외: 주인 없는 옛 체인 층이 그 칸에 남아 있는 동안은 그 칸의 체인 층들이 시각 순)
 >          한 답에 한 칸 값 둘 -> 둘 다 안 씀
 > 볼 줄    ⚠️ [Chain Write Discard] ... Next: fix the rule - one answer gave these cells two values, neither was written. Not written: two_values_in_one_answer <칸>=<수>
->          [ChainUnowned] pass: N layer(s) under M name(s) no rule owns, R row(s) read in S s      (체인 워커 - 앞 바퀴가 끝나야, 그 시작 10 분 뒤부터 다음 바퀴)
+>          [ChainUnowned] pass: N layer(s) under M name(s) no rule owns, R line(s) read in S s      (체인 워커 - 앞 바퀴가 끝나야, 그 시작 10 분 뒤부터 다음 바퀴)
 >          실패 줄에 statement timeout · N s · stage settle      (거두기가 문장 상한에 걸림 - 그 그룹은 실패하고 다시 돈다)
 > 화면     어드민 Chain 탭, 규칙 표 밑 «Not adopted» — 주인 없는 옛 체인 층의 쓴 이름 · 층 수 · 많이 든 표 셋
 >          Counting - the first pass has not ended   재기동 뒤 첫 바퀴 전(박스 cell_sources 약 3,800만 행: slow 한 바퀴 약 2 시간)
@@ -5375,7 +5589,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          명령  python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
 >                python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <위의 행 수> --apply
 > 답의 뜻   미리보기 「Full reset of '<표>': N row(s) … No chain rule is told …」   아무것도 안 씀
->          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 체인은 안 깸 — 필요하면 Read all again
+>          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 줄은 이력으로 남고 머리 없음 · 체인은 안 깸 — 필요하면 Read all again
 >          「REFUSED: … has K row(s) now, not M」                                     그 사이 표가 움직였거나 confirm_rows 를 안 적음 -> 미리보기부터
 >          how 를 비우면 예전 그대로 Row by row(그리드 삭제처럼 쪽마다 · 체인이 먹인 것을 거둠)
 > 급할 때   쓰지 않으면 아무 일 없음. 옛 명령 empty_table.py 는 없어짐
@@ -5978,7 +6192,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          층이 하나도 안 남은 행은 그 자리에서 지워짐 — 지금까지는 키 칸이 빈 채(business_key_val 만 남음) 남았음
 > 보이는 것 chain_worker.log «[ChainShell] table=<표> rows_deleted=N - nothing but the chain's keys and values another chain attached was left»
 >          바로 뒤 «[ChainRetract] … rows_told=… rows_deleted=N»
->          R2 미리보기 «At most N row(s) are left with no layer and are deleted as shells.» · 결과 rows_deleted
+>          R2 미리보기 «Rows left with nothing that keeps them are deleted too - counted when it runs (shown on the run's line).» · 결과 rows_deleted
 > 남는 것  사람 층 · 파일 층 · 다른 규칙 층이 있는 행은 안 지움 · 출신 행 없는 맵퍼(SELECT 로 다시 읽어 냄)는 거둘 것을 못 고름 (그대로)
 > 이미 남은 껍데기  어드민 소급 «Remove rows with no source left» 를 그 표에 한 번 — 끝
 > 틈      거두기 커밋과 지우기 커밋 사이에 프로세스가 죽으면 그 행은 껍데기로 남음 (재시도는 거둘 층이 없어 안 물음) -> 위 op 로
@@ -6156,8 +6370,6 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 층 순위   파일 머리에 있는 칸은 파일이 그 맵의 진술이라 표의 source_priority 대로 섬 — 같은 칸의 체인 값을 가릴 수 있음
 >          사람이 적은 값(층 0)은 그대로 위
 > 확인     맵 교체 파일을 넣고 그리드에서 그 다이의 빈 칸이 비었는지 · 와처 로그 «[Map Diff] … Written: W | Removed: M»
-> 세기     cd server ; python scripts/count_absent_null_layers.py
->          이 칸들은 «replaced» 로 따로 셈(정상) — «→ 다음»의 가림 수에 안 듦. absent 수가 늘면 다른 원인
 > 되돌리기  git revert 338dffcf7 -> 런처 재기동. 이미 비운 칸은 남음 — 다음 파일이 값을 적으면 그 값
 > ```
 >
@@ -8638,15 +8850,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
 >            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
 >            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
-> ①c 겹친 층 접기            python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"   «로그 표» · «공식 표» · 인벤토리 차례로 · 표마다 같은 명령 한 번 더
->    초      dt_log 3.0 · 2.5 · official_dt 2.3 · 2.4 · dt_inventory 2.4 · 2.3
->    답      끝 줄 «[fold] '<표>' apply: … chain plain layers off the keys N renamed to their row's, M whose row layer is there deleted, … S shown value(s) move» — 리허설(소급 실행 기록) «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 430 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 0 · differing 0 · without a source row 205 · copies 0 · shown 0 · layers 2755 -> 2755 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20
->            한 번 더: «로그 표» renamed 0 · deleted 0 · differing 0 · without a source row 430 · copies 0 · shown 0 · layers 3265 -> 3265 · «공식 표» renamed 0 · deleted 0 · differing 0 · without a source row 205 · copies 0 · shown 0 · layers 2755 -> 2755 · 인벤토리 renamed 0 · deleted 0 · differing 0 · without a source row 0 · copies 0 · shown 0 · layers 20 -> 20 — renamed · deleted · shown 이 0 이면 끝
->    뜻      원천 행을 찍은 옛 plain 체인 층이 그 행의 층 chain_ingestion (<행>) 이 된다(값 · 시각 그대로) — 그 뒤로 원천 행 하나를 거두면 그 행 층만 걷힘
->            원천 없는 plain 층(«without a source row»)은 남는다 — 결정 · 보류 · 맵 파생이 원천 없이 쓴 것(db928d441, 총괄 «다») · 키 칸 plain 층도 남는다(40b3a0f07)
->            체인 층 plain/행 층(표마다): 재기동 직후 dt_log=645/0 · official_dt=820/1935 -> ①c 뒤 dt_log=645/0 · official_dt=820/1935
->    화면     어드민 Retroactive -> «Fold layers that repeat another» -> table -> Count -> Run (Count 는 앞 200 행 견본, 표 전체 수는 Run 의 끝 줄)
->    박스     이 박스 dt_log 사본의 초 · 수는 이 파일 「체인 층은 원천 행마다 하나」 절의 「박스 수」 줄 · 서버를 켠 채로 돌린다(그 절 ⚠️ 줄)
+> ①c ⚰️ 겹친 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > ①d (이 pull «전»에 층 접기를 돌린 공식 표만) python scripts/chain_replay_cli.py replay «다시 세기 규칙»   -> --apply   2.6 · 4.4 초 — ⑤ · ⑥ 전에
 >    답      source rows scanned : 127 · rows handed over : 127 — 공식 표 전부
 >    뜻      공식 표 키 칸의 plain 체인 층이 다시 선다 — 리허설 B(꼬임 7e2fc0575 · pull 전 그 코드로 공식 표 층 접기 -> pull 1a022befe): 키 칸 층 381 -> 접기 뒤 12 -> ①c 뒤 12 -> 이 명령 뒤 381 · 끝 상태 공식 행 200 · agreed 200 · 원자 200 · 키 밖 값 없는 행 0
@@ -9409,7 +9613,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ## [10-11] **층 접기는 키 칸의 체인 층을 안 건드린다 — 표시된 원천 행 하나만 먹이던 공식 행이 키 없이 남지 않는다 (응용 7e2fc0575 · 총괄 10-11, 착지 40b3a0f07) — 이주 «없음» · 재기동 «서버 · 스케줄러»**
 >
 > ```
-> 무엇        «Fold layers that repeat another» 가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
+> 무엇        층 접기(⚰️ 11-11 은퇴)가 키 칸(composite_key_source, 없으면 business_key)의 plain 체인 층을 지우지도 이름 바꾸지도 않는다
 >            그 층은 보류 다시 세기가 키를 쓰는 층 — 지우면, 그 키를 먹이던 원천 행 하나가 표시돼 거둬질 때 키 칸까지 비어
 >            다시 세기가 그 행을 못 찾고 hold 만 agreed 로 남았다(일요일 표 ⑦ 의 «알려진 것» 한 행)
 > 순서        pull -> 서버 · 스케줄러 재기동 (화면 Count 는 서버, 화면 Run 은 스케줄러가 돈다 · python -c 는 새 프로세스라 재기동 무관)
@@ -9433,9 +9637,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇        원천 행을 찍은 체인 쓰기(조인 · @mapper · 복사 규칙 · 접기 맵퍼)는 그 행의 층 chain_ingestion (<원천 행>) 에 써진다
 >            행 층은 체인 순위(4) — 같은 순위 안에서는 늦게 쓴 것. 합치기 사본(user (…) 등)은 오늘 순위 그대로
 > 순서        ① pull -> 체인 워커 · 서버 재기동
->            ② 체인이 쓴 표마다: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count -> Run
->               또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
->            ③ 같은 Run 한 번 더 -> 끝 줄의 renamed · deleted · shown value(s) move 가 0
+>            ② ⚰️ 체인이 쓴 표마다 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > Count 뜻    화면 Count 는 앞 200 행 «견본» — 표 전체 수는 Run 의 끝 줄
 >            Chain, outside the key columns: N plain layer(s) become their source row's layer     원천이 찍힌 옛 plain 층 — 이름만 바뀜(값 · 시각 그대로)
 >                   M whose row's layer is already there go            원천이 찍힌 plain 인데 그 행 층이 이미 있음
@@ -10695,7 +10897,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >
 > ```
 > 재기동 뒤        새 합치기(쓰기 문 · 키 고치기 --apply · 표기 소급)는 넘어가는 행에 없던 칸의 층을 만들지 않는다
-> 센다(읽기만)      python server/scripts/count_absent_null_layers.py
+> 센다(읽기만)      은퇴 (11-12) — 옛 층 표가 줄 표로 옮겨 가며 빈 층도 줄로 옮겨짐(지워지지 않음). 세는 대본은 없앰
 > 세 수의 뜻        ① 비울 수 없는 쓴 이(파일 등)의 빈 층 — 전부터 세던 그 수(S-243-b), 판정 405 이전에 쌓인 부재
 >                ② 합치기가 남긴 빈 사본, 비울 수 없는 쓴 이 — 부재로 확정. 이번 결함이 남긴 것
 >                ③ 합치기가 남긴 빈 사본, 사람 · 체인 — 부재이거나 사람이 일부러 비운 칸의 사본. 구별이 안 된다
@@ -12762,8 +12964,8 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > ```
 > 언제          notation_rules.json 에 "write": true 칸을 선언한 «그날». 선언이 없으면 할 일 없음
 > 순서          ① 소급 탭 "Fold stored values into the declared spelling" — table · 드라이런(Count) 먼저
->              ② 같은 표에 "Fold layers that repeat another" — 철자만 달랐던 파일 층이 이제 같은 값
->              ③ python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
+>              ② ⚰️ 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
+>              ③ python server/scripts/tune_layer_tables.py --table <표>__lines --vacuum      (그 표의 줄 표 - 층은 갈아엎기 뒤 여기 산다)
 > 드라이런 뜻    "... row(s) would take another row's key and are skipped" — 두 옛 철자가 한 키가 됨. 병합 안 함 — 별칭 행이나 규칙을 고치고 다시
 >              "... value(s) change again on a second fold - the run stops there" — 선언부터 고침. 실행은 그 페이지 앞에서 멈춤
 > 사실 둘        맵 키 칸(map_key_columns)을 write 로 선언하면 소급을 같은 날 — 첫 replace_map 푸시가 옛 철자 행의 뺀 칸을 못 지움
@@ -12795,7 +12997,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 무엇이 바뀌나  server\config\notation_rules.json 에서 "write": true 인 칸만 — 파일 · 격자 · 체인 쓰기가 접힌 값을 저장
 >              그 파일이 없거나 write 칸이 없으면 아무것도 안 바뀜
 >              키 칸을 write 로 선언해도 새 행 없음 — 옛 철자로 저장된 행을 찾아 그 행의 키를 접힌 키로 바꿈
-> 이력          접기가 철자를 바꾸고 그 칸이 쓰일 때 칸마다 한 줄(old = 들어온 철자, new = 저장값). 같은 철자를 다시 보낸 파일은 줄 없음
+> 이력          ⚰️ 들어온 철자는 남지 않음 (소유자 11-10 ㄱ: 감사는 여섯 항목, 전 값 없음)
 > 확인          watcher.log "[Ingest] <표> FILE <파일>: ... · time rule left as written: no matching format N, time zone written M"
 >              time 칸이 그대로 둔 값의 수 — 0 이면 이 칸이 안 나옴. N 이 크면 그 칸의 "from" 모양을 더 적음
 >              GET /admin/config/notation/preview?table=<표>&column=<칸> 의 folds_again 이 0 이 아니면 선언부터 고침(소급이 거기서 멈춤)
@@ -12849,11 +13051,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
 >            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
 >            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
-> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold layers that repeat another" -> table -> Count
->            문장 "layers N -> M, the deepest cell A -> B" — N-M 이 지울 수
->            (이 박스 1,000 행 x 5 칸 x 9 겹 픽스처: 46,000 -> 6,000 · 9 -> 1 · 1.2 s — 운영 규모는 안 쟀음)
->            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
->            끝나면: python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
+> 쌓인 것     ⚰️ 소급 층 접기 — 11-11 은퇴(소유자 ㄱ). 같은 출처의 같은 값은 안 쓰고 같은 공유의 다른 파일은 기존 줄로 접히며(다른 공유는 새 줄), 남은 것은 뒤의 «오래된 줄 정리»
 > 뜻         되돌릴 수 없음 — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐. 칸 값 · 이력 · 이기는 층은 그대로
 > 되돌리기    코드: git revert 98471a546 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴 (그 --grep 은 보고 커밋 461c6fdbd 를 먼저 집었다 · 09-26 — 단독 되돌리기는 충돌할 수 있음)
 > ```

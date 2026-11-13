@@ -5,13 +5,8 @@
 [안전 규약]
 - DROP도 ALTER TYPE도 없다. 기존 데이터에 손대는 문장이 한 줄도 없다.
 - 기존 테이블에는 `create_all`이 컬럼도 인덱스도 추가하지 않는다. 운영 DB로 가는 길은
-  이 스크립트뿐이다(`cell_sources`의 형제 인덱스가 같은 이유로
-  `scripts/ops_setup_db_performance.py`에 중복 선언돼 있다).
-- `cell_sources`는 큰 표다. 그래서 두 가지를 지킨다:
-  · 컬럼 추가는 **NULL 허용 · 기본값 없음**이라 PostgreSQL에서 카탈로그만 고친다(표 재작성 없음).
-  · 인덱스는 `CONCURRENTLY`로 만든다. 일반 CREATE INDEX는 쓰기를 막고, 지금 이 DB에는
-    인제션·체인·그래프 워커가 붙어 있다. CONCURRENTLY는 트랜잭션 안에서 못 도니
-    autocommit으로 따로 돌린다.
+  이 스크립트뿐이다.
+- 옛 층 표(`cell_sources`)의 확정 도장 칸·인덱스 문장은 그 표와 함께 은퇴했다(11-12).
 """
 import os
 import sys
@@ -138,18 +133,6 @@ DDL_TABLES = [
     "ON frame_confirmation_source (source_table, map_id)",
 ]
 
-# 파생 셀의 확정 도장. NULL = 확정된 좌표계에서 파생된 것이 아님(기존 행 전부의 상태).
-DDL_STAMP_COLUMN = (
-    "ALTER TABLE cell_sources ADD COLUMN IF NOT EXISTS confirmation_uid TEXT"
-)
-
-DDL_STAMP_INDEX = (
-    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sources_confirmation "
-    "ON cell_sources (confirmation_uid, table_name, row_id) "
-    "WHERE confirmation_uid IS NOT NULL"
-)
-
-
 def main():
     print("[migrate] frame confirmation record (spec MAP_ALIGNMENT layer 8)")
 
@@ -157,13 +140,6 @@ def main():
         for stmt in DDL_TABLES:
             conn.execute(text(stmt))
         print("[migrate] tables and indices: ok")
-        conn.execute(text(DDL_STAMP_COLUMN))
-        print("[migrate] cell_sources.confirmation_uid: ok (catalog-only, no rewrite)")
-
-    # CONCURRENTLY는 트랜잭션 밖에서만 돈다.
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(DDL_STAMP_INDEX))
-        print("[migrate] idx_sources_confirmation: ok (concurrent, writers not blocked)")
 
     with engine.connect() as conn:
         for t in ("frame_confirmation", "frame_confirmation_source"):
@@ -180,14 +156,6 @@ def main():
                 "WHERE table_name='frame_confirmation' AND column_name=:c"
             ), {"c": col}).scalar()
             print("[verify] frame_confirmation.%s present: %s" % (col, bool(present)))
-        ok = conn.execute(text(
-            "SELECT count(*) FROM information_schema.columns "
-            "WHERE table_name='cell_sources' AND column_name='confirmation_uid'")).scalar()
-        print("[verify] cell_sources.confirmation_uid present:", bool(ok))
-        idx = conn.execute(text(
-            "SELECT indexdef FROM pg_indexes WHERE indexname='idx_sources_confirmation'"
-        )).scalar()
-        print("[verify] idx_sources_confirmation:", idx)
 
 
 if __name__ == "__main__":

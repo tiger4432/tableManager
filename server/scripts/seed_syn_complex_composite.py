@@ -1086,11 +1086,7 @@ def rollback():
             if ids:
                 product_door.delete_rows(table, ids, base_url=DOOR_URL,
                                          user_name=SOURCE, log=lambda *_: None)
-        # Generic writes preserve every source layer. Remove only this fixture's layer
-        # records after its SYN rows are gone; no other updated_by is touched.
-        # ⚠️ Keyed on the WRITER, not on rows, so the door's own layer cleanup does not
-        # cover it - see `ops_ledger_namespace.clear_layer_rows`.
-        ops_ledger_namespace.clear_layer_rows(connection, MAP_UPDATED_BY)
+        # the rows' lines stay as their history - nothing erases history by writer (lead 11-11)
     return {"deleted_atoms": deleted, "deleted_spatial_rows": spatial_deleted,
             "source": SOURCE}
 

@@ -62,6 +62,18 @@ def _query_started(conn, cursor, statement, parameters, context, executemany):
 
 @event.listens_for(Engine, "after_cursor_execute")
 def _query_ended(conn, cursor, statement, parameters, context, executemany):
+    _ended(conn, cursor)
+
+
+@event.listens_for(Engine, "handle_error")
+def _query_failed(context):
+    # a statement that raised spent its time in the database too - one cancelled by statement_timeout read «SQL 0.00 s
+    # · Python 10.03 s» on the slow line (11-13 marathon, the grid's writers read cut at grid_read_timeout_seconds)
+    if context.connection is not None:
+        _ended(context.connection, None)
+
+
+def _ended(conn, cursor):
     started = conn.info.pop(_STARTED, None)
     if started is not None:
         running = _open.get(_key.get())
@@ -69,7 +81,8 @@ def _query_ended(conn, cursor, statement, parameters, context, executemany):
             running[2] = None
         rows = getattr(cursor, "rowcount", -1)
         told = isinstance(rows, int) and rows >= 0
-        # a statement with no result (SET) tells no rows and reads none; one with a result untold (SQLite) is «?»
+        # a statement with no result (SET) tells no rows and reads none; one with a result untold (SQLite) is «?»; one
+        # that raised (no cursor) read none
         add(time.perf_counter() - started, 1, rows if told else 0,
             0 if told or getattr(cursor, "description", None) is None else 1)
 

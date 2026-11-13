@@ -19,6 +19,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.dirname(HERE)
+sys.path.insert(0, SERVER)
 CONFIG = os.path.join(SERVER, "config")
 ONTOLOGY = os.path.join(CONFIG, "ontology")
 
@@ -72,30 +73,31 @@ def inspect_config():
 
 
 def inspect_database():
-    try:
-        import psycopg2
-    except ImportError:
-        return {"error": "psycopg2 미설치 - DB 확인 생략"}
+    import sqlalchemy as sa
+
+    from database import lines
+
     url, source = _database_url()
     shown = url.split("@")[-1] if "@" in url else url
     out = {"target": shown, "url_source": source}
+    engine = sa.create_engine(url)
     try:
-        conn = psycopg2.connect(url)
+        conn = engine.connect()
     except Exception as exc:                                  # noqa: BLE001
         out["error"] = f"접속 실패: {type(exc).__name__}"
+        engine.dispose()
         return out
     try:
-        cur = conn.cursor()
-        cur.execute("SET statement_timeout='20s'")
-        cur.execute("SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema='public'")
-        tables = {r[0] for r in cur.fetchall()}
+        if conn.dialect.name == "postgresql":
+            conn.execute(sa.text("SET statement_timeout='20s'"))
+        # the tables by the one seat that lists them, line tables too; the views apart (lead 11-13)
+        tables = set(lines.base_tables(conn, lines=True))
         out["table_count"] = len(tables)
+        out["view_count"] = len(sa.inspect(conn).get_view_names())
         out["has_ledger_events"] = "ledger_events" in tables
         if "ledger_translator_cursor" in tables:
-            cur.execute("SELECT source, translator_ver FROM ledger_translator_cursor "
-                        "ORDER BY source")
-            rows = cur.fetchall()
+            rows = conn.execute(sa.text("SELECT source, translator_ver FROM ledger_translator_cursor "
+                                        "ORDER BY source")).fetchall()
             out["cursors"] = [
                 {"source": s, "translator_ver": v,
                  "shape": "v2" if str(v).startswith("ledger-v2:") else "v1"}
@@ -103,15 +105,14 @@ def inspect_database():
         else:
             out["cursors"] = []
         if "file_ingestion_checkpoints" in tables:
-            cur.execute("SELECT column_name FROM information_schema.columns "
-                        "WHERE table_schema='public' "
-                        "AND table_name='file_ingestion_checkpoints' "
-                        "AND column_name IN ('file_mtime','file_size')")
-            out["ingestion_path_stat_columns"] = sorted(r[0] for r in cur.fetchall())
+            out["ingestion_path_stat_columns"] = sorted(
+                c["name"] for c in sa.inspect(conn).get_columns("file_ingestion_checkpoints")
+                if c["name"] in ("file_mtime", "file_size"))
         else:
             out["ingestion_path_stat_columns"] = None
     finally:
         conn.close()
+        engine.dispose()
     return out
 
 
@@ -176,7 +177,7 @@ def main() -> int:
     if db.get("error"):
         print(f"  ⚠️ {db['error']}")
     else:
-        print(f"  표 {db.get('table_count', '?')}개 · ledger_events "
+        print(f"  표 {db.get('table_count', '?')}개 · 뷰 {db.get('view_count', '?')}개 · ledger_events "
               f"{'있음' if db.get('has_ledger_events') else '없음'}")
         for c in db.get("cursors") or []:
             print(f"  커서 {c['source']:24s} {c['shape']:3s} {c['translator_ver']}")

@@ -2,7 +2,8 @@
 """A fold rule replayed through the chain folds: the unit rule replayed and drained through the worker's group step
 (setup ⑤ - the write door, then the edited unit rows' withdrawal). Owner 11-12: folds run through the chain's replay -
 `fold-units` (10-11, 「접는 거 일단 스크립트로 빨리 하는 거 줘」) is retired; this file compared it with this copy, and
-PINNED is what the two left alike on main 0062fc8b7 (ids and times left out). The seed holds each case a fold has to
+PINNED is what the two left alike on main 0062fc8b7 (ids and times left out); on the overhaul its
+history is the LOG table's lines after the seed, measured on ovh-trial (B 11-13), the rest unchanged. The seed holds each case a fold has to
 get right: a log row marked so already, a hand-written layer above the chain's, a unit that lost and now wins (its old
 marks go), a log row whose job moved (its old mark goes), a winner with no out time, AUTO before MANUAL."""
 import json
@@ -18,7 +19,8 @@ import event_constants                                              # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import keyset_scan, replay, rule_run                     # noqa: E402
 from conftest import PG_TEST_SCHEMA, _declared_as_test_database, _resolve_pg_test_url   # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
+from tests.support import line_tables                              # noqa: E402
 from mappers import fold_unit                                       # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
@@ -54,104 +56,23 @@ FOLDED = {**{"%s-%d" % (job, i): "" for job, _w, _t in JOBS for i in range(3)},
           **{"MAN_J10-%d" % i: "folded into AUTO_J9" for i in range(3)}, "MOVED-0": ""}
 PARTS = ("shown", "layers", "overwrites", "history")
 #: what the chain's copy and fold-units both left on main 0062fc8b7 (A == B, 13 passed) - b74_fill_pins.py
-PINNED = {'history': [('AUTO_J5-1',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J1',
-                       'chain_ingestion (pgqa_fu_by_unit CW1)',
-                       'pgqa_fu_by_unit',
-                       'AUTO_J5-1'),
-                      ('AUTO_J5-2',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J1',
-                       'chain_ingestion (pgqa_fu_by_unit CW1)',
-                       'pgqa_fu_by_unit',
-                       'AUTO_J5-2'),
-                      ('MAN_J10-0',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J9',
-                       'chain_ingestion (pgqa_fu_by_unit CW5)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J10-0'),
-                      ('MAN_J10-1',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J9',
-                       'chain_ingestion (pgqa_fu_by_unit CW5)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J10-1'),
-                      ('MAN_J10-2',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J9',
-                       'chain_ingestion (pgqa_fu_by_unit CW5)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J10-2'),
-                      ('MAN_J3-1',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J4',
-                       'chain_ingestion (pgqa_fu_by_unit CW3)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J3-1'),
-                      ('MAN_J3-2',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into AUTO_J4',
-                       'chain_ingestion (pgqa_fu_by_unit CW3)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J3-2'),
-                      ('MAN_J6-0',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into MAN_J7',
-                       'chain_ingestion (pgqa_fu_by_unit CW4)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J6-0'),
-                      ('MAN_J6-1',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into MAN_J7',
-                       'chain_ingestion (pgqa_fu_by_unit CW4)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J6-1'),
-                      ('MAN_J6-2',
-                       'ROW_UPDATE',
-                       'fold_mark: empty',
-                       'fold_mark: folded into MAN_J7',
-                       'chain_ingestion (pgqa_fu_by_unit CW4)',
-                       'pgqa_fu_by_unit',
-                       'MAN_J6-2'),
-                      ('MAN_J7-0',
-                       'fold_mark',
-                       'folded into MAN_J6',
-                       'null',
-                       'chain_replay_withdraw',
-                       'withdraw:chain_ingestion (MAN_J7)',
-                       'MAN_J7-0'),
-                      ('MAN_J7-1',
-                       'fold_mark',
-                       'folded into MAN_J6',
-                       'null',
-                       'chain_replay_withdraw',
-                       'withdraw:chain_ingestion (MAN_J7)',
-                       'MAN_J7-1'),
-                      ('MAN_J7-2',
-                       'fold_mark',
-                       'folded into MAN_J6',
-                       'null',
-                       'chain_replay_withdraw',
-                       'withdraw:chain_ingestion (MAN_J7)',
-                       'MAN_J7-2'),
-                      ('MOVED-0',
-                       'fold_mark',
-                       'folded into AUTO_J4',
-                       'null',
-                       'chain_replay_withdraw',
-                       'withdraw:chain_ingestion (MAN_J3)',
-                       'MOVED-0')],
+PINNED = {'history': [('AUTO_J5-0', 'fold_mark', 'folded into AUTO_J1', 'chain_ingestion (pgqa_fu_by_unit CW1)', 'pgqa_fu_by_unit'),
+                       ('AUTO_J5-0', 'fold_mark', None, 'chain_ingestion (AUTO_J5)', 'chain_replay_withdraw'),
+                       ('AUTO_J5-1', 'fold_mark', 'folded into AUTO_J1', 'chain_ingestion (pgqa_fu_by_unit CW1)', 'pgqa_fu_by_unit'),
+                       ('AUTO_J5-2', 'fold_mark', 'folded into AUTO_J1', 'chain_ingestion (pgqa_fu_by_unit CW1)', 'pgqa_fu_by_unit'),
+                       ('MAN_J10-0', 'fold_mark', 'folded into AUTO_J9', 'chain_ingestion (pgqa_fu_by_unit CW5)', 'pgqa_fu_by_unit'),
+                       ('MAN_J10-1', 'fold_mark', 'folded into AUTO_J9', 'chain_ingestion (pgqa_fu_by_unit CW5)', 'pgqa_fu_by_unit'),
+                       ('MAN_J10-2', 'fold_mark', 'folded into AUTO_J9', 'chain_ingestion (pgqa_fu_by_unit CW5)', 'pgqa_fu_by_unit'),
+                       ('MAN_J3-0', 'fold_mark', 'folded into AUTO_J4', 'chain_ingestion (pgqa_fu_by_unit CW3)', 'pgqa_fu_by_unit'),
+                       ('MAN_J3-1', 'fold_mark', 'folded into AUTO_J4', 'chain_ingestion (pgqa_fu_by_unit CW3)', 'pgqa_fu_by_unit'),
+                       ('MAN_J3-2', 'fold_mark', 'folded into AUTO_J4', 'chain_ingestion (pgqa_fu_by_unit CW3)', 'pgqa_fu_by_unit'),
+                       ('MAN_J6-0', 'fold_mark', 'folded into MAN_J7', 'chain_ingestion (pgqa_fu_by_unit CW4)', 'pgqa_fu_by_unit'),
+                       ('MAN_J6-1', 'fold_mark', 'folded into MAN_J7', 'chain_ingestion (pgqa_fu_by_unit CW4)', 'pgqa_fu_by_unit'),
+                       ('MAN_J6-2', 'fold_mark', 'folded into MAN_J7', 'chain_ingestion (pgqa_fu_by_unit CW4)', 'pgqa_fu_by_unit'),
+                       ('MAN_J7-0', 'fold_mark', None, 'chain_ingestion (MAN_J7)', 'chain_replay_withdraw'),
+                       ('MAN_J7-1', 'fold_mark', None, 'chain_ingestion (MAN_J7)', 'chain_replay_withdraw'),
+                       ('MAN_J7-2', 'fold_mark', None, 'chain_ingestion (MAN_J7)', 'chain_replay_withdraw'),
+                       ('MOVED-0', 'fold_mark', None, 'chain_ingestion (MAN_J3)', 'chain_replay_withdraw')],
           'layers': [('AUTO_J5-0',
                       'chain_ingestion (pgqa_fu_by_unit CW1)',
                       'folded into AUTO_J1',
@@ -272,7 +193,12 @@ def _seed(db):
                                         updated_by="op")])
     db.query(models.DatabaseOutbox).update({"processed_chain": True})     # the seed feeds no rule
     db.commit()
-    return db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+    return _last_line(db)
+
+
+def _last_line(db):
+    """The LOG table's newest line id - the history read after the seed starts past it."""
+    return db.execute(text('SELECT max(line_id) FROM "%s"' % lines.lines_relation(LOG))).scalar() or 0
 
 
 def _drain(db):
@@ -305,19 +231,26 @@ def _state(db, after_id):
             text_ = text_.replace(row_id, name)
         return text_
 
-    cs, co, al = models.CellSource, models.CellOverwrite, models.AuditLog
+    co = models.CellOverwrite
+    row_ids = sorted(names)
+    layers = lines.layers(db, LOG, row_ids, columns=[MARK])
+    by_bit = {bit: col for col, bit in lines.bit_map(db, LOG).items()}
+    chunks = 1 + max(by_bit) // lines.BITS_PER_CHUNK
+    written = lines.bit_columns("written", chunks)
+    history = db.execute(text('SELECT row_id, source_name, written_by, %s, %s FROM "%s" WHERE line_id > :after' % (
+        ", ".join(written), lines.value_column(MARK), lines.lines_relation(LOG))), {"after": after_id}).all()
     return {
         "shown": sorted((names[r.row_id], r.business_key_val, r.fold_mark)
                         for r in db.query(models.DYNAMIC_TABLES[LOG])),
-        "layers": sorted((names[c.row_id], said(c.source_name), said(c.value), names.get(c.origin_row_id),
-                          c.updated_by) for c in db.query(cs).filter(cs.table_name == LOG, cs.column_name == MARK)),
+        "layers": sorted(((names[row], said(source), said(one["value"]), names.get(one.get("origin_row_id")),
+                          one["updated_by"])
+                         for (row, _col), by_source in layers.items() for source, one in by_source.items()), key=repr),
         "overwrites": sorted((names[o.row_id], o.is_overwrite, o.updated_by, o.manual_priority_source)
                              for o in db.query(co).filter(co.table_name == LOG, co.column_name == MARK)),
-        "history": sorted((names.get(a.row_id), a.column_name, said(a.old_value), said(a.new_value),
-                           said(a.source_name), said(a.updated_by), a.business_key)
-                          for a in db.query(al).filter(al.table_name == LOG, al.id > after_id)),
+        "history": sorted(((names.get(h[0]), ",".join(sorted(lines._columns_of(list(h[3:3 + chunks]), by_bit))),
+                           said(h[-1]) if h[-1] is not None else None, said(h[1]), said(h[2]))
+                          for h in history), key=repr),
     }
-
 
 def _marks(state):
     return {name: mark or "" for name, _key, mark in state["shown"]}
@@ -363,6 +296,8 @@ def copies(pg_engine):
             return answer
         mp.setattr(rule_run, "run_rule", run_rule)
         scratch.create_all(pg_engine)
+        for table in TABLES:                # the overhaul's line tables (old-shape recipe, owner 11-11)
+            line_tables.build(pg_engine, table)
         try:
             db = Session()
             out["schema"] = db.execute(text("SELECT current_schema()")).scalar()
@@ -382,6 +317,8 @@ def copies(pg_engine):
             db.close()                      # a failed run's session holds locks the TRUNCATE below would wait on
             with pg_engine.begin() as conn:
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
+            for table in TABLES:
+                line_tables.drop(pg_engine, table)
             scratch.drop_all(pg_engine)
             for t in TABLES:
                 crud.TABLE_CONFIG.pop(t, None)

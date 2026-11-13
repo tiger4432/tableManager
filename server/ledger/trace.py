@@ -518,10 +518,18 @@ def _registration_priority(source_who):
 
 
 def _occurred_epoch(claim):
-    """`occurred_at` as absolute POSIX seconds, via `crud`'s normalisation."""
-    if claim.occurred_at is None:
+    """`occurred_at` as absolute POSIX seconds - a naive value read as local, as the write path stamps it."""
+    from datetime import datetime, timezone
+
+    at = claim.occurred_at
+    if isinstance(at, str):
+        try:
+            at = datetime.fromisoformat(at)
+        except ValueError:
+            return None
+    if not isinstance(at, datetime):
         return None
-    return _crud().resolution_ingested_at({"ingested_at": claim.occurred_at})
+    return at.astimezone(timezone.utc).timestamp()
 
 
 def claim_basis(claim):

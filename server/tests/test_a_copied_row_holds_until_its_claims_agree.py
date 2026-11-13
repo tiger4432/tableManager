@@ -25,16 +25,24 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import event_constants                                              # noqa: E402
-from database import crud                                           # noqa: E402
+from database import crud, lines                                    # noqa: E402
 from support import hold_world as hw                                # noqa: E402
+from support import line_tables                                     # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
+from sqlalchemy import select                                       # noqa: E402
 
 pytestmark = pytest.mark.pg
 
 
 @pytest.fixture(name="world", params=[True, False], ids=["batch", "one_row"])
 def fixture_world(request, pg_engine, monkeypatch, tmp_path):
-    yield from hw.build(pg_engine, monkeypatch, tmp_path, batch=request.param)
+    for world in hw.build(pg_engine, monkeypatch, tmp_path, batch=request.param):
+        line_tables.build(pg_engine, hw.OFFICIAL)          # its shape for a planted line (line_tables.line)
+        try:
+            yield world
+        finally:
+            world["db"].rollback()                        # its open read would hold the drop's lock
+            line_tables.drop(pg_engine, hw.OFFICIAL)
 
 
 def test_one_source_row_is_agreed_and_said(world):
@@ -109,12 +117,18 @@ def test_a_persons_edit_of_the_official_row_leaves_its_hold(world):
     assert (hw.official(world).netdie, hw.hold(world)) == (8, "agreed")
 
 
+def _official_layers(world, column):
+    """[(source, source row)] of the standing layers on the official rows' `column` (lines.layers)."""
+    from sqlalchemy import text
+    db = world["db"]
+    ids = [r for (r,) in db.execute(text('SELECT row_id FROM "%s"' % hw.OFFICIAL))]
+    return [(src, d["origin_row_id"]) for named in lines.layers(db, hw.OFFICIAL, ids, [column]).values()
+            for src, d in named.items()]
+
+
 def _hold_layers(world):
     """The layer names on the official row's hold cell."""
-    from database import models
-    world["db"].expire_all()
-    return sorted(s.source_name for s in world["db"].query(models.CellSource)
-                  .filter_by(table_name=hw.OFFICIAL, column_name="hold").all())
+    return sorted(src for src, _origin in _official_layers(world, "hold"))
 
 
 # ------------------------------------------- a deleted row: the copy counts its key again (lead 11-08 ㄱ)
@@ -174,10 +188,7 @@ def test_the_two_left_agreeing_are_agreed_by_the_copys_one_hold(world):
 # ------------------------------------------------------------------ one batch (32bab7896 · cb3d3c1bf)
 
 def _netdie_layers(world):
-    from database import models
-    world["db"].expire_all()
-    return sorted((s.source_name, s.origin_row_id) for s in world["db"].query(models.CellSource)
-                  .filter_by(table_name=hw.OFFICIAL, column_name="netdie").all())
+    return sorted(_official_layers(world, "netdie"))
 
 
 def _row_id(world, log_id):
@@ -225,10 +236,22 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
     hw.push(world, [{"log_id": "B", **hw.KEY, "netdie": 9}])
     hw.settle(world)
     a, official_id = _row_id(world, "A"), hw.official(world).row_id
-    named = sorted({c for (c,) in db.query(models.CellSource.column_name).filter_by(origin_row_id=a)})
-    db.add(models.CellSource(table_name=hw.OFFICIAL, row_id=official_id, column_name="note",
-                             source_name="user", value="x", origin_row_id=a, updated_by="t"))
+    named = sorted({c for _t, _r, c, _s, _o in lines.stamped_by(db, list(hw.TABLES), [a])})
     db.commit()
+    with world["engine"].begin() as conn:               # a person's layer carrying A as its source row
+        line_tables.line(conn, hw.OFFICIAL, line_tables.bits_of(hw.OFFICIAL), official_id, source="user",
+                         values={"note": "x"}, input_row=a, written_by="t")
+    # the row merged once, as the door's write would leave it - a line planted alone left t's note NULL, and the
+    # withdrawal's re-merge told NULL -> 'x' as an EDIT of its own (lead 11-12)
+    config = crud.TABLE_CONFIG[hw.OFFICIAL]
+    said, now = lines.merge(db, hw.OFFICIAL, config, [official_id])[official_id], lines.current_table(
+        db, hw.OFFICIAL, config, won_by=True)
+    won = lines.won_by_of(db, hw.OFFICIAL, [official_id]).get(official_id, {})
+    db.execute(now.update().where(now.c.row_id == official_id).values(
+        **{c: value for c, (value, _line) in said.items()}, won_by=lines.won_by_stored(
+            {**won, **{c: line for c, (_v, line) in said.items()}}, lines.bit_map(db, hw.OFFICIAL))))
+    db.commit()
+    assert db.execute(select(now.c.note).where(now.c.row_id == official_id)).scalar() == "x", "canary: merged"
     last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
     worker._withdraw_what_those_rows_fed(db, hw.LOG, [a], "deleted")
     new = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last).all()

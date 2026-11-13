@@ -191,9 +191,9 @@ SYSTEM_TABLE_COLUMNS = {
     "auth_login_states": ('code_verifier', 'created_at', 'next_path', 'nonce', 'state'),
     "auth_sessions": ('created_at', 'expires_at', 'id_hash', 'user_name'),
     "cell_overwrites": ('column_name', 'id', 'is_overwrite', 'manual_priority_source', 'row_id', 'table_name', 'updated_at', 'updated_by'),
-    # confirmation_uid: migrations/add_frame_confirmation.py
+    # confirmation_uid: added by migrations/add_frame_confirmation.py until the old layer table retired (11-12)
     # origin_row_id:    migrations/add_cell_source_origin_row.sql  (S-280 · 판정 434)
-    # owner_key, owner_rule: the boot adds them (models.ensure_owner_columns from sync_dynamic_tables_schema, step 2 83de1715e); a layer write refuses until then (require_owner_columns)
+    # owner_key, owner_rule: added at boot until the old layer table retired (lead 11-11); the migration copy refuses a table without them (line_migration._copyable)
     "cell_sources": ('column_name', 'confirmation_uid', 'id', 'ingested_at', 'origin_row_id', 'owner_key', 'owner_rule', 'row_id', 'source_name', 'table_name', 'updated_by', 'value'),
     # NEW TABLE, not a new column: `fefe2905` declared `RetroactiveRun` so every
     # request-type operation gets one run row and one way to stop it. A whole table IS
@@ -205,6 +205,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   table it finds.
     # a whole replay's named maps - new, created whole (총괄 c67aa93bb ㄴ)
     "line_columns": ('bit', 'column_name', 'retired_at', 'table_name'),
+    # copy_of: the boot schema sync (models.schema_synced_tables) adds it to a line_sources made before it (lead 11-12 ㄴ)
+    "line_sources": ('copy_of', 'ranks_as', 'source_name'),
     "replay_named_maps": ('rows', 'rule', 'run_id', 'scope'),
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event

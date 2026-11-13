@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 import directory_watcher
 import run_watcher
-from database import crud, models
+from database import crud, lines, models
 from ingestion import checkpoint
 from ingestion import reread
 from database.database import Base
@@ -106,7 +106,7 @@ def _cells(Session, table):
     db = Session()
     try:
         rows = db.query(models.DYNAMIC_TABLES[table]).all()
-        sources = {s.source_name for s in db.query(models.CellSource).all()}
+        sources = {name for cell in lines.layers(db, table, [r.row_id for r in rows]).values() for name in cell}
         return rows, sources
     finally:
         db.close()

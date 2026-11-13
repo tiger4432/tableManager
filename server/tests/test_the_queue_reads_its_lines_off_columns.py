@@ -6,7 +6,7 @@ every waiting one's payload - 20,000 waiting: 2.3 s and 3.9 s a read.
   every write seat   its row's run_id · transaction_id · row_count are what the payload's SQL reading says
   the line list      the same lines, rows and runs as the payload's reading - run, transaction, row, string payloads
   the fill           a waiting row written before the columns is given them by the same rule; again, none
-  PostgreSQL         the seats only it reaches (the notation fold's table insert, an index ask), and a line's window
+  PostgreSQL         the seat only it reaches (an index ask), and a line's window
                      read through idx_outbox_line
 """
 import os
@@ -89,21 +89,6 @@ def _per_row(db):
     _write(db, [{"k": "b1", "v": "y"}, {"k": "b2", "v": "y"}], collapsed=False)
 
 
-def _per_row_off_the_orm(db):
-    """`replay.fold_written_notation`'s row-by-row events go in by a table insert, off the ORM's flush."""
-    from chain import replay
-
-    _write(db, [{"k": "c1", "v": "1.0"}], collapsed=False)
-    model = models.DYNAMIC_TABLES[T]
-    row = db.query(model).filter(model.business_key_val == "c1").one()
-    row.v = "1.0"
-    db.query(models.CellSource).filter(models.CellSource.table_name == T, models.CellSource.row_id == row.row_id,
-                                       models.CellSource.column_name == "v").one().value = 1.0
-    db.commit()
-    with outbox_mode(event_constants.OUTBOX_MODE_PER_ROW):
-        assert replay.fold_written_notation(db, T, apply=True)["cells_folded"] == 1, "the fold wrote nothing"
-
-
 def _a_scheduler_run(db):
     from admin import retroactive
 
@@ -136,11 +121,11 @@ def _an_index_ask(db):
 
 SEATS = {"collapsed under a run": _collapsed_under_a_run, "per row": _per_row, "a scheduler's run": _a_scheduler_run,
          "a reload": _a_reload, "an undelivered mark": _an_undelivered_mark, "a run-now trigger": _a_run_now_trigger}
-#: The seats only PostgreSQL reaches: the fold writes by value there alone (`replay.FOLD_BY_VALUE_DIALECTS`), and an
-#: index ask is PostgreSQL's.
-PG_SEATS = {"per row off the ORM": _per_row_off_the_orm, "an index ask": _an_index_ask}
+#: The seat only PostgreSQL reaches: an index ask is PostgreSQL's. (The notation fold's own by-value insert retired -
+#: it writes through write_lines like every write, the «per row» seat; A 11-11.)
+PG_SEATS = {"an index ask": _an_index_ask}
 #: What each seat's rows carry, so a payload that lost its keys does not pass as «both empty».
-CARRIES = {"collapsed under a run": "run", "per row": "transaction", "per row off the ORM": "transaction",
+CARRIES = {"collapsed under a run": "run", "per row": "transaction",
            "a scheduler's run": "run", "a reload": "transaction", "an undelivered mark": "nothing",
            "a run-now trigger": "nothing", "an index ask": "nothing"}
 

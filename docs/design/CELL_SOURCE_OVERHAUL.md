@@ -34,7 +34,7 @@
   - 비트: «write» 는 말한 칸을 written_bits 에 적고 head_bits 도 그것으로 시작한다. «withdraw» 는 거둔 칸을 written_bits 와 withdrawn_bits 에 같이 적고 head_bits 도 그것으로 시작한다(그 원천의 그 칸 머리가 «말 없음» 줄이 된다 — 앞선 머리는 «쓰기» 4 가 내린다). «mark» · «deleted» 는 세 비트가 모두 0 이고 «쓰기» 4 를 건너뛴다 — 고정을 거는 mark 줄이 사람의 머리 비트를 내리지 않는다.
   - 쓰기 하나 = 줄 하나. 칸마다가 아니라 «행 × 쓰기»마다 한 줄이고, written_bits 가 어느 칸을 말했는지 적는다.
   - 층은 줄 그 자체다. 그 칸의 head_bits 가 선 줄 = 오늘의 cell_sources 한 칸 층.
-- 물리 이름 고정 (C 11-10 — D 가 lines.py 전에 가짜 데이터로 읽기를 시작할 수 있게): `t__lines` = line_id · line_kind · source_name · at · written_by · batch · input_row · owner_rule · owner_key · confirmed · written_N · head_N · withdrawn_N + t 의 칸(row_id · business_key_val · created_at · updated_at · 선언 칸). 인덱스 (row_id, at) · (batch) · 머리 줄 (row_id, source_name) WHERE head ≠ 0. `t__now` = t 의 칸 + won_by(JSON 칸 → line_id), row_id PK · business_key_val UNIQUE. 함수: `now_relation(t)` · `lines_relation(t)` · `shape(db, t, table_cfg)` · `ensure_line_table` · `drop_line_table` · `alter_columns(db, t, table_cfg, add, drop, retype)`. 파이썬 합치기 함수의 시그니처는 정렬 키 생성기와 같이 11-11 에 고정한다(아직 아님).
+- 물리 이름 고정 (C 11-10 — D 가 lines.py 전에 가짜 데이터로 읽기를 시작할 수 있게): `t__lines` = line_id · line_kind · source_name · at · written_by · batch · input_row · owner_rule · owner_key · confirmed · written_N · head_N · withdrawn_N + t 의 칸(row_id · business_key_val · created_at · updated_at · 선언 칸). 인덱스 (row_id, at) · (batch) · 머리 줄 (row_id, source_name) WHERE head ≠ 0. `t__now` = t 의 칸 + won_by(JSON 칸 → line_id), row_id PK · business_key_val UNIQUE. 함수: `now_relation(t)` · `lines_relation(t)` · `shape(db, t, table_cfg)` · `ensure_line_table` · `drop_line_table` · `alter_columns(db, t, table_cfg, add) - drop and retype retired 11-13 (owner)`. 파이썬 합치기 함수의 시그니처는 정렬 키 생성기와 같이 11-11 에 고정한다(아직 아님).
 - `t__now`: t 의 칸 + won_by(jsonb 한 칸: 칸 → 이긴 line_id). 개체마다 한 줄.
 - 이름 t = `t__now` 의 칸을 읽는 보기 — 오늘 t 의 칸 전부(row_id · business_key_val · updated_at 같은 시스템 칸 포함)이고 won_by 만 뺀다. 쓰기는 거절한다(«보기» 절).
 - 오늘 t 의 인덱스는 `t__now` 에 그대로 짓는다. 그리드 정렬 · 필터 · 개수 · 쪽 넘김이 오늘 인덱스 모양을 그대로 탄다.
@@ -61,18 +61,20 @@
 
 `write_lines(db, table, items, *, kind, transaction_id)` 하나가 모든 쓰기(깔때기 · 체인 · 수식 · 거두기 · 지움 · 표기 소급 · 병합 · 고정 바꾸기)를 맡는다. 한 트랜잭션 안의 문장들이고, 묶음마다 몇 번이지 행마다가 아니다. 데이터 바꾸는 CTE 는 쓰지 않는다(sqlite 가 못 함) — 두 방언이 같은 문장을 돈다.
 
-1. 잡기: 손댄 개체의 지금 줄을 잠근다.
+1. 잡기: 손댄 개체의 지금 줄을 잠근다. 키로 이름 댄 항목은 조립된 키를 먼저 묻고, 그것이 누구의 행도 아니면 보낸 키(`old_key` - 옛 철자 · 옛 키로 이름 댄 개명)를 같은 잠금 안에서 묻는다. 찾은 행은 5½ 에서 키를 다시 짓는다(판정 191 · S-90 · 총괄 3eb161a9c ②, 총괄 11-11 안 1). 키로 이름 대는 문은 깔때기 하나다 - 나머지 문은 row_id 로 이름 댄다.
    - 있는 개체: `SELECT … FROM t__now WHERE row_id IN (…) ORDER BY row_id FOR UPDATE`.
    - 새 개체: 키로 정렬해 `INSERT INTO t__now … ON CONFLICT (business_key_val) DO NOTHING`(정렬 — 두 쓰기가 새 키 둘을 반대 순서로 넣어 유일 인덱스 대기에서 교착하지 않게) 뒤 그 키들을 같은 잠금으로 다시 읽는다. row_id 는 여기서 정해진다 — 줄은 그 뒤에만 쓴다. 같은 새 키를 두 쓰기가 동시에 내면 둘째는 첫째의 지금 줄을 기다렸다 같은 row_id 로 이어 쓴다(고아 줄 없음). 오늘 `_is_business_key_unique_violation` 재시도의 일을 이 단계가 맡는다.
    - 지금 줄이 없는 row_id(이미 지워짐)로 온 거두기 · 지움 항목은 말없이 빠진다(할 일이 없다). 값 쓰기 항목은 거절한다 — 오늘 동작과 같은지는 A 가 시험으로 확인하고, 다르면 오늘 쪽을 따른다.
    - sqlite 에는 행 잠금이 없다(DB 쓰기 잠금 하나). SQLAlchemy 가 FOR UPDATE 를 sqlite 에서는 내지 않고, write_lines 의 트랜잭션은 sqlite 에서 BEGIN IMMEDIATE 로 연다(기다림이 SQLITE_BUSY 오류가 되지 않게 — 짓는 날 시험으로 확인). 방언 갈림은 이 잠금 둘이다.
-2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 SQL 로 뺀다(머리 줄 값 vs 들어온 값).
+2. 빼기(잠금 안): 아무것도 바꾸지 않는 항목을 뺀다 — 손댄 행들의 머리 줄을 한 번 읽고(`_spoken`) 파이썬에서 견준다(A 11-11 안 1: 항목마다 리터럴 SQL 이던 문장이 쪽마다 다시 컴파일됐다). 항목은 차례로, 그 배치의 앞 항목이 남긴 머리 위에서 판정한다 — 한 배치의 마지막 말이 이긴다(총괄 11-11) - 한 배치의 줄은 시각이 같고, 같은 시각이면 뒤 줄이 이긴다(C rank_terms 2c, 옛 layer_instant 와 같은 답). 사람 쓰기가 핀을 풀면 뒤 항목은 풀린 핀으로, 앞 항목이 만든 행은 «있던 행»으로 판정한다.
+   - 그 출처의 머리 줄: 같은 손 · 같은 입력 행이고 `crud.line_text(머리 값, 저장 종류)` 가 들어온 텍스트와 같으면 그 칸을 뺀다. 머리 텍스트는 문자 칸이면 글자 그대로(빈 것만 NULL — 공백을 정리해 다시 올리면 바뀜이다), 다른 칸이면 line_text 로 견준다(숫자 칸 «1» · 같은 순간의 시간대 표기는 «같음», 총괄 11-11 ㄴ).
+   - 다른 출처가 이미 말하는 칸(`_others` — 옛 쓰기의 두 판정, 총괄 11-11): 파일 층은 `crud.file_layer_fold` — repeat 는 빼고, 같은 공유의 같은 값 층은 그 칸만 접고(4), 같은 공유가 그 값을 다른 층 뒤에 들고 있고 그 파일 자신의 층이 그 칸에 없으면 그 칸을 그 옛 층의 출처로 쓴다(소유자 11-08 «층을 새로하지 말고 순서를 바꿔» — 자기 층이 있으면 그 층이 값을 받는다, 옛 쓰기의 `src_obj or moved`). 체인의 새 층이 칸이 보여 주는 값을 다시 말하면 뺀다(소유자 11-08). 표기 고치기(respelled)는 둘 다 묻지 않는다 — 새 진술이 아니다. 핀은 `_overwrites` 로 읽는다(4½ 의 표지와 같은 함수 — 칸 집합이 달라 한 쓰기에 두 번).
    - 쓰기 항목에만 건다. 거두기는 «그 출처가 그 칸의 머리가 아님»일 때만 빠진다 — 값 견주기로 빠지지 않는다(NULL 머리 줄을 거둘 때 NULL = NULL 로 빠지면 거둔 줄이 계속 말한다). 지움은 1 에서만 빠진다.
    - 정답지: s4(착지 안 함, 소유자 11-10 ㄱ)의 crud.file_cell_verdict 판정과 시험 test_a_files_unchanged_rows_are_left_out_before_the_lock (C 작업 트리, 커밋 안 함). 까닭 — s4 판(박스 10 만 행 · 층 300 만 · 1,000 행 × 30 칸, wl/run_s4_board.sh): 같은 내용 묶음 2.962 → 2.732 s, 그중 파이썬 칸마다 판정 2.66 s(DB 읽기 0.07 s).
-   - «같나»는 따로 생성기를 두지 않는다 (A 11-10): 쓰기가 어차피 하는 cast_value_by_type 뒤의 «저장 꼴»을 그 칸의 물리 타입(number → Float · datetime → timestamptz · 나머지 → text)으로 `IS NOT DISTINCT FROM`(빈 값 = NULL) 견주는 한 문장이다. 오늘의 crud.values_differ(캐스트한 값끼리)와 같은 답인지는 A 의 철자 표(number 23 · datetime 11 · string 14 가지, 짝 447 — 어긋남 0, 파이썬만 · DB 없이 잼)를 시험으로 고정해 지킨다. 남은 하나: 시간대 없는 datetime 글자를 PG 는 세션 시간대로, value_key 는 선언 시간대(expression.time_zone())로 읽는다 — write_lines 게이트의 PG 시험 «시간대 없는 글자 둘 → 같나»로 재고, 갈리면 캐스트가 선언 시간대를 단 값을 넘기는 쪽으로 맞춘다.
+   - «같나»는 따로 생성기를 두지 않는다 (A 11-10 · 11-11): 두 텍스트 모두 `crud.line_text` 를 지난다 — 한 문장이던 11-10 판(`IS NOT DISTINCT FROM`)은 위 까닭으로 은퇴했다. 오늘의 crud.values_differ(캐스트한 값끼리)와 같은 답인지는 A 의 철자 표(number 23 · datetime 11 · string 14 가지, 짝 447 — 어긋남 0, 파이썬만 · DB 없이 잼)를 시험으로 고정해 지킨다. 남은 하나: 시간대 없는 datetime 글자를 PG 는 세션 시간대로, value_key 는 선언 시간대(expression.time_zone())로 읽는다 — write_lines 게이트의 PG 시험 «시간대 없는 글자 둘 → 같나»로 재고, 갈리면 캐스트가 선언 시간대를 단 값을 넘기는 쪽으로 맞춘다.
 3. 줄: 남은 항목마다 `t__lines` 에 줄 하나 INSERT(written_bits · withdrawn_bits · 값 · 출처 · 언제 · 누가 · 묶음 · 입력 행 · 주인).
 4. 머리 비트(«write» · «withdraw» 줄만): 같은 (개체, 원천)의 앞선 줄들 — 그리고 folded 판정이 가리킨 앞선 파일 원천의 줄들 — 의 head_bits 에서 새 줄의 written_bits 를 내린다(UPDATE 한 문장).
-5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
+5. 지금 줄: 손댄 개체의 지금 줄을 머리 줄들 + 고정으로 다시 합쳐 `UPDATE t__now … RETURNING`. won_by 도 같이. updated_at 은 새 행이거나 보이는 값이 움직인 행만 이 쓰기의 시각이다(`_moved` — outbox 의 EDIT 와 같은 함수, 옛 쓰기 규칙, 총괄 11-11) — 층만 는 행은 그대로다. 키가 옮겨 간 행은 선언 키 칸이 있는 표에서 이 시각이다(5½, 옛 쓰기의 written_col). 전/후 값은 1 에서 읽은 옛 지금 줄과 이 RETURNING 이다 — 방송 · outbox 가 같은 저자다.
 6. 감사: 감사 로그 한 행 INSERT.
 
 규칙 (A 11-10):
@@ -98,7 +100,7 @@
 
 - 찾기: `t__now` 의 business_key_val. 새 키는 «쓰기» 1(ON CONFLICT). 지운 뒤 같은 키는 새 row_id(«지움» 절).
 - 키 칸 손 편집 · 키 칸 쓰기: 오늘 `_update_row_business_key` 와 같다 — 그 줄이 키 칸을 쓰고 «쓰기» 5 가 business_key_val 을 바꾼다. 빈 값은 키를 바꾸지 않는다. row_id 는 그대로다.
-- 키 다시 짓기: 오늘 `rebuilt_business_key` + `put_business_key` 그대로. 빈 키 채우기는 `fill_nokey_keys` 그대로.
+- 키 다시 짓기: `rebuilt_business_key` 그대로. `put_business_key` 는 11-12 은퇴 — 두 칸 쓰기는 `write_lines._rekey`. 빈 키 채우기는 `fill_nokey_keys` 그대로.
 - 바뀐 키가 다른 지금 줄과 부딪힘: row_id 를 키 주인 한쪽으로 몬다 (소유자 11-10 «합쳐지면 rowid를 한쪽으로 몰아야»).
   - 오늘 `_merge_into_key_holder` 가 병합 뒤 남기는 층을 1:1 로 옮긴다 — 오늘 남는 층 하나 = 같은 출처 이름의 머리 줄 하나. 키 주인의 사람 층을 살려 두는 `merged_layer_name(USER_SOURCE, "old_exist_…")` 층도 그 이름의 머리 줄로 남는다(사람 층 보존). 어느 값이 이기나(`explicit` · `human_columns`)는 그 함수의 판단 그대로다.
   - 합쳐지는 쪽 행의 줄 전부를 키 주인 row_id 로 옮긴다(`t__lines` 안의 UPDATE — 출처 · 언제 · 누가 · 값은 그대로). 합쳐지는 쪽 row_id 의 지금 줄은 DELETE 다.
@@ -119,6 +121,7 @@
 
 ## 칸 DDL — 한 함수
 
+- (11-13 소유자 ㄱ: 지우기 · 이름 바꾸기 길은 없다 — 선언에서 뺀 칸은 살아 있고, 이름 바꾸기는 새 칸. 아래 «지우기 · 이름 바꾸기» 는 당시 설계)
 - `lines.alter_columns(db, table_name, changes)`(C 몫 · 총괄 11-10): 한 트랜잭션에서 «보기 t · 트리거 지움 → 두 표에 같은 칸 DDL(더하기 · 타입 바꾸기 · 지우기 · 이름 바꾸기) → 보기 t · 트리거 다시 지음». PG 는 보기가 기대는 칸의 타입 바꾸기 · 지우기를 거부하고, 더한 칸은 보기에 안 나타나기 때문이다(PG 일반 동작 — 짓는 날 버리는 DB 시험으로 확인).
 - 표 만들기는 `lines.ensure_line_table`(두 표 · 보기 · 트리거 · 인덱스). 표 지우기는 `lines.drop_line_table`(보기 · 두 표 · 있으면 `t__old`).
 - 운영자에게 «손으로 돌릴 줄»로 보여 주는 DDL 문장(schema_drift · list_undeclared_tables)도 이 함수가 낸 문장을 그대로 보인다.

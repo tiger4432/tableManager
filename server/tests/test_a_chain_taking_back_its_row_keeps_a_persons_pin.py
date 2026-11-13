@@ -7,8 +7,16 @@ import pytest
 
 from chain import cell_layer
 from chain import ingestion_worker as worker
-from database import crud, models
-from test_a_written_column_is_stored_folded import PLAIN, _rows, env  # noqa: F401
+from database import crud, lines, models
+from test_a_written_column_is_stored_folded import PLAIN, _rows, env as written_env  # noqa: F401
+
+
+@pytest.fixture()
+def env(written_env):
+    """The shared tables, PLAIN given its line table - a withdrawal reads lines only (lead 11-11)."""
+    lines.ensure_line_table(written_env, PLAIN, crud.TABLE_CONFIG[PLAIN])
+    written_env.commit()
+    return written_env
 
 
 def _chain_row(db, updates):
@@ -30,9 +38,8 @@ def _pin(db, row_id, column, source):
 
 
 def _layer(db, row_id, column):
-    return db.query(models.CellSource.source_name).filter(
-        models.CellSource.table_name == PLAIN, models.CellSource.row_id == row_id,
-        models.CellSource.column_name == column).scalar()
+    (source,) = lines.layers(db, PLAIN, [row_id], [column])[(row_id, column)]
+    return source
 
 
 @pytest.mark.parametrize("pinned, left", [(False, 0), (True, 1)])

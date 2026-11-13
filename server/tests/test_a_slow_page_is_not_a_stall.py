@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import notation_norm as nn                                                  # noqa: E402
 from admin import retroactive                                               # noqa: E402
 from chain import keyset_scan, replay                                       # noqa: E402
-from database import models                                                 # noqa: E402
+from database import lines, models                                          # noqa: E402
 
 pytestmark = pytest.mark.pg
 
@@ -44,7 +44,7 @@ def test_a_slow_page_reads_progressing_and_a_lock_wait_reads_stalled(pg_engine, 
                                          queued_at=now, started_at=now, last_progress_at=now))
     pg_session.commit()
 
-    real_pages, real_fold = keyset_scan.iter_pages, replay._fold_by_values
+    real_pages, real_fold = keyset_scan.iter_pages, lines.layers     # a page's fold reads its head lines first
 
     def slow_pages(*args, **kwargs):
         for page in real_pages(*args, **kwargs):
@@ -56,7 +56,7 @@ def test_a_slow_page_reads_progressing_and_a_lock_wait_reads_stalled(pg_engine, 
         return real_fold(*args, **kwargs)
 
     monkeypatch.setattr(keyset_scan, "iter_pages", slow_pages)
-    monkeypatch.setattr(replay, "_fold_by_values", slow_fold)
+    monkeypatch.setattr(lines, "layers", slow_fold)
     monkeypatch.setattr(retroactive, "announce_progress", lambda *a, **k: True)     # no web server here
     factory = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     said = []                                             # the run's log - where its step lines go
@@ -96,6 +96,6 @@ def test_a_slow_page_reads_progressing_and_a_lock_wait_reads_stalled(pg_engine, 
     assert seen[-1] == (retroactive.MOVING_STALLED, True, ["x-1", "x.2"]), seen
     # the step lines - a page line (`RunControl._page_line`, its rows/s) is the boundary's, not a step's
     assert said[0].startswith("[fold_written_notation] Starting: ")       # the run's start (owner 11-09)
-    lines = [line.rsplit(" · ", 1)[0] for line in said[1:] if "rows/s" not in line]
-    assert lines == ["[fold_written_notation] page %d: %s · 1 rows" % step for step in (
-        (1, "read"), (1, "fold"), (1, "write"), (2, "read"), (2, "fold"), (2, "write"))], lines
+    steps = [line.rsplit(" · ", 1)[0] for line in said[1:] if "rows/s" not in line]
+    assert steps == ["[fold_written_notation] page %d: %s · 1 rows" % step for step in (
+        (1, "read"), (1, "fold"), (1, "write"), (2, "read"), (2, "fold"), (2, "write"))], steps

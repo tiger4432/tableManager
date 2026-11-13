@@ -264,8 +264,8 @@ def canonical_basis(db, config: dict, map_pairs, meta_cache: dict = None):
     둘을 한 단어로 접으면 운영자가 없는 선언을 채우러 간다(`config_resolve_report` §어휘).
 
     ⚠️ 재파생을 하지 않는다. 확정이 바뀌었을 때 어느 줄을 다시 만들지는
-    `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋과
-    `frame_confirmation.derived_cell_scope`가 이미 풀었고, 넷째 철자를 만들지 않는다.
+    `frame_trigger_scope`+`SCOPE_ROW_CAP` · `chain_replay` R1/R2 · `plan_retraction` 셋이 이미
+    풀었고, 넷째 철자를 만들지 않는다.
     이 함수는 **조회 시점에** 무엇이 기준인지 답할 뿐이다.
     """
     from maps import frame_confirmation

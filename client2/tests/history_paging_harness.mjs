@@ -151,6 +151,8 @@ const WANTED = [
   // `S.ctx` at each call site rather than aliased once at the top of the section.
   'HISTORY_PANES',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
+  // section S: an unfolded transaction's row, the jump's last step
+  'createSubDetailItemDom', 'navigatorFinalScroll',
   // The global tab, for section H. `renderGlobalTimeline` is the function that dies when the
   // envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
   // actually paints an entry — stubbing the second would leave "the panel renders" asserted
@@ -165,7 +167,7 @@ const WANTED = [
   'renderGlobalTimeline', 'createGlobalTimelineItemDom', 'auditKind', 'auditVal',
   // The 2c filter strip's helpers, called directly by cases in section H.
   // ⚰️ Until C-58, leaving them out made the SLICE throw and section H paint nothing.
-  'auditFilterState', 'groupKindLabel', 'fillAuditFilterOptions', 'auditFilterPasses',
+  'auditFilterState', 'groupFacts', 'fillAuditFilterOptions', 'auditFilterPasses',
   // ⚰️ The 2c row asks which table the transaction touched. Leaving it out used to make the
   //    slice throw and section H paint nothing -- which is how this harness reported THAT
   //    change: as its own breakage, on product code that was correct.
@@ -235,6 +237,12 @@ function makeEl(tag) {
     get firstChild() { return el.children[0] || null; },
     addEventListener: (ev, f) => { (el._listeners[ev] = el._listeners[ev] || []).push(f); },
     appendChild: (c) => { c.parentElement = el; el.children.push(c); return c; },
+    replaceChild: (c, old) => {
+      const i = el.children.indexOf(old);
+      if (i < 0) throw new Error('replaceChild: the old node is not a child');
+      old.parentElement = null; c.parentElement = el; el.children[i] = c;
+      return old;
+    },
     insertBefore: (c, ref) => {
       const i = ref ? el.children.indexOf(ref) : -1;
       if (ref && i < 0) throw new Error('insertBefore: reference node is not a child');
@@ -268,6 +276,9 @@ function descend(root) {
 }
 function matches(node, sel) {
   if (sel.startsWith('.')) return node.classList.contains(sel.slice(1));
+  // the live redraw finds a group's line by its transaction (renderGlobalTimelineIncremental)
+  const tx = /^li\[data-tx-id="([^"]*)"\]$/.exec(sel);
+  if (tx) return node.tagName === 'LI' && node.dataset.txId === tx[1];
   return false;
 }
 // See `querySelector` above. Only class selectors, only against this element's OWN markup, and
@@ -306,6 +317,8 @@ globalThis.document = {
     if (id === 'timeline') return CURRENT.timeline;
     if (id === 'tab-row') return CURRENT.tabRowBtn;
     if (id === 'performance-log') return CURRENT.performanceLog;
+    // section R's filter strip - only a sandbox that builds one has it
+    if (CURRENT.filters && id in CURRENT.filters) return CURRENT.filters[id];
     return null;
   },
   addEventListener() {},
@@ -1118,7 +1131,8 @@ async function sectionH() {
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: recentPage([
-    group('TX-1', [log(1)], 5),      // a bulk transaction: 5 rows, 1 representative log
+    // a bulk transaction: 5 lines on 5 rows, 1 representative log; the list counts its rows per table
+    { ...group('TX-1', [log(1)], 5), changed: [{ table_name: 't1', changed_rows: 5, changed_rows_truncated: false }] },
     group('TX-2', [log(2)]),         // a single-cell edit
   ], 'RCUR1') });
   await S.ctx.loadHistory();
@@ -1138,7 +1152,7 @@ async function sectionH() {
   // still renders" is the claim this whole change has to survive, and it is not a type check.
   check('H3 the panel painted one entry per group', items(S.timeline).length, 2);
   check('H3b ... reading the GROUP, not just its representative log',
-    entryHtml(S.timeline, 0).includes('5 changes'), true);
+    entryHtml(S.timeline, 0).includes('5 rows'), true);
   check('H3c ... and the single-log group renders its column',
     entryHtml(S.timeline, 1).includes('COL-A'), true);
   check('H3d ... each tagged with its transaction',
@@ -1331,6 +1345,29 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── S (lead 11-13, stop 4): a route row, the row tab, the jump with no column ──
+  { name: 'a route row drawn as a cell (the renderer before)', defect: true,
+    find: '  } else if (col == null) {', repl: '  } else if (false) {' },
+  { name: 'the row tab draws a before value again', defect: true,
+    find: '          <div class="change-values">\n            <span class="val-new">',
+    repl: '          <div class="change-values">\n            <span class="val-old">${escapeHtml(formatVal(log.old_value, true))}</span>\n            <span class="val-arrow">→</span>\n            <span class="val-new">' },
+  { name: 'a jump with no column says «null»', defect: true,
+    find: 'column ? `🎯 Jumped to ${column} at Row ${row}` : `🎯 Jumped to Row ${row}`',
+    repl: '`🎯 Jumped to ${column} at Row ${rowNode.data.row_id}`' },
+  // ── R10-R11 (owner 11-13 «네비게이션» · «여러 표라며»): the line and its names jump ──
+  { name: 'a line jumps only when it holds a log (the code before)', defect: true,
+    find: "|| e.target.closest('.audit-tbl-more')) {\n        toggleExpand();\n      } else {\n        goToLine(group, e.target.closest('.audit-target-table'));",
+    repl: "|| e.target.closest('.audit-tbl-more')) {\n        toggleExpand();\n      } else if (group.logs && group.logs.length > 0) {\n        goToLine(group, e.target.closest('.audit-target-table'));" },
+  { name: 'every name jumps to the newest table', defect: true,
+    find: '  const table = named ? named.dataset.table : facts && facts.tables.length',
+    repl: '  const table = named ? facts.tables[0].name : facts && facts.tables.length' },
+  // ── R (lead 11-13): the Global list in the route's shape, logs [] ──
+  { name: 'the filter needs a log line again (the code before)', defect: true,
+    find: '  const facts = groupFacts(group);\n  if (!facts) return false;',
+    repl: '  const facts = groupFacts(group);\n  if (!group.logs?.[0]) return false;\n  if (!facts) return false;' },
+  { name: 'the line needs a log line again (the code before)', defect: true,
+    find: '  const facts = groupFacts(group);\n  if (!facts) return null;',
+    repl: '  const facts = groupFacts(group);\n  if (!group.logs[0]) return null;\n  if (!facts) return null;' },
   // ── U (owner 11-09): the Global list while it is read again ──
   { name: 'a stale Global list is wiped to Loading again (the code before)', defect: true,
     find: '    if (state.globalHistoryData.length) {\n      state.globalHistoryUpdating = true;',
@@ -1346,8 +1383,8 @@ const MUTANTS = [
     find: '  const isUser = byPerson(log);',
     repl: "  const isUser = log.updated_by !== 'system';" },
   { name: 'the global pane takes «not system» for a person again (the code before)', defect: true,
-    find: '  const isUser = byPerson(baseLog);',
-    repl: "  const isUser = (baseLog.updated_by || 'system') !== 'system';" },
+    find: '  const isUser = Boolean(baseLog) && byPerson(baseLog);',
+    repl: "  const isUser = Boolean(baseLog) && (baseLog.updated_by || 'system') !== 'system';" },
   { name: 'envelope assigned where the array belongs (the original defect)', defect: true,
     find: 'state.cellRowHistoryData = page.logs;',
     repl: 'state.cellRowHistoryData = page;' },
@@ -1474,6 +1511,25 @@ const MUTANTS = [
     find: '      state.globalHistoryLoaded = page.logs.length;',
     repl: '      state.globalHistoryLoaded = 0;' },
 
+  { name: 'a line drawn open from what it holds draws it without its «more»', defect: true,
+    // re-anchored 11-13: the live redraw draws an open line through createGlobalTimelineItemDom's drawOpen
+    find: '        renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));\n      }\n    };',
+    repl: '        renderSubDetails(detailsContainer, group.logs);\n      }\n    };' },
+  { name: 'unfolded again, a paged transaction reads its first page again', defect: true,
+    find: "  return !(group && 'nextCursor' in group) && !holdsAll(group);",
+    repl: '  const logs = group && Array.isArray(group.logs) ? group.logs : [];\n  return logs.length < Number(group && group.total_count);' },
+  { name: 'the folded cell counts the audit lines again (lead 10-29)', defect: true,
+    find: '  return { kind, ...FOLDS[kind], count: changedRowsOf(group) };',
+    repl: "  return { kind, ...FOLDS[kind], count: unitText(group.total_count, 'row') };" },
+  { name: 'a paged transaction redrawn past 500 rows hides the rest behind «Show remaining»', defect: true,
+    find: '  const renderLimit = pane ? Infinity : 500;',
+    repl: '  const renderLimit = 500;' },
+  { name: 'a line drawn again ignores the open state (the old redraw)', defect: true,
+    find: '    if (state.expandedTransactions.has(txId)) drawOpen();\n',
+    repl: '' },
+  { name: 'the capped count drops its «+»', defect: true,
+    find: "tables.some((t) => t.changed_rows_truncated === true));",
+    repl: "false);" },
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,
@@ -1606,6 +1662,279 @@ async function sectionU() {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// P — an unfolded transaction is read a page at a time (lead 11-12 ㄴ, D f0f4d51bb): page 1, «more», page 2 into the
+//     same list; a live log redrawing the line keeps «more» and the pages read; folded and unfolded again it reads
+//     nothing; the cell counts the rows it changed, «1,000+ rows» at the server's cap (lead 11-12 ㄷ)
+// ════════════════════════════════════════════════════════════════════════════════
+async function sectionP() {
+  const S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  state.expandedTransactions = new Set();
+  state.fetchingTransactions = new Set();
+  const settle = async () => { for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r)); };
+  const rowsOf = (from, n) => Array.from({ length: n }, (_, i) => ({ ...log(from + i, `ROW-${from + i}`), transaction_id: 'TX-P' }));
+  // a fresh object each answer: the client keeps the one it read and writes its pages and cursor onto it
+  const listed = () => ({ ...group('TX-P', [{ ...log(1, 'ROW-1'), transaction_id: 'TX-P' }], 4200),
+    changed: [{ table_name: 't1', changed_rows: 1000, changed_rows_truncated: true }] });
+  const capped = listed();
+  S.responses.push({ status: 200, body: recentPage([capped]) });
+  await S.ctx.loadHistory();
+  check('P1 the capped count says the floor: «1,000+ rows», not the 4,200 lines', entryHtml(S.timeline, 0).includes('1,000+ rows'), true);
+
+  const lineOf = () => items(S.timeline).find((li) => li.dataset.txId === 'TX-P');
+  // null-safe: a defect that draws no line fails the checks below, it does not throw out of the section
+  const details = () => { const li = lineOf(); return li ? li.querySelector('.tx-details-container') : null; };
+  const unfold = async () => { const li = lineOf(); if (li) (li.querySelector('.timeline-card')._listeners.dblclick || []).forEach((f) => f()); await settle(); };
+  const list = () => (details() ? details().querySelectorAll('.sub-timeline-list')[0] || null : null);
+  const moreBtn = () => (details() ? details().querySelectorAll('.timeline-more-btn')[0] || null : null);
+  const txReads = () => S.requests.filter((u) => u.includes('/audit_logs/transaction/TX-P'));
+
+  S.responses.push({ status: 200, body: { ...page(rowsOf(1, 200), 'P2'), total_count: 1000, total_truncated: true } });
+  await unfold();
+  check('P2 unfolded: the first page, read once', [txReads(), list() ? list().children.length : null],
+    [[`${API_BASE}/audit_logs/transaction/TX-P`], 200]);
+  check('P3 ...and «more» at its end, saying the list is a part', moreBtn() ? moreBtn().textContent : null, 'Partial (200) · more');
+
+  S.responses.push({ status: 200, body: page(rowsOf(201, 150), 'P3') });
+  if (moreBtn()) moreBtn().click();
+  await settle();
+  check('P4 «more» reads the next page by its cursor into the same list', [txReads()[1], list() ? list().children.length : null],
+    [`${API_BASE}/audit_logs/transaction/TX-P?cursor=P2`, 350]);
+  check('P5 ...and stays, pages left', moreBtn() ? moreBtn().textContent : null, 'Partial (350) · more');
+
+  // a live log of the same transaction redraws its line (renderGlobalTimelineIncremental)
+  let liveErr = null;
+  try { S.ctx.appendHistoryLocally({ ...log(999, 'ROW-999'), transaction_id: 'TX-P' }); } catch (e) { liveErr = String((e && e.message) || e); }
+  await settle();
+  check('P6a the live log does not throw', liveErr, null);
+  check('P6 a live log redraws the line and keeps the pages read and «more»',
+    [list() ? list().children.length : null, moreBtn() ? moreBtn().textContent : null], [351, 'Partial (351) · more']);
+
+  await unfold();   // fold
+  await unfold();   // unfold again
+  check('P7 folded and unfolded again: no read, the pages kept', [txReads().length, list() ? list().children.length : null], [2, 351]);
+  check('P8 ...the count still the rows, «1,000+ rows»', lineOf() ? lineOf().innerHTML.includes('1,000+ rows') : null, true);
+
+  // past 500 rows held: a redraw draws every page read, so the page read next lands after them
+  S.responses.push({ status: 200, body: page(rowsOf(351, 200), 'P4') });
+  if (moreBtn()) moreBtn().click();
+  await settle();
+  try { S.ctx.appendHistoryLocally({ ...log(998, 'ROW-998'), transaction_id: 'TX-P' }); } catch { /* P6a says a throw */ }
+  await settle();
+  check('P9 past 500 rows a redraw draws every page read, «more» after them',
+    [list() ? list().children.length : null, moreBtn() ? moreBtn().textContent : null], [552, 'Partial (552) · more']);
+
+  // open or shut is state.expandedTransactions alone (lead 11-13): a line drawn again - by a live log, by the list read
+  // again - is drawn as that state says, and one press does what the screen shows
+  const shown = () => { const li = lineOf(); if (!li) return null;
+    return [li.querySelector('.tx-details-container').style.display, li.querySelector('.expand-indicator').textContent]; };
+  try { S.ctx.appendHistoryLocally({ ...log(997, 'ROW-997'), transaction_id: 'TX-P' }); } catch { /* P6a says a throw */ }
+  await settle();
+  check('P10 a live log redraws an open line open', shown(), ['block', '▼']);
+  await unfold();
+  check('P10b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
+  await unfold();   // open again: it holds its pages, no read
+  S.responses.push({ status: 200, body: recentPage([listed()]) });
+  S.responses.push({ status: 200, body: { ...page(rowsOf(1, 200), 'P2'), total_count: 1000, total_truncated: true } });
+  await S.ctx.rereadHistory();
+  await settle();
+  check('P11 the list read again draws the open line open - its first page again (known: the pages «more» read are re-read)',
+    [shown(), list() ? list().children.length : null], [['block', '▼'], 200]);
+  await unfold();
+  check('P11b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
+  state.expandedTransactions = new Set();
+  resetState();
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// R — the Global list in the shapes the server SENDS (lead 11-13, release stop on reh_c)
+//
+// 🔴 THE PANEL SAID «No history matches · 0 of 4» WITH EVERY FILTER AT ALL. The overhaul's
+//    /audit_logs/recent sends each group `logs: []` and its facts under `changed`
+//    (main.py `_shape_recent_groups`); the filter and the draw both began at `logs[0]` and
+//    dropped every group. No harness saw it: every fixture here carried logs. These do not.
+// ════════════════════════════════════════════════════════════════════════════════
+const pick = (value = '') => ({
+  options: [{ value: '' }], value,
+  remove(i) { this.options.splice(i, 1); },
+  appendChild(option) { this.options.push(option); return option; },
+});
+const optionsOf = (select) => select.options.slice(1).map(o => o.value);
+const entry = (table, rows, kinds, who, at, floor = false) => ({
+  table_name: table, changed_rows: rows, changed_rows_truncated: floor, kinds, written_by: who, at,
+});
+const routeGroup = (txId, changed) => ({
+  transaction_id: txId, total_count: changed.length, logs: [], changed,
+});
+
+async function sectionR() {
+  const now = new Date().toISOString();
+  const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  let S = await buildSandbox();
+  S.filters = { 'audit-filter-user': pick(), 'audit-filter-kind': pick(), 'audit-filter-when': pick() };
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([
+    // the migration's copy: counted to the server's cap
+    routeGroup('copy_lines:sb_wide', [entry('sb_wide', 1000, ['copy'], [], now, true)]),
+    routeGroup('TX-A', [entry('lot_event', 3, ['edit'], ['kim'], now)]),
+    // two tables, newest first as the route sends them
+    routeGroup('TX-B', [entry('t2', 5, ['new'], ['parser'], now), entry('t1', 2, ['edit'], ['kim'], now)]),
+    routeGroup('TX-OLD', [entry('t1', 1, ['edit'], ['lee'], old)]),
+  ]) });
+  await S.ctx.loadHistory();
+  const drawn = () => items(S.timeline).map(li => li.dataset.txId);
+  const redraw = (user, kind, when) => {
+    S.filters['audit-filter-user'].value = user;
+    S.filters['audit-filter-kind'].value = kind;
+    S.filters['audit-filter-when'].value = when;
+    S.ctx.renderGlobalTimeline();
+    return drawn();
+  };
+
+  check('R1 the route shape draws a line a group, filters at All',
+    drawn(), ['copy_lines:sb_wide', 'TX-A', 'TX-B', 'TX-OLD']);
+  check('R1b ... and never says «No history matches»', S.timeline.innerHTML.includes('No history matches'), false);
+  check('R2 the copy line says its rows at the cap', entryHtml(S.timeline, 0).includes('1,000+ rows'), true);
+  check('R2b ... its table and its kind as the server sent it',
+    [entryHtml(S.timeline, 0).includes('sb_wide'), entryHtml(S.timeline, 0).includes('>copy</span>')], [true, true]);
+  check('R2c ... and «system» for a batch no one is named on', entryHtml(S.timeline, 0).includes('>system</div>'), true);
+  check('R3 a two-table transaction: each table its own name, newest first, «+1» to fold into, the rows of both',
+    [entryHtml(S.timeline, 2).indexOf('data-table="t2"') < entryHtml(S.timeline, 2).indexOf('data-table="t1"'),
+     entryHtml(S.timeline, 2).includes('data-table="t1"'), entryHtml(S.timeline, 2).includes('>+1</span>'),
+     entryHtml(S.timeline, 2).includes('7 rows')], [true, true, true, true]);
+  check('R3c ... each name says its own rows', [entryHtml(S.timeline, 2).includes('title="t2 · 5 rows"'),
+    entryHtml(S.timeline, 2).includes('title="t1 · 2 rows"')], [true, true]);
+  check('R3b ... and every writer and kind it names',
+    [entryHtml(S.timeline, 2).includes('parser, kim'),
+     entryHtml(S.timeline, 2).includes('>new</span>'), entryHtml(S.timeline, 2).includes('>edit</span>')], [true, true, true]);
+  check('R4 the user list is the writers the groups name',
+    optionsOf(S.filters['audit-filter-user']), ['kim', 'lee', 'parser', 'system']);
+  check('R4b the kind list is the kinds the groups name', optionsOf(S.filters['audit-filter-kind']), ['copy', 'edit', 'new']);
+  check('R5 a user', redraw('kim', '', ''), ['TX-A', 'TX-B']);
+  check('R6 a kind', redraw('', 'new', ''), ['TX-B']);
+  check('R7 today', redraw('', '', 'today'), ['copy_lines:sb_wide', 'TX-A', 'TX-B']);
+  check('R7b a user and today', redraw('lee', '', 'today'), []);
+  check('R7c ... and that one says it', S.timeline.innerHTML.includes('No history matches'), true);
+
+  // a live line joining a route group: the group keeps the route's facts
+  redraw('', '', '');
+  S.ctx.appendHistoryLocally({ ...log(31, 'ROW-31'), transaction_id: 'TX-A', updated_by: 'park', table_name: 'lot_event' }, true);
+  check('R8 a live line joining a route group keeps it drawn by the route facts',
+    [redraw('kim', '', ''), optionsOf(S.filters['audit-filter-user'])], [['TX-A', 'TX-B'], ['kim', 'lee', 'parser', 'system']]);
+
+  // -- the broadcast's shape: created_logs lines (crud._said_logs), no `changed` --
+  S = await buildSandbox();
+  S.filters = { 'audit-filter-user': pick(), 'audit-filter-kind': pick(), 'audit-filter-when': pick() };
+  resetState();
+  state.activeHistoryTab = 'global';
+  state.globalHistoryData = [];
+  S.ctx.appendHistoryLocally({ ...log(41, 'ROW-41', 'qty'), transaction_id: 'TX-L', updated_by: 'kim',
+    table_name: 'lot_event', timestamp: now }, true);
+  S.ctx.renderGlobalTimeline();
+  check('R9 a live write before any list read draws its line', drawn(), ['TX-L']);
+  check('R9b ... its writer, its kind, its table, its column and its value',
+    ['>kim</div>', '>OVERWRITE</span>', 'lot_event', '>qty</span>', '>b</span>'].map(w => entryHtml(S.timeline, 0).includes(w)),
+    [true, true, true, true, true]);
+  check('R9c ... and the filters read it',
+    [redraw('kim', 'OVERWRITE', 'today'), optionsOf(S.filters['audit-filter-user']), optionsOf(S.filters['audit-filter-kind'])],
+    [['TX-L'], ['kim'], ['OVERWRITE']]);
+
+  // -- a line pressed jumps (owner 11-13 «네비게이션»): the route shape asks the transaction route for its first row --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([
+    routeGroup('TX-B', [entry('t2', 5, ['new'], ['parser'], now), entry('t1', 2, ['edit'], ['kim'], now)]),
+  ]) });
+  await S.ctx.loadHistory();
+  const card = items(S.timeline)[0] ? items(S.timeline)[0].querySelector('.timeline-card') : null;
+  // a press on the line, or on one of its table names (`named`), with the transaction route's answer scripted
+  const press = async (named, answer) => {
+    const asked = S.requests.length;
+    // the jump stays on screen: same table and transaction, so it ends at «Grid not initialized» and fetches nothing
+    state.currentTable = named || 't2';
+    state.currentTransactionId = 'TX-B';
+    state.isNavigating = false;
+    S.responses.push(answer);
+    const click = card && card._listeners.click ? card._listeners.click[0] : null;
+    if (click) click({ target: { closest: (sel) => (sel === '.audit-target-table' && named ? { dataset: { table: named } } : null) },
+      stopPropagation() {} });
+    for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r));
+    const said = S.performanceLog.textContent;
+    await new Promise((r) => setTimeout(r, 80));   // the jump's 50 ms step, let go before the next press
+    return [S.requests.length > asked ? urlAt(S, asked) : '(NO REQUEST)', said];
+  };
+  const rowOf = (table, row) => ({ status: 200, body: { transaction_id: 'TX-B', logs: [{ table_name: table, row_id: row }],
+    truncated: false, next_cursor: null, total_count: 1 } });
+  const [lineUrl, lineSaid] = await press(null, rowOf('t2', 'ROW-T2'));
+  check('R10 the line pressed asks its newest table\'s first changed row',
+    lineUrl.endsWith('/audit_logs/transaction/TX-B?table=t2&limit=1'), true);
+  check('R10b ... and jumps there', lineSaid.startsWith('🔍 Navigating to t2:ROW-T2 in Transaction TX-B'), true);
+  const [nameUrl, nameSaid] = await press('t1', rowOf('t1', 'ROW-T1'));
+  check('R11 a table name pressed asks that table', nameUrl.endsWith('/audit_logs/transaction/TX-B?table=t1&limit=1'), true);
+  check('R11b ... and jumps to its row', nameSaid.startsWith('🔍 Navigating to t1:ROW-T1 in Transaction TX-B'), true);
+  const [, goneSaid] = await press('t1', { status: 404, body: { detail: 'Transaction not found' } });
+  check('R12 a 404 is said', goneSaid, 'Transaction not found');
+  const [, noneSaid] = await press('t1', { status: 200, body: { logs: [], truncated: false, next_cursor: null } });
+  check('R12b an answer with no row is said', noneSaid, 'No changed row of t1 in this transaction');
+  state.currentTransactionId = null;
+  resetState();
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// S — the rows of an unfolded transaction, the jump to one and the row tab (lead 11-13, release stop 4 on reh_c)
+//
+// 🔴 The overhaul's /audit_logs/transaction answers a ROW an entry: column_name null, new_value null (owner 11-10
+//    «바뀐 행 네비»). The sub-row drew «[null] Deleted (ID: K0000001)» for an edit, the jump said «Jumped to null at Row
+//    01a1d5d4-…» and the row tab «Column: NULL»; the row tab drew «Empty → tx-doc» for a value that was «tx2-doc»
+//    (owner 11-10 «전 값 필요없다고 했잖아»: no before value at all).
+// ════════════════════════════════════════════════════════════════════════════════
+const routeRow = (deleted = false) => ({
+  id: '41', table_name: 'sb_wide', row_id: '01a1d5d4-27dd-7000-8000-000000000001', source_name: 'user',
+  updated_by: 'reh_person', timestamp: '2026-11-14T01:54:15+09:00', transaction_id: 'TX-SB', business_key: 'K0000001',
+  column_name: null, new_value: null, old_value: null, is_row_deleted: deleted,
+});
+
+async function sectionS() {
+  const S = await buildSandbox();
+  resetState();
+  const edited = S.ctx.createSubDetailItemDom(routeRow(false)).innerHTML;
+  check('S1 a route row unfolded: its key and who wrote it', edited.includes('K0000001 · by reh_person'), true);
+  check('S1b ... never «Deleted», never «null»', [edited.includes('Deleted'), edited.includes('null')], [false, false]);
+  check('S2 a row the route says is deleted still says so',
+    S.ctx.createSubDetailItemDom(routeRow(true)).innerHTML.includes('Deleted (ID: K0000001)'), true);
+
+  const rowTab = S.ctx.createTimelineItemDom({ ...routeRow(false), column_name: 'body', new_value: 'tx-doc' }).innerHTML;
+  check('S3 the row tab draws the new value', rowTab.includes('>tx-doc</span>'), true);
+  check('S3b ... and no before value: no «Empty», no arrow', [rowTab.includes('Empty'), rowTab.includes('→')], [false, false]);
+
+  // the jump's last step on a row with no column: a grid that records what it is asked
+  const asked = [];
+  state.gridApi = {
+    ensureNodeVisible: () => asked.push('visible'),
+    setFocusedCell: (i, col) => asked.push(`focus ${col}`),
+    flashCells: (p) => asked.push(`flash ${p.columns ? p.columns.join(',') : 'row'}`),
+  };
+  S.filters = { 'selected-cell-info': makeEl('div') };
+  const node = { rowIndex: 3, data: { row_id: '01a1d5d4-27dd-7000-8000-000000000001', data: {} }, setSelected: () => {} };
+  S.ctx.navigatorFinalScroll(node, null, null, 'D0001');
+  check('S4 a jump to a row with no column says the row by its key', S.performanceLog.textContent, '🎯 Jumped to Row D0001');
+  check('S4b ... focuses no cell and flashes the row', asked, ['visible', 'flash row']);
+  const head = S.filters['selected-cell-info'].innerHTML;
+  check('S4c ... the row tab\'s head names the row, no Column, no NULL',
+    [head.includes('D0001'), head.includes('Column:'), head.includes('NULL')], [true, false, false]);
+  asked.length = 0;
+  S.ctx.navigatorFinalScroll({ ...node, data: { ...node.data, data: { body: { value: 'tx-doc' } } } }, 'body', null, 'D0001');
+  check('S5 a jump with a column still focuses it and says it', [S.performanceLog.textContent, asked],
+    ['🎯 Jumped to body at Row D0001', ['visible', 'focus body', 'flash body']]);
+  state.gridApi = null;
+  state.selectedCell = null;
+  resetState();
+}
+
 async function sectionG() {
   for (const m of MUTANTS) {
     // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
@@ -1633,6 +1962,9 @@ async function sectionG() {
       await sectionK();
       await sectionL();
       await sectionU();
+      await sectionP();
+      await sectionR();
+      await sectionS();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1669,6 +2001,9 @@ await sectionJ();
 await sectionK();
 await sectionL();
 await sectionU();
+await sectionP();
+await sectionR();
+await sectionS();
 const beforeG = { pass, fail };
 await sectionG();
 

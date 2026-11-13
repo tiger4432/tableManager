@@ -146,6 +146,14 @@ console.log('\n── E. unfolding a group that carries a part (A 1e4bbe748: one
   ok(reads(3, 3) === false, 'E3 a group carrying all its logs draws what it holds', reads(3, 3));
   ok(reads(1, 1) === false, 'E4 a single change reads nothing more', reads(1, 1));
   ok(needsTransactionRead({ logs: [log('dt_log')] }) === false, 'E5 no total_count is read as complete, as the Table cell reads it');
+  // the route answered (lead 11-12): its cursor says what is left, and unfolding again keeps the pages «more» read
+  const paged = (cursor) => ({ logs: Array.from({ length: 3 }, () => log('dt_log')), total_count: 500, nextCursor: cursor });
+  ok(needsTransactionRead(paged('C2')) === false, 'E6 a group the route answered, pages left, is not read again unfolded again');
+  ok(needsTransactionRead(paged(null)) === false, 'E7 ...nor one read to its end');
+  ok(auditTargetTable({ ...paged('C2'), total_count: 3 }) === 'dt_log …', 'E8 pages left say «…» though it holds its line count',
+    auditTargetTable({ ...paged('C2'), total_count: 3 }));
+  ok(auditTargetTable(paged(null)) === 'dt_log', 'E9 read to its end says no «…» though its rows are fewer than its lines',
+    auditTargetTable(paged(null)));
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
@@ -156,15 +164,15 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
-  ['the row\'s table cell left empty', swap(' title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>',
-    ' title="${escapeHtml(keyTable)}"></span></div>')],
-  ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : rowKey;",
-    "  const keyRow = isSummary ? keyTable : `${keyTable} · ${rowKey}`;")],
+  ['the row\'s table cell left empty', swap('">${tablePieces(t.label)}</span>`);',
+    '"></span>`);')],
+  ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : (baseLog.business_key || baseLog.row_id.slice(0, 8));",
+    "  const keyRow = isSummary ? facts.tables[0].label : `${facts.tables[0].label} · ${baseLog.business_key || baseLog.row_id.slice(0, 8)}`;")],
   ['the first log is taken as the representative',
     swap('  const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];',
       '  const names = logs.length ? [logs[0].table_name].filter(Boolean) : [];')],
   ['a sampled group claims to be the whole transaction',
-    swap('  const sampled = logs.length < total;', '  const sampled = false;')],
+    swap("${holdsAll(group) ? '' : ' …'}", '')],
   ['the count includes the table that is already named',
     swap('names.length > 1 ? ` +${names.length - 1}` : \'\'',
       'names.length > 1 ? ` +${names.length}` : \'\'')],
@@ -173,7 +181,11 @@ const DEFECTS = [
   ['a log with no table name still takes a slot',
     swap('.filter(Boolean))]', ')]')],
   ['a group carrying more than one but not all of its logs unfolds to those only',
-    swap('return logs.length < Number(group && group.total_count);', 'return logs.length <= 1 && Number(group && group.total_count) > 1;')],
+    swap('return !(logs.length < Number(group && group.total_count));', 'return !(logs.length <= 1 && Number(group && group.total_count) > 1);')],
+  ['unfolded again, a paged group reads its first page again and drops the pages read',
+    swap("return !(group && 'nextCursor' in group) && !holdsAll(group);", 'return !holdsAll(group);')],
+  ['a paged group is judged by its count, not its cursor',
+    swap("if (group && 'nextCursor' in group) return !group.nextCursor;", '')],
 ];
 
 const CONTROLS = [
@@ -188,6 +200,9 @@ const CONTROLS = [
 function verdict(m) {
   const g = m.auditTargetTable;
   if (m.needsTransactionRead({ logs: [log('a'), log('b')], total_count: 500 }) !== true) return true;
+  if (m.needsTransactionRead({ logs: [log('a')], total_count: 500, nextCursor: 'C2' }) !== false) return true;
+  if (g({ logs: [log('dt_log'), log('dt_log')], total_count: 2, nextCursor: 'C2' }) !== 'dt_log …'
+    || g({ logs: [log('dt_log')], total_count: 500, nextCursor: null }) !== 'dt_log') return true;
   const [one, many] = rowView(m);
   return one.table !== 'dt_log' || many.table !== 'dt_log +1 …' || one.target.includes('dt_log') || many.target.includes('dt_log')
     || g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'

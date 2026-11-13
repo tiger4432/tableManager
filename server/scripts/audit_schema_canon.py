@@ -273,13 +273,14 @@ def load_physical(engine, label):
     snap = PhysicalSchema(label)
     conn = readonly_connection(engine)
     try:
-        snap.tables = {r[0] for r in conn.execute(text("""
-            SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"""))}
+        from database.lines import base_tables     # line tables are engine machinery, not schema (lead 11-12)
+
+        snap.tables = set(base_tables(conn, schema="public"))
 
         for t, c, dt, dflt, nul in conn.execute(text("""
             SELECT table_name, column_name, data_type, column_default, is_nullable
-            FROM information_schema.columns WHERE table_schema = 'public'""")):
+            FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ANY(:names)"""),
+                {"names": sorted(snap.tables)}):
             snap.columns[(t, c)] = {"data_type": dt, "column_default": dflt,
                                     "is_nullable": nul == "YES"}
 
@@ -733,7 +734,8 @@ def rule_r4(default_surface, decl):
         "The incident's UPDATE arm: `ingested_at` seeded, upserted with None, stored NULL.")
     b_named = Bucket(
         "named_in_the_incident", INFO,
-        "the three columns SCHEMA_CANON names for R4. Present here means the surface "
+        "the columns SCHEMA_CANON names for R4 that still exist (its third, the old layer "
+        "table's ingested_at, retired with that table 11-12). Present here means the surface "
         "this detector reports really does cover the incident.")
     b_declared_reserved = Bucket(
         "config_declares_a_reserved_metadata_name", VIOLATION,
@@ -742,8 +744,7 @@ def rule_r4(default_surface, decl):
         "promises a type nobody applies, and a reader sizing a write against the config "
         "is reading a column that does not behave the way it is written down.")
 
-    incident = {("cell_sources", "ingested_at"), ("cell_overwrites", "updated_at"),
-                ("cell_overwrites", "is_overwrite")}
+    incident = {("cell_overwrites", "updated_at"), ("cell_overwrites", "is_overwrite")}
     for (t, c), kinds in sorted(default_surface.items()):
         b_surface.add(f"{t}.{c}", kinds)
         if "py" in kinds.split("+"):
@@ -1119,7 +1120,7 @@ def rule_r7(findings):
 # named list that the report prints in full, precisely so the exceptions are auditable
 # instead of assumed - an exception nobody can see is indistinguishable from a bug.
 ENGINE_TABLES = frozenset({
-    "audit_logs", "cell_sources", "cell_overwrites", "database_outbox",
+    "audit_batches", "line_columns", "line_sources", "cell_overwrites", "database_outbox",
     # graph_edges / graph_nodes / graph_sync_state dropped from this list 2026-08-18
     # along with the tables themselves.
     "file_ingestion_checkpoints", "file_ingestion_logs",
@@ -1163,8 +1164,10 @@ def rule_r8(decl, phys=None):
         "`bonding_log`. That is the join between layers and R8 explicitly wants the name "
         "to change when the fact crosses a layer.")
 
+    from database.lines import is_line_table    # a declared table's history - engine machinery, any prefix
+
     def classify(t):
-        if t in ENGINE_TABLES:
+        if t in ENGINE_TABLES or is_line_table(t):
             return "engine"
         for v in STAGE_PREFIX_VARIANTS:
             if t.startswith(v):

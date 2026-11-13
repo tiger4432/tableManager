@@ -1,6 +1,6 @@
 import event_constants
 from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime, timezone
 
 class CellData(BaseModel):
@@ -18,14 +18,13 @@ class CellUpdate(BaseModel):
     updated_by: Optional[str] = "user"
 
 class AuditLogResponse(BaseModel):
-    id: int
+    id: Union[int, str, None]           # a line's entry: "<line_id>:<column>" (audit_history.entry_id)
     table_name: str
     row_id: str
-    column_name: str
-    old_value: Any
-    new_value: Any
-    source_name: str
-    updated_by: str
+    column_name: Optional[str] = None   # None: a row a transaction changed (GET /audit_logs/transaction/{tx_id})
+    new_value: Any = None
+    source_name: Optional[str] = None
+    updated_by: Optional[str] = None
     transaction_id: Optional[str] = None
     business_key: Optional[str] = None
     timestamp: datetime
@@ -105,23 +104,35 @@ class AuditHistoryPage(BaseModel):
     #: pathologically deep row cannot turn a disclosure into an O(depth) scan.
     row_history_truncated: bool = False
 
-class ReceiptWorld(BaseModel):
-    #: the world a ledger receipt says it was written into; None for a receipt from before 6922cd6cb
-    world: Optional[str] = None
-    receipts: int
-    #: of those, the receipts of a translation that failed - a world that failed is not one that
-    #: wrote (클라 9cdbda108 · 총괄)
-    failed: int = 0
+class ChangedTable(BaseModel):
+    """One table a transaction wrote, from its audit batches (owner 11-10 «트랜잭션, 테이블별, 누가, 바뀐 행수, 작업
+    타입»): the rows counted from its lines - distinct, None while not counted -, the kinds and writers as written."""
+    table_name: str
+    changed_rows: Optional[int] = None
+    #: True == `changed_rows` is the floor - counted up to `audit_history.ROW_TOTAL_PROBE_CAP` («1,000+»)
+    changed_rows_truncated: bool = False
+    kinds: list[str] = []
+    written_by: list[str] = []
+    at: Optional[datetime] = None
+
+    @field_validator("at", mode="after")
+    @classmethod
+    def convert_to_local(cls, v):
+        return AuditLogResponse.convert_to_local(v)
 
 
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
     total_count: int = 0
-    summary_columns: list[str] = []
+    #: GET /audit_logs/transaction/{tx_id}: True == `total_count` is the floor (counted up to ROW_TOTAL_PROBE_CAP)
+    total_truncated: bool = False
+    #: the rows it changed - GET /audit_logs/transaction/{tx_id}, a page; the recent list's groups carry none
     logs: list[AuditLogResponse]
-    #: 🔴 `logs` carries ONE representative; the ledger receipts behind it, per world, oldest
-    #: written first (총괄 3e8b6171f ②) - an edit followed in two worlds is a row and two receipts.
-    receipt_worlds: list[ReceiptWorld] = []
+    #: GET /audit_logs/transaction/{tx_id}: more rows after this page, read with `?cursor=<next_cursor>`
+    truncated: bool = False
+    next_cursor: Optional[str] = None
+    #: the recent list: the tables its audit batches name, the newest first
+    changed: Optional[list[ChangedTable]] = None
 
 class AuditLogGroupPage(BaseModel):
     """One page of the recent-transactions projection behind `/audit_logs/recent`.
@@ -152,7 +163,7 @@ class AuditLogGroupPage(BaseModel):
     #: oversight: when a live merge grows the projection past `limit_groups` it drops
     #: the tail, so the recorded resume position now sits behind the new end of the
     #: list and naming it would hand back groups the caller already has
-    #: (`audit_cache.add_logs_batch`). "There is more, and the position is gone" is
+    #: (`AuditLogCache._to_top`). "There is more, and the position is gone" is
     #: the honest answer; a client that wants the rest reloads from the top.
     next_cursor: Optional[str] = None
     #: The caller's `limit_groups` as it was applied. Unlike `AuditHistoryPage.limit`
@@ -203,13 +214,10 @@ class GeneralUpdateItem(BaseModel):
     # from JSON or reach a response. `crud.assemble_composite_business_key` is its only
     # writer and it fills it only when the two keys DIFFER - which happens on exactly one
     # shape, a caller renaming a row by naming its OLD key while sending new key parts.
-    # `crud._get_or_create_row` reads the assembled key first and this one only when that
+    # The row claim (`write_lines._claim`) reads the assembled key first and this one only when that
     # named no row, so the identity ruling (188/190) stands and the rename keeps its
     # address (S-90).
     _supplied_business_key_val: Optional[Any] = PrivateAttr(default=None)
-    # {column: the spelling that arrived} for each value the write funnel's notation fold
-    # changed - the audit line's old_value (총괄 5ee9d3bd1 ②). Set by `crud`, never sent.
-    _written_spelling: Optional[dict] = PrivateAttr(default=None)
     # The item's data row in its FILE (1-based, the watcher's count) - its place in the batch's `_nokey_keys`
     # (owner 10-31). Set by the watcher, never sent.
     _file_row: Optional[int] = PrivateAttr(default=None)

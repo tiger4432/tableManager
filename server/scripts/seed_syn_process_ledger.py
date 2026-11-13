@@ -74,6 +74,8 @@ UNDO
     The ledger atoms it writes straight into the ledger, not through a source - as before:
     DELETE FROM ledger_events            WHERE source_translator_ver LIKE 'syn_process_ledger/%';
     DELETE FROM ledger_translator_cursor WHERE source = 'syn_process_ledger';
+    Its table writes are rows of delam_obs / inspection_run and their lines (<table>__lines, written_by
+    'seed_syn_process_ledger').
 """
 from __future__ import annotations
 
@@ -906,7 +908,8 @@ def guard_database(db, allow_owner: bool, writing: bool = True) -> str:
     print("database: %s" % name)
     print("!! rollback (ledger): DELETE FROM ledger_events WHERE "
           "source_translator_ver LIKE '%s%%'" % (TRANSLATOR_BASE.split("rules:")[0]))
-    print("!! undo (tables): %s (transaction_id above)" % "don't paste SQL - ask before undoing a seed")
+    print("!! undo (tables): %s - its rows are in <delam_obs|inspection_run>__lines, written_by = '%s' "
+          "(transaction_id above)" % ("don't paste SQL - ask before undoing a seed", UPDATED_BY))
     return name
 
 

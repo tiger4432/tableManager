@@ -1,7 +1,7 @@
 """[P3] The `bulk_*` cell-metadata helpers must chunk, like every other bulk
 operation in this codebase (`graph_materializer.CHUNK_SIZE`).
 
-`bulk_upsert_cell_sources`, `bulk_upsert_cell_overwrites` and
+the old layer upsert, `bulk_upsert_cell_overwrites` and
 `bulk_delete_cell_overwrites` each built ONE statement over the whole batch. A
 5,000-die map save produced a single ~690 KB INSERT binding 210,000 parameters,
 and the delete was an N-term OR chain.
@@ -119,15 +119,15 @@ def test_bulk_delete_cell_overwrites_chunks_its_or_chain(db_session):
 
 @pytest.mark.parametrize("n", [0, 1, CHUNK - 1, CHUNK, CHUNK + 1])
 def test_chunk_boundaries_upsert_every_mapping(db_session, n):
-    """Off-by-one guard on the chunk loop itself, at and around the boundary."""
+    """Off-by-one guard on the chunk loop itself, at and around the boundary - on the upsert door that is left
+    (`cell_overwrites`; the layer door retired with the lines, 11-11)."""
     now = datetime.now()
-    mappings = [{"table_name": TABLE, "row_id": f"B_{i}", "column_name": "val",
-                 "source_name": "user", "value": str(i), "updated_by": "operator",
-                 "ingested_at": now}
+    mappings = [{"table_name": TABLE, "row_id": f"B_{i}", "column_name": "val", "is_overwrite": True,
+                 "updated_by": "operator", "updated_at": now, "manual_priority_source": None}
                 for i in range(n)]
-    crud.bulk_upsert_cell_sources(db_session, mappings)
+    crud.bulk_upsert_cell_overwrites(db_session, mappings)
     db_session.flush()
 
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE).count()
+    stored = db_session.query(models.CellOverwrite).filter(
+        models.CellOverwrite.table_name == TABLE, models.CellOverwrite.row_id.like("B_%")).count()
     assert stored == n

@@ -27,7 +27,7 @@ if SERVER_DIR not in sys.path:
 import event_constants                                               # noqa: E402
 from chain import ingestion_worker as worker                         # noqa: E402
 from chain import cell_layer, replay, rule_run                       # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
 from database.context import channel, retroactive_run                # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
 
@@ -68,7 +68,7 @@ def _log(world):
 
 def _layers_of(world, log_id):
     row_id = _log(world)[log_id][0]
-    return world["db"].query(models.CellSource).filter_by(table_name=hw.OFFICIAL, origin_row_id=row_id).count()
+    return len(lines.stamped_by(world["db"], [hw.OFFICIAL], [row_id]))
 
 
 def test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed(world, monkeypatch, caplog):
@@ -134,15 +134,11 @@ def test_a_row_that_lost_require_is_taken_back_in_a_fresh_process(world, monkeyp
     assert (_layers_of(world, "B"), float(hw.official(world).netdie), hw.hold(world)) == (0, 7.0, "agreed")
 
 
-@pytest.mark.parametrize("folded", [False, True])
-def test_a_key_whose_only_row_is_marked_leaves_no_official_row_whether_or_not_the_layers_were_folded(world, folded):
-    """응용 일요일 판 7e2fc0575 (총괄 10-11): with the layer fold run at the restart the key was left behind - hold
-    agreed, no value - where the run before it took the row away."""
+def test_a_key_whose_only_row_is_marked_leaves_no_official_row(world):
+    """응용 일요일 판 7e2fc0575 (총괄 10-11): the key left behind - hold agreed, no value - was the defect."""
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7},
                     {"log_id": "B", "dt_job": "J2", "dt_x": 3, "dt_y": 4, "netdie": 5}])
     hw.settle(world)
-    if folded:
-        replay.fold_file_layers(world["db"], hw.OFFICIAL, apply=True, log=lambda m: None)
     crud.apply_batch_updates(world["db"], hw.LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
         row_id=_log(world)["B"][0], updates={MARK: "folded into A"}, source_name="user", updated_by="t")]))
     world["db"].commit()

@@ -27,7 +27,7 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 
 TABLE = "inventory_master"
 COLUMN = "category"
@@ -59,9 +59,10 @@ def _shown(db, column=COLUMN):
 
 
 def _layers(db, column=COLUMN):
-    return {s.source_name: s.value for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.column_name == column).all()}
+    """{source: value} of the cell's standing layers - its head lines that say it (lines.layers)."""
+    model = models.DYNAMIC_TABLES[TABLE]
+    ids = [r for (r,) in db.query(model.row_id).filter(model.business_key_val == KEY)]
+    return {s: d["value"] for (_r, _c), said in lines.layers(db, TABLE, ids, [column]).items() for s, d in said.items()}
 
 
 # ---------------------------------------------------------------------------

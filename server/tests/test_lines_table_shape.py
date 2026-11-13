@@ -1,5 +1,5 @@
-"""database.lines on sqlite: names, bit slots never reused, two tables + a view that refuses writes, column DDL on
-both tables alike (docs/design/CELL_SOURCE_OVERHAUL.md)."""
+"""database.lines on sqlite: t stays the table of current values plus won_by, its history is t__lines; bit slots
+never reused; column DDL on t and t__lines alike (docs/design/CELL_SOURCE_OVERHAUL.md)."""
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
@@ -7,6 +7,21 @@ from sqlalchemy.orm import sessionmaker
 from database import lines
 
 CFG = {"column_types": {"lot": "string", "qty": "number", "seen": "datetime"}}
+
+
+def make_table(db, name, cfg):
+    """t as models builds it today - the table the overhaul keeps."""
+    from sqlalchemy import MetaData, Table
+
+    from database.models import sql_type_of
+
+    Table(name, MetaData(), *lines._data_columns(cfg, sql_type_of, row_id_key=True)).create(db.connection())
+
+
+def ensure(db, name, cfg):
+    if not inspect(db.connection()).has_table(name):
+        make_table(db, name, cfg)
+    return lines.ensure_line_table(db, name, cfg)
 
 
 @pytest.fixture()
@@ -20,62 +35,88 @@ def db():
 
 
 def test_names_refuse_over_63_bytes():
-    assert lines.now_relation("a") == "a__now" and lines.lines_relation("a") == "a__lines"
-    assert lines.now_relation("x" * 58) == "x" * 58 + "__now"
+    assert lines.lines_relation("a") == "a__lines"
     with pytest.raises(ValueError):
         lines.lines_relation("x" * 57)
 
 
-def test_a_dropped_columns_slot_is_never_handed_out_again(db):
-    lines.ensure_line_table(db, "t", CFG)
-    before = lines.bit_map(db, "t")
-    assert sorted(before.values()) == [0, 1, 2] and "row_id" not in before
-    kept = {k: v for k, v in CFG["column_types"].items() if k != "qty"}
-    lines.alter_columns(db, "t", {"column_types": kept}, drop=["qty"])
-    cfg2 = {"column_types": {**kept, "grade": "string"}}
-    lines.alter_columns(db, "t", cfg2, add=["grade"])
-    after = lines.bit_map(db, "t")
-    assert "qty" not in after and after["grade"] == 3
-    assert after["lot"] == before["lot"] and after["seen"] == before["seen"]
-
-
-def test_two_tables_and_a_view_that_refuses_writes(db):
-    lines.ensure_line_table(db, "t", CFG)
+def test_t_stays_a_table_with_won_by_and_its_lines_beside_it(db):
+    make_table(db, "t", CFG)
+    db.execute(text("INSERT INTO t (row_id, lot) VALUES ('r0', 'kept')"))
+    ensure(db, "t", CFG)
     insp = inspect(db.connection())
-    assert {"t__now", "t__lines"} <= set(insp.get_table_names()) and "t" in insp.get_view_names()
-    view_cols = [c["name"] for c in insp.get_columns("t")]
-    assert "won_by" not in view_cols and {"row_id", "lot", "qty", "seen"} <= set(view_cols)
+    assert {"t", "t__lines"} <= set(insp.get_table_names()) and "t" not in insp.get_view_names()
+    assert {"v_lot", "v_qty", "v_seen"} <= {c["name"] for c in insp.get_columns("t__lines")}
+    assert "won_by" in {c["name"] for c in insp.get_columns("t")}
     assert {"written_0", "head_0", "withdrawn_0"} <= {c["name"] for c in insp.get_columns("t__lines")}
-    db.execute(text("INSERT INTO t__now (row_id) VALUES ('r0')"))      # a row-level trigger fires per row
-    for stmt in ("INSERT INTO t (row_id) VALUES ('r1')", "UPDATE t SET lot = 'x'", "DELETE FROM t"):
-        with pytest.raises(Exception, match="write through database.lines"):
-            db.execute(text(stmt))
+    assert db.execute(text("SELECT lot, won_by FROM t WHERE row_id = 'r0'")).one() == ("kept", None)
 
 
-def test_a_column_added_lands_on_both_tables_and_the_view(db):
-    lines.ensure_line_table(db, "t", CFG)
+def test_shape_binds_t_as_built_with_won_by(db):
+    make_table(db, "t", CFG)
+    s = ensure(db, "t", CFG)
+    built = [c["name"] for c in inspect(db.connection()).get_columns("t")]
+    assert [c.name for c in s["table"].columns] == built
+    assert s["columns"] == [n for n in built if n != "won_by"]
+    db.execute(s["table"].insert().values(row_id="r1", lot="x", won_by=lines.won_by_stored({"lot": 1}, s["bits"])))
+    assert db.execute(text("SELECT lot FROM t WHERE row_id = 'r1'")).scalar() == "x"
+
+
+def test_slots_assigned_before_building_are_not_lines(db):
+    make_table(db, "t", CFG)
+    lines.shape(db, "t", CFG)                                           # slots, no t__lines yet
+    assert lines.bit_map(db, "t") and not lines.has_lines(db, "t")
+    assert not lines.has_lines(db, "x" * 60)
+
+
+def test_current_table_of_a_table_without_lines_has_no_won_by_and_takes_no_slots(db):
+    make_table(db, "t", CFG)
+    plain = lines.current_table(db, "t", CFG)
+    assert "won_by" not in plain.c and "lot" in plain.c and lines.bit_map(db, "t") == {}
+    ensure(db, "t", CFG)
+    assert "won_by" in lines.current_table(db, "t", CFG).c
+
+
+def test_on_sqlite_ensure_gives_t_the_unique_key_the_claim_needs(db):
+    make_table(db, "t", CFG)
+    db.execute(text('CREATE UNIQUE INDEX "uq_pair" ON "t" (business_key_val, row_id)'))     # not the guard
+    assert not lines.key_index_standing(db.connection(), "t")
+    ensure(db, "t", CFG)
+    assert lines.key_index_standing(db.connection(), "t")
+    db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('a', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
+    db.execute(text("INSERT INTO t (row_id, business_key_val) VALUES ('b', 'K') ON CONFLICT (business_key_val) DO NOTHING"))
+    assert db.execute(text("SELECT row_id FROM t")).scalars().all() == ["a"]
+
+
+def test_a_column_added_lands_on_t_and_its_lines(db):
+    ensure(db, "t", CFG)
     cfg2 = {"column_types": {**CFG["column_types"], "grade": "string"}}
     lines.alter_columns(db, "t", cfg2, add=["grade"])
     insp = inspect(db.connection())
-    for rel in ("t__now", "t__lines", "t"):
-        assert "grade" in {c["name"] for c in insp.get_columns(rel)}, rel
+    assert "grade" in {c["name"] for c in insp.get_columns("t")}
+    assert "v_grade" in {c["name"] for c in insp.get_columns("t__lines")}
 
 
 def test_a_65th_column_adds_a_second_chunk(db):
     cfg = {"column_types": {f"c{i}": "string" for i in range(64)}}
-    lines.ensure_line_table(db, "t", cfg)
+    ensure(db, "t", cfg)
     cfg2 = {"column_types": {**cfg["column_types"], "c64": "string"}}
     lines.alter_columns(db, "t", cfg2, add=["c64"])
     cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
     assert {"written_1", "head_1", "withdrawn_1"} <= cols and lines.bit_map(db, "t")["c64"] == 64
 
 
-def test_drop_line_table_leaves_nothing(db):
-    lines.ensure_line_table(db, "t", CFG)
+def test_drop_line_table_leaves_t_as_it_was(db):
+    make_table(db, "t", CFG)
+    db.execute(text("INSERT INTO t (row_id, lot) VALUES ('r0', 'kept')"))
+    ensure(db, "t", CFG)
     assert lines.has_lines(db, "t")
     lines.drop_line_table(db, "t")
+    assert lines.bit_map(db, "t") and not lines.has_lines(db, "t")      # slots outlive the drop; lines are gone
     insp = inspect(db.connection())
-    assert not ({"t__now", "t__lines"} & set(insp.get_table_names())) and "t" not in insp.get_view_names()
+    assert "t__lines" not in insp.get_table_names()
+    assert "won_by" not in {c["name"] for c in insp.get_columns("t")}
+    assert db.execute(text("SELECT lot FROM t WHERE row_id = 'r0'")).scalar() == "kept"
 
 
 def test_seeding_is_scoped():
@@ -85,39 +126,22 @@ def test_seeding_is_scoped():
     assert not lines.is_seeding()
 
 
-def test_stored_relation_by_declaration():
-    assert lines.stored_relation("t", CFG) == "t__now"
-    assert lines.stored_relation("audit_batches", None) == "audit_batches"
-    assert lines.stored_relation("v", {"kind": "view", "column_types": {}}) == "v"
-
-
-def test_declared_of_reads_stored_relation_backwards():
-    tables = {"t": CFG, "v": {"kind": "view", "column_types": {}}}
-    assert lines.declared_of("t__now", tables) == "t" and lines.declared_of("v", tables) == "v"
-    assert lines.declared_of("t", tables) is None and lines.declared_of("audit_batches", tables) is None
-
-
 def test_chunks_follow_the_built_table_not_the_slot_map(db):
     cfg = {"column_types": {f"c{i}": "string" for i in range(64)}}
-    lines.ensure_line_table(db, "t", cfg)
+    ensure(db, "t", cfg)
     wider = {"column_types": {**cfg["column_types"], "c64": "string"}}
-    lines.ensure_line_table(db, "t", wider)            # slots grow, the built table does not
+    lines.shape(db, "t", wider)                         # slots grow, the built table does not
     lines.alter_columns(db, "t", wider, add=["c64"])
     cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
-    assert {"c64", "written_1", "head_1", "withdrawn_1"} <= cols
-    head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h'")).scalar()
+    assert {"v_c64", "written_1", "head_1", "withdrawn_1"} <= cols
+    head_sql = db.execute(text("SELECT sql FROM sqlite_master WHERE name = 't__lines_h2'")).scalar()
     assert "head_1" in head_sql
+    assert db.execute(text("SELECT count(*) FROM sqlite_master WHERE name = 't__lines_h'")).scalar() == 0
     said = lines.alter_columns(db, "t", {"column_types": {**wider["column_types"], **{f"d{i}": "string" for i in range(64)}}},
                                add=[f"d{i}" for i in range(64)])
-    index_line = next(x for x in said if "t__lines_h" in x and x.startswith("CREATE INDEX"))
-    db.execute(text('DROP INDEX "t__lines_h"'))
+    index_line = next(x for x in said if "t__lines_h3" in x and x.startswith("CREATE INDEX"))
+    db.execute(text('DROP INDEX "t__lines_h3"'))
     db.execute(text(index_line))                        # the line shown to the operator runs as it is
-
-
-def test_now_has_row_id_as_its_key(db):
-    lines.ensure_line_table(db, "t", CFG)
-    pk = inspect(db.connection()).get_pk_constraint("t__now")["constrained_columns"]
-    assert pk == ["row_id"]
 
 
 def test_a_name_whose_derived_index_name_is_too_long_is_refused():
@@ -140,9 +164,9 @@ def test_a_quoted_table_name_is_refused_before_migration():
 def test_line_values_are_text_and_one_text_means_one_value(db):
     from database import crud
 
-    lines.ensure_line_table(db, "t", CFG)
+    ensure(db, "t", CFG)
     types = {c["name"]: str(c["type"]) for c in inspect(db.connection()).get_columns("t__lines")}
-    assert all(types[c].startswith("VARCHAR") for c in ("lot", "qty", "seen"))
+    assert all(types[c].startswith("VARCHAR") for c in ("v_lot", "v_qty", "v_seen"))
     pairs = [("9", 9.0, "number"), ("9", "9.5", "number"), (" x ", "x", "string"), ("", None, "string"),
              ("abc", "abc ", "number"), ("2026-11-10 10:00", "2026-11-10T10:00:00", "datetime"),
              ("2026-11-10 10:00", "2026-11-10 10:01", "datetime"), ("0", "-0.000", "number"),
@@ -178,3 +202,71 @@ def test_a_number_line_value_round_trips_and_whole_numbers_read_as_int(value):
     assert crud.line_text(back, "number") == text_once
     if text_once in ("2.0", "0.0"):
         assert type(back) is int
+
+
+def test_value_types_follow_the_physical_column(db):
+    ensure(db, "t", CFG)
+    assert lines.value_types(db, "t") == {"lot": "string", "qty": "number", "seen": "datetime"}
+    db.execute(text("CREATE TABLE u (row_id VARCHAR PRIMARY KEY, business_key_val VARCHAR, "
+                    "created_at TIMESTAMP, updated_at TIMESTAMP, event_time VARCHAR, won_by JSON)"))
+    assert lines.value_types(db, "u") == {"event_time": "string"}     # declared datetime, stored as text
+
+
+def test_shape_types_a_built_column_as_stored(db):
+    ensure(db, "u", {"column_types": {"event_time": "string"}})      # built as text
+    lines.shape(db, "u", {"column_types": {"event_time": "datetime"}})                   # declaration says datetime
+    assert lines.value_types(db, "u") == {"event_time": "string"}
+
+
+def test_which_tables_keep_lines():
+    import shipped
+
+    system = sorted(shipped.tables())[0]
+    assert system.startswith("sys_")                                             # canary: a shipped table exists
+    assert lines.keeps_lines("t", CFG)
+    assert not lines.keeps_lines("v", {"kind": "view", "column_types": {}})
+    assert not lines.keeps_lines(system, shipped.tables()[system])
+    assert not lines.keeps_lines("ledger_atom_rows", None)                       # undeclared: the ledger's own
+
+
+def test_note_sources_keeps_one_row_per_name(db):
+    from database import crud
+
+    lines.LineSource.__table__.create(db.connection())
+    lines.note_sources(db, ["user", "user (old_exist_x)", "user"])
+    lines.note_sources(db, ["user", "fileA"])
+    rows = dict(db.execute(text("SELECT source_name, ranks_as FROM line_sources")).all())
+    assert set(rows) == {"user", "user (old_exist_x)", "fileA"}
+    assert all(rows[n] == crud.layer_ranks_as(n) for n in rows)
+
+
+def test_the_key_index_word_says_what_it_means_and_the_doors_that_exist():
+    said = lines.key_index_next(["big"])
+    assert said.startswith(lines.KEY_RACE + ": ")
+    assert "auto_update.log" in said and "Fold duplicate rows on big" in said
+    assert "add_business_key_unique_index" not in said
+
+
+def test_a_column_named_like_a_line_column_keeps_lines(db):
+    """rq_memory declares «at»: the line's own «at» and the value cell «v_at» stand side by side (A 11-11)."""
+    cfg = {"column_types": {"at": "string", "source_name": "string", "head_0": "number"}}
+    ensure(db, "t", cfg)
+    cols = {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}
+    assert {"at", "source_name", "head_0", "v_at", "v_source_name", "v_head_0"} <= cols
+
+
+def test_a_column_name_too_long_for_its_line_cell_is_refused():
+    assert lines.value_column("x" * 61) == "v_" + "x" * 61
+    with pytest.raises(ValueError, match="63 bytes"):
+        lines.value_column("x" * 62)
+
+
+def test_a_declared_column_t_does_not_hold_yet_is_left_out_until_it_is_added(db):
+    make_table(db, "t", CFG)
+    wider = {"column_types": {**CFG["column_types"], "late": "string"}}
+    s = ensure(db, "t", wider)
+    assert "late" not in lines.current_table(db, "t", wider).c and "late" not in s["table"].c
+    assert "v_late" not in s["lines"].c and "late" not in lines.bit_map(db, "t")
+    lines.alter_columns(db, "t", wider, add=["late"])
+    assert "late" in lines.current_table(db, "t", wider).c
+    assert "v_late" in {c["name"] for c in inspect(db.connection()).get_columns("t__lines")}

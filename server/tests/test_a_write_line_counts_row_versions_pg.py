@@ -1,6 +1,8 @@
 """Lead 11-09 (owner «autovacuum ... dead 수십만 행»): on PostgreSQL the write line says, per table, the row versions its
 committed transaction made - inserted / updated (HOT) / deleted, asked on its connection just before COMMIT
-(pg_stat_xact_user_tables). A new batch inserts a layer per cell; the same batch again updates nothing."""
+(pg_stat_xact_user_tables). A new batch inserts its rows - put bare by the claim, then written by the merge (A 11-11:
+one more row version a new row than the old write's); the same batch again updates nothing; a changed batch updates
+its rows. This scratch table keeps no lines: its rows are t's own (lead 11-11 ㄴ)."""
 import os
 import sys
 
@@ -62,10 +64,10 @@ def rounds(pg_engine):
     return out
 
 
-def test_a_new_batch_inserts_a_layer_per_cell_and_its_rows(rounds):
+def test_a_new_batch_inserts_its_rows(rounds):
     rows = rounds["new"]["transaction"]["rows"]
-    assert rows["cell_sources"][0] == 12 and rows[T][0] == 4, rows
-    assert " cell_sources +12 ~" in alignment_batch_counts.write_steps_text(rounds["new"])
+    assert rows[T][:2] == [4, 4], rows                          # the claim's bare row, the merge's values
+    assert " %s +4 ~4" % T in alignment_batch_counts.write_steps_text(rounds["new"])
 
 
 def test_the_same_batch_again_leaves_no_dead_version(rounds):
@@ -73,6 +75,6 @@ def test_the_same_batch_again_leaves_no_dead_version(rounds):
     assert all(n[1] == 0 and n[3] == 0 for n in rows.values()), rows
 
 
-def test_a_changed_batch_updates_its_layers(rounds):
+def test_a_changed_batch_updates_its_rows(rounds):
     rows = rounds["changed"]["transaction"]["rows"]
-    assert rows["cell_sources"][1] == 8, rows                    # a and b on 4 rows; the key k did not change
+    assert rows[T][:2] == [0, 4], rows                          # a and b on 4 rows; the key k did not change

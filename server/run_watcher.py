@@ -17,6 +17,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 # Now we can import database, models, and directory_watcher
 from database.database import SessionLocal, engine
 from database import models
+from database.lines import LineTablesRefused
 from directory_watcher import WorkspaceWatcher
 from error_said import told
 from ingestion.activity import path_of
@@ -32,6 +33,8 @@ try:
     try:
         models.sync_dynamic_tables_schema(engine)
         logger.info("Dynamic database models and schema sync completed.")
+    except LineTablesRefused:
+        raise                                       # the process does not start (lead 11-11 ㄴ)
     except Exception as e:
         logger.error(f"Failed to sync dynamic tables schema: {told(e)}", exc_info=e)
     # [P2] 오프셋 체크포인트(이어 읽기) 원장 테이블 보장.
@@ -41,6 +44,8 @@ try:
         models.ensure_ingestion_checkpoint_table(engine)
     except Exception as e:
         logger.error(f"Failed to ensure ingestion checkpoint table: {told(e)}", exc_info=e)
+except LineTablesRefused:
+    raise
 except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {told(e)}", exc_info=e)
 
@@ -705,6 +710,9 @@ def main():
     global workspace_watcher
     workspace_watcher = watcher
     
+    from utils.logger import booted
+
+    booted()
     logger.info(f"Watching {watcher.watch_count} directory configurations...")
     try:
         watcher.start(blocking=True)

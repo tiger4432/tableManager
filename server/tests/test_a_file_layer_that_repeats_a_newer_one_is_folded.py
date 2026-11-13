@@ -2,16 +2,17 @@
 
 Write path: a file layer equal to the newest layer of its priority class writes nothing; one whose value an older
 file layer of its share holds moves that layer to the front, no new layer (소유자 11-08 «층을 새로하지 말고 순서를
-바꿔»); one that differs from all is written. Stacked layers:
-`replay.fold_file_layers` keeps, per class and value, the newest (and a pinned one). In every case
-the shown value is the one `compute_priority_value` picked before - asserted cell by cell.
+바꿔»); one that differs from all is written. Stacked layers: withdrawing the newest shows the one beneath.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from database import crud, models, schemas
+from sqlalchemy import text
+
+from database import crud, lines, models, schemas
 from maps import alignment_batch_counts
+from support import line_tables
 
 TABLE = "foldl_test"
 TABLES = {TABLE: {"business_key": "k",
@@ -23,9 +24,10 @@ AUTO = "enrichment_auto_confirm"
 def env(db_session):
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
-    from database.database import Base
-    Base.metadata.create_all(bind=db_session.get_bind())
+    line_tables.build(db_session.get_bind(), TABLE)         # t and t__lines
     yield db_session
+    db_session.rollback()
+    line_tables.drop(db_session.get_bind(), TABLE)
     from conftest import retire_dynamic_model
     retire_dynamic_model(TABLE)
     crud.TABLE_CONFIG.pop(TABLE, None)
@@ -46,28 +48,35 @@ def _row(db, key):
 
 
 def _layers(db, key, col="v"):
-    return {s.source_name: s.value for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE, models.CellSource.row_id == _row(db, key).row_id,
-        models.CellSource.column_name == col)}
+    """{source: value} of the cell's standing layers - its head lines that say it (lines.layers)."""
+    row_id = _row(db, key).row_id
+    return {s: d["value"] for s, d in lines.layers(db, TABLE, [row_id], [col]).get((row_id, col), {}).items()}
+
+
+def _lines(db, key):
+    """How many lines the row has - a write that makes no layer writes no line."""
+    return db.execute(text('SELECT count(*) FROM "%s" WHERE row_id = :r' % lines.lines_relation(TABLE)),
+                      {"r": _row(db, key).row_id}).scalar()
 
 
 # --- the write path ---------------------------------------------------------------------------
 
 def test_an_hourly_refetch_of_an_unchanged_row_writes_no_layer(env):
     """The owner's hourly one-day refetch (f224477c1): from the second file on, nothing."""
-    first = _write(env, "day_0100.csv", [{"k": "K1", "v": "A"}])
-    assert first["cell sources"] == [2, "rows"], "k and v"
+    _write(env, "day_0100.csv", [{"k": "K1", "v": "A"}])
+    assert (_layers(env, "K1", "k"), _lines(env, "K1")) == ({"day_0100.csv": "K1"}, 1), "k and v, one line"
     for hour in ("day_0200.csv", "day_0300.csv", "day_0400.csv"):
-        counts = _write(env, hour, [{"k": "K1", "v": "A"}])
-        assert counts["cell sources"] == [0, "rows"] and counts["folded layers"] == [0, "rows"]
+        _write(env, hour, [{"k": "K1", "v": "A"}])
+        assert _lines(env, "K1") == 1, "a repeat writes no line"
     assert _layers(env, "K1") == {"day_0100.csv": "A"}
 
 
 def test_a_file_saying_an_older_layers_value_moves_that_layer_to_the_front(env):
     _write(env, "f03.csv", [{"k": "K1", "v": "A"}])
     _write(env, "f07.csv", [{"k": "K1", "v": "B"}])
-    counts = _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
-    assert counts["folded layers"] == [0, "rows"] and counts["cell sources"] == [1, "rows"], counts
+    before = _lines(env, "K1")
+    _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
+    assert _lines(env, "K1") == before + 1, "one line - f03's, moved to the front"
     assert _layers(env, "K1") == {"f03.csv": "A", "f07.csv": "B"}
     assert _row(env, "K1").v == "A"
 
@@ -109,30 +118,31 @@ def test_the_layer_no_op_uses_the_one_equality(env):
     compares. What the shared equality changes is a writer re-sending 1 as '1' (a mapper's
     int, a file's text): the old `==` rewrote the layer for it; the one equality does not.
     A machine writer, so the file rule cannot be what keeps it."""
-    stamp = env.query(models.CellSource.ingested_at).filter(
-        models.CellSource.source_name == crud.CHAIN_SOURCE, models.CellSource.column_name == "v")
     _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": 1}])
-    before = stamp.scalar()
-    assert _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": "1"}])["cell sources"] == \
-        [0, "rows"]
-    assert stamp.scalar() == before
+    row_id = _row(env, "K1").row_id
+    stamp = lambda: lines.layers(env, TABLE, [row_id], ["v"])[(row_id, "v")][crud.CHAIN_SOURCE]["line_id"]  # noqa: E731
+    before, count = stamp(), _lines(env, "K1")
+    _write(env, crud.CHAIN_SOURCE, [{"k": "K1", "v": "1"}])
+    assert (_lines(env, "K1"), stamp()) == (count, before), "1 and '1' are one value - no line"
     assert crud.cast_value_by_type("A ", "string", "v", TABLE) == "A", \
         "the cast trims - the reason a space is no case here"
 
 
 # --- layers already stacked ------------------------------------------------------------------
 
-T0 = datetime(2026, 9, 26, 1, 0, 0)
+T0 = datetime(2026, 9, 26, 1, 0, 0, tzinfo=timezone.utc)
 
 
 def _stack(db, key, col, layers, pin=None):
     """Store `[(source, value), ...]` oldest first, one hour apart - the stack the write path
     no longer builds."""
     row = _row(db, key)
-    for hour, (source, value) in enumerate(layers):
-        db.add(models.CellSource(table_name=TABLE, row_id=row.row_id, column_name=col,
-                                 source_name=source, value=value, updated_by="t",
-                                 ingested_at=T0 + timedelta(hours=hour)))
+    bits = line_tables.bits_of(TABLE)
+    with db.get_bind().begin() as conn:
+        for hour, (source, value) in enumerate(layers):
+            line_tables.line(conn, TABLE, bits, row.row_id, source=source, values={col: value}, written_by="t",
+                             at=T0 + timedelta(hours=hour), business_key=key)
+    db.expire_all()
     if pin:
         db.add(models.CellOverwrite(table_name=TABLE, row_id=row.row_id, column_name=col,
                                     is_overwrite=False, updated_by="t",
@@ -140,77 +150,24 @@ def _stack(db, key, col, layers, pin=None):
     db.commit()
 
 
-def _shown(db, key, col):
-    row = _row(db, key)
-    layers = {s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
-              for s in db.query(models.CellSource).filter(
-                  models.CellSource.table_name == TABLE,
-                  models.CellSource.row_id == row.row_id, models.CellSource.column_name == col)}
-    pin = db.query(models.CellOverwrite.manual_priority_source).filter(
-        models.CellOverwrite.table_name == TABLE, models.CellOverwrite.row_id == row.row_id,
-        models.CellOverwrite.column_name == col).scalar()
-    return crud.compute_priority_value(layers, pin, TABLE)
+def test_withdrawing_the_newest_reveals_the_layer_beneath(env, monkeypatch):
+    """R2's edge (225b2c658): f01 B · f03 A · f10 A, written as lines - withdraw f10, f03's A shows. Three
+    shares: a file of one share saying its share's value again folds into that line (A's share fold, f2629199c)."""
+    from chain import cell_layer
+    from database import lines
+    from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
+    def share_file(n):
+        root = "c:\\share_%s" % n
+        return crud.external_layer_name("workspace", "%s@%s" % (TABLE, root), "%s\\f%s.csv" % (root, n))
 
-CELLS = {
-    # key: (column, stack oldest first, pin, what stays)
-    "NINE": ("v", [("f%02d.csv" % i, v) for i, v in enumerate("AABABAABA", 1)], None,
-             {"f08.csv": "B", "f09.csv": "A"}),
-    "PERSON": ("v", [("user", "A"), ("f01.csv", "A"), ("f02.csv", "A")], None,
-               {"user": "A", "f02.csv": "A"}),
-    "CHAIN": ("v", [(crud.CHAIN_SOURCE, "A"), ("f01.csv", "A"), ("f02.csv", "A")], None,
-              {crud.CHAIN_SOURCE: "A", "f02.csv": "A"}),
-    "AUTO": ("v", [("f01.csv", "A"), (AUTO, "A"), ("f02.csv", "A")], None,
-             {AUTO: "A", "f02.csv": "A"}),
-    "PINNED": ("v", [("f01.csv", "A"), ("f02.csv", "A"), ("f03.csv", "A")], "f01.csv",
-               {"f01.csv": "A", "f03.csv": "A"}),
-    "MERGED": ("v", [(crud.merged_layer_name("user", "old_exist_abc123"), "A"),
-                     (crud.merged_layer_name(crud.CHAIN_SOURCE, "K9_abc123"), "A"),
-                     ("f01.csv", "A"), ("f02.csv", "A")], None,
-               {"user (old_exist_abc123)": "A", "chain_ingestion (K9_abc123)": "A",
-                "f02.csv": "A"}),
-    "NUMBER": ("n", [("f01.csv", 1.0), ("f02.csv", "01"), ("f03.csv", 2.0)], None,
-               {"f02.csv": "01", "f03.csv": 2.0}),
-}
-
-
-def test_the_fold_over_stacked_layers_keeps_every_winner_and_one_layer_per_value(env):
-    from chain import replay
-
-    _write(env, "seed", [{"k": key} for key in CELLS])
-    env.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
+    f01, f03, f10 = share_file("01"), share_file("03"), share_file("10")
+    lines.ensure_line_table(env, TABLE, TABLES[TABLE])
     env.commit()
-    for key, (col, stack, pin, _stays) in CELLS.items():
-        _stack(env, key, col, stack, pin)
-    shown_before = {key: _shown(env, key, col) for key, (col, *_rest) in CELLS.items()}
-
-    dry = replay.fold_file_layers(env, TABLE, apply=False)
-    assert (dry["layers_before"], dry["layers_after"], dry["deepest_before"],
-            dry["deepest_after"]) == (28, 15, 9, 3)
-    assert dry["layers_deleted"] == 13 and dry["cells_folded"] == 7
-    assert len(_layers(env, "NINE")) == 9, "a dry run deletes nothing"
-
-    applied = replay.fold_file_layers(env, TABLE, apply=True)
-    assert applied["layers_deleted"] == 13
-    for key, (col, _stack_, _pin, stays) in CELLS.items():
-        assert _layers(env, key, col) == stays, key
-        assert _shown(env, key, col) == shown_before[key], "the winner moved in " + key
-    assert replay.fold_file_layers(env, TABLE, apply=True)["layers_deleted"] == 0
-
-
-@pytest.mark.parametrize("folded, revealed", [(False, "A"), (True, "B")])
-def test_withdrawing_the_newest_reveals_a_different_layer_once_folded(env, folded, revealed):
-    """R2's edge (225b2c658): f01 B · f03 A · f10 A - withdraw f10. Unfolded, f03's A shows;
-    folded, f03 is gone and the layer under it (f01's B) shows. The same holds when f10 was
-    never written because it repeated f03 (f224477c1): the file named is then f03."""
-    from chain import cell_layer, replay
-
-    _write(env, "seed", [{"k": "K1"}])
-    env.query(models.CellSource).filter(models.CellSource.source_name == "seed").delete()
-    env.commit()
-    _stack(env, "K1", "v", [("f01.csv", "B"), ("f03.csv", "A"), ("f10.csv", "A")])
-    if folded:
-        replay.fold_file_layers(env, TABLE, apply=True)
-    cell_layer.withdraw_source(env, TABLE, "f10.csv", apply=True)
+    ticking_clock(monkeypatch)
+    for source, value in ((f01, "B"), (f03, "A"), (f10, "A")):
+        _write(env, source, [{"k": "K1", "v": value}])
+    run = cell_layer.withdraw_source(env, TABLE, f10, columns=["v"], apply=True)
     env.expire_all()
-    assert _row(env, "K1").v == revealed
+    assert run["cells_withdrawn"] == 1, "canary: f10 wrote the line its withdrawal takes back"
+    assert _row(env, "K1").v == "A"

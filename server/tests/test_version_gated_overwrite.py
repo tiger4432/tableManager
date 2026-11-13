@@ -198,6 +198,32 @@ def test_lower_version_arriving_later_does_not_overwrite(db):
     assert row.rev == 5
 
 
+def _write_in_one_batch(db, table, key, *updates, source="pipeline_parser", by="watcher"):
+    """Items of one key in ONE batch - the funnel hands them to write_lines as they come (no collapse of a key)."""
+    return crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(business_key_val=key, updates=u, source_name=source, updated_by=by)
+        for u in updates], silent=True))
+
+
+@pytest.mark.parametrize("seed", [None, 1], ids=["a new key", "a row at rev 1"])
+def test_a_lower_version_after_a_higher_one_in_one_batch_is_refused(db, seed):
+    """Lead 11-11 (QA): each item meets the row as the batch's earlier items left it - the old write's row_cache.
+    Judged on the batch's first state, [rev 5, rev 3] both went through and rev 3 showed."""
+    if seed is not None:
+        _write(db, "vergate_test_lot", "LOT-9", {"lot_id": "LOT-9", "rev": seed, "grade": "SEED"})
+    _write_in_one_batch(db, "vergate_test_lot", "LOT-9", {"lot_id": "LOT-9", "rev": 5, "grade": "NEW"},
+                        {"lot_id": "LOT-9", "rev": 3, "grade": "OLD"})
+    row = _row(db, "vergate_test_lot", "LOT-9")
+    assert (row.rev, row.grade) == (5, "NEW")
+
+
+def test_a_higher_version_after_a_lower_one_in_one_batch_wins(db):
+    _write_in_one_batch(db, "vergate_test_lot", "LOT-8", {"lot_id": "LOT-8", "rev": 3, "grade": "OLD"},
+                        {"lot_id": "LOT-8", "rev": 5, "grade": "NEW"})
+    row = _row(db, "vergate_test_lot", "LOT-8")
+    assert (row.rev, row.grade) == (5, "NEW")
+
+
 def test_higher_version_arriving_later_does_overwrite(db):
     """The gate is a veto on regression, not a freeze: forward motion still lands."""
     _write(db, "vergate_test_lot", "LOT-2", {"lot_id": "LOT-2", "rev": 3, "grade": "OLD"})

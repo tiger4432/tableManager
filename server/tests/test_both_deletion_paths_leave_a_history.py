@@ -1,138 +1,100 @@
 # -*- coding: utf-8 -*-
-"""「무엇이 지워졌나」 has an answer for BOTH ways a row can go.
+"""「무엇이 지워졌나」 has an answer for BOTH ways a row can go - a «deleted» line each (cell-source overhaul).
 
 🔴 THE HALF THAT STAYED OPEN. `delete_rows_batch` had recorded every row it removed since
 long before; the map purge recorded none. Same act — 「행을 지운다」 — and only one of them
-left a place to ask afterwards. The rows are gone either way; what was missing was the
-question's answer, and an absent answer is indistinguishable from 「아무것도 안 지워졌다」.
-
-🔴 AND THE REPAIR SAID SO ITSELF. `purge_map_rows` closed the OUTBOX half on 2026-09-06 and
-its own docstring spelled out the part it had not closed — 「IT DOES NOT WRITE AUDIT
-HISTORY」. One word, 「이력」, meant two things (audit log · outbox visibility), and reading
-the commit title closed the line on half of it.
+left a place to ask afterwards.
 
 ⚠️ ONE PLACE, WHICH IS WHAT MAKES THE MUTATION SPLIT. `record_row_deletions` is called by
-both paths, so deleting the recording in that one place has to redden BOTH of the tests
+both paths, so deleting the recording in that one place has to redden BOTH of the path tests
 below. If only one goes red, the paths are not sharing after all and this file says so.
 """
-import os
-import sys
-import uuid
+import ast
+import inspect
 
 import pytest
+from sqlalchemy import select
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from database import crud, lines, models, schemas
+from database.database import Base
 
-from database import crud, models                                # noqa: E402
-
-TABLE = "dt_map"
-
-
-@pytest.fixture
-def model():
-    """Any mapped class with a `row_id`, the way the sibling outbox file uses it."""
-    return models.CellSource
+TABLE = "del_hist"
+CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
 
 
-def seeded(db, ids):
-    """Rows the purge can find BEFORE it deletes them.
+@pytest.fixture(name="db")
+def fixture_db(db_session, monkeypatch):
+    models.init_dynamic_models({TABLE: CFG})
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
+    Base.metadata.create_all(bind=db_session.get_bind())
+    lines.ensure_line_table(db_session, TABLE, CFG)
+    db_session.commit()
+    return db_session
 
-    🔴 THE FIXTURE IS PART OF THE ASSERTION. With nothing to find, the purge records
-    nothing and 「it wrote no history」 and 「there was nothing to write about」 look the
-    same — the exact confusion this file exists to end.
-    """
-    for row_id in ids:
-        db.add(models.CellSource(table_name=TABLE, row_id=row_id,
-                                 column_name="c", source_name="s"))
+
+def seeded(db, keys):
+    """Rows the doors can find. 🔴 THE FIXTURE IS PART OF THE ASSERTION: with nothing to find, 「it wrote no history」
+    and 「there was nothing to write about」 look the same."""
+    crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        business_key_val=k, updates={"k": k, "a": "x"}, source_name="f1.csv", updated_by="loader") for k in keys]))
+    model = models.DYNAMIC_TABLES[TABLE]
+    return [r.row_id for r in db.query(model).filter(model.business_key_val.in_(keys)).order_by(model.row_id)]
+
+
+def deleted_lines(db):
+    ln = lines.shape(db, TABLE, CFG)["lines"]
+    return db.execute(select(ln.c.row_id, ln.c.business_key_val, ln.c.written_by, ln.c.batch)
+                      .where(ln.c.line_kind == "deleted").order_by(ln.c.line_id)).all()
+
+
+# --------------------------------------------------------------- the two doors
+
+def test_a_map_purge_leaves_a_line_saying_what_went(db):
+    """🔴 THE GATE. Not 「a table shrank」 — WHICH rows, one line each."""
+    ids = seeded(db, ["K1", "K2", "K3"])
+    crud.purge_map_rows(db, models.DYNAMIC_TABLES[TABLE], TABLE, ids)
     db.flush()
-    return ids
+    assert sorted(r.row_id for r in deleted_lines(db)) == sorted(ids)
 
 
-def deletion_logs(db, table_name=TABLE):
-    return (db.query(models.AuditLog)
-            .filter(models.AuditLog.table_name == table_name,
-                    models.AuditLog.column_name == "DELETE")
-            .order_by(models.AuditLog.id.asc()).all())
+def test_a_batch_delete_leaves_a_line_saying_what_went(db):
+    ids = seeded(db, ["K1", "K2"])
+    assert crud.delete_rows_batch(db, TABLE, ids, "kim") == 2
+    assert sorted((r.row_id, r.written_by) for r in deleted_lines(db)) == sorted((i, "kim") for i in ids)
 
 
-# --------------------------------------------------------------- the purge path, closed
-
-def test_a_map_purge_leaves_a_row_saying_what_went(db_session, model):
-    """🔴 THE GATE. Not 「a table shrank」 — WHICH rows, and one entry each."""
-    ids = seeded(db_session, [str(uuid.uuid4()) for _ in range(3)])
-    crud.purge_map_rows(db_session, model, TABLE, ids)
-    db_session.flush()
-
-    logs = deletion_logs(db_session)
-    assert logs, "the purge still leaves no way to ask what was deleted"
-    assert {log.row_id for log in logs} == set(ids)
+def test_a_door_records_nothing_when_there_was_nothing_to_delete(db):
+    """⚠️ ABSENT IS NOT ZERO. Ids that do not exist get no history for rows that never went anywhere."""
+    seeded(db, ["K1"])
+    crud.purge_map_rows(db, models.DYNAMIC_TABLES[TABLE], TABLE, ["no-such-row"])
+    assert crud.delete_rows_batch(db, TABLE, ["no-such-row"], "kim") == 0
+    assert deleted_lines(db) == []
 
 
-def test_the_purge_records_nothing_when_there_was_nothing_to_delete(db_session, model):
-    """⚠️ ABSENT IS NOT ZERO, AND ZERO IS NOT A LIE. Asking to purge ids that do not exist
-    must not invent history for rows that never went anywhere."""
-    crud.purge_map_rows(db_session, model, TABLE, [str(uuid.uuid4())])
-    db_session.flush()
-    assert deletion_logs(db_session) == []
+# ------------------------------------------------- one recorder, and what it carries
+
+def test_the_helper_is_what_the_batch_path_uses():
+    """🔴 THE TWO PATHS SHARING IS THE PROPERTY - asserted on the code, because a copied block passes a behaviour
+    test just as well."""
+    for door in (crud.delete_rows_batch, crud.purge_map_rows):
+        body = ast.unparse(ast.parse(inspect.getsource(door).lstrip()).body[0])
+        assert "record_row_deletions(" in body, "%s stopped sharing the recorder" % door.__name__
 
 
-# ------------------------------------------------- the path that already recorded, intact
-
-def test_the_helper_is_what_the_batch_path_uses(db_session):
-    """🔴 NO-REGRESSION, AND THE REASON THE MUTATION SPLITS. The batch path used to spell
-    this block inline; it now calls the same place the purge does. Asserted on the CODE
-    because the two paths sharing is the property, and a passing behaviour test would hold
-    just as well if the block had been copied — which is how `_bare` became four bodies
-    under one name.
-    """
-    import ast
-    import inspect
-
-    tree = ast.parse(inspect.getsource(crud.delete_rows_batch).lstrip())
-    body = ast.unparse(tree.body[0])
-    assert "record_row_deletions(" in body, "the batch path stopped sharing the recorder"
-    assert "create_audit_log(" not in body, "the batch path spells the recording again"
+def test_the_recorder_writes_one_line_per_row_and_carries_the_key_and_the_transaction(db):
+    ids = seeded(db, ["K1", "K2"])
+    answer = crud.record_row_deletions(db, TABLE, ids, "tester", "tx-del")
+    db.flush()
+    assert [s["work"] for s in answer["items"]] == ["delete", "delete"]
+    assert sorted(tuple(r) for r in deleted_lines(db)) == sorted(
+        [(ids[0], "K1", "tester", "tx-del"), (ids[1], "K2", "tester", "tx-del")])
 
 
-def test_the_recorder_writes_one_entry_per_row_and_carries_the_key(db_session):
-    """The content the operator actually reads: which row, and its business key."""
-    class Row:
-        def __init__(self, row_id):
-            self.row_id = row_id
-            self.business_key_val = "BK-" + row_id[:4]
-
-    rows = [Row(str(uuid.uuid4())) for _ in range(2)]
-    tx = str(uuid.uuid4())
-    logs = crud.record_row_deletions(db_session, TABLE, rows, "tester", tx)
-    db_session.flush()
-
-    assert len(logs) == 2
-    assert {log["row_id"] for log in logs} == {row.row_id for row in rows}
-    assert {log["business_key"] for log in logs} == {row.business_key_val for row in rows}
-    assert {log["transaction_id"] for log in logs} == {tx}
-    stored = deletion_logs(db_session)
-    assert {log.row_id for log in stored} == {row.row_id for row in rows}
-
-
-def test_a_row_without_a_business_key_is_still_recorded(db_session):
-    """⚠️ THE PURGE'S ROWS ARE NOT THE BATCH'S. A model without `business_key_val` must
-    still get an entry — dropping it would make this half quietly narrower than the other."""
-    class Bare:
-        row_id = str(uuid.uuid4())
-
-    logs = crud.record_row_deletions(db_session, TABLE, [Bare()], "tester",
-                                     str(uuid.uuid4()))
-    assert len(logs) == 1 and logs[0]["business_key"] is None
-
-
-def test_the_recorder_does_not_publish_to_the_in_memory_cache(db_session):
-    """⚠️ THE SPLIT IS DELIBERATE AND IS WRITTEN DOWN. The cache is a post-COMMIT concern
-    and this function does not own the commit — the purge runs inside a batch that commits
-    later, so publishing here would seed the cache from a transaction that can still roll
-    back. Asserted so the omission reads as a decision rather than as a gap.
-    """
-    import inspect
-
-    body = inspect.getsource(crud.record_row_deletions)
-    assert "audit_cache" not in body.split('"""')[-1]
-    assert "post-COMMIT concern" in crud.record_row_deletions.__doc__
+def test_the_deletions_entries_are_its_lines(db):
+    """What the delete route's notification carries: the line ids of the answer, «row deleted», by whom."""
+    ids = seeded(db, ["K1"])
+    entries = []
+    crud.delete_rows_batch(db, TABLE, ids, "kim", deleted_lines=entries)
+    [entry] = entries
+    assert (entry["row_id"], entry["column_name"], entry["new_value"], entry["updated_by"], entry["business_key"],
+            entry["is_row_deleted"]) == (ids[0], crud.ROW_DELETION_COLUMN, "row deleted", "kim", "K1", True), entry

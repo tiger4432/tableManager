@@ -802,7 +802,7 @@ EVENT_BATCH_REFRESH_REQUIRED = "batch_refresh_required"
 
 def batch_refresh_message(table_name, change_count, *, transaction_id=None,
                           created_logs=None, total_log_count=None,
-                          deleted_row_ids_omitted=None, edits_of=None):
+                          deleted_row_ids_omitted=None, edits_of=None, changed=None):
     """The `batch_refresh_required` payload, built in one place.
 
     🔴 NINE SENDERS WERE EACH WRITING THIS DICT BY HAND, and a payload written nine times
@@ -833,6 +833,10 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
     # from "this sender does not report omissions".
     if transaction_id is not None:
         message["transaction_id"] = transaction_id
+    # the write statements' audit items [{transaction_id, table_name, changed_rows, kind}] - the recent history's list
+    # adds them at once (cell-source overhaul «감사 로그», D 11-10 with 클라2)
+    if changed is not None:
+        message["changed"] = changed
     # 🔴 [S-279, 판정 427] THE TRUNCATION RULE IS THIS FUNCTION'S, because it was FIVE
     # senders' and they all had it wrong the same way: `if created_logs and
     # len(created_logs) <= 5000: msg["created_logs"] = created_logs` - over the limit the list

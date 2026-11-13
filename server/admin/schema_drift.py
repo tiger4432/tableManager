@@ -385,6 +385,11 @@ def _actual(engine, names=None):
     catalog on every boot to recover something already in hand. Callers that only
     want names iterate the dict, which yields exactly the old set.
     """
+    from database import lines
+
+    with engine.connect() as conn:
+        held = lines.base_tables(conn)          # the one seat that lists the catalogue's tables - no line table
+    names = held if names is None else [n for n in names if n in set(held)]
     insp = inspect(engine)
     if hasattr(insp, "get_multi_columns"):
         try:
@@ -393,9 +398,7 @@ def _actual(engine, names=None):
                     for key, cols in insp.get_multi_columns(filter_names=names).items()}
         except Exception:
             pass
-    held = set(insp.get_table_names())
-    return {t: {c["name"]: c.get("type") for c in insp.get_columns(t)}
-            for t in (held if names is None else [n for n in names if n in held])}
+    return {t: {c["name"]: c.get("type") for c in insp.get_columns(t)} for t in names}
 
 
 def _type_family(t):
@@ -584,7 +587,7 @@ def _relation_exists(engine, name):
     """
     try:
         insp = inspect(engine)
-        if name in set(insp.get_table_names()) | set(insp.get_view_names()):
+        if insp.has_table(name) or name in set(insp.get_view_names()):      # one name asked, none listed
             return True
     except Exception:
         pass
@@ -687,7 +690,10 @@ def check(engine):
         # has no type to disagree with.
         findings += _type_findings(table, columns, actual[table], dynamic_names)
 
-        extra = sorted(set(actual[table]) - set(columns))
+        # won_by is the overhaul's own column on t (lines.ensure_line_table adds it) - not the operator's to map
+        from database import lines
+
+        extra = sorted(set(actual[table]) - set(columns) - {lines.WON_BY})
         if extra:
             findings.append({
                 "severity": "INFO", "kind": "unmapped-column",

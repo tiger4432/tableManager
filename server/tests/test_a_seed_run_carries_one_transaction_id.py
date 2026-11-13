@@ -45,7 +45,7 @@ def test_the_door_sends_the_runs_transaction_id_when_given(monkeypatch, given):
     assert [body.get("transaction_id") for body in opener.bodies] == [given]
 
 
-@pytest.mark.parametrize("module", ["seed_syn_world", "seed_syn_k1_lot", "seed_syn_process_ledger"])
+@pytest.mark.parametrize("module", ["seed_syn_world", "seed_syn_process_ledger"])    # seed_syn_k1_lot retired aeb838eba
 def test_an_in_process_seeds_batch_carries_its_runs_transaction_id(module):
     seed = __import__(module)
     batch = seed._batch([{"a": 1}])

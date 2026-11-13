@@ -21,6 +21,7 @@ import event_constants                                              # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
 import expression                                                   # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 T_ONLY, T_KEY = "zz_spell_only", "zz_spell_key"
 TYPES = {"lot": "string", "wafer": "number", "t": "datetime", "v": "string"}
@@ -104,7 +105,9 @@ def fixture_db(pg_engine):
         with pg_engine.begin() as conn:
             for name in TABLES:
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
-                for side in ("cell_sources", "cell_overwrites", "database_outbox", "audit_logs"):
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s__lines"' % (PG_TEST_SCHEMA, name)))
+                for side in ("cell_sources", "cell_overwrites", "database_outbox", "audit_logs", "audit_batches",
+                             "line_columns"):
                     conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t'
                                       % (PG_TEST_SCHEMA, side)), {"t": name})
 
@@ -113,6 +116,8 @@ def fixture_db(pg_engine):
     for name in TABLES:
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    for name in TABLES:                         # the table as it runs: its line table built (A 11-11)
+        line_tables.build(pg_engine, name)
     maker = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     session = maker()
     try:
@@ -141,8 +146,8 @@ def _state(maker, table):
     try:
         rows = db.query(models.DYNAMIC_TABLES[table]).all()
         keys = [(r.business_key_val, crud.rebuilt_business_key(table, r)) for r in rows]
-        merges = db.execute(text("SELECT count(*) FROM audit_logs WHERE table_name = :t "
-                                 "AND source_name = 'collision_merge'"), {"t": table}).scalar()
+        merges = db.execute(text("SELECT count(*) FROM audit_batches WHERE table_name = :t "
+                                 "AND work_kind = 'merge'"), {"t": table}).scalar()
         return len(rows), merges, keys
     finally:
         db.close()

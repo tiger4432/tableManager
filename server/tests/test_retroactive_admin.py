@@ -31,7 +31,7 @@ from admin import auth
 from chain import replay
 import event_constants
 from admin import retroactive
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from tests.support.enrich_decl import write_rules  # noqa: E402
 
 TOKEN = "correct-horse-battery-staple"
@@ -127,6 +127,7 @@ def retro_env(db_session, monkeypatch):
     crud.TABLE_CONFIG.update(RETRO_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
     _install_mapper_module()
     # The REAL rule loader reads the user's chain config; pin it to the test rule
     # so `find_rule` resolves without touching a gitignored file.
@@ -164,8 +165,16 @@ def _seed(db, table, rows, source_name="pipeline_parser", tx_id="retro_seed"):
         updates=items, transaction_id=tx_id, silent=True))
 
 
+def _said(db, table, column=None):
+    """The standing layers of `table` - lines.layers over all its rows, one a (row, column, source)."""
+    ids = [r for (r,) in db.query(models.DYNAMIC_TABLES[table].row_id)]
+    return [types.SimpleNamespace(row_id=r, column_name=c, source_name=s, value=d["value"], updated_by=d["updated_by"])
+            for (r, c), said in lines.layers(db, table, ids, [column] if column else None).items()
+            for s, d in said.items()]
+
+
 def _layer_rows(db, source_name="chain_ingestion"):
-    """`cell_sources` rows a given source holds on the target table.
+    """The layers a given source holds on the target table (`_said`).
 
     THE WITNESS FOR "did R1 write?", and the materialised column is NOT.
     `chain_ingestion` is priority 4 and `pipeline_parser` (what the fixtures seed
@@ -174,9 +183,7 @@ def _layer_rows(db, source_name="chain_ingestion"):
     that watched the column would therefore pass against a count route that wrote
     on every request - which is exactly what injection caught it doing.
     """
-    return db.query(models.CellSource).filter(
-        models.CellSource.table_name == "retro_test_target",
-        models.CellSource.source_name == source_name).all()
+    return [layer for layer in _said(db, "retro_test_target") if layer.source_name == source_name]
 
 
 def _target_row(db, bk):
@@ -208,7 +215,7 @@ class TestInventory:
         # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
         # the forward scan was the one the owner could only stop by restarting the server.
         # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
-        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658);
+        # ⚰️ `fold_file_layers` the same day (총괄 225b2c658), retired 11-11 - a repeat writes no line (owner ㄱ).
         # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
         # `ledger_catch_up` joined on 2026-10-04 - a world switched back on (총괄 71880678a).
         # `rule_rows` joined on 2026-10-06 - the rows a `run_in: operation` rule's group queued
@@ -223,7 +230,7 @@ class TestInventory:
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
-            "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
+            "set_aside", "rerun_set_aside", "fold_written_notation",
             "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
             "remove_shell_rows", "retype_column", "retype_declared_columns"}
 
@@ -480,6 +487,7 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
         db.expire_all()
         assert _layer_rows(db) == [], (
             "the count route wrote a chain_ingestion layer to the target table")
+        assert _layer_rows(db, "pipeline_parser"), "canary: the witness reads the target's layers - the seed's"
 
     def test_a_sample_says_it_is_a_sample(self, client, retro_env):
         db = retro_env
@@ -503,8 +511,8 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                                                                     retro_env):
         """Echoing the requested budget would say a sample was taken when none was.
 
-        `withdraw`'s count is two aggregates. It reads no row, so it has no
-        denominator, and `null` is the only honest value. (`graph_orphans` was the
+        `withdraw`'s count reads every line the source claims, grouped - no sample, so it has
+        no denominator, and `null` is the only honest value. (`graph_orphans` was the
         other example here until R-2026-08-14-H deregistered it.)
         """
         body = client.get("/admin/retroactive/withdraw/count"
@@ -512,20 +520,10 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                           "&scan_limit=50").json()
         assert body["scan_limit"] is None
         assert body["scanned"] is None
-        assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
+        assert body["count_kind"] == retroactive.COUNT_EXACT
 
-    def test_an_upper_bound_is_never_presented_as_the_answer(self, client, retro_env):
-        # Subject moved from `graph_orphans` to `withdraw` when R-2026-08-14-H
-        # deregistered the graph sweep. Both are upper-bound counts, so the
-        # property under test is unchanged - only the operation that carries it.
-        body = client.get("/admin/retroactive/withdraw/count"
-                          "?table=retro_test_target&source=chain_ingestion").json()
-        assert body["count_kind"] == retroactive.COUNT_UPPER_BOUND
-        assert body["extra"]["why_upper_bound"]
-        # ⚰️ 이 줄은 「최대」를 맞춰 봤다. 그 라벨은 브라우저에 렌더되므로 2026-09-23 에
-        #    영어로 옮겼다(소유자 「UI에 한국어 쓰지 말라고」). 재는 성질은 그대로다 —
-        #    「이 수가 상한임을 라벨이 «말하나»」.
-        assert "at most" in body["affected_label"]
+    # ⚰️ test_an_upper_bound_is_never_presented_as_the_answer stood here: its subject, withdraw's count, is exact
+    #    since the preview joins t (lead 11-11 ㄱ) - no count is an upper bound now. The gate file asserts the label.
 
     def test_a_typo_in_a_parameter_is_refused_not_ignored(self, client, retro_env):
         """A silently dropped parameter makes "0건" look like an answer."""
@@ -609,6 +607,7 @@ def retro_enrich_env(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(ENRICH_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
 
     rules_path = write_rules(tmp_path, monkeypatch, ENRICH_RULES)
     monkeypatch.setattr("database.database.SessionLocal",
@@ -641,7 +640,7 @@ def _derived_rows(db):
 
 
 def _backfill_layer_rows(db):
-    """`cell_sources` rows the backfill holds. The witness for "did it write?".
+    """The layers the backfill holds (`_said`). The witness for "did it write?".
 
     Not the materialised column, and not even the derived row count on its own -
     the file's closing note generalises it: the displayed value is not a witness
@@ -650,10 +649,9 @@ def _backfill_layer_rows(db):
     from chain import enrichment
 
     # the chain's layer the decide's rule owns (owner 11-06 step 2)
-    return [s for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == "retro_enrich_derived",
-        models.CellSource.updated_by == enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]).all()
-        if crud.layer_ranks_as(s.source_name) == crud.CHAIN_SOURCE]
+    rule = enrichment.config.synthesized_rule_names("retro_enrich_rule")[0]
+    return [s for s in _said(db, "retro_enrich_derived")
+            if s.updated_by == rule and crud.layer_ranks_as(s.source_name) == crud.CHAIN_SOURCE]
 
 
 class TestTheEnrichmentBackfillRouteIsReachable:
@@ -804,6 +802,7 @@ class TestTheEnrichmentBackfillRouteIsReachable:
         assert _derived_rows(db) == [], "the count route created derived rows"
         assert _backfill_layer_rows(db) == [], (
             "the count route wrote an enrichment_backfill layer")
+        assert _said(db, "retro_enrich_src"), "canary: the layer read sees this world's lines - the seed's"
 
     def test_an_unknown_rule_is_refused_by_name(self, client, retro_enrich_env):
         r = client.get("/admin/retroactive/enrichment_backfill/count?rule=nope")
@@ -984,6 +983,7 @@ class TestTheTriggerQueuesAndReturns:
         db.expire_all()
         assert _layer_rows(db) == [], (
             "the trigger route executed the run inline instead of queueing it")
+        assert _layer_rows(db, "pipeline_parser"), "canary: the witness reads the target's layers - the seed's"
 
     def test_a_scheduler_owned_op_still_gets_its_wake_up_row(self, client, retro_env,
                                                              admin_token):
@@ -1104,11 +1104,8 @@ class TestAdminCannotRemoveAHumansValue:
         db.expire_all()
         assert crud.clean_str_value(_target_row(db, "P1").reserved) == \
             crud.clean_str_value(99), "a human's value was removed"
-        assert "user" in {
-            s.source_name for s in db.query(models.CellSource).filter(
-                models.CellSource.table_name == "retro_test_target",
-                models.CellSource.column_name == "reserved").all()}, \
-            "the user's cell_sources row was deleted"
+        assert "user" in {s.source_name for s in _said(db, "retro_test_target", "reserved")}, \
+            "the user's layer was withdrawn"
 
     def test_a_human_pinned_source_survives_a_run_through_admin(self, retro_env):
         """The second refusal, end to end on the worker path.
@@ -1132,10 +1129,7 @@ class TestAdminCannotRemoveAHumansValue:
         assert out["status"] == "ok"
         assert out["result"]["pinned_skipped"] == 1
         assert out["result"]["cells_withdrawn"] == 0
-        assert "chain_ingestion" in {
-            s.source_name for s in db.query(models.CellSource).filter(
-                models.CellSource.table_name == "retro_test_target",
-                models.CellSource.column_name == "reserved").all()}, \
+        assert "chain_ingestion" in {s.source_name for s in _said(db, "retro_test_target", "reserved")}, \
             "a source a human pinned was withdrawn anyway"
 
     def test_an_unpinned_source_IS_withdrawn(self, retro_env):
@@ -1808,7 +1802,7 @@ class TestTheRunSentenceSaysWhatWasNotMade:
                     "rows_staged", "events_staged", "rows_scanned", "cells_withdrawn",
                     "revealed", "emptied", "pinned_skipped", "cells_changed", "cells_examined",
                     "confirmed", "written_cells", "queue_size", "rows_read", "batches",
-                    "molecules", "stopped"}
+                    "molecules", "stopped", "rows_deleted"}
         assert returned <= set(retroactive.RESULT_NAMES), returned - set(retroactive.RESULT_NAMES)
         assert "cursor_after" not in retroactive.RESULT_NAMES
 
