@@ -17,9 +17,10 @@ failure mode a "comprehensive" snapshot test usually has.
 
 WHAT IS PINNED, and each is a different way the rewrite can go wrong:
     table rows        the write itself
-    cell_sources      one per (row, column, source) — the layer a set-based upsert must keep
+    layers            one per (row, column, source) — the layer a set-based upsert must keep
+                      (cell_sources once; the head lines of t__lines since the overhaul, lines.layers)
     cell_overwrites   the manual marker, which a bulk path can silently drop
-    audit logs        ⛔ A NO-OP WRITES NONE. The has_changed guard is the easiest thing to
+    history           (audit logs once; the request's own lines since the overhaul) ⛔ A NO-OP WRITES NONE. The has_changed guard is the easiest thing to
                       lose when a loop becomes a bulk statement, and losing it is invisible
                       except as an audit table that grows on saves that changed nothing
     outbox            collapsed (S-82): one event per (table, event_type), naming row_ids —
@@ -43,7 +44,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import event_constants                                               # noqa: E402
 from database import crud, models, schemas                           # noqa: E402
 from database.context import outbox_mode                             # noqa: E402
-from database.models import AuditLog, CellOverwrite, CellSource, DatabaseOutbox  # noqa: E402
+from database import lines                                           # noqa: E402
+from database.models import CellOverwrite, DatabaseOutbox            # noqa: E402
+from tests.support import line_tables                                # noqa: E402
 from utils.payload_helper import get_payload_dict                    # noqa: E402
 
 TABLE = "s83oracle_rows"
@@ -78,7 +81,10 @@ def door(db_session):
     crud.TABLE_CONFIG.update(CONFIG)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
-    return db_session
+    line_tables.build(db_session.get_bind(), TABLE)      # the overhaul's line table (old-shape recipe, owner 11-11)
+    yield db_session
+    db_session.rollback()
+    line_tables.drop(db_session.get_bind(), TABLE)
 
 
 def item(key, source, **values):
@@ -112,15 +118,19 @@ def observe(db, tx):
             for r in db.query(model).all()}
     by_row = {r.row_id: r.business_key_val for r in db.query(model).all()}
     sources = sorted(
-        (by_row.get(s.row_id, s.row_id), s.column_name, s.source_name, str(s.value))
-        for s in db.query(CellSource).filter(CellSource.table_name == TABLE).all())
+        (by_row.get(row_id, row_id), column, source, str(layer["value"]))
+        for (row_id, column), by_source in lines.layers(db, TABLE, list(by_row)).items()
+        for source, layer in by_source.items())
     overwrites = sorted(
         (by_row.get(o.row_id, o.row_id), o.column_name, bool(o.is_overwrite))
         for o in db.query(CellOverwrite).filter(CellOverwrite.table_name == TABLE).all())
+    by_bit = {bit: column for column, bit in lines.bit_map(db, TABLE).items()}
+    written = lines.bit_columns("written", 1 + max(by_bit) // lines.BITS_PER_CHUNK)
+    ln = lines.shape(db, TABLE, crud.TABLE_CONFIG[TABLE], assign=False)["lines"]
     audits = sorted(
-        (a.business_key, a.column_name, a.old_value is None)
-        for a in db.query(AuditLog).filter(AuditLog.table_name == TABLE,
-                                           AuditLog.transaction_id == tx).all())
+        (by_row.get(r.row_id, r.row_id), r.source_name,
+         tuple(sorted(lines._columns_of([r[name] for name in written], by_bit))))
+        for r in db.execute(ln.select().where(ln.c.batch == tx)).mappings())
     events = []
     for event in db.query(DatabaseOutbox).filter(
             DatabaseOutbox.table_name == TABLE).order_by(DatabaseOutbox.id.asc()).all():
@@ -128,8 +138,8 @@ def observe(db, tx):
         if payload.get("transaction_id") != tx:
             continue
         events.append((event.event_type, len(payload.get("row_ids") or [])))
-    return {"rows": rows, "cell_sources": sources, "cell_overwrites": overwrites,
-            "audits": audits, "events": events}
+    return {"rows": rows, "layers": sources, "cell_overwrites": overwrites,
+            "history": audits, "events": events}
 
 
 # ---------------------------------------------------------------- the fixture batch
@@ -150,19 +160,20 @@ SECOND = [
 #: 🔴 WRITTEN OUT BY HAND, and CORRECTED BY WHAT THE ORACLE FOUND rather than by pasting a
 #: run. Four facts about the door were wrong in the first draft, and each is now stated:
 #:
-#:   · a NEW row leaves ONE `ROW_UPDATE` audit summarising the creation, not one row per
-#:     column. An EDIT leaves one row per CHANGED column.
+#:   · each kept item leaves ONE line of the request (the overhaul's history; audit rows once).
+#:     A source's later word says only what CHANGED for it; a source new on the row says every
+#:     column it sent - its layer on each.
 #:   · writing a cell with the `user` source sets its OVERWRITE marker — that is the manual
 #:     layer, and a bulk rewrite that dropped it would silently demote a human's correction.
-#:   · `cell_sources.value` holds what the caller SENT (`"1"`); the row column holds the
-#:     coerced value (`1.0`). Two different jobs, and the rewrite must keep both.
+#:   · a layer reads back the value the caller sent (`"1"`); the row column holds the coerced
+#:     value (`1.0`). Two different jobs, and the rewrite must keep both.
 #:   · a no-op writes NOTHING — no audit, no event. K1 is here to say so.
 EXPECTED_AFTER_SECOND = {
     # `user` wins `lot` on K2: two sources on one cell resolve by priority.
     "rows": {"K1": {"lot": "L-A", "qty": 1.0},
              "K2": {"lot": "L-USER", "qty": 2.0},
              "K3": {"lot": "L-C", "qty": 3.0}},
-    "cell_sources": sorted([
+    "layers": sorted([
         ("K1", "key_id", "ingest", "K1"), ("K1", "lot", "ingest", "L-A"),
         ("K1", "qty", "ingest", "1"),
         ("K2", "key_id", "ingest", "K2"), ("K2", "key_id", "user", "K2"),
@@ -175,17 +186,13 @@ EXPECTED_AFTER_SECOND = {
     "cell_overwrites": sorted([
         ("K2", "key_id", True), ("K2", "lot", True), ("K2", "qty", True),
     ]),
-    # ⛔ K1 CONTRIBUTES NOTHING — it was written with the values it already had.
-    # K2: `lot` changed twice in this request (ingest then user), so two rows, neither a
-    # creation. K3: one creation summary.
-    # 🔴 THE GRANULARITY IS NOT UNIFORM, AND I DID NOT WORK OUT WHY. Both K2 writes change
-    # exactly one column, yet the `ingest` one leaves a `ROW_UPDATE` SUMMARY row and the
-    # `user` one leaves a per-COLUMN row. That asymmetry is stated here because the rewrite
-    # must preserve it, and it is stated as OBSERVED rather than as designed — I have not
-    # found the rule that produces it, and pretending I had would be worse than the gap.
-    "audits": sorted([
-        ("K2", "ROW_UPDATE", False), ("K2", "lot", False),
-        ("K3", "ROW_UPDATE", True),
+    # ⛔ K1 CONTRIBUTES NOTHING — it was written with the values it already had: no line.
+    # K2: `ingest` again, only `lot` changed for it; `user` is new on the row - its layer on all
+    # three columns it sent. K3: one creation line saying all three.
+    "history": sorted([
+        ("K2", "ingest", ("lot",)),
+        ("K2", "user", ("key_id", "lot", "qty")),
+        ("K3", "ingest", ("key_id", "lot", "qty")),
     ]),
     # One collapsed event per (table, event_type): K3 created, K2 edited.
     "events": [("CREATE", 1), ("EDIT", 1)],

@@ -169,7 +169,7 @@ KEYED_READ_ROWS = 10000
 def keyed_rows(db, model, columns, key_of, condition=None, max_row_id=None) -> dict:
     """{key: [row_id, ...]} of the rows `condition` picks - a row's key is `key_of({column: value})` over `columns`, the
     keys in the row_id order of their first row. One streamed read of the row_id and those columns; the replay's
-    whole-key pages (`key_pages`) and the fold's groups (`replay.fold_units`) stand on it."""
+    whole-key pages (`key_pages`) stand on it."""
     from sqlalchemy import select
 
     names = list(columns)

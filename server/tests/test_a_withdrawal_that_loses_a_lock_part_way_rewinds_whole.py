@@ -10,7 +10,7 @@ from tests.test_a_chain_layer_is_one_per_source_row import (  # noqa: F401
     fixture_db, _write, _drain, _id, SRC, TGT)
 from chain import cell_layer
 from chain import ingestion_worker as worker
-from database import crud, models
+from database import crud, lines, models
 import database.database as dbmod
 from utils.payload_helper import get_payload_dict
 
@@ -57,7 +57,7 @@ def test_a_lock_lost_at_the_edit_it_stages_is_raised_and_rewinds_whole(db, monke
 
     _withdraw(db, ids, lost)
 
-    x = db.query(models.CellSource).filter_by(table_name=TGT, row_id=target, column_name="x").count()
+    x = len(lines.layers(db, TGT, [target], columns=["x"]).get((target, "x"), {}))
     if lost:
         assert x == 1 and _edits_of(db, TGT, last) == [], "rewound whole: the layer is back, nothing was told"
     else:

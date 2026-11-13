@@ -288,12 +288,18 @@ def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
     monkeypatch.setattr(dw, "_analyze_after_load",
                         lambda name, rows, why=None, forced=False: analysed.append((name, rows)) or True)
 
+    from database import lines
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], ["enrich_test_src", "not_ours"]))
+
     class _Session:
+        def connection(self):
+            return None
+
         def execute(self, statement, params=None):
             assert params["threshold"] == 10000
             class _R:
                 def all(self_inner):
-                    return [("enrich_test_src", 44000), ("not_ours", 999999)]
+                    return [r for r in [("enrich_test_src", 44000), ("not_ours", 999999)] if r[0] in params["names"]]
             return _R()
 
         def close(self):
@@ -315,11 +321,17 @@ def test_a_relation_this_application_did_not_declare_is_left_alone(monkeypatch):
     monkeypatch.setattr(dw, "_analyze_after_load",
                         lambda name, rows, why=None, forced=False: pytest.fail(f"touched {name}"))
 
+    from database import lines
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], ["some_other_apps_table"]))
+
     class _Session:
+        def connection(self):
+            return None
+
         def execute(self, statement, params=None):
             class _R:
                 def all(self_inner):
-                    return [("some_other_apps_table", 10 ** 9)]
+                    return [r for r in [("some_other_apps_table", 10 ** 9)] if r[0] in params["names"]]
             return _R()
 
         def close(self):
@@ -424,13 +436,20 @@ def test_only_partitions_that_exist_are_reached_because_the_database_names_them(
     monkeypatch.setattr(dw, "_analyze_after_load",
                         lambda name, rows, why=None, forced=False: analysed.append(name) or True)
 
+    from database import lines
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (["public"], [
+        "ledger_events_2026_08", "ledger_source_row_ref", "someone_elses_table"]))
+
     class _Session:
+        def connection(self):
+            return None
+
         def execute(self, statement, params=None):
             class _R:
                 def all(self_inner):
-                    return [("ledger_source_row_ref", 64178),
-                            ("ledger_events_2026_08", 44430),
-                            ("someone_elses_table", 10 ** 9)]
+                    return [r for r in [("ledger_source_row_ref", 64178),
+                                        ("ledger_events_2026_08", 44430),
+                                        ("someone_elses_table", 10 ** 9)] if r[0] in params["names"]]
             return _R()
 
         def close(self):

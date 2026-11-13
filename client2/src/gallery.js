@@ -8,6 +8,10 @@ import { isBlank } from './absent.js';
 import { IMAGE_TYPE } from './grid_image_column.js';
 import { Thumb } from './image_thumb.js';
 import { countNumberText } from './match_count.js';
+import { setDisabledReason } from './disabled_reason.js';
+import { refusalText } from './refusal.js';
+import { localMinute } from './server_time.js';
+import { pickFile, saveBody } from './save_file.js';
 
 /** A tile's picture side (the server's /api/image px) - the token --gallery-tile says the same to the CSS. */
 export const TILE_PX = 160;
@@ -32,7 +36,13 @@ export const WORDS = Object.freeze({
   loaded: (n, total) => `${n.toLocaleString('en-US')} of ${total} loaded`,
   without: (n) => `${n.toLocaleString('en-US')} without image`,
   groupCount: (n) => n.toLocaleString('en-US'),
+  zip: 'Download zip', zipping: 'Preparing zip…', zipNone: 'No image in the rows shown', zipFailed: 'Zip failed',
+  zipTitle: (n) => `Download ${n.toLocaleString('en-US')} image${n === 1 ? '' : 's'} (zip)`,
+  zipHeld: (n) => `This browser cannot save straight to a file: the zip of ${n.toLocaleString('en-US')} image${n === 1 ? '' : 's'} is held in memory until it is saved. Continue?`,
 });
+
+/** The bulk image download (owner 11-12, lead; the server's zip C's): POST it the folders, the zip comes back. */
+export const ZIP_ROUTE = '/api/images/zip';
 
 const textOf = (v) => (isBlank(v) ? '' : String(v));
 
@@ -87,6 +97,37 @@ export function galleryBoard(rows, { rowsBy, columnBy, ...o }) {
       return { ...line, share: percent(line.count, rows.length), cells: columns.map((c) => cells.get(c.key) || null) };
     }),
   };
+}
+
+/** A ref's file name - its last path part, a query or a fragment off; none when it names none (the server names it). */
+export function refName(ref) {
+  const s = String(ref ?? '').split(/[?#]/)[0];
+  const name = s.slice(Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'), s.indexOf(':')) + 1);
+  return name || null;
+}
+
+/**
+ * The zip's folders as the gallery draws its groups: a Columns by board - [its line, its column] a cell, else a group of
+ * Rows by (or «All rows») one folder; a folder its tiles' refs, in the gallery's order. A group with no image is no folder.
+ * The file `<table>_<YYYYMMDD-HHmm>.zip` on the product's clock.
+ * @returns {{filename: string, folders: Array<{path: string[], refs: Array<{ref: string, name?: string}>}>}}
+ */
+export function zipBody(rows, { table, rowsBy = [], columnBy = null, image, order = 'count', valueOf, at = new Date() }) {
+  const refsOf = (group) => group.tiles.map((tile) => { const name = refName(tile.ref); return name ? { ref: tile.ref, name } : { ref: tile.ref }; });
+  const o = { image, order, valueOf };
+  const folders = [];
+  if (columnBy) {
+    const board = galleryBoard(rows, { ...o, rowsBy, columnBy });
+    for (const line of board.lines) {
+      line.cells.forEach((cell, k) => { if (cell && cell.tiles.length) folders.push({ path: [line.label, board.columns[k].label], refs: refsOf(cell) }); });
+    }
+  } else {
+    for (const group of galleryModel(rows, { ...o, groupBy: rowsBy.length ? rowsBy : null })) {
+      if (group.tiles.length) folders.push({ path: [group.label], refs: refsOf(group) });
+    }
+  }
+  const stamp = localMinute(at).replace(/-/g, '').replace(' ', '-').replace(':', '');
+  return { filename: `${table}_${stamp}.zip`, folders };
 }
 
 /** Where each group's head and each line of tiles stands: `{kind: 'head'|'tiles', group, top, height, tiles?}`, the whole height.
@@ -228,13 +269,19 @@ export class GalleryPart {
     const count = this.deps.count ? this.deps.count() : null;
     const whole = this.deps.whole();
     const total = count && count.total !== null && count.total !== undefined ? countNumberText(count) : null;
-    bar.append(this.el('span', 'gallery-count', whole || !total ? WORDS.rows(rows.length) : WORDS.loaded(rows.length, total)));
+    // the last pick, the count and the bar's buttons wrap as one: a button wrapped alone beside the count stood a
+    // control's height over its words (screen_layout size, 11-12)
+    const tail = this.el('span', 'gallery-bar__tail');
+    tail.append(bar.children[bar.children.length - 1]);
+    bar.append(tail);
+    tail.append(this.el('span', 'gallery-count', whole || !total ? WORDS.rows(rows.length) : WORDS.loaded(rows.length, total)));
     if (!whole) {
       const more = this.el('button', 'glass-page-btn gallery-more', WORDS.loadMore);
       more.type = 'button';
       more.addEventListener('click', () => this.deps.loadMore());
-      bar.append(more);
+      tail.append(more);
     }
+    this.zipBar(tail, () => zipBody(this.deps.rows() || [], { table: this.deps.table(), rowsBy, columnBy, image, order, valueOf: this.deps.valueOf }));
     const body = this.el('div', 'gallery-body');
     const scroller = this.el('div', 'gallery-scroll');
     const canvas = this.el('div', 'gallery-canvas');
@@ -273,6 +320,39 @@ export class GalleryPart {
     this.place();
     if (was) { scroller.scrollTop = was; this.place(); }
     if (this.picked) this.showSide(this.picked);
+  }
+
+  /** «Download zip» and what it says: the images it holds in its title, off with its reason when none; pressed - the
+   *  folders sent (`body` - zipBody of the rows as drawn now), the zip saved through the save door (`deps.picker` -
+   *  save_file.js; none - held in memory, asked first with its image count), a refusal said as the server says it. */
+  zipBar(bar, body) {
+    const button = this.el('button', 'glass-page-btn gallery-zip', WORDS.zip);
+    button.type = 'button';
+    const say = this.el('span', 'gallery-zip__say');
+    const imagesOf = (b) => b.folders.reduce((n, f) => n + f.refs.length, 0);
+    const images = imagesOf(body());
+    if (images) button.setAttribute('title', WORDS.zipTitle(images));
+    setDisabledReason(button, images ? '' : WORDS.zipNone);
+    button.addEventListener('click', async () => {
+      const asked = body();
+      setDisabledReason(button, WORDS.zipping);
+      say.textContent = '';
+      try {
+        const file = await pickFile(this.deps.picker || null, { suggestedName: asked.filename, types: [{ description: 'Zip (*.zip)', accept: { 'application/zip': ['.zip'] } }] });
+        if (file.cancelled) return;
+        const confirmImpl = this.deps.confirm || ((text) => globalThis.confirm(text));
+        if (!file.handle && !confirmImpl(WORDS.zipHeld(imagesOf(asked)))) return;
+        const fetchImpl = this.deps.fetch || ((url, init) => globalThis.fetch(url, init));
+        const res = await fetchImpl(`${this.deps.base || ''}${ZIP_ROUTE}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(asked) });
+        if (!res.ok) { say.textContent = await refusalText(res, WORDS.zipFailed); return; }
+        await saveBody(res, { handle: file.handle, filename: asked.filename, type: 'application/zip', doc: this.doc });
+      } catch (err) {
+        say.textContent = `${WORDS.zipFailed} · ${err && err.message}`;
+      } finally {
+        setDisabledReason(button, '');
+      }
+    });
+    bar.append(button, say);
   }
 
   /** `list` into the page's seat (`deps.seat`), emptied when there is none to put; the page told whether its seat

@@ -4110,16 +4110,25 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     if not tables:
         return []
 
+    from database import lines
+    from ledger import schema as ledger_schema
+
     db = db_session_factory()
     try:
         from sqlalchemy import text as sql_text
 
+        # the declared tables, their line tables and the ledger's - by the one seat that lists the catalogue
+        line_tables = {lines.lines_relation(t) for t in tables}
+        # every schema's: the search path decides which one `ANALYZE "<name>"` reaches (the query below)
+        names = [name for name in lines.every_schema_tables(db.connection())[1]
+                 if name in tables or name in line_tables or ledger_schema.owns_table(name)]
         # only the relation the name resolves to through the search path - the one `ANALYZE "<name>"` reaches: a
         # name in two schemas is analysed once, one in no schema of the path not at all (C 11-05, lead ㄱ)
         rows = db.execute(sql_text(
             "SELECT relname, n_mod_since_analyze FROM pg_stat_user_tables "
-            "WHERE n_mod_since_analyze >= :threshold AND relid = to_regclass(quote_ident(relname))"),
-            {"threshold": threshold}).all()
+            "WHERE n_mod_since_analyze >= :threshold AND relname = ANY(:names) "
+            "AND relid = to_regclass(quote_ident(relname))"),
+            {"threshold": threshold, "names": names}).all()
     except Exception as exc:                                           # noqa: BLE001
         # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
         logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "
@@ -4128,10 +4137,7 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     finally:
         db.close()
 
-    from ledger import schema as ledger_schema
-
-    stale = [(name, int(modified or 0)) for name, modified in rows
-             if name in tables or ledger_schema.owns_table(name)]
+    stale = [(name, int(modified or 0)) for name, modified in rows]
     stale += [(name, 0) for name in sorted(set(built) & tables - {name for name, _m in stale})]
     if not stale:
         logger.info("[Chain] statistics are current on all %d declared table(s) "
@@ -4156,7 +4162,8 @@ LAYER_HEALTH_JOB = "layer_health"
 #: asks every table's files - 21 s on the box's 1,183 tables against 16 ms, the same eight first.
 LAYER_HEALTH_TABLES = ("SELECT s.relid::regclass::text, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.autovacuum_count, "
                        "age(c.relfrozenxid) FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid "
-                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 ORDER BY c.relpages DESC LIMIT :n")
+                       "WHERE s.n_tup_ins + s.n_tup_upd + s.n_tup_del > 0 "
+                       "AND s.schemaname = ANY(:schemas) AND s.relname = ANY(:names) ORDER BY c.relpages DESC LIMIT :n")
 
 
 def _report_layer_table_health():
@@ -4196,8 +4203,12 @@ def _report_layer_table_health():
     if engine is None:
         return rest
     try:
+        from database import lines
+
         with engine.connect() as conn:
-            tables = conn.execute(_text(LAYER_HEALTH_TABLES), {"n": int(units or 1)}).fetchall()
+            schemas, names = lines.every_schema_tables(conn)
+            tables = conn.execute(_text(LAYER_HEALTH_TABLES),
+                                  {"n": int(units or 1), "schemas": schemas, "names": names}).fetchall()
     except Exception as exc:                                           # noqa: BLE001 - the watch alone goes quiet
         logger.warning("[LayerHealth] tables ? - %s", told(exc))
         return rest

@@ -266,7 +266,7 @@ export const FLOORS = new Map([
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
   // 267 -> 271: the Waiting number and each owner line say «events» - U1-U2 and their two mutants (lead 10-28).
-  ['chain_queue_panel_harness.mjs', 277],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
+  ['chain_queue_panel_harness.mjs', 285],   // 277 -> 285: a line counted only to counted_to says «N+», its own rows - XC1-XC3 and their mutant; Waiting as a whole count, an owner aged from oldest_at - U3-U4, UM3 (lead 11-13)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -1190,6 +1190,10 @@ export const FLOORS = new Map([
   ['grid_look_harness.mjs', 73],
   // the screen checker's --mutant (lead 11-07): a named mutant runs, the others do not, an unknown name is said
   ['mutant_pick_harness.mjs', 7],
+  // the screen checker's «is this the pressed button's panel» (lead 11-13): overlays not, popovers wherever they sit, P1-P6
+  ['screens_panel_harness.mjs', 6],
+  // the screen checker's page-start buffer for request timings (lead 11-13): set once, past the most a page held, B1-B4
+  ['screens_resource_buffer_harness.mjs', 4],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes
@@ -1349,7 +1353,7 @@ export const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 113],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7); -> 89: K13 Next · Prev by key (lead e570dcda5); -> 90: R10 a busy grid pool's sentence (lead, after 6f34a1320); -> 104: N1-N6 a save's cells not written said and the page read again, the paste's line by change_count (lead 10-29); -> 111: V1-V7 a number column's value sent as it was given (lead 10-29); -> 113: V8-V9 a number column edited in a text box, its text as typed (owner 10-31)
+  ['grid_view_readonly_harness.mjs', 119],   // -> 119: K14-K16 the scroll, Load All, a pivot group's rows and the key by row (lead 11-13); 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7); -> 89: K13 Next · Prev by key (lead e570dcda5); -> 90: R10 a busy grid pool's sentence (lead, after 6f34a1320); -> 104: N1-N6 a save's cells not written said and the page read again, the paste's line by change_count (lead 10-29); -> 111: V1-V7 a number column's value sent as it was given (lead 10-29); -> 113: V8-V9 a number column edited in a text box, its text as typed (owner 10-31)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1787,7 +1791,7 @@ export const FLOORS = new Map([
   ['index_table_panel_harness.mjs', 35],   // -> 35 (lead 11-09 ⓑ): the storage rows S1-S5, XS1-XS6
   ['value_filter_harness.mjs', 36],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06); 37 -> 36: the list's reading (L1) went to list_field
   ['list_field_harness.mjs', 12],   // the base layer's list field: how a list is read and said, the box (lead 11-11)
-  ['tables_harness.mjs', 48],   // Tables L1: the grid's hand-off, the first table by page through the grid's door; 11-11 the walk table to table - row marks, a hop, the axis compare, the store's names; 19 mutants (owner 11-06, 11-11)
+  ['tables_harness.mjs', 51],   // -> 51: R5 and XK1-XK2 a box's and a marking's next page by row (lead 11-13); Tables L1: the grid's hand-off, the first table by page through the grid's door; 11-11 the walk table to table - row marks, a hop, the axis compare, the store's names; 19 mutants (owner 11-06, 11-11)
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.
@@ -1833,7 +1837,10 @@ export const FLOORS = new Map([
   // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
   // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
-  ['gallery_harness.mjs', 38],
+  ['gallery_harness.mjs', 44],   // +6 Z1-Z6 Download zip, Z6 its save path (owner 11-12)
+  // New 2026-11-12 (lead): the save-to-file door the CSV export and the gallery zip share - no picker, desktop, cancel,
+  // a failed write aborted, a picked file streamed, the Blob held and saved by name.
+  ['save_file_harness.mjs', 6],
   // New with lead 10-29 ③ (owner 10-28 option A): a column's formula on its header - the requests, opening, the preview,
   // a refusal word for word, Apply and Remove, closing, chips at the caret, two instances, the fx press not a sort.
   ['formula_popover_harness.mjs', 65],

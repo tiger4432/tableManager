@@ -161,6 +161,13 @@ def test_an_open_request_is_not_the_chain_s_backlog(table):
     assert mine == (1, 0), "the request is open, and outside the chain's waiting set"
 
 
+def _pending(db, limit, line):
+    """What a slot given `line` reads of it - the chain's waiting rows (`pending_chain_events`)."""
+    from chain import ingestion_worker
+
+    return ingestion_worker.pending_chain_events(db, limit=limit, line=line)
+
+
 def test_open_requests_more_than_the_slots_leave_a_data_line_given(table):
     """B's board: open index requests ahead of a data line, more than the slots and no scheduler - the lines a slot is
     given (chain.queue_lines.waiting_lines chain_only, cut at the slot count) hold the data line, not the requests."""
@@ -176,15 +183,17 @@ def test_open_requests_more_than_the_slots_leave_a_data_line_given(table):
                                      payload={"row_id": "r1", "transaction_id": "data-line"}))
         db.commit()
         assert len(_rows(table)) == 3, "CANARY: three open requests ahead"
-        given = queue_lines.waiting_lines(db, 2, chain_only=True)
+        # what a slot given each line reads of it (the chain's waiting rows)
+        given = [(e.table_name, e.event_type) for line in queue_lines.waiting_lines(db, 2, chain_only=True)
+                 for e in _pending(db, limit=200, line=line.key)]
         dispatched = [line["line"] for line in slots.SlotPool(spawn=lambda index: None)._givable(db, [], set(), 2)[0]]
         listed = queue_lines.waiting_lines(db, 10)
     finally:
         db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.transaction_id == "data-line").delete()
         db.commit()
         db.close()
-    assert [pair for line in given for pair in line.pairs] == [(TABLE, "INSERT")], [line.pairs for line in given]
-    assert event_constants.EVENT_INDEX_WANTED not in {kind for line in given for _t, kind in line.pairs}
+    assert given == [(TABLE, "INSERT")], given
+    assert event_constants.EVENT_INDEX_WANTED not in {kind for _t, kind in given}
     assert len(listed) == 4, "the queue screen still lists the open requests"
     assert dispatched == ["data-line"], dispatched
 
@@ -204,12 +213,16 @@ def test_a_line_mixing_a_control_row_and_a_data_row_gives_the_data_row_and_lists
                       payload={"row_id": "r1", "transaction_id": "mixed-line"}))
         db.commit()
         assert db.query(outbox).filter(outbox.transaction_id == "mixed-line").count() == 2, "CANARY: both rows"
-        given = [(l.key, l.events, l.rows, l.pairs) for l in queue_lines.waiting_lines(db, 10, chain_only=True)]
-        listed = [(l.key, l.events, l.rows, sorted(l.pairs)) for l in queue_lines.waiting_lines(db, 10)]
+        # the line a slot is given: what it reads of it (the chain's waiting rows); the screen: the line's counts
+        given = [(l.key, [(e.table_name, e.event_type) for e in _pending(db, limit=200, line=l.key)])
+                 for l in queue_lines.waiting_lines(db, 10, chain_only=True)]
+        lines = queue_lines.waiting_lines(db, 10)
+        counts = queue_lines.line_counts(db, lines)
+        listed = [(l.key, counts[l.key].events, counts[l.key].rows, sorted(counts[l.key].pairs)) for l in lines]
     finally:
         db.query(outbox).filter(outbox.transaction_id == "mixed-line").delete()
         db.commit()
         db.close()
-    assert given == [("mixed-line", 1, 1, [(TABLE, "INSERT")])], given
+    assert given == [("mixed-line", [(TABLE, "INSERT")])], given
     assert listed == [("mixed-line", 2, 2, sorted([(TABLE, event_constants.EVENT_INDEX_WANTED), (TABLE, "INSERT")]))], \
         listed

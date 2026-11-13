@@ -7,7 +7,8 @@ import pytest
 
 from admin import retroactive
 from chain import replay
-from database import crud, models
+from database import crud, lines, models
+from tests.support import line_tables
 from tests.test_a_row_a_chain_only_attached_to_goes_with_its_maker import (  # noqa: F401
     MASTER, _master, _official, _put, fixture_db)
 
@@ -15,11 +16,21 @@ from tests.test_a_row_a_chain_only_attached_to_goes_with_its_maker import (  # n
 def _left_as_before(db):
     """What a take-back left before 96e0fa44d: the maker's value gone, its key layer and a blank hold kept."""
     row = db.query(models.DYNAMIC_TABLES[MASTER]).one()
-    for layer in db.query(models.CellSource).filter_by(table_name=MASTER, row_id=row.row_id):
-        if layer.column_name == "val":
-            db.delete(layer)
-        elif layer.column_name == "hold":
-            layer.value = None
+    layers = lines.layers(db, MASTER, [row.row_id], columns=["val", "hold"])
+    ((val_by, val),) = layers[(row.row_id, "val")].items()
+    ((hold_by, hold),) = layers[(row.row_id, "hold")].items()
+    bits = lines.bit_map(db, MASTER)
+    ln = lines.shape(db, MASTER, crud.TABLE_CONFIG[MASTER], assign=False)["lines"]
+    conn = db.connection()
+    for source, column in ((val_by, "val"), (hold_by, "hold")):    # the cell's older head comes off
+        chunk, place = divmod(bits[column], lines.BITS_PER_CHUNK)
+        head = ln.c["head_%d" % chunk]
+        conn.execute(ln.update().where(ln.c.row_id == row.row_id, ln.c.source_name == source)
+                     .values({head.name: head.op("&")(~(1 << place))}))
+    line_tables.line(conn, MASTER, bits, row.row_id, kind="withdraw", source=val_by, withdrawn=("val",),
+                     written_by=val["updated_by"])
+    line_tables.line(conn, MASTER, bits, row.row_id, source=hold_by, values={"hold": None},
+                     written_by=hold["updated_by"])
     row.val, row.hold = None, None
     db.commit()
     assert _master(db) == [("K1", None, "b1")]

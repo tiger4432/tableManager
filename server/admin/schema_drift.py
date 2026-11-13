@@ -385,6 +385,11 @@ def _actual(engine, names=None):
     catalog on every boot to recover something already in hand. Callers that only
     want names iterate the dict, which yields exactly the old set.
     """
+    from database import lines
+
+    with engine.connect() as conn:
+        held = lines.base_tables(conn)          # the one seat that lists the catalogue's tables - no line table
+    names = held if names is None else [n for n in names if n in set(held)]
     insp = inspect(engine)
     if hasattr(insp, "get_multi_columns"):
         try:
@@ -393,9 +398,7 @@ def _actual(engine, names=None):
                     for key, cols in insp.get_multi_columns(filter_names=names).items()}
         except Exception:
             pass
-    held = set(insp.get_table_names())
-    return {t: {c["name"]: c.get("type") for c in insp.get_columns(t)}
-            for t in (held if names is None else [n for n in names if n in held])}
+    return {t: {c["name"]: c.get("type") for c in insp.get_columns(t)} for t in names}
 
 
 def _type_family(t):

@@ -42,6 +42,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
 import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
+import { opensAsPanel } from './lib/screens_panel.mjs';
+import { resourceBufferSource } from './lib/screens_resource_buffer.mjs';
 import { reachPlugin, touchedScreens } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
@@ -101,6 +103,13 @@ const RULES_OF = (state) => [state === TIMED_OUT ? { rule: 'lot_slot_join', rows
   : state.state === 'running' ? { rule: 'dt_log_to_dt_map', rows_in: 500, rows_out: null, running_seconds: 72 }
   : { rule: 'dt_log_to_dt_map', rows_in: null, rows_out: null, running_seconds: null }];
 const LINES = [...STATES.map((s) => s.chain_state), TIMED_OUT];
+// A count the server makes behind its answer (C 6210a4f90): the grid's whole-count shape, counted 30 s before the read.
+const countedNow = (total) => ({ total, capped: false, counted_at: new Date(Date.now() - 30000).toISOString(), count_seconds: 0.1,
+  counting: false, failed: null });
+// A line counted only to the server's 200 and a Waiting card not yet counted (lead 11-13): the line as a scratch server of
+// 6210a4f90 sent it - events 200, rows 240, counted_to 200.
+const COUNTED = { on: false, line: { transaction_id: 'tx-counted-0000-0000', events: 200, rows: 240, counted_to: 200,
+  tables: ['dt_log'], waiting_seconds: 60, cancel: { key: 'tx:counted' } } };
 const QUEUE = {
   '/outbox/queue/rows': {
     generated_at: '2026-10-08 20:00:00', clock: 'server', rules_known: ['dt_log_to_dt_map'],
@@ -110,7 +119,8 @@ const QUEUE = {
       rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] })),
   },
   '/admin/chain/queue': {
-    waiting: LINES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
+    get waiting() { return countedNow(LINES.length); }, get retried_among_waiting() { return countedNow(0); },
+    oldest_waiting_seconds: 60, waiting_by_owner: [],
     loop_seen_via: 'this_process', generated_at: '2026-10-08T20:00:00+09:00', now_running: [],
     waiting_transactions: LINES.map((state, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
       waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: state, slot_pid: 4242, rules: RULES_OF(state) })),
@@ -663,6 +673,11 @@ const answerOf = (u) => {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
   if (REPLAYS.on) { const v = replaysAnswer(u); if (v) return v; }
+  if (COUNTED.on && u.pathname === '/admin/chain/queue') {
+    const q = QUEUE['/admin/chain/queue'];
+    return { status: 200, type: 'application/json', body: { ...q, waiting: { total: null, capped: false, counted_at: null,
+      count_seconds: null, counting: true, failed: null }, waiting_transactions: [COUNTED.line, ...q.waiting_transactions] } };
+  }
   if (HELD_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], now_running: HELD_RUN.items,
       ...(CUT_RUN.on ? { interrupted_runs: [CUT_RUN.entry] } : {}) } };
@@ -677,9 +692,8 @@ const answerOf = (u) => {
 };
 // A paste of `text` on row 2's `col` cell in pivot view - its cell said on window.__pasteAt.
 async function pivotPasted(c, col, text) {
-  await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
   const sel = `.ag-row[row-index="2"] .ag-cell[col-id="${col}"]`;
-  await until(c, `!!document.querySelector(${JSON.stringify(sel)})`).catch(() => null);
+  await topRowDrawn(c, sel);
   const at = await evaluate(c, `(() => {
     const cell = document.querySelector(${JSON.stringify(sel)});
     window.__pasteAt = cell ? 'cell ' + cell.textContent.trim() : 'no ${col} cell on row 2';
@@ -1351,6 +1365,18 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
 })()` });
+// A line counted only to 200 says «200+ events» beside Rows «240+», and Waiting not yet counted says so (lead 11-13).
+CELLS.push({ entry: 'admin.html', after: 'Chain queue, a counted line and a counting Waiting', rule: 'contents', at: 'chain-queue', expr: `(() => {
+  const mount = document.querySelector('#chain-queue-mount');
+  const line = mount && mount.querySelector('tr[data-line-id="tx-counted-0000-0000"]');
+  if (!line) return 'no line for the counted transaction';
+  const rows = line.querySelector('td[data-col="rows"]');
+  const said = rows ? [...rows.children].map((n) => n.textContent) : [];
+  if (JSON.stringify(said) !== JSON.stringify(['200+ events', '240+'])) return 'its Rows says ' + JSON.stringify(said);
+  const card = mount.querySelector('.chain-queue-number[data-key="waiting"] .chain-queue-number-value');
+  const waiting = card ? card.textContent : '';
+  return waiting === 'Counting events…' ? null : 'its Waiting says ' + JSON.stringify(waiting);
+})()` });
 // owner 11-09 «리프레시 위로»: each queue panel's Refresh above its numbers, list and failures.
 CELLS.push({ entry: 'admin.html', after: 'Overview', rule: 'contents', at: 'chain-queue-refresh', expr: `(() => {
   const shown = [...document.querySelectorAll('.chain-queue-panel .chain-queue-refresh')].filter((b) => b.getClientRects().length);
@@ -1849,7 +1875,11 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off, filters carried back', rule
   ${CARRIED_CHIPS}
   const reads = (window.__switchReads || []).filter((u) => !u.includes('/count'));
   if (reads.length !== 1) return reads.length + ' reads of the rows for one switch: ' + JSON.stringify(reads);
-  if (![...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) return 'the item column is not shown again';
+  if (![...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) {
+    const across = document.querySelector('.ag-center-cols-viewport, .ag-body-horizontal-scroll-viewport');
+    return 'the item column is not shown again (scrolled ' + (across ? across.scrollLeft : 'none') + ' px across · '
+      + document.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id]').length + ' header cells drawn)';
+  }
   return null;
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
@@ -2409,6 +2439,8 @@ async function servePage(chrome, dist) {
   await chrome.send('Runtime.enable');
   await chrome.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
   await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.setItem('assy.adminToken', '${TOKEN}'); } catch (e) {}` });
+  // every request's timing entry kept, «filter typed» and «set applied» read them (lib/screens_resource_buffer.mjs)
+  await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: resourceBufferSource() });
   return log;
 }
 
@@ -2425,7 +2457,7 @@ async function settle(chrome, log, quiet = 700, most = 8000) {
 }
 
 // ---- in the page: window.__screens = { measure, openNext, close }. Lines are {rule, path, what}.
-function screensLib(TOL) {
+function screensLib(TOL, opensAsPanel) {
   const css = (el) => getComputedStyle(el);
   const shown = (el) => {
     if (!el || !el.isConnected) return false;
@@ -2771,8 +2803,9 @@ function screensLib(TOL) {
     const now = openers().find((x) => keyOf(x) === key) || b;
     const boxed = (el) => { for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) { if (scrolls(css(e))) return true; } return false; };
     const fresh = floating().filter((e) => !before.has(e) && !boxed(e) && !e.closest('[aria-live]'));
-    const panel = fresh.find((e) => !fresh.some((o) => o !== e && o.contains(e))
-      && e.getBoundingClientRect().width > 40 && e.getBoundingClientRect().height > 20);
+    // the panel test is lib/screens_panel.mjs's (lead 11-13 ㄱ3): an AG Grid overlay is the grid redrawing, not a panel
+    const described = (e) => { const r = e.getBoundingClientRect(); return { classes: [...e.classList], width: r.width, height: r.height }; };
+    const panel = fresh.find((e) => !fresh.some((o) => o !== e && o.contains(e)) && opensAsPanel(described(e)));
     if (!panel) return { opener: key, panel: null, lines: [] };
     const a = now.getBoundingClientRect(), p = panel.getBoundingClientRect();
     const lines = [];
@@ -2832,6 +2865,18 @@ function screensLib(TOL) {
 // A wait that runs out leaves its state unreached: the drive loop says it under «answers», with the step, so a green
 // line is never a state the gate did not get to (lead 10-10 - the walk page passed once with every wait run out).
 const waitsRunOut = [];
+// A row near the top, drawn: the viewport put back at the top on every look until the row is there - the redraw after
+// the step before (Apply's) can scroll it away after one put (lead 11-13: three pivot steps pressed on rows never drawn
+// at 1920x950, 74 rows drawn and not row 1). The looks it took are said on the size's line.
+const topRowLooks = [];
+const topRowDrawn = async (chrome, sel, most = 10000) => {
+  const looks = await evaluate(chrome, `new Promise((ok) => { const t0 = Date.now(); let n = 0;
+  const tick = () => { n += 1; const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0;
+    if (document.querySelector(${JSON.stringify(sel)})) ok(n); else if (Date.now() - t0 > ${most}) ok(-n); else setTimeout(tick, 150); }; tick(); })`);
+  topRowLooks.push(looks);
+  if (looks < 0) waitsRunOut.push(`row never drawn at the top in ${most / 1000} s (${-looks} looks): ${sel}`);
+  return looks > 0;
+};
 const until = async (chrome, test, most = 10000) => {
   const held = await evaluate(chrome, `new Promise((ok) => { const t0 = Date.now();
   const tick = () => { let v = false; try { v = (${test}); } catch (e) {} if (v || Date.now() - t0 > ${most}) ok(Boolean(v)); else setTimeout(tick, 150); }; tick(); })`);
@@ -2872,7 +2917,7 @@ const openAgain = async (c, log) => {
   await c.send('Page.navigate', { url: `${ORIGIN}/testbed.html` });
   await sleep(1500);
   await settle(c, log);
-  await evaluate(c, `(${screensLib})(${TOL})`);
+  await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
 };
 // A column's one filter opened from its floating cell's button, the column rolled into view from the left first.
 const VALUE_FILTER_OPEN = (col) => `(async () => {
@@ -3235,7 +3280,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/source_tables.html?table=ledger_events` });
       await sleep(800);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "document.querySelectorAll('.tables-box__body tbody tr:not(.tb-table__pad)').length > 2", 15000);
     }],
     ['Ordered by a column', async (c) => {
@@ -3276,7 +3321,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#status-panel .stall-line:not([hidden])'))");
       await evaluate(c, "(() => { document.getElementById('status-btn').click(); return true; })()");
@@ -3302,7 +3347,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label.is-unknown'))");
       DECL_REFUSED.on = false;
@@ -3312,7 +3357,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label')) && !document.querySelector('#grid-source-label-host .is-unknown, #grid-source-label-host .is-pending')");
     }],
@@ -3481,8 +3526,7 @@ const DRIVE = {
     }],
     ['Pivot, a group deleted', async (c) => {
       // Add Row scrolled to the new row at the bottom: back to the top, where row 1 is drawn
-      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
-      await until(c, "!!document.querySelector('.ag-row[row-index=\"1\"] .ag-cell[col-id=\"#\"]')").catch(() => null);
+      await topRowDrawn(c, '.ag-row[row-index="1"] .ag-cell[col-id="#"]');
       // a press on the row's # cell picks it (enableClickSelection)
       await evaluate(c, `(() => { window.__confirms = []; window.confirm = (m) => { window.__confirms.push(m); return true; };
         window.__alerts = []; window.alert = (m) => { window.__alerts.push(m); };
@@ -4309,9 +4353,19 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .run-line__summary');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // A line counted only to 200 and a Waiting card still counting (lead 11-13): the queue read again with both.
+    ['Chain queue, a counted line and a counting Waiting', async (c) => {
+      HELD_RUN.on = false;
+      COUNTED.on = true;
+      await evaluate(c, "document.querySelector('#chain-queue-mount .chain-queue-refresh').click(); true");
+      await until(c, "!!document.querySelector('#chain-queue-mount tr[data-line-id=\"tx-counted-0000-0000\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount tr[data-line-id="tx-counted-0000-0000"]');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     // An html cell (lead 10-22): its size and «Paste HTML»; a paste with plain text only, then one with HTML.
     ['Chain, an html cell', async (c) => {
       HELD_RUN.on = false;    // on till here: the queue's own poll read it again before the held run's cell
+      COUNTED.on = false;
       PASTE_HTML.on = true;
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
@@ -4356,7 +4410,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "document.querySelectorAll('.world-facts .world-fact').length === 4", 15000);
       WORLDS_OVERLAP.on = false;
     }],
@@ -4368,7 +4422,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Edit in lab')", 15000);
       await evaluate(c, `(() => { const b = document.querySelector('button[data-action="new-declaration"][data-value="import"]');
         if (b) b.click(); return Boolean(b); })()`);
@@ -4406,7 +4460,7 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
         await chrome.send('Page.navigate', { url: `${ORIGIN}/${entry}` });
         await sleep(300);
         await settle(chrome, log);
-        await evaluate(chrome, `(${screensLib})(${TOL})`);
+        await evaluate(chrome, `(${screensLib})(${TOL}, ${opensAsPanel})`);
         const add = (state, lines) => { for (const l of lines) found.push({ entry, size, state, ...l }); };
         const built = await evaluate(chrome, 'document.documentElement.dataset.screensBuild || null');
         if (built !== STAMP) add('loaded', [{ rule: 'built now', path: entry, what: `the page is not this run's build (${built || 'no mark'})` }]);
@@ -4445,6 +4499,7 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
         } catch (err) {
           found.push({ entry, size, state: 'driving', rule: 'answers', path: entry, what: `could not be driven: ${err.message}` });
         }
+        if (topRowLooks.length) console.log(`  ${label} ${entry} ${size}: top rows drawn after ${topRowLooks.splice(0).join(' · ')} looks (minus: never)`);
         console.log(`  ${label} ${entry} ${size}: ${panels.length} panels opened${panels.length ? ` - ${panels.map((p) => `«${p}»`).join(' ')}` : ''}`);
         for (const u of log.missing) found.push({ entry, size, state: 'answers', rule: 'answers', path: u, what: 'no answer in screens_answers.json.gz' });
         if (log.refused.length) console.log(`  ${label} ${entry} ${size}: ${log.refused.length} non-GET refused (${[...new Set(log.refused)].join(', ')})`);
@@ -4675,6 +4730,8 @@ const MUTANTS = [
   { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
       "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },
+  { name: 'a line counted only to 200 drawn as exact', entry: 'admin.html', rule: 'contents', at: 'chain-queue',
+    file: 'src/chain_queue_panel.js', edits: [['const stopped = isCount(t.counted_to);', 'const stopped = false;']] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',

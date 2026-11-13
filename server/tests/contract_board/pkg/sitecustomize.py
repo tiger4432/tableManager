@@ -71,7 +71,7 @@ SEAMS = {
     # any write batch committed by the write door, the rest of the group not run (census 3, W) - «쓰기 사이»
     "after_write": ("database.crud", "_apply_batch_updates_once", _after,
                     lambda *a, **k: _caller_is("apply_chain_writes", 3)),     # the chain's writes, not a user's PUT
-    # «껍데기 앞» whoever deletes shells (the chain's write, R2, fold_units)
+    # «껍데기 앞» whoever deletes shells (the chain's write, R2)
     "before_shells": ("chain.cell_layer", "delete_shells", _before, lambda *a, **k: True),
     # «처리됨 앞» the group's writes done, its events not yet marked SUCCESS
     "before_mark": ("chain.ingestion_worker", "mark_processed", _before,

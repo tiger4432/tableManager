@@ -79,7 +79,7 @@ def test_direction_and_value_projection_are_explicit_parameters():
         entity_id, lookup, hops=3, direction="outgoing")
     labels = {node["label"] for node in outgoing["nodes"]}
     assert "C" not in labels
-    assert not any(node["node_kind"] == "value" for node in outgoing["nodes"])
+    assert all(node["type"] and "node_kind" not in node for node in outgoing["nodes"])   # no node-kind axis
     assert outgoing["walk"]["direction"] == "outgoing"
     assert outgoing["walk"]["resolver_applied"] is False
 
@@ -93,8 +93,8 @@ def test_legacy_atom_is_one_honest_event_and_can_be_reseeded():
     # carried as an edge. `register` has no object, so what it leaves is the subject itself.
     # 🔴 `RETIRED_NODE_KINDS` left with `collect` on 2026-08-28: there is one kind
     # now, so a roster of the retired ones has nothing to exclude from. Asserted directly.
-    assert not any(node["node_kind"] != "entity"
-                   for node in body["nodes"])
+    assert all(node["type"] and "node_kind" not in node and "schema_kind" not in node
+               for node in body["nodes"])                       # one kind: no axis at all (lead 11-13)
     assert any(node["label"] == "OLD" for node in body["nodes"])
     reseeded = ledger_subgraph.subgraph(entity_id, lookup, hops=1)
     assert any(node["label"] == "OLD" for node in reseeded["nodes"])
@@ -114,8 +114,7 @@ def test_caps_are_reported_instead_of_looking_complete():
     body = ledger_subgraph.subgraph(
         seed, ledger_subgraph.InMemoryEvidenceLookup(many),
         hops=4, node_limit=10, edge_limit=20)
-    # measurement nodes still ride free; everything else shares node_limit
-    world = [node for node in body["nodes"] if node["node_kind"] != "value"]
+    world = list(body["nodes"])                       # every node shares node_limit (value nodes retired 08-28)
     assert len(world) == 10
     assert body["truncated"]["nodes"] is True
     assert body["truncated"]["reason"]
@@ -167,7 +166,7 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
     assert plain["propagation"]["state"] == "ranked"
     assert plain["propagation"]["ranked"], "every reached node is a candidate"
     assert all(item["type"] for item in plain["propagation"]["ranked"]), (
-        "each candidate carries its DECLARED type, not the projection's node_kind")
+        "each candidate carries its DECLARED type")
     assert all(len(item["reach"]) == 2 for item in plain["propagation"]["ranked"]), (
         "both reaches leave, unfolded - there is no ruled way to combine them yet")
 
@@ -190,6 +189,29 @@ def test_a_single_id_still_works_and_the_three_seed_states_stay_three():
         assert "both observed and a control" in str(exc)
     else:
         raise AssertionError("one subject was accepted as observed AND as a control")
+
+
+def test_a_seed_is_a_declared_entity_and_the_answer_keeps_no_shell_of_a_retired_kind():
+    """2026-08-28: a claim, an event, a point, a collection, an action and a value are not places. The seed node is
+    the entity's alone and the answer keeps none of their shells (lead 11-12: an action branch called a function
+    that no longer existed, behind a seed kind `decode_node_id` cannot produce - D's undefined-name scan)."""
+    import ast
+    import inspect
+
+    lookup = ledger_subgraph.InMemoryEvidenceLookup(signed_fixture())
+    answer = ledger_subgraph.subgraph({"positive": [explorer.entity_id("Lot", {"lot": "MARK"})],
+                                       "negative": [explorer.entity_id("Lot", {"lot": "CTRL"})]}, lookup, hops=4)
+    assert "claims_scanned" in answer["walk"], "canary: the walk's own block"
+    assert not {"enrich_actions", "actions_scanned"} & set(answer["walk"])
+    assert "claims" in answer["truncated"] and "claims" in answer["limits"], "canary: the budget blocks"
+    assert "actions" not in answer["truncated"] and "actions" not in answer["limits"]
+    assert [sorted(item) for item in answer["seeds"]] == [["id", "sign"]] * 2
+    with pytest.raises(ValueError):
+        ledger_subgraph.decode_node_id("ledger-action:v1:x")
+    seed = ast.parse(inspect.getsource(ledger_subgraph._seed_node))
+    assert not [node for node in ast.walk(seed) if isinstance(node, (ast.If, ast.IfExp, ast.Match))], (
+        "a seed kind came back")
+    assert "action_lookup" not in inspect.signature(ledger_subgraph._walk).parameters
 
 
 def uneven_fixture():
@@ -319,7 +341,7 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration(monkeypatch)
         assert ledger_subgraph._entity_node("Lot", {"lot": "A"})["label"] == "A"
         # Nothing else about the node moves.
         node = ledger_subgraph._entity_node("die", keys)
-        assert node["node_kind"] == "entity" and node["keys"] == keys
+        assert "node_kind" not in node and node["keys"] == keys
         assert node["id"] == explorer.entity_id("die", keys)
     finally:
         ledger_subgraph._WALK_DECLARATION.reset(token)
@@ -817,7 +839,7 @@ def test_sql_lookup_round_trip_uses_persisted_event_identity(pg_engine):
     # And the walk over that read draws the declared world only: two lots, one edge that
     # cites the atom it came from. The value atom is an observation, not a node.
     assert sorted(node["label"] for node in body["nodes"]) == ["SQL-A", "SQL-B"]
-    assert all(node["node_kind"] == "entity" for node in body["nodes"])
+    assert all(node["type"] and "node_kind" not in node for node in body["nodes"])
     (edge,) = body["edges"]
     assert edge["predicate"] == "derived_from"
     assert edge["claim_id"] == str(atoms[0].id)

@@ -11,7 +11,6 @@ its line there.
     a collision merge      state: none         plain: the cell's line
     a file's blank         state: t blank      plain: dropped, as any machine's blank
     a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)
-    the replay's lines     test_fold_units_leaves_what_the_chain_leaves_pg
 
 A no-history column keeps no layers: its value is t's, the last write's, a blank included; a pin or a layer removal
 on it is refused by name (lead 11-12 안 1)."""

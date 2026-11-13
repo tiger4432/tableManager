@@ -169,7 +169,7 @@ export class RankListPanel extends WalkedListPanel {
     for (const ev of c.evidence || []) {
       for (const hop of ev.hops || []) {
         const line = doc.createElement('div');
-        line.className = hop.declaredOnly ? 'rb-rank-hop is-declared' : 'rb-rank-hop';
+        line.className = 'rb-rank-hop';
         const kind = doc.createElement('span');
         kind.className = 'rb-rank-hop-kind';
         kind.textContent = hop.kind || ABSENT;
@@ -177,13 +177,6 @@ export class RankListPanel extends WalkedListPanel {
         label.className = 'rb-rank-hop-label';
         label.textContent = hop.label || '';
         line.append(kind, label);
-        if (hop.ref) {
-          const ref = doc.createElement('span');
-          ref.className = 'rb-rank-hop-ref';
-          // The ref is what makes a hop checkable, so it is shown verbatim.
-          ref.textContent = hop.ref;
-          line.appendChild(ref);
-        }
         box.appendChild(line);
       }
     }

@@ -509,6 +509,9 @@ def section_autovacuum(p):
     print("     pg_class.reltuples(=vacuum/analyze가 유지, 수집기와 함께 유실되지 않음)와")
     print("     대조하고, 2배 이상 어긋나면 «비율을 계산하지 않는다».")
 
+    from database import lines
+
+    schemas, names = lines.every_schema_tables(p.conn)
     rows = p.rows("""
         SELECT s.relname, s.n_live_tup, s.n_dead_tup, s.n_mod_since_analyze,
                s.last_autovacuum, s.last_autoanalyze, s.last_vacuum, s.last_analyze,
@@ -516,9 +519,10 @@ def section_autovacuum(p):
                c.reltuples::bigint, c.relpages,
                pg_total_relation_size(c.oid)
         FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid
+        WHERE s.schemaname = ANY(:schemas) AND s.relname = ANY(:names)
         ORDER BY s.n_dead_tup DESC NULLS LAST, c.relpages DESC
         LIMIT 15
-    """)
+    """, schemas=schemas, names=names)
     if not rows:
         print("     읽을 사용자 테이블이 없다.")
         return
@@ -821,14 +825,17 @@ def section_sizes(p, limit=20):
                "«안 쓰인다»가 아니라 «아직 안 쓰였다»일 수 있다. 삭제 판단은 초기화 시각을 보고 할 것.")
 
     sub("순차 스캔 vs 인덱스 스캔 (대량 적재 후 플래너가 뒤집혔는지의 단서)")
+    from database import lines
+
+    schemas, names = lines.every_schema_tables(p.conn)
     rows = p.rows("""
         SELECT relname, seq_scan, seq_tup_read, idx_scan,
                CASE WHEN seq_scan > 0 THEN (seq_tup_read / seq_scan)::bigint ELSE 0 END
         FROM pg_stat_user_tables
-        WHERE seq_scan > 0
+        WHERE seq_scan > 0 AND schemaname = ANY(:schemas) AND relname = ANY(:names)
         ORDER BY seq_tup_read DESC NULLS LAST
         LIMIT 12
-    """)
+    """, schemas=schemas, names=names)
     print(f"\n  {'테이블':30} {'seq스캔':>10} {'seq로 읽은 행':>16} {'회당 행':>12} {'idx스캔':>12}")
     print("  " + SUB)
     for name, ss, str_, is_, avg in rows:

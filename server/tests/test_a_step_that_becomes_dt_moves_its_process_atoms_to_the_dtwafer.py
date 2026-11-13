@@ -29,7 +29,7 @@ import event_constants                                              # noqa: E402
 import mapper_sdk                                                   # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from chain import rule_shape                                        # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 from database.context import channel                                # noqa: E402
 from ledger import followup, schema                                 # noqa: E402
 from ledger.implementations import (role_mapper_registry,           # noqa: E402
@@ -38,6 +38,7 @@ from ledger.setup import LedgerSetup                                # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,             # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot            # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 pytestmark = pytest.mark.pg
@@ -67,6 +68,7 @@ def fixture_world(pg_engine, monkeypatch):
         with pg_engine.begin() as conn:
             for name in TABLES:
                 # ⚠️ QUALIFIED: an unqualified name falls through the search path to `public`
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, lines.lines_relation(name))))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
                 conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": name})
                 conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": name})
@@ -86,6 +88,8 @@ def fixture_world(pg_engine, monkeypatch):
     for name in TABLES:
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    for name in TABLES:                                         # a table has its line table (the product's shape)
+        line_tables.build(pg_engine, name)
     session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
     monkeypatch.setattr(worker, "_READ_BY_SOURCE_NAME", set())
     catalog = load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample"))
@@ -191,5 +195,5 @@ def test_deleting_the_step_phase_row_takes_back_the_value_it_filled(world):
     db.commit()
     _settle(world)
     # answered again from scratch, no step_phase row lists S9: the join's mat_type is not there (owner 11-06 step 2)
-    assert _mat_type(world) in (None, "")
+    assert _mat_type(world) is None
     assert _said(world) == [("wafer", "W1")]

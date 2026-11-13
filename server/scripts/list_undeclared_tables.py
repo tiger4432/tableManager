@@ -134,13 +134,16 @@ def system_tables(models):
 
 
 def physical_tables(conn, schema, kinds=("BASE TABLE",)):
-    from sqlalchemy import bindparam, text
-    rows = conn.execute(text(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema = :s AND table_type IN :k "
-        "ORDER BY table_name"
-    ).bindparams(bindparam("k", expanding=True)), {"s": schema, "k": list(kinds)}).fetchall()
-    return [r[0] for r in rows]
+    """The schema's base tables (`lines.base_tables`, the one seat that lists them - line tables too, `line_relations`
+    tells a declared table's apart), and its views when `kinds` names VIEW - sorted."""
+    from sqlalchemy import inspect
+
+    from database import lines
+
+    present = set(lines.base_tables(conn, lines=True, schema=schema))
+    if "VIEW" in kinds:
+        present |= set(inspect(conn).get_view_names(schema=schema))
+    return sorted(present)
 
 
 def approximate_rows(conn, schema, table):

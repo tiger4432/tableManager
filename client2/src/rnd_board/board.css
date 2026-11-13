@@ -262,9 +262,6 @@ body {
 .rb-rank-hop { display: flex; gap: 6px; font-size: var(--fs-tag); align-items: baseline; }
 .rb-rank-hop-kind { font-size: var(--fs-tag); color: var(--text-muted); text-transform: uppercase; min-width: 4rem; }
 .rb-rank-hop-label { font-family: var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-/* A hop that only names a model is dimmer than one that points at a thing in the world. */
-.rb-rank-hop.is-declared .rb-rank-hop-label { color: var(--text-muted); }
-.rb-rank-hop-ref { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--accent-2); }
 
 /* ── MARKING IS DRAWN BY ATTENUATION ─────────────────────────────────────────────
    Measured in the owner's running Spotfire (2026-08-23): a click leaves the marked row at

@@ -15,7 +15,7 @@ import { narrowingParams } from './narrowing.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
 //    그리지 않는 것이 이 저장소의 상설입니다.
 import { watchForDismiss, placeUnder } from './dropdown.js';
-import { handleCellEdit, fetchData, readColumnValues, writePlace } from './api.js';
+import { handleCellEdit, fetchData, nextPage, readColumnValues, writePlace } from './api.js';
 import { ValueFilter, ValueFloatingFilter, setWords } from './value_filter.js';
 import { loadHistory } from './timeline.js';
 import {
@@ -416,8 +416,7 @@ export function filterGridTo(pairs) {
  *  -> false when there is none to add or one is on its way. */
 export function appendNextRows() {
   if (state.isLoadingMore || !state.hasMoreData || state.allDataLoaded) return false;
-  state.currentSkip += pageLimit;
-  fetchData(false);
+  nextPage();   // Next's own read: from the last row read by key, not by a deep skip (lead 11-13)
   return true;
 }
 

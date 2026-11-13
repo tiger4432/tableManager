@@ -26,6 +26,7 @@ import { tableMenu, fillTableSelect } from './table_menu.js';
 import { timedRead, QueueReadTimeout, QUEUE_READ_TIMEOUT_MS } from './queue_poll.js';
 import { markWork } from './ui_stall.js';
 import { refusalText, refusalSaid } from './refusal.js';
+import { rowsKey } from './rows_key.js';
 
 /**
  * Write a status badge WITHOUT trusting the handle to exist.
@@ -629,17 +630,19 @@ export function askMatchCount() {
 /** Load All (main.js): every row of the grid's question, chunk by chunk. The end is a chunk shorter than `chunkLimit` -
  *  a count is «as of» a time, 10,000+ past the cap or still counting (구현자 A 67e5e9ccd ㄱ-1), so it is not the end.
  *  Only the first chunk is counted; the rest ask none (`defer_total`). `onProgress(rows so far, the exact count or
- *  null)`. -> { rows, count, looks: the chunks' looks (the first's rules, every chunk's paints), writers: the skips of
- *  the chunks whose looks said `updating` (fillWriters asks them) } */
+ *  null)`. A chunk after the first goes on from the rows so far by key (`rowsKey`), its skip the server's way back when
+ *  that row is gone. -> { rows, count, looks: the chunks' looks (the first's rules, every chunk's paints), writers: the
+ *  chunks whose looks said `updating` - {url, skip}, fillWriters asks them } */
 export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress) {
   const writers = [];
   let looks = null;
-  const read = async (skip, deferTotal) => {
-    const res = await gridFetch(`${baseUrl}?skip=${skip}&limit=${chunkLimit}&${queryParams}${deferTotal ? '&defer_total=true' : ''}`);
+  const read = async (skip, deferTotal, key = null) => {
+    const url = `${baseUrl}?skip=${skip}&limit=${chunkLimit}${key ? `&${new URLSearchParams(key)}` : ''}&${queryParams}${deferTotal ? '&defer_total=true' : ''}`;
+    const res = await gridFetch(url);
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     const answer = await res.json();
     looks = pageLooks(looks, answer.looks, skip > 0);
-    if (answer.looks && answer.looks.updating) writers.push(skip);
+    if (answer.looks && answer.looks.updating) writers.push({ url, skip });
     return answer;
   };
   // a pivot answer's key groups as grid rows, as a page's are (owner 10-22)
@@ -653,7 +656,7 @@ export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress)
   while (last === chunkLimit) {
     // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const chunk = rowsOf(await read(rows.length, true));
+    const chunk = rowsOf(await read(rows.length, true, rowsKey(rows, 'after')));
     if (!chunk.length) break;
     rows = rows.concat(chunk);
     last = chunk.length;
@@ -685,13 +688,12 @@ export async function openExport(url) {
   return res.ok ? { res } : { refused: await refusalText(res, EXPORT_FAILED) };
 }
 
-/** The row a neighbouring page goes on from: the shown page's last (`after`) or first (`before`) row as the server sent
- *  it - the page cache; none cached (or a table without row_id), none - that page goes by skip. */
+/** The row a neighbouring page goes on from: the shown page's (the page cache), or in the infinite view - no page cache -
+ *  the last read's last row (`state.readAfter`), not the grid's last row: a broadcast adds its rows at the end. */
 function pageKey(side) {
+  if (state.viewMode === 'infinite') return side === 'after' ? state.readAfter : null;
   const page = state.pageCache.get(state.currentSkip);
-  const rows = (page && page.data) || [];
-  const row = side === 'after' ? rows[rows.length - 1] : rows[0];
-  return row && row.row_id != null ? { [side]: row.row_id } : null;
+  return rowsKey((page && page.data) || [], side);
 }
 
 /** Next: the page after the shown one, asked from its last row (lead e570dcda5 - the server's key_page reads that page's
@@ -723,6 +725,7 @@ export async function fetchData(resetSkip = true, key = null) {
     state.pageCache.clear();
     clearRangeSelection();
     state.currentSkip = 0;
+    state.readAfter = null;
     state.hasMoreData = true;
     state.allDataLoaded = false;
   } else {
@@ -791,6 +794,7 @@ export async function fetchData(resetSkip = true, key = null) {
     if (result.data.length < pageLimit) {
       state.hasMoreData = false;
     }
+    state.readAfter = rowsKey(result.data, 'after');
 
     // Render rowData depending on View Mode
     if (state.viewMode === 'infinite') {
@@ -1468,14 +1472,15 @@ export async function addRows(count) {
 /** The long rows of pivot groups, by their keys - every item, shown or not (owner 10-23). A read that brings a row of
  *  other keys did not narrow, and the delete stops on it before anything is deleted (lead 10-23). */
 const GROUP_READ_PAGE = 1000;
-async function groupLongIds(groups) {
+export async function groupLongIds(groups) {
   const view = state.pivotView;
   const ids = [];
   for (const node of groups) {
     const filters = encodeURIComponent(JSON.stringify(groupFilters(view, node.data)));
+    let key = null;   // the rows read so far's last - the next read goes on from it (rowsKey), skip the server's way back
     for (let skip = 0; ; skip += GROUP_READ_PAGE) {
       const res = await gridFetch(`${API_BASE}/tables/${state.currentTable}/data?skip=${skip}&limit=${GROUP_READ_PAGE}`
-        + `&defer_total=true&filters=${filters}`);
+        + `${key ? `&${new URLSearchParams(key)}` : ''}&defer_total=true&filters=${filters}`);
       if (!res.ok) throw new Error(await refusalText(res, 'The rows of the selected keys could not be read'));
       const rows = (await res.json()).data || [];
       const stray = strayLongRow(view, node.data, rows);
@@ -1485,6 +1490,7 @@ async function groupLongIds(groups) {
       }
       ids.push(...rows.map((row) => row.row_id));
       if (rows.length < GROUP_READ_PAGE) break;
+      key = rowsKey(rows, 'after');
     }
   }
   return ids;

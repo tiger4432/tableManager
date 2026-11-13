@@ -12,7 +12,7 @@ import event_constants
 from admin import retroactive
 from chain import cell_layer
 from chain import ingestion_worker as worker
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from database.context import channel, outbox_mode
 from tests.test_a_join_take_can_gather_every_row_of_a_key import _NoClose, _no_post
 
@@ -97,7 +97,9 @@ def _rule_1s_layer(db):
     _put(db, Y, [{"k": "A"}]); _put(db, Z, [{"k": "A"}]); _drain(db)
     _put(db, X, [{"k": "A", "val": "v1"}]); _drain(db)
     assert (_vals(db, Y), _vals(db, Z)) == ({"A": "v1"}, {"A": "v1"})
-    return db.query(models.CellSource).filter_by(table_name=Y, column_name="val").one().source_name
+    row_ids = [r.row_id for r in db.query(models.DYNAMIC_TABLES[Y])]
+    ((source,),) = [list(cell) for cell in lines.layers(db, Y, row_ids, columns=["val"]).values()]
+    return source
 
 
 def test_the_withdraw_operation_carries_on_to_the_next_chain(db):

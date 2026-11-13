@@ -14,16 +14,6 @@ NAMED = re.compile(r"\b(table_name|relname|tablename)\s*(=\s*(ANY\s*\(|:|%s|%\(\
 THE_SEAT = "database/lines.py:base_tables"
 #: enumerators not moved yet - the next round's list (target 0), each with why it is not wrong today
 TO_MOVE = {
-    "admin/schema_drift.py:_actual": "loops over declared names only",
-    "chain/ingestion_worker.py:_analyze_stale_tables_sync": "boot ANALYZE - should take line tables too",
-    "chain/ingestion_worker.py:<module>": "layer table health report - line tables wanted",
-    "main.py:bootstrap_database_schema": "intersected with DYNAMIC_TABLES",
-    "migrations/align_indexes_to_declarations.py:run": "intersected with the declared plan",
-    "scripts/diagnose_db_health.py:<module>": "bloat report - line tables wanted",
-    "scripts/diagnose_slow_after_ingest.py:section_autovacuum": "autovacuum report - line tables wanted",
-    "scripts/diagnose_slow_after_ingest.py:section_sizes": "seq scan report - line tables wanted",
-    "scripts/ledger_deploy_preflight.py:inspect_database": "a table count, read only",
-    "scripts/list_undeclared_tables.py:physical_tables": "residue report, line tables of declared tables left out",
 }
 
 

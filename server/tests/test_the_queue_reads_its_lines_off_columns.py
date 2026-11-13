@@ -164,8 +164,9 @@ def test_the_line_list_answers_as_the_payload_did(db):
         db.commit()
     old = _old_lines(db)
     assert len({line[1] is not None for line in old}) == 2 and len(old) >= 5, old
-    new = sorted(((line.key, line.run, line.rows, line.first_id) for line in queue_lines.waiting_lines(db, 100)),
-                 key=lambda r: r[3])
+    lines = queue_lines.waiting_lines(db, 100)
+    counts = queue_lines.line_counts(db, lines)
+    new = sorted(((line.key, line.run, counts[line.key].rows, line.first_id) for line in lines), key=lambda r: r[3])
     assert sorted(new) == sorted(tuple(line) for line in old)
     for key, _run, _rows, _first in old:
         narrow, line = event_constants.queue_line_rows(models.DatabaseOutbox, key)
