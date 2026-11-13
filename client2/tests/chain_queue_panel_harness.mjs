@@ -864,21 +864,21 @@ async function xSuite(m, say) {
     && rowXs(bare.host).every((x) => !x), String(byTag(bare.host, 'TH').length));
   // A line the server counted only to `counted_to` says so in its badge, its Rows and its question; a line without the
   // key is exact, drawn as before (lead 11-13).
-  const seatCounted = (extra) => seat({ ...BODY, waiting_transactions: [{ transaction_id: 'dddddddd-1111', events: 1000,
-    rows: 1000, tables: ['wafer_process'], waiting_seconds: 40, cancel: { key: 'tx:dddddddd-1111' }, ...extra }] });
+  const seatCounted = (extra) => seat({ ...BODY, waiting_transactions: [{ transaction_id: 'dddddddd-1111', events: 200,
+    rows: 200, tables: ['wafer_process'], waiting_seconds: 40, cancel: { key: 'tx:dddddddd-1111' }, ...extra }] });
   const rowsDrawn = (s) => [...[...rowsOf(s.host)[0].children].find((td) => td.getAttribute('data-col') === 'rows').children]
     .map((n) => n.textContent);
-  const stoppedSeat = seatCounted({ counted_to: 1000 });
+  const stoppedSeat = seatCounted({ counted_to: 200 });
   press(rowXs(stoppedSeat.host)[0]);
-  say('XC1 a line counted only to 1,000: «1,000+ events» beside Rows «1,000+», its × asks «Skip 1,000+ events?»',
-    same([rowsDrawn(stoppedSeat), stoppedSeat.asked], [['1,000+ events', '1,000+'], ['Skip 1,000+ events?']]), JSON.stringify([rowsDrawn(stoppedSeat), stoppedSeat.asked]));
-  const moreRows = seatCounted({ counted_to: 1000, rows: 1450 });
-  say('XC3 a counted line whose rows pass counted_to: Rows says its own rows «1,450+», not «1,000+»',
-    same(rowsDrawn(moreRows), ['1,000+ events', '1,450+']), JSON.stringify(rowsDrawn(moreRows)));
+  say('XC1 a line counted only to 200: «200+ events» beside Rows «200+», its × asks «Skip 200+ events?»',
+    same([rowsDrawn(stoppedSeat), stoppedSeat.asked], [['200+ events', '200+'], ['Skip 200+ events?']]), JSON.stringify([rowsDrawn(stoppedSeat), stoppedSeat.asked]));
+  const moreRows = seatCounted({ counted_to: 200, rows: 1450 });
+  say('XC3 a counted line whose rows pass counted_to: Rows says its own rows «1,450+», not «200+»',
+    same(rowsDrawn(moreRows), ['200+ events', '1,450+']), JSON.stringify(rowsDrawn(moreRows)));
   const exactSeat = seatCounted({});
   press(rowXs(exactSeat.host)[0]);
   say('XC2 the same line without the key is exact, drawn as before',
-    same([rowsDrawn(exactSeat), exactSeat.asked], [['1000'], ['Skip 1000 events?']]), JSON.stringify([rowsDrawn(exactSeat), exactSeat.asked]));
+    same([rowsDrawn(exactSeat), exactSeat.asked], [['200'], ['Skip 200 events?']]), JSON.stringify([rowsDrawn(exactSeat), exactSeat.asked]));
   const sent = [];
   const answer = (status, body) => async (url, init) => {
     sent.push({ url, method: init.method, body: init.body });
