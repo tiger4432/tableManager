@@ -157,7 +157,31 @@ function dChecks(M) {
   const capShort = M.pagingView({ total: 10000, capped: true }, 250, LIMIT, 20);
   const countingShort = M.pagingView({ total: null, counting: true }, 0, LIMIT, 7);
   const cOf = (x) => M.countOf(x);
+  // where the page stands (D 3b11ec645, lead 11-14): «~N» while a deep jump's place is approximate, M the count's
+  const APPROX = { approximate: true, top: false };
+  const exactAt1 = M.pagingView(120, 0, LIMIT, LIMIT);
+  const approxAt1 = M.pagingView(120, 0, LIMIT, LIMIT, APPROX);
+  const approxTop = M.pagingView(120, 0, LIMIT, LIMIT, { approximate: true, top: true });
+  const landed = M.pageStand(M.EXACT, null, { data: [1, 2], approximate: true });
+  const walked = M.pageStand(landed, { after: 'r9' }, { data: [1, 2] });
+  const page1 = M.pageStand(walked, null, { data: [1, 2] });
+  const exactNext = M.pageStand(M.EXACT, { after: 'r9' }, { data: [1, 2] });
+  const exactJump = M.pageStand(M.EXACT, null, { data: [1, 2] });
+  const upFound = M.pageStand(APPROX, { before: 'r1' }, { data: [1, 2] }, true);
+  const upNone = M.pageStand(APPROX, { before: 'r1' }, { data: [] }, true);
+  const st = (s) => [s.approximate, s.top, s.fresh];
   return [
+    ['D18 an exact page: no «~», Prev off on page 1', exactAt1.approximate === false && exactAt1.prevDisabled === true, exactAt1],
+    ['D19 an approximate page: «~», its M the count\'s own, Prev on at «~1» until a read above found nothing',
+      approxAt1.approximate === true && approxAt1.totalPagesText === exactAt1.totalPagesText && approxAt1.prevDisabled === false
+      && approxTop.prevDisabled === true, [approxAt1, approxTop]],
+    ['D20 a deep jump lands approximate on a new cache; Next keeps it; a read with no key that is exact (page 1) clears it',
+      JSON.stringify([st(landed), st(walked), st(page1)]) === JSON.stringify([[true, false, true], [true, false, false], [false, false, true]]),
+      [landed, walked, page1]],
+    ['D21 an exact page stays exact by key and by jump, its cache kept',
+      JSON.stringify([st(exactNext), st(exactJump)]) === JSON.stringify([[false, false, false], [false, false, false]]), [exactNext, exactJump]],
+    ['D22 above «~1»: rows found stay «~» on a new cache; none found is the top, the page kept',
+      JSON.stringify([st(upFound), st(upNone)]) === JSON.stringify([[true, false, true], [true, true, false]]), [upFound, upNone]],
     ['D1 the table whole: its count and how long ago it was counted', M.matchCountText(WHOLE, NOW) === '4,012,334 rows · 10s ago', M.matchCountText(WHOLE, NOW)],
     ['D2 a narrowed read past the cap: 10,000+, no age', M.matchCountText({ count: { total: 10000, capped: true, counted_at: AT } }, NOW) === '10,000+ rows'],
     ['D3 an answer not counted yet says it is counting - the server\'s counting and a deferred page alike; a read never asked stays «…»',
@@ -246,6 +270,12 @@ const DEFECTS = [
   ['N16 a failed count reads as still counting', swap('  if (c.failed) return c.failed.reason ? `${COUNT_FAILED} (${c.failed.reason})` : COUNT_FAILED;\n', '')],
   ['N17 a failed count\'s floor is a lone «…»', swap(': c.failed ? COUNT_FAILED : c.counting', ': c.counting')],
   ['N18 a failed count has no hover, so a cut reason is lost', swap('  if (c.failed) return c.failed.at ? `${matchCountText(c)} · ${localStamp(c.failed.at)}` : matchCountText(c);\n', '')],
+  // ── an approximate page (D 3b11ec645, lead 11-14) ──
+  ['P1 the «~» is dropped', swap('approximate: stand.approximate,', 'approximate: false,')],
+  ['P2 the «~» stays after page 1', swap('Boolean(answer && answer.approximate === true)', 'was.approximate || Boolean(answer && answer.approximate === true)')],
+  ['P3 Prev stops at «~1» by the counter', swap('prevDisabled: stand.approximate ? stand.top : currentPage === 1,', 'prevDisabled: currentPage === 1,')],
+  ['P4 a new stand keeps the old stand\'s pages', swap('fresh: above || (!key && (approximate || was.approximate))', 'fresh: false')],
+  ['P5 nothing above «~1» is drawn as an empty page', swap('  if (above && !rows) return { approximate: was.approximate, top: true, fresh: false };\n', '')],
   ['M7 NaN is treated as a counted number',
     swap('typeof total === \'number\' && Number.isFinite(total)',
       "typeof total === 'number'")],

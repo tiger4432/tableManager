@@ -111,13 +111,25 @@ export function shiftCount(x, by) {
   return c.total === null || c.capped ? c : { ...c, total: Math.max(0, c.total + by) };
 }
 
+/** Where the shown page stands. A page-number jump deep in row_id order lands within a histogram bucket of its page and
+ *  says `approximate: true` (D 3b11ec645). Next/Prev read on by key from the shown page and keep its stand; a read with
+ *  no key (a jump, page 1, a sort, a filter, a row jump) takes its answer's. `above` - Prev at «~1»: no rows is the top,
+ *  the shown page stays. `fresh` - the page cache holds one stand's pages; a new stand empties it. */
+export const EXACT = Object.freeze({ approximate: false, top: false });
+export function pageStand(was, key, answer, above = false) {
+  const rows = answer && Array.isArray(answer.data) ? answer.data.length : 0;
+  if (above && !rows) return { approximate: was.approximate, top: true, fresh: false };
+  const approximate = key ? was.approximate : Boolean(answer && answer.approximate === true);
+  return { approximate, top: false, fresh: above || (!key && (approximate || was.approximate)) };
+}
+
 /** 페이지 컨트롤이 무엇을 보여야 하는가. DOM 을 모르므로 «수»로만 답합니다.
  *
  * 🔴 `Math.ceil(null / limit) || 1` 은 «1» 입니다. 그러면 아직 안 센 표가 「1쪽뿐」이 되고
  *    `currentPage >= totalPages` 가 참이 되어 «다음이 꺼집니다» -- 세는 중에는 다음 쪽으로
  *    갈 수 없게 됩니다. 「모른다」와 「1쪽뿐」은 «다른 상태»입니다.
  */
-export function pagingView(x, currentSkip, pageLimit, shown) {
+export function pagingView(x, currentSkip, pageLimit, shown, stand = EXACT) {
   const { total, capped } = countOf(x);
   const currentPage = Math.floor(currentSkip / pageLimit) + 1;
   const counted = total !== null && !capped;
@@ -126,7 +138,10 @@ export function pagingView(x, currentSkip, pageLimit, shown) {
     currentPage,
     totalPages,
     totalPagesText: counted ? String(totalPages) : capped ? `${Math.ceil(total / pageLimit)}+` : COUNTING,
-    prevDisabled: currentPage === 1,
+    // «~N»: the page box's N is the page asked, not counted from the top (D 3b11ec645); M is the count's
+    approximate: stand.approximate,
+    // an approximate «~1» may have rows above it - Prev stops where a read above found none (lead 11-14)
+    prevDisabled: stand.approximate ? stand.top : currentPage === 1,
     // 모르거나 10,000+ 이면 끝은 «limit 보다 짧은 쪽» (구현자 A 67e5e9ccd ㄱ-1) — `shown` 은 지금 쪽의 행 수.
     // 센 수도 늙으니(총괄 0fd18ae19 5) 꽉 찬 쪽은 센 쪽 수의 끝이어도 끝이 아닙니다.
     nextDisabled: counted ? currentPage >= totalPages && !(isCounted(shown) && shown >= pageLimit) : isCounted(shown) && shown < pageLimit,

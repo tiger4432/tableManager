@@ -261,7 +261,7 @@ const decide = (m) => {
 };
 const LOOK = ['grid_look.js', ['expression.js', 'grid_order.js', 'testbed/palette.js'], (m) => [decide(m), paintsOf(m), told(m), colours(m), writing(m)]];
 const PALETTE = ['testbed/palette.js', [], (m) => [['#2b7de9', '#ABCDEF', 'warn', '#abc', '', null].map(m.isColour)]];   // the colour's one seat
-const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js'], choose];
+const STATE = ['state.js', ['grid_ledger_column.js', 'world.js', 'latest_read.js', 'match_count.js'], choose];
 const MUTANTS = [
   ['M1 a paint not over the rules', LOOK, '  if (hand) role = paint.role;\n', ''],
   ['M2 the first rule wins, not the later', LOOK, '    else role = rule.role;', '    else role = role || rule.role;'],

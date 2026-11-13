@@ -24,6 +24,7 @@ export const elements = {
   get prevPageBtn() { return document.getElementById('prev-page-btn'); },
   get nextPageBtn() { return document.getElementById('next-page-btn'); },
   get pageInfo() { return document.getElementById('page-info'); },
+  get pageApprox() { return document.getElementById('page-approx'); },
   get pageInput() { return document.getElementById('page-input'); },
   get totalPagesSpan() { return document.getElementById('total-pages'); },
   get tabGlobalBtn() { return document.getElementById('tab-global'); },

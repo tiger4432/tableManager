@@ -15,7 +15,7 @@ import { renderGrid, buildColumnDefs, dropGridFilters, filterGridTo, renderFilte
 import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
 import { pageLooks, saidLooksChanged, takeWriters } from './grid_look.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
-import { countOf, setMatchCount } from './match_count.js';
+import { countOf, setMatchCount, pageStand, EXACT } from './match_count.js';
 import { loadHistory } from './timeline.js';
 import { getLocalTimeString, showToast } from './utils.js';
 // 거절·무응답의 문장은 그 좌석이 짓는다. 뜻을 두 번 짓지 않는다.
@@ -671,6 +671,7 @@ export function showAllRows(rows, looks = null) {
   state.allDataLoaded = true;
   state.hasMoreData = false;
   state.currentSkip = 0;
+  state.pageStand = EXACT;
   state.looks = looks;   // every chunk's paints, as a later page of the infinite view keeps them (pageLooks)
   saidLooksChanged();
   state.gridApi.setGridOption('rowData', overlayStagedEdits(rows));
@@ -705,18 +706,22 @@ export function nextPage() {
   return fetchData(false, key);
 }
 
-/** Prev: the page before the shown one, asked from its first row. */
+/** Prev: the page before the shown one, asked from its first row. At an approximate «~1» the rows above are asked the
+ *  same way and the page number stays 1 (lead 11-14). */
 export function prevPage() {
-  if (state.currentSkip < pageLimit) return Promise.resolve();
+  const above = state.pageStand.approximate && state.currentSkip < pageLimit;
+  if (state.currentSkip < pageLimit && !above) return Promise.resolve();
   const key = pageKey('before');
-  state.currentSkip -= pageLimit;
+  if (!above) state.currentSkip -= pageLimit;
   state.allDataLoaded = false;
-  return fetchData(false, key);
+  return fetchData(false, key, above ? 'above' : null);
 }
 
 // Fetch row data and render inside AG-Grid (Handles Pagination). `key` - Next's {after} or Prev's {before}; a page-number
-// jump sends none (skip).
-export async function fetchData(resetSkip = true, key = null) {
+// jump sends none (skip). `how` - 'jump' a page number typed, 'above' Prev's read above an approximate «~1», null the shown
+// page read again (a save, a live update).
+export async function fetchData(resetSkip = true, key = null, how = null) {
+  const above = how === 'above';
   // a page read waits for the one out; a read from the top (a table, a sort, a filter, a reconnect) asks at once
   if (!state.currentTable || (state.isLoadingMore && !resetSkip)) return;
   markWork('rows', state.currentTable);
@@ -728,9 +733,12 @@ export async function fetchData(resetSkip = true, key = null) {
     state.readAfter = null;
     state.hasMoreData = true;
     state.allDataLoaded = false;
+    state.pageStand = EXACT;
   } else {
-    if (state.viewMode !== 'infinite' && state.pageCache.has(state.currentSkip)) {
+    // a jump while approximate, or the read above «~1», asks the server: the cache's pages are of the shown stand
+    if (state.viewMode !== 'infinite' && !above && !(how === 'jump' && state.pageStand.approximate) && state.pageCache.has(state.currentSkip)) {
       const cached = state.pageCache.get(state.currentSkip);
+      state.pageStand = cached.stand || EXACT;
       state.looks = cached.looks || null;
       saidLooksChanged();
       state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
@@ -761,15 +769,28 @@ export async function fetchData(resetSkip = true, key = null) {
 
   // 🔴 `defer_total=true` -> 응답의 `total` 이 «null» 입니다. 행이 먼저 나오고 개수는
   //    두 번째 요청이 채웁니다. 세는 데 걸리는 시간이 첫 화면에서 빠집니다.
-  let url = `${API_BASE}/tables/${table}/data?skip=${state.currentSkip}&limit=${pageLimit}`;
-  if (key) url += `&${new URLSearchParams(key)}`;
   // A-6. One spelling of the sort, shared with the row jump — see `grid.sortParams`.
-  url += sortQueryTail();
-  url += '&defer_total=true';
   const tail = narrowing.toString();
-  if (tail) url += `&${tail}`;
+  const urlOf = (k, limit = pageLimit) => `${API_BASE}/tables/${table}/data?skip=${state.currentSkip}&limit=${limit}`
+    + (k ? `&${new URLSearchParams(k)}` : '') + sortQueryTail() + '&defer_total=true' + (tail ? `&${tail}` : '');
 
   try {
+    let anchor = key;
+    if (!anchor && how === null && state.pageStand.approximate && state.pageStand.first) {
+      // A re-read of an approximate page stands on its own first row - by skip the server would jump again and the rows
+      // would move (lead 11-14): the one row before it by key, then the page after that row; none before it, the first page.
+      const before = await gridFetch(urlOf(state.pageStand.first, 1), { signal: read.signal });
+      if (stale()) return;
+      if (!before.ok) {
+        showReadRefusal(await refusalText(before, 'Data fetch failed'));
+        state.isLoadingMore = false;
+        return;
+      }
+      anchor = rowsKey((await before.json()).data || [], 'after');
+      if (stale()) return;
+      if (!anchor) state.currentSkip = 0;
+    }
+    const url = urlOf(anchor);
     const res = await gridFetch(url, { signal: read.signal });
     if (stale()) return;
     // 🔴 C-105. 거절은 «읽기»에도 옵니다 — 그리고 그 답에는 행이 «없습니다». 종전에는 `res.ok`
@@ -785,6 +806,19 @@ export async function fetchData(resetSkip = true, key = null) {
     if (stale()) return;
     markWork(result.pivot ? 'pivot rows' : 'rows', table, Array.isArray(result.data) ? result.data.length : null);
     if (result.pivot) result.data = takePivot(result);
+    const stand = pageStand(state.pageStand, anchor, result, above);
+    if (stand.top) {   // nothing above «~1»: the shown page stays, Prev goes off
+      state.pageStand = { ...state.pageStand, top: true };
+      const shown = state.pageCache.get(state.currentSkip);
+      if (shown) shown.stand = state.pageStand;
+      updatePaginationUI(shown ? shown.count : null, shown ? shown.data.length : undefined);
+      elements.performanceLog.textContent = 'No rows above this page';
+      state.isLoadingMore = false;
+      return true;
+    }
+    if (stand.fresh) state.pageCache.clear();
+    // an approximate page keeps its first row: a read of it again starts there
+    state.pageStand = stand.approximate ? { approximate: true, top: false, first: rowsKey(result.data, 'before') } : EXACT;
     // the rows' looks before they are drawn - a later page of the infinite view keeps the paints already shown
     state.looks = pageLooks(state.looks, result.looks, state.viewMode === 'infinite' && !(resetSkip || state.currentSkip === 0));
     saidLooksChanged();
@@ -827,6 +861,7 @@ export async function fetchData(resetSkip = true, key = null) {
     if (state.viewMode !== 'infinite') {
       state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count });
       state.pageCache.get(state.currentSkip).looks = state.looks;   // a page from the cache draws with the looks it was read with
+      state.pageCache.get(state.currentSkip).stand = state.pageStand;
     }
 
     state.isLoadingMore = false;

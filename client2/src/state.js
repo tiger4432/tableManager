@@ -1,6 +1,7 @@
 import { LEDGER_COL_ID } from './grid_ledger_column.js';
 import { withWorld } from './world.js';
 import { ReadBoard } from './latest_read.js';
+import { EXACT } from './match_count.js';
 
 export const state = {
   gridApi: null,
@@ -189,6 +190,8 @@ export const state = {
   navigationJump: null,
   navigationWatchdog: null,
   pageCache: new Map(),
+  // where the shown page stands - approximate after a deep page-number jump (match_count.js pageStand)
+  pageStand: EXACT,
   txModeActive: true,
   pendingTxEdits: {}, // key: row_id + "_" + col_name -> { rowId, colId, newValue, oldValue, oldIsOverwrite, data }
   viewMode: 'pagination', // 'pagination' | 'infinite'
