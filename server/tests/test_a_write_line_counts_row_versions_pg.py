@@ -1,7 +1,7 @@
 """Lead 11-09 (owner «autovacuum ... dead 수십만 행»): on PostgreSQL the write line says, per table, the row versions its
 committed transaction made - inserted / updated (HOT) / deleted, asked on its connection just before COMMIT
-(pg_stat_xact_user_tables). A new batch inserts its rows - put bare by the claim, then written by the merge (A 11-11:
-one more row version a new row than the old write's); the same batch again updates nothing; a changed batch updates
+(pg_stat_xact_user_tables). A new batch inserts its rows - once, with their values (2269e4557, lead 11-13: no bare
+row put by the claim and written again by the merge); the same batch again updates nothing; a changed batch updates
 its rows. This scratch table keeps no lines: its rows are t's own (lead 11-11 ㄴ)."""
 import os
 import sys
@@ -66,8 +66,8 @@ def rounds(pg_engine):
 
 def test_a_new_batch_inserts_its_rows(rounds):
     rows = rounds["new"]["transaction"]["rows"]
-    assert rows[T][:2] == [4, 4], rows                          # the claim's bare row, the merge's values
-    assert " %s +4 ~4" % T in alignment_batch_counts.write_steps_text(rounds["new"])
+    assert rows[T][:2] == [4, 0], rows                          # one INSERT a row, its values in it
+    assert " %s +4 ~0" % T in alignment_batch_counts.write_steps_text(rounds["new"])
 
 
 def test_the_same_batch_again_leaves_no_dead_version(rounds):
