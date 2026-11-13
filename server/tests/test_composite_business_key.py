@@ -278,108 +278,38 @@ def test_user_vs_user_conflict_merge(sqlite_db):
     테스트 케이스 4: 비즈니스 키 충돌 발생 시, 기존 행에 저장되어 있던 값(user_a에 의한 덮어쓰기)과
     새로 병합되는 행의 값(user_b에 의한 덮어쓰기)이 모두 사용자가 기입한 값일 때,
     새로운 사용자 입력값(덮어쓰는 값)이 기존의 사용자 입력값을 덮어씌우는지 검증합니다.
+    On the overhaul both values are written through the write door and read back as lines (lines.layers).
     """
+    from database import lines
+
     db, test_table_config = sqlite_db
     dynamic_model = models.DYNAMIC_TABLES["bonding_map_test"]
 
-    # 1. 기존에 존재하던 사용자 입력값 레코드 삽입
-    row_exist = dynamic_model(
-        row_id="exist-row-uuid",
-        business_key_val="CHIPA_1_2",
-        pkg_id="CHIPA_1_2",
-        base="CHIPA",
-        x=1,
-        y=2,
-        leg="GOOD"
-    )
-    db.add(row_exist)
-    
-    # exist-row-uuid 에 대한 user_a의 CellOverwrite 생성
-    ow_exist = models.CellOverwrite(
-        table_name="bonding_map_test",
-        row_id="exist-row-uuid",
-        column_name="leg",
-        is_overwrite=True,
-        updated_by="user_a"
-    )
-    db.add(ow_exist)
+    def write(updates, by, row_id=None):
+        crud.apply_batch_updates(db, "bonding_map_test", schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(row_id=row_id, updates=updates, source_name="user", updated_by=by)]))
+        db.commit()
 
-    # exist-row-uuid 에 대한 CellSource 생성
-    src_exist = models.CellSource(
-        table_name="bonding_map_test",
-        row_id="exist-row-uuid",
-        column_name="leg",
-        source_name="user",
-        value="GOOD",
-        updated_by="user_a"
-    )
-    db.add(src_exist)
-    db.commit()
+    # 1. user_a 의 행 (키 CHIPA_1_2, leg GOOD) · 2. user_b 의 draft 행 (x, y 없음 - 키 없음, leg FAIL)
+    write({"base": "CHIPA", "x": 1, "y": 2, "leg": "GOOD"}, "user_a")
+    exist = db.query(dynamic_model).one().row_id
+    write({"base": "CHIPA", "leg": "FAIL"}, "user_b")
+    [draft] = [r.row_id for r in db.query(dynamic_model) if r.row_id != exist]
+    assert db.query(dynamic_model).filter_by(row_id=draft).one().business_key_val is None
 
-    # 2. 새로운 사용자 수정 예정인 draft 행 생성
-    row_draft = dynamic_model(
-        row_id="draft-row-uuid",
-        business_key_val=None,
-        pkg_id=None,
-        base="CHIPA",
-        x=None,
-        y=None,
-        leg="FAIL"
-    )
-    db.add(row_draft)
-    
-    # draft-row-uuid 에 대한 user_b의 CellOverwrite 생성
-    ow_draft = models.CellOverwrite(
-        table_name="bonding_map_test",
-        row_id="draft-row-uuid",
-        column_name="leg",
-        is_overwrite=True,
-        updated_by="user_b"
-    )
-    db.add(ow_draft)
+    # 3. user_b 가 draft 행의 x, y 를 적어 키 CHIPA_1_2 를 완성 - 기존 행으로 병합
+    write({"x": 1, "y": 2}, "user_b", draft)
 
-    # draft-row-uuid 에 대한 CellSource 생성
-    src_draft = models.CellSource(
-        table_name="bonding_map_test",
-        row_id="draft-row-uuid",
-        column_name="leg",
-        source_name="user",
-        value="FAIL",
-        updated_by="user_b"
-    )
-    db.add(src_draft)
-    db.commit()
-
-    # 3. draft 행의 x, y 값을 기입해 'CHIPA_1_2' 키를 완성 시도 (사용자 b에 의한 업데이트)
-    batch_conflict = schemas.GeneralUpdateBatch(
-        updates=[
-            schemas.GeneralUpdateItem(
-                row_id="draft-row-uuid",
-                updates={"x": 1, "y": 2},
-                source_name="user",
-                updated_by="user_b"
-            )
-        ]
-    )
-
-    crud.apply_batch_updates(db, "bonding_map_test", batch_conflict)
-    db.commit()
-
-    # 4. 병합 후 exist-row-uuid의 leg 값이 신규 덮어씌워진 값인 "FAIL"로 업데이트되었는지 검증
+    # 4. 병합 후 한 행만 남고, 그 leg 는 새 사용자 값 FAIL
     db.expire_all()
-    row_exist_check = db.query(dynamic_model).filter(dynamic_model.row_id == "exist-row-uuid").first()
-    assert row_exist_check is not None
-    assert row_exist_check.leg == "FAIL"  # 기존의 "GOOD"에서 새로운 user 값 "FAIL"로 병합 덮어씌우기 적용 완료
+    [row] = db.query(dynamic_model).all()
+    assert (row.row_id, row.business_key_val, row.leg) == (exist, "CHIPA_1_2", "FAIL")
 
-    # 5. 기존에 존재했던 user_a의 "GOOD" 값이 "user (old_exist_exist-)" 라는 백업 소스로 보존되었는지 검증
-    backup_src = db.query(models.CellSource).filter(
-        models.CellSource.table_name == "bonding_map_test",
-        models.CellSource.row_id == "exist-row-uuid",
-        models.CellSource.column_name == "leg",
-        models.CellSource.source_name == "user (old_exist_exist-)"
-    ).first()
-    assert backup_src is not None
-    assert backup_src.value == "GOOD"
+    # 5. user_a 의 GOOD 은 백업 소스 «user (old_exist_<6>)» 로 그 작성자와 함께 남는다
+    layers = lines.layers(db, "bonding_map_test", [exist], ["leg"])[(exist, "leg")]
+    assert (layers["user"]["value"], layers["user"]["updated_by"]) == ("FAIL", "user_b")
+    backup = layers["user (old_exist_%s)" % exist[:6]]
+    assert (backup["value"], backup["updated_by"]) == ("GOOD", "user_a")
 
 
 # ===========================================================================
