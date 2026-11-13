@@ -366,7 +366,7 @@ def test_a_member_two_hubs_reach_at_one_time_joins_the_same_hub_on_both_engines(
             payload = trace_router._evidence_graph(conn, node_id=seeds, hops=1, direction="both", node_limit=200,
                                                    edge_limit=400, engine=engine)
         hubs[engine] = sorted((node["id"], node["hub"]["count"]) for node in payload["nodes"]
-                              if node.get("node_kind") == "hub")
+                              if "hub" in node)
     assert sum(count for _id, count in hubs["stored"]) == 6, hubs           # canary: the six wafers are members
     assert hubs["stored"] == hubs["virtual"], hubs
 

@@ -34,7 +34,7 @@ from sqlalchemy import text
 
 # Every test here drives `ledger` / `ledger_client`, both of which sit on `pg_engine` and
 # skip without a declared PostgreSQL (S-256).
-pytestmark = pytest.mark.pg
+pytestmark = [pytest.mark.pg, pytest.mark.usefixtures("stored_walks")]   # a stored-only ledger fixture (11-10; PG, left out of f5a2b1998's sqlite count, 11-12)
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 

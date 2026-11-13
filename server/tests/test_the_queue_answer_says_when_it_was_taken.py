@@ -49,7 +49,7 @@ def _plant(db, created_at=PLANTED):
         event_uuid=str(uuid.uuid4()), table_name="dt_map", event_type="ROW_UPDATED",
         payload={"transaction_id": TX}, processed_chain=False,
         created_at=created_at))
-    db.flush()
+    db.commit()
 
 
 def _handler():
@@ -152,6 +152,6 @@ def test_every_column_this_route_already_had_is_still_there(client, db_session):
                 "waiting_transactions", "listed", "not_measured"):
         assert key in body, "the round dropped an existing column: %s" % key
     #: ⚠️ 절대 수를 못 박지 않는다 — 남의 대기 행이 생기는 날 «이 시험»이 빨개진다.
-    assert body["waiting"] >= 1
+    assert body["waiting"]["total"] >= 1
     assert any(g["transaction_id"] == TX for g in body["waiting_transactions"])
     assert body["listed"]["capped"] is False

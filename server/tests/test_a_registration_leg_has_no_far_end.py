@@ -11,7 +11,7 @@ SEED = [("wafer", {"wafer": "W1"})]
 
 class _Read(VirtualEvidenceLookup):
     def __init__(self):                         # no connection - `_arms` spells SQL only
-        pass
+        self.filters = {}                       # no value filter asked (e805afa11)
 
     @staticmethod
     def _in(leg, arm, texts, params, name):

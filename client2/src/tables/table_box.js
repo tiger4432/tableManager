@@ -12,6 +12,7 @@ import { crossIcon } from '../cross_icon.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { markingIntent } from '../rnd_board/panel.js';
 import { rowNodeId } from './chain.js';
+import { rowsKey } from '../rows_key.js';
 
 export const PAGE_ROWS = 500;
 /** The next page is read when fewer lines than this are left below the view. */
@@ -62,12 +63,13 @@ export function chipsOf(text) {
   return chips;
 }
 
-/** A page's query: the narrowing, the page, the order (none: entered order, row_id), the world, the server marking it
- *  is opened by; the count comes apart. */
-export function pageQuery(text, { skip = 0, limit = PAGE_ROWS, order = null, world = null, marking = null } = {}) {
+/** A page's query: the narrowing, the page - by `key` (rows_key.js) when there is one, skip beside it -, the order (none:
+ *  entered order, row_id), the world, the server marking it is opened by; the count comes apart. */
+export function pageQuery(text, { skip = 0, key = null, limit = PAGE_ROWS, order = null, world = null, marking = null } = {}) {
   const p = new URLSearchParams(text || '');
   if (marking) p.set('marking', marking);
   p.set('skip', String(skip));
+  for (const [side, rowId] of Object.entries(key || {})) p.set(side, rowId);
   p.set('limit', String(limit));
   p.set('order_by', order ? order.column : 'row_id');
   p.set('order_desc', String(Boolean(order && order.desc)));
@@ -267,7 +269,7 @@ export class TableBox {
   async page(ticket = this.reading) {
     if (this.busy || !this.more) return;
     this.busy = true;
-    const res = await this._get(`/data?${pageQuery(this.narrowing, { skip: this.rows.length, order: this.order, world: this.world, marking: this.marking })}`);
+    const res = await this._get(`/data?${pageQuery(this.narrowing, { skip: this.rows.length, key: rowsKey(this.rows, 'after'), order: this.order, world: this.world, marking: this.marking })}`);
     if (ticket !== this.reading) return;
     this.busy = false;
     if (!res.ok) { this.more = false; this.say(await refusalText(res, 'Rows read failed')); return; }

@@ -347,7 +347,9 @@ def test_a_deadlock_with_a_save_rewinds_uncharged_and_says_how_many_times(db, mo
     assert said == "deadlock with a save, rewound 2 time(s)"
     from chain import queue_lines
     [line] = queue_lines.waiting_lines(db, 10)
-    assert line.retrying and line.max_retry == 0, "the queue's retrying line, where its last failure is said"
+    counted = queue_lines.line_counts(db, [line])[line.key]
+    assert counted.retrying and counted.max_retry == 0, "the queue's retrying line, where its last failure is said"
+    assert counted.last_failure[event_constants.LAST_FAILURE] == said
 
 
 # ------------------------------------------------------------------------------ PG: a save behind a held row

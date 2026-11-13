@@ -58,7 +58,7 @@ def sources(tmp_path, monkeypatch, db_session):
             run_id="run-probe", op="withdraw", params="{}", state=state,
             runner="retroactive/HOST/4321", processed_rows=5, total_rows=50,
             started_at=datetime.now(timezone.utc)))
-        db_session.flush()
+        db_session.commit()
 
     def collector(status, runner=None):
         (tmp_path / "config" / "scheduler_status.json").write_text(json.dumps(
@@ -124,7 +124,7 @@ def test_a_queued_run_no_outbox_row_wakes_is_listed_waiting_oldest_first(db_sess
     for run_id, op, ago in (("rp-new", "chain_replay", 60), ("rp-old", "chain_replay", 600), ("wd-q", "withdraw", 900)):
         db_session.add(models.RetroactiveRun(run_id=run_id, op=op, params="{}", state=retroactive.RUN_QUEUED,
                                              queued_at=now - timedelta(seconds=ago)))
-    db_session.flush()
+    db_session.commit()
     assert retroactive.wakes_by_outbox("withdraw") and not retroactive.wakes_by_outbox("chain_replay")
 
     waiting = [item for item in running.running_now(db_session, now=now) if item["where"] == running.WHERE_QUEUED]
@@ -138,7 +138,7 @@ def test_a_queued_run_no_outbox_row_wakes_is_listed_waiting_oldest_first(db_sess
                                "waiting"}
 
     db_session.query(models.RetroactiveRun).filter(models.RetroactiveRun.run_id == "run-probe").delete()
-    db_session.flush()
+    db_session.commit()
     alone = [item for item in running.running_now(db_session, now=now) if item["where"] == running.WHERE_QUEUED]
     assert [item["waiting"] for item in alone] == [None, None], "nothing in flight: next, no «after»"
     # both queues read the seat: the Queue tab's and the admin's run lines (that route ends the test's session: last)

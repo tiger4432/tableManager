@@ -59,7 +59,7 @@ const BODY = {
   summary: {}, core_types: [],
   rows: [{ id: 'r1', incomparable: false,
     evidence: [{ seed: 's1', sign: '+', server_only_evidence: 'kept',
-      hops: [{ id: 'h1', node_kind: 'defect', label: 'H', ref: null,
+      hops: [{ id: 'h1', type: 'defect', label: 'H',
         server_only_hop: 'kept' }] }] }],
   selectable_finding_kinds: [{ id: 'void', label: 'void', active: true,
     server_only_kind: 'kept' }],

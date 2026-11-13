@@ -129,7 +129,7 @@ def declared(tmp_path, monkeypatch, request):
 def _read(by_name, node_type="wafer"):
     """The walk's reading rule for ONE node, exercised through the real code path."""
     nodes = {"n1": {"id": "n1", "type": node_type, "depth": 0,
-                    "node_kind": "entity", "label": "w"}}
+                    "label": "w"}}
     seen = {name: [(at, value, None, None, None, None) for at, value in said]   # no world, source, claim
             for name, said in by_name.items()}
     ledger_subgraph._apply_registrations(nodes, {"n1": seen})

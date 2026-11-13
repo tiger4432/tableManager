@@ -11,6 +11,7 @@ import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
 import { switchTable, fetchData, overlayStagedEdits, copyRows, refusalText, askMatchCount, fillWriters } from './api.js';
+import { rowsKey } from './rows_key.js';
 import { pageLooks, saidLooksChanged } from './grid_look.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
@@ -1593,6 +1594,7 @@ export async function navigatorStep3(log, jump = null) {
 
     // Update skip counter
     state.currentSkip = result.calculated_skip !== null ? result.calculated_skip : 0;
+    state.readAfter = rowsKey(result.data, 'after');   // the infinite view scrolls on from the page jumped to
 
     // Update Counts (Zero-lag counter concept)
     updateLoadedCount(result.data.length);

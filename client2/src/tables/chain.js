@@ -2,6 +2,7 @@
 // off the declaration, and one hop - a row set kept as a server marking, reached along a path to the next table's rows,
 // kept again. No DOM; the page and its boxes call these.
 import { pathsBetween } from '../rnd_board/api.js';
+import { rowsKey } from '../rows_key.js';
 
 /** A row's node id - the server's spelling («relation:row id», ledger_subgraph's virtual atoms, walk_shadow). */
 export const rowNodeId = (table, rowId) => `${table}:${rowId}`;
@@ -58,6 +59,21 @@ async function post(deps, path, body) {
 
 /** Keep a table's rows on the server (POST /markings, the rows by row_id): {id, rev}. The rows ride the body, never a URL. */
 export const keepRows = (deps, table, rowIds) => post({ ...deps, world: null }, '/markings', { table, column: 'row_id', values: rowIds });
+
+/** Every row of a kept marking, `pageRows` a page - each page after the last row read (rows_key.js), skip beside it. */
+export async function rowsOf(deps, table, kept, pageRows) {
+  const out = [];
+  for (let skip = 0; ; skip += pageRows) {
+    const p = new URLSearchParams({ marking: kept, skip: String(skip), limit: String(pageRows), order_by: 'row_id', order_desc: 'false', defer_total: 'true' });
+    for (const [side, rowId] of Object.entries(rowsKey(out, 'after') || {})) p.set(side, rowId);
+    if (deps.world) p.set('world', deps.world);
+    const res = await deps.fetch(`${deps.apiBase}/tables/${encodeURIComponent(table)}/data?${p}`);
+    if (!res.ok) throw new Error(`Rows read failed (${res.status})`);
+    const got = (await res.json()).data || [];
+    out.push(...got);
+    if (got.length < pageRows) return out;
+  }
+}
 
 /** One hop: the rows of `to` a kept marking reaches along `route` (trace_router.reach) - {rows, count, seeds, left_out}. */
 export const reachRows = (deps, marking, route, to) => post(deps, '/api/ledger/subgraph',
