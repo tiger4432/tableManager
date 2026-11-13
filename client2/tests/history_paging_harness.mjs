@@ -151,6 +151,8 @@ const WANTED = [
   // `S.ctx` at each call site rather than aliased once at the top of the section.
   'HISTORY_PANES',
   'renderTimelineIncremental', 'createTimelineItemDom', 'appendHistoryLocally', 'formatVal',
+  // section S: an unfolded transaction's row, the jump's last step
+  'createSubDetailItemDom', 'navigatorFinalScroll',
   // The global tab, for section H. `renderGlobalTimeline` is the function that dies when the
   // envelope is assigned where the array belongs, and `createGlobalTimelineItemDom` is what
   // actually paints an entry — stubbing the second would leave "the panel renders" asserted
@@ -1343,6 +1345,15 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── S (lead 11-13, stop 4): a route row, the row tab, the jump with no column ──
+  { name: 'a route row drawn as a cell (the renderer before)', defect: true,
+    find: '  } else if (col == null) {', repl: '  } else if (false) {' },
+  { name: 'the row tab draws a before value again', defect: true,
+    find: '          <div class="change-values">\n            <span class="val-new">',
+    repl: '          <div class="change-values">\n            <span class="val-old">${escapeHtml(formatVal(log.old_value, true))}</span>\n            <span class="val-arrow">→</span>\n            <span class="val-new">' },
+  { name: 'a jump with no column says «null»', defect: true,
+    find: 'column ? `🎯 Jumped to ${column} at Row ${row}` : `🎯 Jumped to Row ${row}`',
+    repl: '`🎯 Jumped to ${column} at Row ${rowNode.data.row_id}`' },
   // ── R10-R11 (owner 11-13 «네비게이션» · «여러 표라며»): the line and its names jump ──
   { name: 'a line jumps only when it holds a log (the code before)', defect: true,
     find: "|| e.target.closest('.audit-tbl-more')) {\n        toggleExpand();\n      } else {\n        goToLine(group, e.target.closest('.audit-target-table'));",
@@ -1873,6 +1884,57 @@ async function sectionR() {
   resetState();
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// S — the rows of an unfolded transaction, the jump to one and the row tab (lead 11-13, release stop 4 on reh_c)
+//
+// 🔴 The overhaul's /audit_logs/transaction answers a ROW an entry: column_name null, new_value null (owner 11-10
+//    «바뀐 행 네비»). The sub-row drew «[null] Deleted (ID: K0000001)» for an edit, the jump said «Jumped to null at Row
+//    01a1d5d4-…» and the row tab «Column: NULL»; the row tab drew «Empty → tx-doc» for a value that was «tx2-doc»
+//    (owner 11-10 «전 값 필요없다고 했잖아»: no before value at all).
+// ════════════════════════════════════════════════════════════════════════════════
+const routeRow = (deleted = false) => ({
+  id: '41', table_name: 'sb_wide', row_id: '01a1d5d4-27dd-7000-8000-000000000001', source_name: 'user',
+  updated_by: 'reh_person', timestamp: '2026-11-14T01:54:15+09:00', transaction_id: 'TX-SB', business_key: 'K0000001',
+  column_name: null, new_value: null, old_value: null, is_row_deleted: deleted,
+});
+
+async function sectionS() {
+  const S = await buildSandbox();
+  resetState();
+  const edited = S.ctx.createSubDetailItemDom(routeRow(false)).innerHTML;
+  check('S1 a route row unfolded: its key and who wrote it', edited.includes('K0000001 · by reh_person'), true);
+  check('S1b ... never «Deleted», never «null»', [edited.includes('Deleted'), edited.includes('null')], [false, false]);
+  check('S2 a row the route says is deleted still says so',
+    S.ctx.createSubDetailItemDom(routeRow(true)).innerHTML.includes('Deleted (ID: K0000001)'), true);
+
+  const rowTab = S.ctx.createTimelineItemDom({ ...routeRow(false), column_name: 'body', new_value: 'tx-doc' }).innerHTML;
+  check('S3 the row tab draws the new value', rowTab.includes('>tx-doc</span>'), true);
+  check('S3b ... and no before value: no «Empty», no arrow', [rowTab.includes('Empty'), rowTab.includes('→')], [false, false]);
+
+  // the jump's last step on a row with no column: a grid that records what it is asked
+  const asked = [];
+  state.gridApi = {
+    ensureNodeVisible: () => asked.push('visible'),
+    setFocusedCell: (i, col) => asked.push(`focus ${col}`),
+    flashCells: (p) => asked.push(`flash ${p.columns ? p.columns.join(',') : 'row'}`),
+  };
+  S.filters = { 'selected-cell-info': makeEl('div') };
+  const node = { rowIndex: 3, data: { row_id: '01a1d5d4-27dd-7000-8000-000000000001', data: {} }, setSelected: () => {} };
+  S.ctx.navigatorFinalScroll(node, null, null, 'D0001');
+  check('S4 a jump to a row with no column says the row by its key', S.performanceLog.textContent, '🎯 Jumped to Row D0001');
+  check('S4b ... focuses no cell and flashes the row', asked, ['visible', 'flash row']);
+  const head = S.filters['selected-cell-info'].innerHTML;
+  check('S4c ... the row tab\'s head names the row, no Column, no NULL',
+    [head.includes('D0001'), head.includes('Column:'), head.includes('NULL')], [true, false, false]);
+  asked.length = 0;
+  S.ctx.navigatorFinalScroll({ ...node, data: { ...node.data, data: { body: { value: 'tx-doc' } } } }, 'body', null, 'D0001');
+  check('S5 a jump with a column still focuses it and says it', [S.performanceLog.textContent, asked],
+    ['🎯 Jumped to body at Row D0001', ['visible', 'focus body', 'flash body']]);
+  state.gridApi = null;
+  state.selectedCell = null;
+  resetState();
+}
+
 async function sectionG() {
   for (const m of MUTANTS) {
     // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
@@ -1902,6 +1964,7 @@ async function sectionG() {
       await sectionU();
       await sectionP();
       await sectionR();
+      await sectionS();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1940,6 +2003,7 @@ await sectionL();
 await sectionU();
 await sectionP();
 await sectionR();
+await sectionS();
 const beforeG = { pass, fail };
 await sectionG();
 

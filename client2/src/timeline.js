@@ -291,8 +291,6 @@ export function createTimelineItemDom(log) {
         <div class="change-detail">
           <span class="change-field">${escapeHtml(log.column_name)}</span>
           <div class="change-values">
-            <span class="val-old">${escapeHtml(formatVal(log.old_value, true))}</span>
-            <span class="val-arrow">→</span>
             <span class="val-new">${escapeHtml(formatVal(log.new_value, false))}</span>
           </div>
         </div>
@@ -1335,6 +1333,9 @@ export function createSubDetailItemDom(log) {
   let labelText = '';
   if (col === 'ROW_UPDATE') {
     labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
+  } else if (col == null) {
+    // a row the transaction route names (owner 11-10 «바뀐 행 네비»: a row, no column, no value) - its key and who wrote it
+    labelText = log.is_row_deleted ? `Deleted (ID: ${targetId})` : `${targetId} · by ${log.updated_by || 'system'}`;
   } else {
     labelText = `[${col}] ${val} (ID: ${targetId})`;
   }
@@ -1588,7 +1589,7 @@ export function navigatorStep2(log, jump = null) {
   const rowNode = state.gridApi.getRowNode(log.row_id);
   if (rowNode) {
     // Cache Hit -> directly scroll (Step 4)
-    navigatorFinalScroll(rowNode, log.column_name, jump);
+    navigatorFinalScroll(rowNode, log.column_name, jump, log.business_key);
   } else {
     // Check if row exists in any of the cached pages
     for (const [skip, cached] of state.pageCache.entries()) {
@@ -1606,7 +1607,7 @@ export function navigatorStep2(log, jump = null) {
         setTimeout(() => {
           const node = state.gridApi.getRowNode(log.row_id);
           if (node) {
-            navigatorFinalScroll(node, log.column_name, jump);
+            navigatorFinalScroll(node, log.column_name, jump, log.business_key);
           } else {
             releaseNavigationGuard('❌ Failed to locate row in cached page', jump);
           }
@@ -1696,7 +1697,7 @@ export async function navigatorStep3(log, jump = null) {
       if (cut()) { releaseNavigationGuard('', jump); return; }
       const rowNode = state.gridApi.getRowNode(log.row_id);
       if (rowNode) {
-        navigatorFinalScroll(rowNode, log.column_name, jump);
+        navigatorFinalScroll(rowNode, log.column_name, jump, log.business_key);
       } else {
         releaseNavigationGuard('❌ Failed to locate row after server fetch', jump);
       }
@@ -1710,9 +1711,11 @@ export async function navigatorStep3(log, jump = null) {
   }
 }
 
-// Step 4: Scroll and Focus Column Cell
-export function navigatorFinalScroll(rowNode, columnName, jump = null) {
+// Step 4: Scroll and Focus Column Cell - a jump to a row the history names with no column (the transaction route's,
+// owner 11-10 «바뀐 행 네비») selects the row and focuses no cell; `rowKey` is the row's business key, said for it.
+export function navigatorFinalScroll(rowNode, columnName, jump = null, rowKey = null) {
   try {
+    const column = columnName || null;
     // 1. Ensure visible
     state.gridApi.ensureNodeVisible(rowNode, 'middle');
 
@@ -1720,25 +1723,27 @@ export function navigatorFinalScroll(rowNode, columnName, jump = null) {
     rowNode.setSelected(true, true);
 
     // 3. Focus Cell
-    state.gridApi.setFocusedCell(rowNode.rowIndex, columnName);
+    if (column) state.gridApi.setFocusedCell(rowNode.rowIndex, column);
 
     // 4. Trigger flash micro-animation
     state.gridApi.flashCells({
       rowNodes: [rowNode],
-      columns: [columnName],
+      ...(column ? { columns: [column] } : {}),
       flashDelay: 1000
     });
 
     // 5. Sync details panel manually
     state.selectedCell = {
       rowId: rowNode.data.row_id,
-      colId: columnName,
-      value: rowNode.data.data?.[columnName]?.value ?? '',
-      rowIndex: rowNode.rowIndex
+      colId: column,
+      value: column ? rowNode.data.data?.[column]?.value ?? '' : null,
+      rowIndex: rowNode.rowIndex,
+      rowKey: rowKey || null
     };
     updateSelectedCellUI();
 
-    elements.performanceLog.textContent = `🎯 Jumped to ${columnName} at Row ${rowNode.data.row_id}`;
+    const row = rowKey || rowNode.data.row_id;
+    elements.performanceLog.textContent = column ? `🎯 Jumped to ${column} at Row ${row}` : `🎯 Jumped to Row ${row}`;
 
     // Finalize
     releaseNavigationGuard('', jump);
