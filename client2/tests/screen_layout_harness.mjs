@@ -314,6 +314,29 @@ const importsAnswer = (u) => {
   }
   return null;
 };
+// A batch unfolded a page at a time (lead 11-12, D f0f4d51bb): while its states run, the recent list's first batch counts
+// its changed rows to the server's cap, and the transaction route answers 200 rows and a cursor, then the last 150.
+const TX_PAGED = { on: false };
+const txPagedAnswer = (u) => {
+  const json = (body) => ({ status: 200, type: 'application/json', body });
+  const recent = ANSWERS['/audit_logs/recent?limit_groups=100'];
+  if (u.pathname === '/audit_logs/recent' && recent) {
+    const b = bodyOf(recent);
+    const [first, ...rest] = b.groups;
+    const table = (first.logs && first.logs[0] && first.logs[0].table_name) || 'dt_log';
+    return { ...recent, body: { ...b, groups: [{ ...first,
+      changed: [{ table_name: table, changed_rows: 1000, changed_rows_truncated: true }] }, ...rest] } };
+  }
+  const tx = /^\/audit_logs\/transaction\/([^/]+)$/.exec(u.pathname);
+  if (!tx) return null;
+  const more = u.searchParams.get('cursor') === 'screens-page-2';
+  const rows = (from, n) => Array.from({ length: n }, (_, i) => ({ id: 900000 + from + i, transaction_id: decodeURIComponent(tx[1]),
+    table_name: 'dt_log', row_id: `row-${from + i}`, business_key: `DT-${String(from + i).padStart(5, '0')}`, column_name: 'dt_index',
+    old_value: from + i, new_value: from + i + 1, source_name: 'user', updated_by: 'screens', timestamp: '2026-11-12T09:00:00', is_row_deleted: false }));
+  return more
+    ? json({ logs: rows(200, 150), truncated: false, next_cursor: null, limit: 200, returned: 150, total_count: 1000, total_truncated: true })
+    : json({ logs: rows(0, 200), truncated: true, next_cursor: 'screens-page-2', limit: 200, returned: 200, total_count: 1000, total_truncated: true });
+};
 const HTML_HELD = '<table>' + '<tr><td>x</td></tr>'.repeat(110) + '</table>';
 const pasteHtmlAnswer = (u) => {
   const at = '/admin/chain/rules/raw?name=dt_log_to_dt_map';
@@ -629,6 +652,7 @@ const answerOf = (u) => {
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
+  if (TX_PAGED.on) { const v = txPagedAnswer(u); if (v) return v; }
   if (WORLDS_OVERLAP.on && u.pathname === '/admin/ontology-explorer/worlds') return worldsOverlapAnswer();
   if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
@@ -3578,6 +3602,40 @@ const DRIVE = {
       i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`).then(() => sleep(200))],
     // A colour picked for a new rule (owner 11-09 «색깔 선택»): on dt_log, a table that is edited, its value cell dt_lot picked
     // (the paint draws its swatches for it) and the form's native picker given a value, as its dialog does (lead 11-10).
+    // A batch unfolded a page at a time (lead 11-12): the Global list read again, its first batch's cell «1,000+ rows»;
+    // unfolded, 200 rows and «more» at the end; then «more» read to the end and the batch folded again.
+    ['History, a batch unfolded with more', async (c, log) => {
+      TX_PAGED.on = true;
+      await evaluate(c, `(() => { const t = document.getElementById('tab-global'); if (t) t.click();
+        const r = document.getElementById('refresh-history-btn'); if (r) r.click(); return true; })()`);
+      await settle(c, log);
+      // the list read with its reads settled: the tab and Refresh are two asks, and the second redraws the list (a redraw
+      // folds an unfolded batch) - so the cell, and no «Updating», twice a second and a half apart
+      const read = `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        const count = document.getElementById('audit-filter-count');
+        return !!li && li.textContent.includes('1,000+ rows') && !!li.querySelector('.expand-indicator')
+          && !(count && count.textContent === 'Updating'); })()`;
+      await until(c, read);
+      await sleep(1500);
+      await settle(c, log);
+      await until(c, read);
+      await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        li.querySelector('.expand-indicator').click(); li.scrollIntoView({ block: 'start' }); return true; })()`);
+      await settle(c, log);
+      await until(c, `(() => { const box = document.querySelector('#timeline li.timeline-item .tx-details-container');
+        return !!box && box.querySelectorAll('.sub-timeline-item').length === 200 && !!box.querySelector('.timeline-more-btn'); })()`);
+    }],
+    ['History, more read to the end and the batch folded', async (c, log) => {
+      await evaluate(c, `(() => { const b = document.querySelector('#timeline li.timeline-item .tx-details-container .timeline-more-btn');
+        if (b) b.click(); return true; })()`);
+      await settle(c, log);
+      await until(c, `(() => { const box = document.querySelector('#timeline li.timeline-item .tx-details-container');
+        return !!box && box.querySelectorAll('.sub-timeline-item').length === 350 && !box.querySelector('.timeline-more-btn'); })()`);
+      await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        li.querySelector('.expand-indicator').click(); return true; })()`);
+      TX_PAGED.on = false;
+      await settle(c, log);
+    }],
     ['Colours tab, a colour picked', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
         window.__coloursFrom = sel.value; sel.value = 'dt_log'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);

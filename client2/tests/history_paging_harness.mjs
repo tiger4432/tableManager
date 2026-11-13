@@ -235,6 +235,12 @@ function makeEl(tag) {
     get firstChild() { return el.children[0] || null; },
     addEventListener: (ev, f) => { (el._listeners[ev] = el._listeners[ev] || []).push(f); },
     appendChild: (c) => { c.parentElement = el; el.children.push(c); return c; },
+    replaceChild: (c, old) => {
+      const i = el.children.indexOf(old);
+      if (i < 0) throw new Error('replaceChild: the old node is not a child');
+      old.parentElement = null; c.parentElement = el; el.children[i] = c;
+      return old;
+    },
     insertBefore: (c, ref) => {
       const i = ref ? el.children.indexOf(ref) : -1;
       if (ref && i < 0) throw new Error('insertBefore: reference node is not a child');
@@ -268,6 +274,9 @@ function descend(root) {
 }
 function matches(node, sel) {
   if (sel.startsWith('.')) return node.classList.contains(sel.slice(1));
+  // the live redraw finds a group's line by its transaction (renderGlobalTimelineIncremental)
+  const tx = /^li\[data-tx-id="([^"]*)"\]$/.exec(sel);
+  if (tx) return node.tagName === 'LI' && node.dataset.txId === tx[1];
   return false;
 }
 // See `querySelector` above. Only class selectors, only against this element's OWN markup, and
@@ -1118,7 +1127,8 @@ async function sectionH() {
   resetState();
   state.activeHistoryTab = 'global';
   S.responses.push({ status: 200, body: recentPage([
-    group('TX-1', [log(1)], 5),      // a bulk transaction: 5 rows, 1 representative log
+    // a bulk transaction: 5 lines on 5 rows, 1 representative log; the list counts its rows per table
+    { ...group('TX-1', [log(1)], 5), changed: [{ table_name: 't1', changed_rows: 5, changed_rows_truncated: false }] },
     group('TX-2', [log(2)]),         // a single-cell edit
   ], 'RCUR1') });
   await S.ctx.loadHistory();
@@ -1138,7 +1148,7 @@ async function sectionH() {
   // still renders" is the claim this whole change has to survive, and it is not a type check.
   check('H3 the panel painted one entry per group', items(S.timeline).length, 2);
   check('H3b ... reading the GROUP, not just its representative log',
-    entryHtml(S.timeline, 0).includes('5 changes'), true);
+    entryHtml(S.timeline, 0).includes('5 rows'), true);
   check('H3c ... and the single-log group renders its column',
     entryHtml(S.timeline, 1).includes('COL-A'), true);
   check('H3d ... each tagged with its transaction',
@@ -1474,6 +1484,25 @@ const MUTANTS = [
     find: '      state.globalHistoryLoaded = page.logs.length;',
     repl: '      state.globalHistoryLoaded = 0;' },
 
+  { name: 'a line drawn open from what it holds draws it without its «more»', defect: true,
+    // re-anchored 11-13: the live redraw draws an open line through createGlobalTimelineItemDom's drawOpen
+    find: '        renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));\n      }\n    };',
+    repl: '        renderSubDetails(detailsContainer, group.logs);\n      }\n    };' },
+  { name: 'unfolded again, a paged transaction reads its first page again', defect: true,
+    find: "  return !(group && 'nextCursor' in group) && !holdsAll(group);",
+    repl: '  const logs = group && Array.isArray(group.logs) ? group.logs : [];\n  return logs.length < Number(group && group.total_count);' },
+  { name: 'the folded cell counts the audit lines again (lead 10-29)', defect: true,
+    find: '  return { kind, ...FOLDS[kind], count: changedRowsOf(group) };',
+    repl: "  return { kind, ...FOLDS[kind], count: unitText(group.total_count, 'row') };" },
+  { name: 'a paged transaction redrawn past 500 rows hides the rest behind «Show remaining»', defect: true,
+    find: '  const renderLimit = pane ? Infinity : 500;',
+    repl: '  const renderLimit = 500;' },
+  { name: 'a line drawn again ignores the open state (the old redraw)', defect: true,
+    find: '    if (state.expandedTransactions.has(txId)) drawOpen();\n',
+    repl: '' },
+  { name: 'the capped count drops its «+»', defect: true,
+    find: "tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''",
+    repl: "''" },
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,
@@ -1606,6 +1635,92 @@ async function sectionU() {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// P — an unfolded transaction is read a page at a time (lead 11-12 ㄴ, D f0f4d51bb): page 1, «more», page 2 into the
+//     same list; a live log redrawing the line keeps «more» and the pages read; folded and unfolded again it reads
+//     nothing; the cell counts the rows it changed, «1,000+ rows» at the server's cap (lead 11-12 ㄷ)
+// ════════════════════════════════════════════════════════════════════════════════
+async function sectionP() {
+  const S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  state.expandedTransactions = new Set();
+  state.fetchingTransactions = new Set();
+  const settle = async () => { for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r)); };
+  const rowsOf = (from, n) => Array.from({ length: n }, (_, i) => ({ ...log(from + i, `ROW-${from + i}`), transaction_id: 'TX-P' }));
+  // a fresh object each answer: the client keeps the one it read and writes its pages and cursor onto it
+  const listed = () => ({ ...group('TX-P', [{ ...log(1, 'ROW-1'), transaction_id: 'TX-P' }], 4200),
+    changed: [{ table_name: 't1', changed_rows: 1000, changed_rows_truncated: true }] });
+  const capped = listed();
+  S.responses.push({ status: 200, body: recentPage([capped]) });
+  await S.ctx.loadHistory();
+  check('P1 the capped count says the floor: «1,000+ rows», not the 4,200 lines', entryHtml(S.timeline, 0).includes('1,000+ rows'), true);
+
+  const lineOf = () => items(S.timeline).find((li) => li.dataset.txId === 'TX-P');
+  // null-safe: a defect that draws no line fails the checks below, it does not throw out of the section
+  const details = () => { const li = lineOf(); return li ? li.querySelector('.tx-details-container') : null; };
+  const unfold = async () => { const li = lineOf(); if (li) (li.querySelector('.timeline-card')._listeners.dblclick || []).forEach((f) => f()); await settle(); };
+  const list = () => (details() ? details().querySelectorAll('.sub-timeline-list')[0] || null : null);
+  const moreBtn = () => (details() ? details().querySelectorAll('.timeline-more-btn')[0] || null : null);
+  const txReads = () => S.requests.filter((u) => u.includes('/audit_logs/transaction/TX-P'));
+
+  S.responses.push({ status: 200, body: { ...page(rowsOf(1, 200), 'P2'), total_count: 1000, total_truncated: true } });
+  await unfold();
+  check('P2 unfolded: the first page, read once', [txReads(), list() ? list().children.length : null],
+    [[`${API_BASE}/audit_logs/transaction/TX-P`], 200]);
+  check('P3 ...and «more» at its end, saying the list is a part', moreBtn() ? moreBtn().textContent : null, 'Partial (200) · more');
+
+  S.responses.push({ status: 200, body: page(rowsOf(201, 150), 'P3') });
+  if (moreBtn()) moreBtn().click();
+  await settle();
+  check('P4 «more» reads the next page by its cursor into the same list', [txReads()[1], list() ? list().children.length : null],
+    [`${API_BASE}/audit_logs/transaction/TX-P?cursor=P2`, 350]);
+  check('P5 ...and stays, pages left', moreBtn() ? moreBtn().textContent : null, 'Partial (350) · more');
+
+  // a live log of the same transaction redraws its line (renderGlobalTimelineIncremental)
+  let liveErr = null;
+  try { S.ctx.appendHistoryLocally({ ...log(999, 'ROW-999'), transaction_id: 'TX-P' }); } catch (e) { liveErr = String((e && e.message) || e); }
+  await settle();
+  check('P6a the live log does not throw', liveErr, null);
+  check('P6 a live log redraws the line and keeps the pages read and «more»',
+    [list() ? list().children.length : null, moreBtn() ? moreBtn().textContent : null], [351, 'Partial (351) · more']);
+
+  await unfold();   // fold
+  await unfold();   // unfold again
+  check('P7 folded and unfolded again: no read, the pages kept', [txReads().length, list() ? list().children.length : null], [2, 351]);
+  check('P8 ...the count still the rows, «1,000+ rows»', lineOf() ? lineOf().innerHTML.includes('1,000+ rows') : null, true);
+
+  // past 500 rows held: a redraw draws every page read, so the page read next lands after them
+  S.responses.push({ status: 200, body: page(rowsOf(351, 200), 'P4') });
+  if (moreBtn()) moreBtn().click();
+  await settle();
+  try { S.ctx.appendHistoryLocally({ ...log(998, 'ROW-998'), transaction_id: 'TX-P' }); } catch { /* P6a says a throw */ }
+  await settle();
+  check('P9 past 500 rows a redraw draws every page read, «more» after them',
+    [list() ? list().children.length : null, moreBtn() ? moreBtn().textContent : null], [552, 'Partial (552) · more']);
+
+  // open or shut is state.expandedTransactions alone (lead 11-13): a line drawn again - by a live log, by the list read
+  // again - is drawn as that state says, and one press does what the screen shows
+  const shown = () => { const li = lineOf(); if (!li) return null;
+    return [li.querySelector('.tx-details-container').style.display, li.querySelector('.expand-indicator').textContent]; };
+  try { S.ctx.appendHistoryLocally({ ...log(997, 'ROW-997'), transaction_id: 'TX-P' }); } catch { /* P6a says a throw */ }
+  await settle();
+  check('P10 a live log redraws an open line open', shown(), ['block', '▼']);
+  await unfold();
+  check('P10b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
+  await unfold();   // open again: it holds its pages, no read
+  S.responses.push({ status: 200, body: recentPage([listed()]) });
+  S.responses.push({ status: 200, body: { ...page(rowsOf(1, 200), 'P2'), total_count: 1000, total_truncated: true } });
+  await S.ctx.rereadHistory();
+  await settle();
+  check('P11 the list read again draws the open line open - its first page again (known: the pages «more» read are re-read)',
+    [shown(), list() ? list().children.length : null], [['block', '▼'], 200]);
+  await unfold();
+  check('P11b ...and one press shuts it', [shown(), state.expandedTransactions.has('TX-P')], [['none', '▶'], false]);
+  state.expandedTransactions = new Set();
+  resetState();
+}
+
 async function sectionG() {
   for (const m of MUTANTS) {
     // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
@@ -1633,6 +1748,7 @@ async function sectionG() {
       await sectionK();
       await sectionL();
       await sectionU();
+      await sectionP();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1669,6 +1785,7 @@ await sectionJ();
 await sectionK();
 await sectionL();
 await sectionU();
+await sectionP();
 const beforeG = { pass, fail };
 await sectionG();
 

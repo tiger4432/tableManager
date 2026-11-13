@@ -80,9 +80,8 @@ def fold(*layers) -> list:
 def read(db, table_name, rows, writers=True):
     """The looks of a page of `rows` (dicts with row_id and data, `fetch_and_merge_metadata`'s): {"rules": [in order],
     "paints": {paint_key: {"role", "row_id"}}} - None when the table has neither. A rule that asks who wrote a cell has
-    each cell of its columns that one of the asked writers wrote given `written_by` (`crud.writer_kind`, `_writers`) -
-    `writers` False: only the cells the page read names (`_named`), and `updating` says whether others are left for the
-    page's `WRITERS` read."""
+    each cell of its columns that one of the asked writers wrote given `written_by` (`crud.writer_kind`, `_named`) -
+    `writers` False: `updating` False, the page read names every cell from its winners (owner 11-13 ㄱ)."""
     look = _looks()
     if look is None:
         return None

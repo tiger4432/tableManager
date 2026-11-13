@@ -676,7 +676,8 @@ def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
 def read_as_page(db, table_name: str, rows: list, user_cols: list, include_sources: bool, writers: bool = True):
     """(merged rows, looks): `rows` as the page reads them - the page read and every batch_row_upsert item, so a
     screen that did not make the write colours a cell as a read would (lead 11-08, 클라B's L2). `writers` False: the
-    cells' writers the layers would name are left to the page's `grid_look.WRITERS` read (owner 11-10 ㄱ)."""
+    page read - its cells' writers named inline from the winners it read, `updating` False (owner 11-13 ㄱ: the page
+    keeps its writers; 11-10's «writers after» priced cell_sources at 8 s, winners are 0.071 s a 1,000-row page)."""
     import grid_look
 
     merged = fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=include_sources)

@@ -380,23 +380,37 @@ export function ledgerReceiptLine(newValue, worlds) {
   return parts.join(' · ');
 }
 
-// What a folded line is, said once (lead 10-29) - the kind pill, the card's title and its Row · column cell read it, so the
-// cell's count says the title's unit (it said «N ROWS» for every fold; a fold of receipts or of changes is not N rows).
-// The count is the transaction's audit lines, and the unit what one line is. 🔴 C-55: the ledger first - a failed receipt
-// has two lines and would fold as «N changes», a table edit's sentence. «All» for the same reason as DELETE · CREATE: a
-// mixed transaction is not named after one side.
+// What a folded line is, said once - the kind pill, the card's title and its Row · column cell read it. 🔴 C-55: the
+// ledger first - a failed receipt has two lines and would fold as a table edit. «All» for the same reason as DELETE ·
+// CREATE: a mixed transaction is not named after one side.
 const FOLDS = {
-  ledger: { pill: 'LEDGER', cls: 'kind-ledger', unit: 'receipt' },
-  delete: { pill: 'DELETE', cls: 'kind-delete', unit: 'row' },
-  create: { pill: 'CREATE', cls: 'kind-create', unit: 'row' },
-  batch: { pill: 'BATCH', cls: 'kind-batch', unit: 'change' },
+  ledger: { pill: 'LEDGER', cls: 'kind-ledger' },
+  delete: { pill: 'DELETE', cls: 'kind-delete' },
+  create: { pill: 'CREATE', cls: 'kind-create' },
+  batch: { pill: 'BATCH', cls: 'kind-batch' },
 };
+
+/** The rows a transaction changed (owner 11-10: «바뀐 행수»; lead 11-12 ㄷ reverses lead 10-29's «the audit lines»): the
+ *  recent list's changed_rows summed over its tables, «+» when one is the floor (the server counts to its cap) - the
+ *  route's total_count after unfolding is the same quantity. With no counted table, a group that holds all its logs (one
+ *  built from live logs, one read to its end) counts their rows; a sample says it does not know. */
+export function changedRowsOf(group) {
+  const tables = Array.isArray(group && group.changed) ? group.changed.filter((t) => t && isCount(t.changed_rows)) : [];
+  if (tables.length) {
+    const n = tables.reduce((sum, t) => sum + Number(t.changed_rows), 0);
+    return unitText(`${n.toLocaleString('en-US')}${tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''}`, 'row');
+  }
+  if (!holdsAll(group)) return `${ABSENT} rows`;
+  const logs = group && Array.isArray(group.logs) ? group.logs : [];
+  const rows = new Set(logs.map((log) => log && log.row_id).filter((id) => id && id !== '_BATCH_'));
+  return unitText(rows.size.toLocaleString('en-US'), 'row');
+}
 
 function foldOf(group) {
   const kind = allLogsAre(group, LEDGER_BATCH_COLUMN) ? 'ledger'
     : allLogsAre(group, 'DELETE') ? 'delete'
       : allLogsAre(group, 'CREATE') ? 'create' : 'batch';
-  return { kind, ...FOLDS[kind], count: unitText(group.total_count, FOLDS[kind].unit) };
+  return { kind, ...FOLDS[kind], count: changedRowsOf(group) };
 }
 
 /** A receipt's own word - the server's `receipt_label` (crud.receipt_log: «Ledger batch», «formula T.c»); a receipt
@@ -477,21 +491,24 @@ export function auditTargetTable(group) {
   const logs = (group && Array.isArray(group.logs)) ? group.logs : [];
   const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];
   if (!names.length) return '';
-  // total_count 가 없으면 NaN 이고, NaN 은 어떤 `<` 비교도 false 로 만듭니다
-  // -- 즉 «완전함»으로 읽힙니다. 그것이 맞는 동작이라 대체값을 안 둡니다
-  // (넣어 봤는데 «어떤 입력에서도» 답이 같아서 죽은 줄이었고, 변이가 그걸 잡았습니다).
-  const total = Number(group && group.total_count);
-  const sampled = logs.length < total;
   // 여럿임이 «표본으로 이미 증명된» 때만 수를 붙입니다 (하한입니다).
   const more = names.length > 1 ? ` +${names.length - 1}` : '';
-  return `${names[0]}${more}${sampled ? ' …' : ''}`;
+  return `${names[0]}${more}${holdsAll(group) ? '' : ' …'}`;
 }
 
-/** A group that carries a part of its logs (the list route sends one representative, A 1e4bbe748): unfolding it reads
- *  the transaction for all of them. One that carries them all draws what it holds; no total_count reads as complete. */
-export function needsTransactionRead(group) {
+/** Whether a group holds all its logs. Once the transaction route has answered, its cursor says (null: every page read) -
+ *  the route gives a row once and the list counts lines, so a count cannot. Before, the count: the list route sends one
+ *  representative (A 1e4bbe748); no total_count is NaN, which no `<` holds - complete. */
+function holdsAll(group) {
+  if (group && 'nextCursor' in group) return !group.nextCursor;
   const logs = group && Array.isArray(group.logs) ? group.logs : [];
-  return logs.length < Number(group && group.total_count);
+  return !(logs.length < Number(group && group.total_count));
+}
+
+/** Unfolding a group reads the transaction's first page when it holds a part of its logs and the route has not answered
+ *  it yet - unfolded again, it keeps the pages «more» read (lead 11-12). */
+export function needsTransactionRead(group) {
+  return !(group && 'nextCursor' in group) && !holdsAll(group);
 }
 
 export function createGlobalTimelineItemDom(group) {
@@ -625,50 +642,57 @@ export function createGlobalTimelineItemDom(group) {
     const detailsContainer = li.querySelector('.tx-details-container');
     const indicator = li.querySelector('.expand-indicator');
 
-    const toggleExpand = async () => {
-      const isExpanded = state.expandedTransactions.has(txId);
-      if (isExpanded) {
-        state.expandedTransactions.delete(txId);
-        detailsContainer.style.display = 'none';
-        indicator.style.transform = 'rotate(0deg)';
-        indicator.textContent = '▶';
-      } else {
-        state.expandedTransactions.add(txId);
-        detailsContainer.style.display = 'block';
-        indicator.style.transform = 'rotate(90deg)';
-        indicator.textContent = '▼';
+    // Open or shut is state.expandedTransactions alone (lead 11-13): a line drawn again - the list read again, a live log -
+    // is drawn as that state says, so the next press does what the screen shows.
+    const drawShut = () => {
+      detailsContainer.style.display = 'none';
+      indicator.style.transform = 'rotate(0deg)';
+      indicator.textContent = '▶';
+    };
+    const drawOpen = async () => {
+      detailsContainer.style.display = 'block';
+      indicator.style.transform = 'rotate(90deg)';
+      indicator.textContent = '▼';
+      if (needsTransactionRead(group)) {
+        if (state.fetchingTransactions.has(txId)) return;
+        state.fetchingTransactions.add(txId);
+        detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
 
-        if (needsTransactionRead(group)) {
-          if (state.fetchingTransactions.has(txId)) return;
-          state.fetchingTransactions.add(txId);
-          detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';
-
-          try {
-            // 🔴 Unchecked, `txDetail.logs` is undefined on a failure body and the group
-            //    renders as though the transaction has no rows. The catch below already
-            //    says 「Failed to load details.」 and releases `fetchingTransactions`, so a
-            //    throw both tells the truth and leaves the group retryable.
-            const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
-            if (!res.ok) throw new Error(`transaction ${res.status}`);
-            const txDetail = await res.json();
-            group.logs = txDetail.logs;
-            state.fetchingTransactions.delete(txId);
-            // 이제 그룹의 로그를 «전부» 들고 있습니다. 그러면 접힌 줄의 … 가 거짓말이 됩니다 --
-            // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
-            // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
-            const keyEl = li.querySelector('.audit-target-table');
-            if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
-            renderSubDetails(detailsContainer, group.logs);
-          } catch (err) {
-            console.error('Failed to load transaction details', err);
-            detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
-            state.fetchingTransactions.delete(txId);
-          }
-        } else {
-          renderSubDetails(detailsContainer, group.logs);
+        try {
+          // 🔴 Unchecked, `txDetail.logs` is undefined on a failure body and the group
+          //    renders as though the transaction has no rows. The catch below already
+          //    says 「Failed to load details.」 and releases `fetchingTransactions`, so a
+          //    throw both tells the truth and leaves the group retryable.
+          const res = await fetch(`${API_BASE}/audit_logs/transaction/${txId}`);
+          if (!res.ok) throw new Error(`transaction ${res.status}`);
+          // a page and its cursor (lead 11-12 ㄴ) - the rest by the «more» at its end
+          const page = readHistoryPage(await res.json(), 'logs');
+          group.logs = page.logs;
+          group.nextCursor = page.truncated ? page.nextCursor : null;
+          state.fetchingTransactions.delete(txId);
+          // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다.
+          const keyEl = li.querySelector('.audit-target-table');
+          if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
+          renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
+        } catch (err) {
+          console.error('Failed to load transaction details', err);
+          detailsContainer.innerHTML = '<div class="error-subdetails">Failed to load details.</div>';
+          state.fetchingTransactions.delete(txId);
         }
+      } else {
+        renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
       }
     };
+    const toggleExpand = () => {
+      if (state.expandedTransactions.has(txId)) {
+        state.expandedTransactions.delete(txId);
+        drawShut();
+      } else {
+        state.expandedTransactions.add(txId);
+        drawOpen();
+      }
+    };
+    if (state.expandedTransactions.has(txId)) drawOpen();
 
     card.addEventListener('click', (e) => {
       if (e.target.closest('.filter-tx-btn')) {
@@ -797,21 +821,8 @@ export function renderGlobalTimelineIncremental(log) {
   const newLi = createGlobalTimelineItemDom(group);
   if (!newLi) return;
 
+  // open or shut as state.expandedTransactions says - createGlobalTimelineItemDom draws it so (lead 11-13)
   if (oldLi) {
-    const isExpanded = state.expandedTransactions.has(log.transaction_id);
-    if (isExpanded) {
-      const detailsContainer = newLi.querySelector('.tx-details-container');
-      const indicator = newLi.querySelector('.expand-indicator');
-      if (detailsContainer) {
-        detailsContainer.style.display = 'block';
-        renderSubDetails(detailsContainer, group.logs);
-      }
-      if (indicator) {
-        indicator.style.transform = 'rotate(90deg)';
-        indicator.textContent = '▼';
-      }
-    }
-
     elements.timeline.replaceChild(newLi, oldLi);
   } else {
     elements.timeline.insertBefore(newLi, elements.timeline.firstChild);
@@ -1208,49 +1219,73 @@ export function installAuditFilters() {
   });
 }
 
-export function renderSubDetails(container, logs) {
+/** The pane of an unfolded transaction's rows (lead 11-12 ㄴ): the route answers a page and its cursor, and the same
+ *  «more» the history lists use reads the next one into this group's list - its lined rows, then its receipt-only
+ *  rows, into `container`'s list. A group read whole carries no cursor and no control. */
+export function transactionPane(group, txId, container) {
+  return {
+    label: () => `Partial (${group.logs.length}) · more`,
+    cursor: () => group.nextCursor || null,
+    session: () => state.historyReads.ticket,
+    live: () => state.expandedTransactions.has(txId),
+    url: (cursor) => `${API_BASE}/audit_logs/transaction/${txId}?cursor=${encodeURIComponent(cursor)}`,
+    listKey: 'logs',
+    absorb(page) {
+      const list = container.querySelector('.sub-timeline-list');
+      page.logs.forEach((log) => {
+        group.logs.push(log);
+        list.appendChild(createSubDetailItemDom(log));
+      });
+      group.nextCursor = page.truncated ? page.nextCursor : null;
+    },
+    redraw: null,
+  };
+}
+
+export function createSubDetailItemDom(log) {
+  const li = document.createElement('li');
+  li.className = 'sub-timeline-item';
+
+  const col = log.column_name;
+  const val = formatVal(log.new_value);
+  const bk = log.business_key;
+  const targetId = bk ? (bk.length > 10 ? bk.slice(0, 10) + '...' : bk) : (log.row_id ? log.row_id.slice(0, 8) : '');
+
+  let labelText = '';
+  if (col === 'ROW_UPDATE') {
+    labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
+  } else {
+    labelText = `[${col}] ${val} (ID: ${targetId})`;
+  }
+
+  // 🔴 C-14. `labelText` is assembled from a column name, a business key and the value an
+  //    operator last typed — all three arrive from the server and none is authored here.
+  //    Escaped at the interpolation, which is where this file already escapes (`:224`), so
+  //    `formatVal` stays a formatter and does not become a second escaping author.
+  li.innerHTML = `
+    <span class="sub-bullet">└</span>
+    <span class="sub-log-text">${escapeHtml(labelText)}</span>
+  `;
+
+  li.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (log.row_id !== '_BATCH_') {
+      navigateToLog(log);
+    }
+  });
+  return li;
+}
+
+export function renderSubDetails(container, logs, pane = null) {
   container.innerHTML = '';
   const ul = document.createElement('ul');
   ul.className = 'sub-timeline-list';
 
-  const renderLimit = 500;
+  // a paged transaction holds only the pages its «more» read - all drawn, so a page read next lands after them (lead 11-12)
+  const renderLimit = pane ? Infinity : 500;
   const initialLogs = logs.slice(0, renderLimit);
   const remainingLogs = logs.slice(renderLimit);
-
-  function appendLogItem(log) {
-    const li = document.createElement('li');
-    li.className = 'sub-timeline-item';
-
-    const col = log.column_name;
-    const val = formatVal(log.new_value);
-    const bk = log.business_key;
-    const targetId = bk ? (bk.length > 10 ? bk.slice(0, 10) + '...' : bk) : (log.row_id ? log.row_id.slice(0, 8) : '');
-
-    let labelText = '';
-    if (col === 'ROW_UPDATE') {
-      labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
-    } else {
-      labelText = `[${col}] ${val} (ID: ${targetId})`;
-    }
-
-    // 🔴 C-14. `labelText` is assembled from a column name, a business key and the value an
-    //    operator last typed — all three arrive from the server and none is authored here.
-    //    Escaped at the interpolation, which is where this file already escapes (`:224`), so
-    //    `formatVal` stays a formatter and does not become a second escaping author.
-    li.innerHTML = `
-      <span class="sub-bullet">└</span>
-      <span class="sub-log-text">${escapeHtml(labelText)}</span>
-    `;
-
-    li.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (log.row_id !== '_BATCH_') {
-        navigateToLog(log);
-      }
-    });
-
-    ul.appendChild(li);
-  }
+  const appendLogItem = (log) => ul.appendChild(createSubDetailItemDom(log));
 
   initialLogs.forEach(appendLogItem);
   container.appendChild(ul);
@@ -1273,6 +1308,13 @@ export function renderSubDetails(container, logs) {
     });
     
     container.appendChild(moreBtn);
+  }
+
+  if (pane && pane.cursor()) {
+    const tail = document.createElement('ul');
+    tail.className = 'sub-timeline-more';
+    tail.appendChild(createHistoryMoreDom(pane));
+    container.appendChild(tail);
   }
 }
 

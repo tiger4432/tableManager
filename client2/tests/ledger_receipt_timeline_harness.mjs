@@ -236,44 +236,56 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
   eq('W7 one world, no failure: no line, as before', '', T.receiptWorldsLine(c, ['default']));
 }
 
-console.log('\n[7] a folded line counts in its title\'s unit - one decision for the pill, the title and the cell (lead 10-29)');
+console.log('\n[7] a folded line counts the rows it changed - the pill, the title and the cell (lead 11-12 ㄷ, reversing lead 10-29)');
 {
-  // The cell said «N ROWS» for every fold, N the transaction's audit lines - 5,635 receipts on the box read as rows.
+  // owner 11-10 «바뀐 행수»: the recent list's changed_rows per table, summed; «+» when one is the floor. 10-29 counted the
+  // audit lines in each kind's unit (receipts, changes) - a write of three lines on one row read «3 changes».
   const card = (g) => createGlobalTimelineItemDom(g).innerHTML;
   const cell = (html) => (html.match(/<span class="audit-target-col">([^<]*)<\/span>/) || [])[1];
   const title = (html) => (html.match(/title="([^"]*)"/) || [])[1];
   const pill = (html) => (html.match(/class="audit-pill [^"]*">([^<]*)</) || [])[1];
-  const line = (i, column, value, table) => ({ id: i, table_name: table, row_id: `r${i}`, column_name: column,
+  const line = (i, column, value, table, row = `r${i}`) => ({ id: i, table_name: table, row_id: row, column_name: column,
     old_value: null, new_value: value, source_name: 'ledger', updated_by: 'ledger', timestamp: '2026-10-29T01:00:00' });
-  const fold = (tx, columns, log, total) => ({ transaction_id: tx, total_count: total, summary_columns: columns, logs: [log] });
+  const counted = (table, rows, floor = false) => ({ table_name: table, changed_rows: rows, changed_rows_truncated: floor });
+  const fold = (tx, columns, log, total, changed) => ({ transaction_id: tx, total_count: total, summary_columns: columns, logs: [log],
+    ...(changed ? { changed } : {}) });
 
-  // a formula batch split over four lines (crud.receipt_log, B 9d56d6f1d): each line names its rows and its part
+  // a formula batch split over four lines (crud.receipt_log, B 9d56d6f1d): its rows, not its four receipts
   const formula = card(fold('TX-F', ['ledger_batch'], line(1, 'ledger_batch',
-    { receipt_label: 'formula fx.c', rows: 99, part: 2, parts: 4, refused: 0, blank: 0, row_ids: [] }, 'fx'), 4));
-  eq('F1 a split formula batch: the title says the receipt\'s own word and its receipts', '📒 formula fx.c · 4 receipts · fx', title(formula));
-  eq('F2 ...the cell the same count in the same unit, not «4 ROWS»', '4 receipts', cell(formula));
+    { receipt_label: 'formula fx.c', rows: 99, part: 2, parts: 4, refused: 0, blank: 0, row_ids: [] }, 'fx'), 4, [counted('fx', 99)]));
+  eq('F1 a split formula batch: the title says the receipt\'s own word and the rows it changed', '📒 formula fx.c · 99 rows · fx', title(formula));
+  eq('F2 ...the cell the same rows', '99 rows', cell(formula));
   eq('F3 ...and the pill the same decision\'s', 'LEDGER', pill(formula));
 
-  // the ledger's receipts, one per batch, from before receipt_label: the word they always had
+  // the server counts to its cap and says the floor: «1,000+ rows», not the 5,635 lines
   const ledger = card(fold('TX-L', ['ledger_batch'], line(2, 'ledger_batch',
-    { rows: 742, atoms_written: 1484, atoms_deduped: 0, refused: 0, status: 'ok' }, 'inspection_run'), 5635));
-  eq('F4 ledger receipts: «Ledger batch» and 5635 receipts - the box\'s «5635 ROWS»', '📒 Ledger batch · 5635 receipts · inspection_run', title(ledger));
-  eq('F5 ...the cell the same', '5635 receipts', cell(ledger));
+    { rows: 742, atoms_written: 1484, atoms_deduped: 0, refused: 0, status: 'ok' }, 'inspection_run'), 5635, [counted('inspection_run', 1000, true)]));
+  eq('F4 ledger receipts: «Ledger batch» and the capped rows', '📒 Ledger batch · 1,000+ rows · inspection_run', title(ledger));
+  eq('F5 ...the cell the same «1,000+ rows»', '1,000+ rows', cell(ledger));
 
-  const deletes = card(fold('TX-D', ['DELETE'], line(3, 'DELETE', null, 't'), 3));
+  const deletes = card(fold('TX-D', ['DELETE'], line(3, 'DELETE', null, 't'), 3, [counted('t', 3)]));
   eq('F6 deleted rows: the title\'s rows', '🗑️ [ledger] | t | 3 rows deleted', title(deletes));
   eq('F7 ...and the cell\'s', '3 rows', cell(deletes));
   eq('F8 ...the pill DELETE', 'DELETE', pill(deletes));
 
-  const mixed = card(fold('TX-M', ['a', 'b'], line(4, 'a', 'x', 't'), 2));
-  eq('F9 a mixed transaction counts changes, not rows', '📦 [ledger] | t | 2 changes', title(mixed));
-  eq('F10 ...the cell too', '2 changes', cell(mixed));
+  // three lines on one row: one row, not three changes (lead 11-12)
+  const mixed = card(fold('TX-M', ['a', 'b'], line(4, 'a', 'x', 't'), 3, [counted('t', 1)]));
+  eq('F9 a mixed transaction of three lines on one row says one row', '📦 [ledger] | t | 1 row', title(mixed));
+  eq('F10 ...the cell too', '1 row', cell(mixed));
   eq('F11 ...the pill BATCH', 'BATCH', pill(mixed));
 
   // one line: the receipt's word, its own column in the cell as before
   const single = card(fold('TX-S', ['ledger_batch'], line(5, 'ledger_batch',
     { receipt_label: 'formula fx.c', rows: 7, part: 1, parts: 1 }, 'fx'), 1));
   eq('F12 one formula receipt: its word in the title', '📒 formula fx.c · fx', title(single));
+
+  eq('F13 two tables: their rows summed, «+» when either is the floor', '1,007+ rows',
+    cell(card(fold('TX-2', ['a'], line(6, 'a', 'x', 't'), 9, [counted('t', 7), counted('u', 1000, true)]))));
+  eq('F14 a listed sample none of whose tables is counted says it does not know', '— rows',
+    cell(card(fold('TX-N', ['a'], line(7, 'a', 'x', 't'), 4, [counted('t', null)]))));
+  const live = { transaction_id: 'TX-W', total_count: 3, summary_columns: ['a'],
+    logs: [line(8, 'a', 'x', 't', 'rA'), line(9, 'b', 'y', 't', 'rA'), line(10, 'a', 'z', 't', 'rB')] };
+  eq('F15 a group built from live logs holds them all and counts their rows', '2 rows', cell(card(live)));
 }
 
 console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');

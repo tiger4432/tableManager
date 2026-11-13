@@ -373,7 +373,7 @@ export const FLOORS = new Map([
   //    「a live update does not throw on the state a load left behind」 -- which is the production
   //    symptom this file was written for, said out loud instead of ending the section.
   //    All nineteen verdicts now come from failed assertions; the run reports zero throws.
-  ['history_paging_harness.mjs', 187],   // -> 171: K1 K2 a person's change by the layer source, and their two mutants (lead 10-13); -> 187: L1-L5 the history board and its four mutants (lead 10-28)
+  ['history_paging_harness.mjs', 218],   // -> 218: P10 P11 a line drawn again open as state.expandedTransactions says, and its mutant (lead 11-13); -> 213: P1-P9 an unfolded transaction a page at a time, and five mutants (lead 11-12); -> 171: K1 K2 a person's change by the layer source, and their two mutants (lead 10-13); -> 187: L1-L5 the history board and its four mutants (lead 10-28)
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to
@@ -911,7 +911,7 @@ export const FLOORS = new Map([
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
   // harness built from the description would have scored three blanks and called it correct.
-  ['ledger_receipt_timeline_harness.mjs', 57],   // -> 57: F1-F12 a folded line counts in its title's unit, a receipt says its receipt_label (lead 10-29)
+  ['ledger_receipt_timeline_harness.mjs', 60],   // -> 60: F1-F15 a folded line counts the rows it changed, «1,000+ rows» at the cap (lead 11-12 ㄷ reverses 10-29); -> 57: F1-F12 a folded line counts in its title's unit, a receipt says its receipt_label (lead 10-29)
   // New 2026-09-10 with C-59 (S-92's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE TWO CASES HAVE DIFFERENT COLUMNS -- that is the whole
   // discriminant: a hard-coded table passes one and dies on the other, and the columns come
@@ -1329,7 +1329,7 @@ export const FLOORS = new Map([
   //    records it, because there is no earlier tree to measure it against.
   // which table an audit is about, when the answer comes from a declaration
   // 12 -> 15 (D1-D3 the row's Table column, two row mutants; owner 10-12).
-  ['audit_target_table_harness.mjs', 20],
+  ['audit_target_table_harness.mjs', 24],   // -> 24: E6-E9 a paged group by its cursor (lead 11-12)
   // the Global history's Table column measured once a frame, a message of 500 logs one layout (owner 11-06)
   ['audit_fit_harness.mjs', 9],
   // a one-member list is a value; and 「not arrived」 stays distinct from 「no members」

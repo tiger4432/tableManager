@@ -134,8 +134,9 @@ def test_the_history_says_formula_and_the_rows_its_receipt_names(db, rules):
     assert [(r.table_name, r.written_by, r.work_kind) for r in db.execute(select(ab).where(ab.c.transaction_id == tx))
             ] == [(T, "formula %s.c" % T, "formula")]
     ids = _ids(db)
-    assert audit_history.changed_rows(db, T, tx) == 2
-    entries = audit_history.group_rows(db, T, tx, 10)
+    assert audit_history.changed_rows(db, T, tx) == (2, False)
+    entries, ended = audit_history.group_rows(db, T, tx, 10)
+    assert ended is None
     assert [(e["row_id"], e["business_key"], e["updated_by"]) for e in entries] == [
         (ids["k1"], "k1", "formula %s.c" % T), (ids["k2"], "k2", "formula %s.c" % T)]
     assert len({e["id"] for e in entries}) == 2                  # one entry, one id - one receipt line names both (D)
