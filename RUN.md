@@ -41,8 +41,8 @@
 >             [Lines] <표>__lines: dropped uq_bk_<표>__lines - ...        할 일 없음. 시작마다 나오면 그 줄을 총괄께
 >   /health   응답이 오면 api 가 떴다
 >   화면 넷    큰 표의 grid · 이력 패널 · 큐 · 갤러리 (D 의 점검표 — 리허설에서 이 자리에 붙인다)
->   알려진 것  Global history does not show ledger batch receipts or table-wide (*) records yet – they are still recorded
->             and will show once the history reads them (after 11-14)
+>   알려진 것  Global history no longer shows ledger batch receipts (owner 11-13: not needed). Table-wide (*) records:
+>             not shown yet – still recorded, they show once the history reads them (after 11-14)
 >   ★ 어긋난 칸 파일  copy_mismatch_<표>.csv (⑥ 을 돌린 폴더)
 >             옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸이다. 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다
 >             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
