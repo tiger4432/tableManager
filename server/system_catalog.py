@@ -279,24 +279,24 @@ def _model(table):
 
 def _write(db, table, rows, layer, mark) -> dict:
     """One table's rows written where they changed (`crud.value_key`, the one equality), through the table write door
-    under `layer`; a cell that turned blank has the layer withdrawn - one of no history, which keeps no layer, is
-    written blank (`crud.keeps_history`, lead 11-12 안 1). `mark`: a part gone from `rows` keeps its row,
+    under `layer`; a cell that turned blank is written blank - a shipped table keeps no lines, so no history and no
+    layer to withdraw (`crud.keeps_history`, lead 11-13 ㄴ). `mark`: a part gone from `rows` keeps its row,
     `declared` «no» - else (the parts' state) a key no row holds is left alone, no row is made for it.
-    -> {"written": rows, "withdrawn": cells, "marked": rows no longer declared}."""
+    -> {"written": rows, "marked": rows no longer declared}."""
     from database import crud, models, schemas
 
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
         logger.warning("[SystemCatalog] %s has no model in this process - not synced; its declaration is "
                        "server/declarations/table_config.json", table)
-        return {"written": 0, "withdrawn": 0, "marked": 0, "no_model": 1}
+        return {"written": 0, "marked": 0, "no_model": 1}
     keys, types = _keys(table), crud.TABLE_CONFIG[table].get("column_types") or {}
 
     def same(column, value):
         return crud.value_key(value, types.get(column))
 
     current = {tuple(same(key, getattr(row, key, None)) for key in keys): row for row in db.query(model).all()}
-    items, withdraw, seen = [], [], set()
+    items, seen = [], set()
     for row in rows:
         key = tuple(same(column, row.get(column)) for column in keys)
         seen.add(key)
@@ -306,11 +306,6 @@ def _write(db, table, rows, layer, mark) -> dict:
         changed = {column: value for column, value in row.items()
                    if column not in keys and (have is None or same(column, getattr(have, column, None))
                                               != same(column, value))}
-        gone = {column for column, value in changed.items()
-                if same(column, value) is None and crud.keeps_history(table, column)}
-        if have is not None:
-            withdraw += [{"row_id": have.row_id, "column_name": column} for column in gone]
-        changed = {column: value for column, value in changed.items() if column not in gone}
         if changed:
             items.append({**{column: row.get(column) for column in keys}, **changed})
     marked = [{**{column: getattr(have, column, None) for column in keys}, DECLARED: NO}
@@ -319,19 +314,17 @@ def _write(db, table, rows, layer, mark) -> dict:
     updates = [schemas.GeneralUpdateItem(updates=item, source_name=layer, updated_by=layer) for item in items + marked]
     if updates:
         crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=updates))
-    if withdraw:
-        crud.delete_cell_source_batch(db, table, withdraw, layer)
-    return {"written": len(items), "withdrawn": len(withdraw), "marked": len(marked)}
+    return {"written": len(items), "marked": len(marked)}
 
 
 def _sync(db, declared) -> dict:
     """The declared parts written under `SOURCE`, then their state read and written under `RUNTIME` - read after, so a
-    row a part just got is there. -> {table: counts}, the state's as «state written» · «state withdrawn»."""
+    row a part just got is there. -> {table: counts}, the state's as «state written»."""
     said = {table: _write(db, table, rows, SOURCE, mark=True) for table, rows in declared.items()}
     for table, rows in runtime(db).items():
         counts = _write(db, table, rows, RUNTIME, mark=False)
         said[table] = {**said.get(table, {}), "state written": counts["written"],
-                       "state withdrawn": counts["withdrawn"], **({"no_model": 1} if counts.get("no_model") else {})}
+                       **({"no_model": 1} if counts.get("no_model") else {})}
     return said
 
 

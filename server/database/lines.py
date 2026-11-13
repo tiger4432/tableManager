@@ -314,7 +314,7 @@ def keeps_lines(table_name: str, table_cfg) -> bool:
     import shipped
     from ledger.setup_bundle import catalog_kind
 
-    return bool(table_cfg) and catalog_kind(table_cfg) != "view" and table_name not in shipped.tables()
+    return bool(table_cfg) and catalog_kind(table_cfg) != "view" and table_name not in shipped.names()
 
 
 def value_types(db, table_name: str) -> dict:

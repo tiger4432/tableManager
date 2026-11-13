@@ -70,6 +70,7 @@ def test_a_table_without_lines_has_nothing_to_sweep_and_says_so(db, caplog, monk
 
     assert replay._gone_maps(db, BARE_RULE, "run-1") == (None, "gm_bare: line table not built - the sweep cannot tell")
     monkeypatch.setattr(shipped, "tables", lambda: {BARE: CFG})
+    monkeypatch.setattr(shipped, "names", lambda: frozenset({BARE}))     # keeps_lines asks the names (lead 11-13)
     with caplog.at_level(logging.INFO, logger=replay.logger.name):
         assert replay._gone_maps(db, BARE_RULE, "run-1") == (["job"], [])
     assert [r.getMessage() for r in caplog.records if "no lines table" in r.getMessage()] == ["[ReplaySweep] gm_bare: no lines table - nothing to sweep"]

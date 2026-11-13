@@ -16,7 +16,10 @@ def _said(change):
                            [({"source_name": "test", "written_by": None}, None)], "tx1", {})
 
 
-def test_a_new_row_and_a_changed_row_leave_english_lines():
+def test_a_new_row_and_a_changed_row_leave_english_lines(monkeypatch):
+    # declared, as every table a write reaches is - an undeclared one keeps no history (lead 11-13 ㄴ)
+    monkeypatch.setitem(crud.TABLE_CONFIG, "raw_table_1", {"business_key": "EQP_ID",
+                                                           "column_types": {"EQP_ID": "string", "NOTE": "string"}})
     [made] = _said({"old": None, "new": {"EQP_ID": "E1", "NOTE": None}, "work": "new"})
     assert (made["column_name"], made["new_value"]) == ("ROW_UPDATE", "New row: EQP_ID: E1")
     [changed] = _said({"old": {"NOTE": "x"}, "new": {"NOTE": None}, "work": "write"})
