@@ -57,7 +57,7 @@ import db_safety  # [#16a] "a test process may not touch a real database", as a 
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 import grid_pivot  # the main grid's pivot read (소유자 10-22)
 import grid_order  # a table read in its entered order, and the places people dragged (소유자 11-06)
-import grid_look  # a page's looks, and its cells' writers read after it (owner 11-10)
+import grid_look  # a page's looks and its cells' writers, inline (owner 11-13 ㄱ)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
@@ -2672,8 +2672,8 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns(), places=item_places)
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
-    # 🔴 ITS CELLS' WRITERS READ AFTER IT TOO (lead 11-10: ops read cell_sources 13 s inside a pivot page of 2,000
-    #    rows) - `part=writers` answers them by the rows' own keys, as a row page's does
+    # its cells name their writers inline, as a row page's do (owner 11-13 ㄱ); `part=writers` still answers them by
+    # the rows' own keys
     writers = asked.get("part") == grid_look.WRITERS
     merged, looks = read_as_page(db, table_name, raw_rows, pivoted.keys + [pivoted.column, pivoted.value]
                                  + pivoted.carry, include_sources=False, writers=writers)
