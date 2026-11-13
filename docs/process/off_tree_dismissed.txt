@@ -1,3 +1,10 @@
 # Lane commits a landing tree does not need - read by server/scripts/off_tree_commits.py (owner 11-14).
 # One line each: <patch-id or SHA> <why, a few words> <lane>. The first word is what is matched.
 # patch-id: git show <SHA> | git patch-id --stable   (it survives a cherry-pick; a SHA does not)
+9490ba231b4f77b348809e6275714881bd8f1891 6e4ba69ca not needed: the client never reads a notice's changed (it draws created_logs), the history list catches up by its merge - not a regression (lead 11-13) D
+5b373cef5aab52905f3911e4b6e5d0aa71ef974d 8fe4b1b81 not needed: the workers' half of 6e4ba69ca, same reason D
+0ad24aafa6279af5934bccc5d773f5005cf8eae3 4b5f7ac67 rebased: landed as 0af24982f D
+62ceeb331f7b3ce1e6955306584f6bc4a9d9456d 9b01e1d72 rebased: landed as 13075c0df D
+ff69e6da87cabb8b70cb0c32dc13d1c393fcd27f 693a2a5b3 not needed: an 11-11 RUN.md block, RUN.md keeps only today's commands D
+1e5adc3be824a8500c40a9087503c499f47c8d6d 9b2efb48f replaced by 23093ada1..6645253c5 (groupFacts, jump, row shape); per-table lines on D's board D
+6012f536d3d11d72c7837b49292dcf743c7cbd98 9c787bb57 replaced by 23093ada1..6645253c5 (groupFacts, jump, row shape); per-table lines on D's board D
