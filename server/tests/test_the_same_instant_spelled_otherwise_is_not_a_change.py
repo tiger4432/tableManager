@@ -19,6 +19,7 @@ if SERVER_DIR not in sys.path:
 from conftest import retire_dynamic_model                         # noqa: E402
 from database.database import Base                                # noqa: E402
 from database import crud, models, schemas                        # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 LEFT, RIGHT = "instant_left", "instant_right"
 TABLES = {
@@ -43,6 +44,8 @@ def fixture_db(pg_engine):
             conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": name})
     Base.metadata.create_all(bind=pg_engine,
                              tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
+    for name in TABLES:                         # the table as it runs: its line table built
+        line_tables.build(pg_engine, name)
     session = sessionmaker(bind=pg_engine)()
     try:
         yield session
@@ -56,8 +59,9 @@ def fixture_db(pg_engine):
         with pg_engine.begin() as conn:
             for name in TABLES:
                 conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
-                conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
-                             {"t": name})
+                conn.execute(text('DROP TABLE IF EXISTS "%s__lines"' % name))
+                for side in ("cell_sources", "cell_overwrites", "line_columns"):
+                    conn.execute(text("DELETE FROM %s WHERE table_name = :t" % side), {"t": name})
 
 
 def _apply(db, table, updates):
@@ -143,6 +147,25 @@ def test_a_stored_blank_under_an_empty_winner_is_not_rewritten(db):
     assert _apply(db, LEFT, [emptied]) == (0, 0, 0)
     assert db.execute(text('SELECT job FROM "%s"' % LEFT)).scalar() == ""
 
+
+@pytest.mark.pg
+def test_a_chain_blank_over_a_stored_blank_says_no_history_line(db):
+    """판정 284 at the line the screens show as history (crud._said_logs, lead 11-13): an empty chain value over a
+    stored '' moved nothing, so it says no line - an operator would read a change that never was. Control: the same
+    cell given a value says it."""
+    _apply(db, LEFT, _file([{"k": "E", "job": "J"}, {"k": "F", "job": "J"}]))
+    _blank_the_stored(db, "E")
+    _blank_the_stored(db, "F")
+
+    def said(key, value):
+        _rows, _changed, logs, _deleted = crud.apply_batch_updates(db, LEFT, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"k": key, "job": value}, source_name=crud.CHAIN_SOURCE,
+                                      updated_by="t")]))
+        db.commit()
+        return [(line["column_name"], line["new_value"]) for line in logs]
+
+    assert said("E", None) == []
+    assert said("F", "K") == [("ROW_UPDATE", "job: K")]
 
 @pytest.mark.pg
 def test_r3_counts_neither_a_respelled_instant_nor_a_stored_blank(db):
