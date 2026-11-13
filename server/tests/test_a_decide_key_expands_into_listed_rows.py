@@ -24,6 +24,7 @@ import chain_bindings
 from chain import enrichment
 from chain.enrichment import backfill
 from database import crud, models, schemas
+from tests.support import line_tables
 from tests.support.enrich_decl import enrich_chain_rules, rewrite_rules, write_rules
 
 SRC, DRV, NARROW, PLAIN = "dx_test_src", "dx_test_drv", "dx_test_narrow", "dx_test_plain"
@@ -58,11 +59,14 @@ def _want(values=LISTED):
 def env(db_session, tmp_path, monkeypatch):
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
-    for table in TABLES:
-        models.DYNAMIC_TABLES[table].__table__.create(bind=db_session.get_bind(), checkfirst=True)
+    for table in TABLES:                   # the table and its line table (old-shape recipe, owner 11-11)
+        line_tables.build(db_session.get_bind(), table)
     path = write_rules(tmp_path, monkeypatch, {"dx_rule": RULE})
     db_session.info["rules_path"] = path
-    return db_session
+    yield db_session
+    db_session.rollback()
+    for table in TABLES:
+        line_tables.drop(db_session.get_bind(), table)
 
 
 def _write(db, rows, tx):

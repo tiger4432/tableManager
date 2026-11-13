@@ -39,6 +39,7 @@ from chain import dynamic_mappers                                     # noqa: E4
 from chain import report_shape, rule_run, rule_shape                  # noqa: E402
 from database.database import Base                                    # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
+from tests.support import line_tables                                # noqa: E402
 
 SRC = "kinds_log"
 DST = "kinds_attr"
@@ -262,8 +263,8 @@ def fixture_reported(db, tmp_path, monkeypatch):
 
     models.init_dynamic_models(REPORT_TABLES)
     crud.TABLE_CONFIG.update(REPORT_TABLES)
-    for name in REPORT_TABLES:
-        models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
+    for name in REPORT_TABLES:             # the table and its line table (old-shape recipe, owner 11-11)
+        line_tables.build(db.get_bind(), name)
     monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
     for table, rows in (("kinds_wafer", [{"wafer": "W1", "leg": "L1", "ev": "E1", "at": "1"},
                                          {"wafer": "W1", "leg": "L2", "ev": "E1", "at": "1"},
