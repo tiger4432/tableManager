@@ -1,5 +1,74 @@
 # 지금 돌리면 되는 것
 
+> ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 백업 · 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
+>
+> ```
+> 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 창에 들어가는지 본다
+>          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
+>              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - ...
+>              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다. 층 16,348/s (BOX_RATE, 박스의 전체 다시 옮기기)와
+>              100 만 행에 VACUUM 0.2 분 (VACUUM_MIN_PER_MILLION_ROWS)으로 센다 — 이 디스크 속도가 아니다
+>              «at least B h» 가 4 h 를 넘으면 창을 열지 않는다. 그 줄을 총괄께
+>          refused: no statistics for cell_sources - run again with --analyze ...   -> --estimate --analyze 로 다시 (약 1 분)
+>          (업무 시간 밖에) --estimate --sample --workers 4   가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다
+>              끝 줄의 «this disk's rate, from the sample» 이 이 디스크로 센 시간이다
+>
+> 창 안 — 이 순서로
+> ① ★ 백업    런처를 끈 뒤 운영 DB 를 통째로 한 파일로 (값은 config\database.json 의 host · port · user · database)
+>             pg_dump -Fc -h <host> -p <port> -U <user> -f assy_before_overhaul.dump <database>
+>             끝나면 파일 크기를 본다:  dir assy_before_overhaul.dump
+>             크기 · 시간: 리허설(박스 25 GB DB)에서 잰 뒤 채운다 — 아직 안 쟀다. 디스크 빈자리는 DB 크기만큼 먼저 확인
+> ② 런처 끄기  run_app 창을 닫는다. 서버 · 체인 워커 · 스케줄러가 다 내려가야 ④ 가 돈다
+> ③ 번들 반영  받은 .bundle 을 release\ 에 넣고 apply_release.bat (반영만, 런처는 안 띄움)
+>             볼 줄  [Release] <파일>: <이전 커밋> -> <새 커밋> (back: git reset --hard <이전 커밋>)   이 «이전 커밋» 을 적어 둔다 (⑩ ㄴ)
+> ④ 줄 표 짓기  런처를 한 번 띄웠다가, 시작 검사가 끝나면 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
+>             이 사이에는 아무도 쓰지 않는다 (화면을 열지 않는다)
+> ⑤ 미리보기   cd server ; python scripts/copy_layers_to_lines.py
+>             <표>  N layer(s) on M row(s) · to copy | copied | lines not built - start the server once
+>             total N layer(s) to copy · preview only - add --apply
+> ⑥ 시간 다시   python scripts/copy_layers_to_lines.py --estimate --workers 4     «at least B h» 가 창의 남은 시간을 넘으면 멈추고 총괄께
+> ⑦ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
+>             진행  <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
+>             끝    <표>: done - K layer(s) copied in S s - vacuumed ...   VACUUM (ANALYZE) 는 표 끝마다 스크립트가 한다. 따로 할 일 없음
+>                   copied A table(s), B already, C stopped - D cell(s) do not match (<파일>…)   C 가 0 이 아니면 exit 1
+>             이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ⑦ 을 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
+>                       (--workers 4 프로세스를 죽였다 다시 돌린 첫 줄 · 끝 상태는 리허설에서 잰 뒤 채운다)
+> ⑧ 런처 띄우기
+> ⑨ 확인
+>   시작 검사  [Indexes] line index '<표>__lines_<x>' ...   빠진 줄 표 인덱스를 짓는 줄 — 짓는 동안 시작이 기다린다. 다 있으면 조용하다
+>             LineTablesRefused ... <표>: index <이름> not built (<답>)   시작을 거절했다. 바로 위 줄이 이유. 그 세션이 끝난 뒤 다시
+>             [Lines] <표>__lines: dropped uq_bk_<표>__lines - ...        할 일 없음. 시작마다 나오면 그 줄을 총괄께
+>   /health   응답이 오면 api 가 떴다
+>   화면 넷    큰 표의 grid · 이력 패널 · 큐 · 갤러리 (D 의 점검표 — 리허설에서 이 자리에 붙인다)
+>   ★ 어긋난 칸 파일  copy_mismatch_<표>.csv (⑦ 을 돌린 폴더)
+>             옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸이다. 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다
+>             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
+>             할 일: 파일을 총괄께. 고친 뒤 그 행만 다시  python scripts/copy_layers_to_lines.py --apply --rows <파일>
+>               -> «<표>: N row(s) copied again - ... - every cell matches» 면 끝. 아니면 새 파일(.again-<시각>.csv)
+>
+> 답의 뜻 (⑦)
+>   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
+>   refused: lines not built for <표>                 ④ 를 안 했다. 런처를 한 번 띄웠다 끄고 다시
+>   <표>: already copied (...) - skipped              그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   REFUSED - <표>: cell_sources has no owner_rule / owner_key - ...
+>          release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
+>          할 일: 옛 릴리스로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) ③ 부터
+>
+> ⑩ ★ 되돌리기 — 데이터는 한 방향이다. 고르는 법: 착지 뒤 쓴 것이 거의 없으면 ㄱ, 착지 뒤 몇 시간 이상 썼으면 먼저 총괄께
+>   ㄱ (기본 · 소유자 답 대기) 백업 복원 + 옛 릴리스   잃는 것: 착지 뒤의 쓰기 «전부»
+>          런처를 끈다 -> git reset --hard <③ 의 이전 커밋>
+>          dropdb -h <host> -p <port> -U <user> <database>  ->  createdb -h <host> -p <port> -U <user> <database>
+>          pg_restore -j 4 -h <host> -p <port> -U <user> -d <database> assy_before_overhaul.dump   -> 런처를 띄운다
+>          시간: 리허설에서 잰 복원 시간으로 채운다 — 아직 안 쟀다
+>   ㄴ 옛 릴리스만 (옛 층 표 그대로)   잃는 것: 착지 뒤에 쓴 값은 줄 표에만 있어 «하나도 안 보이고», 그 기록도 옛 쪽엔 없다
+>          런처를 끈다 -> git reset --hard <③ 의 이전 커밋> -> 런처를 띄운다. 옛 층 표는 이주가 읽기만 했다
+>   어느 쪽이든 되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
+> 끄기     없음 — 이주 명령은 사람이 돌릴 때만 돈다
+> ```
+>
+> ---
+
+
 > ## [11-13 릴리스] **release-2026-11-13 — 갤러리 zip · 그리드 열쇠 읽기 · R&D 보드 hop 타입** — 번들 적용 · api 와 스케줄러 재기동
 >
 > ```
@@ -126,79 +195,6 @@
 > 끄기     없음 - 재는 자리만 바뀐다. 되돌리려면 옛 릴리스로
 > 로그     새 줄 없음. 같은 [Slow] 줄의 SQL / Python 몫만 달라진다
 > ```
-
-> ## [11-12c] **옛 층 표를 줄 표로 옮기기 — 이주 명령 (서버를 끈 채 한 번) · 시작 검사가 줄 표 인덱스를 다 짓는다** — 새 릴리스로 올린 뒤
->
-> ```
-> 번들 전   이름이 __lines 로 끝나는 표 선언은 이 릴리스부터 거절된다 (운영엔 그런 표 없음 - 소유자 11-12, 할 일 없음)
-> 순서     ① 새 릴리스로 올리고 런처를 한 번 띄웠다가 끈다 — 줄 표(<표>__lines)와 그 인덱스를 짓는다
->          ② 미리보기   cd server ; python scripts/copy_layers_to_lines.py
->          ③ (고를 때) 점검  python scripts/copy_layers_to_lines.py --check     옮겨 보고 쪽마다 되돌린다. 남는 것 없음
->          ④ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
->          ⑤ 런처를 띄운다
-> 미리보기  <표>  N layer(s) on M row(s) · to copy | copied | lines not built - start the server once
->          <표>  names read as an old key merge's copies: N, first: ...     옛 키 병합의 사본 이름. 줄 표에 사본으로 적힌다
->          total N layer(s) to copy · preview only - add --apply
-> 점검     <표>: N / M rows checked, K mismatched so far[, first: <행>.<칸> t=<값> lines=<값>]   쪽마다 한 줄
->          Ctrl+C 로 언제 끊어도 그때까지의 수가 참이다. K 가 0 이 아니면 그 줄을 총괄께
-> 진행     <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
->          X 는 그 표의 지금까지 속도로 셈한 것이다. 앞뒤 속도가 고르지 않을 수 있다
-> 끝       <표>: done - K layer(s) copied in S s[ - D cell(s) do not match, listed in <파일> ...]
->          copied A table(s), B already, C stopped - D cell(s) do not match (<파일>…)   C 가 0 이 아니면 exit 1
->
-> 답의 뜻
->   refused: the server is running - <이름> (pid N)
->          서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
->   refused: lines not built for <표>
->          ① 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
->   <표>: already copied (...) - skipped
->          그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
->   D cell(s) do not match, listed in copy_mismatch_<표>.csv
->          옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸. 쪽은 그대로 옮겨졌고 표는 끝까지 간다 (소유자 ㄴ)
->          그 칸은 지금 값을 그대로 보이다가, «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다
->          파일 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다. 할 일: 파일을 총괄께
->          고친 뒤 그 행만 다시: python server/scripts/copy_layers_to_lines.py --apply --rows <파일>
->            -> «<표>: N row(s) copied again - ... - every cell matches» 면 끝. 아니면 새 파일(.again-<시각>.csv)
->   REFUSED - <표>: cell_sources has no owner_rule / owner_key - the copy reads them; this database cannot be copied
->          옛 층 표에 owner 칸이 없다 — release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
->          할 일: 지금 운영 중인 릴리스(옛 릴리스)로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) 새 릴리스로 올리고 ① 부터
->
-> 이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ④ 를 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
-> 시간     박스의 전체 다시 옮기기(11-13, 30 열 표 sb_wide 217 만 행 · 층 7,331 만 · 1 프로세스, 다른 일과 같이):
->            복사 100 만 행에 34.4 분 (층 16,348/s) · 표 끝의 VACUUM (ANALYZE) 100 만 행에 0.2 분 (t 0.18 + 줄 표 0.02)
->            --estimate 가 이 두 수(BOX_RATE · VACUUM_MIN_PER_MILLION_ROWS)로 센다. 조용한 한 표 판(11-12)은 층 25,000/s
->          운영 표는 그 표의 «행당 층 수»로 돈다 — 미리보기의 layer(s) ÷ row(s) 로 견준다. 진행 줄의 남은 시간을 본다
-> 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 안에 들어가는지 먼저 본다
->          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
->              표마다 층 수와 행 수(DB 통계에서 — 표를 읽지 않는다), 복사 시간과 «+ vacuum N row(s) M min». 끝 줄:
->              total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - at R layers/s and 0.2 min of vacuum a million rows, ...
->              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다
->              «at least B h» = 가장 큰 표 하나가 정하는 바닥이다. 4 시간 창에 copy 외(인덱스 · 첫 부팅)도 들어간다
->              끝 줄이 «the box's re-migration rate» 면 박스 속도로 셈한 것이다 — 이 디스크 속도는 아래 --sample 로
->          refused: no statistics for cell_sources - run again with --analyze ...
->              통계가 없다. --estimate --analyze 로 다시(표본만 읽는다, 약 1 분)
->          python scripts/copy_layers_to_lines.py --estimate --sample --workers 4      «업무 시간 밖에» — 디스크를 쓴다
->              가장 큰 표를 90 초 동안 옮겨 보고 되돌린다. 남는 것 없음. 끝 줄의 «this disk's rate, from the sample» 이
->              이 디스크로 셈한 시간이다. 4 시간을 넘으면 그 줄을 총괄께
->          refused: ... is built here already - the sample is for a database before the window
->              이미 새 릴리스로 줄 표를 지은 DB 다. --sample 은 창 전 DB 에서만 돈다
-> 되돌리기  옛 릴리스로 되돌린다. 옛 층 표는 읽기만 했으니 그대로다. 되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
-> 끄기     없음 — 이 명령은 사람이 돌릴 때만 돈다
->
-> 시작 검사 (런처가 뜰 때마다, 7953b76ff)
->          줄 표마다 선언된 인덱스 다섯(_ra · _b · _p · _h · _i)이 있고 유효한지 묻는다. 빠졌거나 INVALID 면 그 자리에서 짓는다
->          다 있으면 조용하다 — 박스 60 표에 약 2 초
->   [Indexes] line index '<표>__lines_<x>' ...       빠진 인덱스를 짓는 줄. 짓는 동안 시작이 기다린다
->          (표가 클수록 길다 — 7 천만 줄에서 인덱스 하나에 수 분으로 «외삽», 잰 수가 아니다)
->   LineTablesRefused ... <표>: index <이름> not built (<답>) - the line above says why; start again once it is free
->          인덱스를 못 지어 시작을 «거절»했다. 바로 위 줄이 이유다(다른 세션이 표를 잡고 있음 · 짓기 실패)
->          할 일: 그 세션이 끝난 뒤 런처를 다시. 실패가 반복되면 그 두 줄을 총괄께
->   [Lines] <표>__lines: dropped uq_bk_<표>__lines - a business key index on a line table refuses ...
->          앞선 시작이 줄 표에 업무 키 고유 인덱스를 지었었다 — 그대로 두면 한 행의 두 번째 쓰기를 거절한다
->          이번 시작이 그것을 지웠다. 할 일 없음. 시작할 때마다 이 줄이 나오면 그 줄을 총괄께
-> ```
->
-> ---
 
 > ## [11-11i] **표 걷기(Tables 화면) — 행을 + / − 로 찍어 다음 표로 걷고, 마지막 표를 축 하나로 «축 | + | −» 표로 접는다** — 번들 적용 · api 재기동
 >
