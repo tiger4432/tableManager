@@ -872,6 +872,9 @@ async function xSuite(m, say) {
   press(rowXs(stoppedSeat.host)[0]);
   say('XC1 a line counted only to 1,000: «1,000+ events» beside Rows «1,000+», its × asks «Skip 1,000+ events?»',
     same([rowsDrawn(stoppedSeat), stoppedSeat.asked], [['1,000+ events', '1,000+'], ['Skip 1,000+ events?']]), JSON.stringify([rowsDrawn(stoppedSeat), stoppedSeat.asked]));
+  const moreRows = seatCounted({ counted_to: 1000, rows: 1450 });
+  say('XC3 a counted line whose rows pass counted_to: Rows says its own rows «1,450+», not «1,000+»',
+    same(rowsDrawn(moreRows), ['1,000+ events', '1,450+']), JSON.stringify(rowsDrawn(moreRows)));
   const exactSeat = seatCounted({});
   press(rowXs(exactSeat.host)[0]);
   say('XC2 the same line without the key is exact, drawn as before',
