@@ -1343,6 +1343,13 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── R10-R11 (owner 11-13 «네비게이션» · «여러 표라며»): the line and its names jump ──
+  { name: 'a line jumps only when it holds a log (the code before)', defect: true,
+    find: "|| e.target.closest('.audit-tbl-more')) {\n        toggleExpand();\n      } else {\n        goToLine(group, e.target.closest('.audit-target-table'));",
+    repl: "|| e.target.closest('.audit-tbl-more')) {\n        toggleExpand();\n      } else if (group.logs && group.logs.length > 0) {\n        goToLine(group, e.target.closest('.audit-target-table'));" },
+  { name: 'every name jumps to the newest table', defect: true,
+    find: '  const table = named ? named.dataset.table : facts && facts.tables.length',
+    repl: '  const table = named ? facts.tables[0].name : facts && facts.tables.length' },
   // ── R (lead 11-13): the Global list in the route's shape, logs [] ──
   { name: 'the filter needs a log line again (the code before)', defect: true,
     find: '  const facts = groupFacts(group);\n  if (!facts) return false;',
@@ -1510,8 +1517,8 @@ const MUTANTS = [
     find: '    if (state.expandedTransactions.has(txId)) drawOpen();\n',
     repl: '' },
   { name: 'the capped count drops its «+»', defect: true,
-    find: "tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''",
-    repl: "''" },
+    find: "tables.some((t) => t.changed_rows_truncated === true));",
+    repl: "false);" },
   // Controls: real edits that change nothing observable. If either of these "fails", the
   // sections above are keyed on something other than the behaviour they claim to score.
   { name: 'CONTROL: a comment is reworded', defect: false,
@@ -1783,8 +1790,12 @@ async function sectionR() {
   check('R2b ... its table and its kind as the server sent it',
     [entryHtml(S.timeline, 0).includes('sb_wide'), entryHtml(S.timeline, 0).includes('>copy</span>')], [true, true]);
   check('R2c ... and «system» for a batch no one is named on', entryHtml(S.timeline, 0).includes('>system</div>'), true);
-  check('R3 a two-table transaction: the newest table, «+1», the rows of both',
-    [entryHtml(S.timeline, 2).includes('t2 +1'), entryHtml(S.timeline, 2).includes('7 rows')], [true, true]);
+  check('R3 a two-table transaction: each table its own name, newest first, «+1» to fold into, the rows of both',
+    [entryHtml(S.timeline, 2).indexOf('data-table="t2"') < entryHtml(S.timeline, 2).indexOf('data-table="t1"'),
+     entryHtml(S.timeline, 2).includes('data-table="t1"'), entryHtml(S.timeline, 2).includes('>+1</span>'),
+     entryHtml(S.timeline, 2).includes('7 rows')], [true, true, true, true]);
+  check('R3c ... each name says its own rows', [entryHtml(S.timeline, 2).includes('title="t2 · 5 rows"'),
+    entryHtml(S.timeline, 2).includes('title="t1 · 2 rows"')], [true, true]);
   check('R3b ... and every writer and kind it names',
     [entryHtml(S.timeline, 2).includes('parser, kim'),
      entryHtml(S.timeline, 2).includes('>new</span>'), entryHtml(S.timeline, 2).includes('>edit</span>')], [true, true, true]);
@@ -1819,6 +1830,46 @@ async function sectionR() {
   check('R9c ... and the filters read it',
     [redraw('kim', 'OVERWRITE', 'today'), optionsOf(S.filters['audit-filter-user']), optionsOf(S.filters['audit-filter-kind'])],
     [['TX-L'], ['kim'], ['OVERWRITE']]);
+
+  // -- a line pressed jumps (owner 11-13 «네비게이션»): the route shape asks the transaction route for its first row --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([
+    routeGroup('TX-B', [entry('t2', 5, ['new'], ['parser'], now), entry('t1', 2, ['edit'], ['kim'], now)]),
+  ]) });
+  await S.ctx.loadHistory();
+  const card = items(S.timeline)[0] ? items(S.timeline)[0].querySelector('.timeline-card') : null;
+  // a press on the line, or on one of its table names (`named`), with the transaction route's answer scripted
+  const press = async (named, answer) => {
+    const asked = S.requests.length;
+    // the jump stays on screen: same table and transaction, so it ends at «Grid not initialized» and fetches nothing
+    state.currentTable = named || 't2';
+    state.currentTransactionId = 'TX-B';
+    state.isNavigating = false;
+    S.responses.push(answer);
+    const click = card && card._listeners.click ? card._listeners.click[0] : null;
+    if (click) click({ target: { closest: (sel) => (sel === '.audit-target-table' && named ? { dataset: { table: named } } : null) },
+      stopPropagation() {} });
+    for (let i = 0; i < 8; i += 1) await new Promise((r) => setImmediate(r));
+    const said = S.performanceLog.textContent;
+    await new Promise((r) => setTimeout(r, 80));   // the jump's 50 ms step, let go before the next press
+    return [S.requests.length > asked ? urlAt(S, asked) : '(NO REQUEST)', said];
+  };
+  const rowOf = (table, row) => ({ status: 200, body: { transaction_id: 'TX-B', logs: [{ table_name: table, row_id: row }],
+    truncated: false, next_cursor: null, total_count: 1 } });
+  const [lineUrl, lineSaid] = await press(null, rowOf('t2', 'ROW-T2'));
+  check('R10 the line pressed asks its newest table\'s first changed row',
+    lineUrl.endsWith('/audit_logs/transaction/TX-B?table=t2&limit=1'), true);
+  check('R10b ... and jumps there', lineSaid.startsWith('🔍 Navigating to t2:ROW-T2 in Transaction TX-B'), true);
+  const [nameUrl, nameSaid] = await press('t1', rowOf('t1', 'ROW-T1'));
+  check('R11 a table name pressed asks that table', nameUrl.endsWith('/audit_logs/transaction/TX-B?table=t1&limit=1'), true);
+  check('R11b ... and jumps to its row', nameSaid.startsWith('🔍 Navigating to t1:ROW-T1 in Transaction TX-B'), true);
+  const [, goneSaid] = await press('t1', { status: 404, body: { detail: 'Transaction not found' } });
+  check('R12 a 404 is said', goneSaid, 'Transaction not found');
+  const [, noneSaid] = await press('t1', { status: 200, body: { logs: [], truncated: false, next_cursor: null } });
+  check('R12b an answer with no row is said', noneSaid, 'No changed row of t1 in this transaction');
+  state.currentTransactionId = null;
   resetState();
 }
 

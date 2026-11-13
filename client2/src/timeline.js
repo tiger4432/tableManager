@@ -398,13 +398,18 @@ const FOLDS = {
 export function changedRowsOf(group) {
   const tables = Array.isArray(group && group.changed) ? group.changed.filter((t) => t && isCount(t.changed_rows)) : [];
   if (tables.length) {
-    const n = tables.reduce((sum, t) => sum + Number(t.changed_rows), 0);
-    return unitText(`${n.toLocaleString('en-US')}${tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''}`, 'row');
+    return rowsText(tables.reduce((sum, t) => sum + Number(t.changed_rows), 0),
+      tables.some((t) => t.changed_rows_truncated === true));
   }
   if (!holdsAll(group)) return `${ABSENT} rows`;
   const logs = group && Array.isArray(group.logs) ? group.logs : [];
   const rows = new Set(logs.map((log) => log && log.row_id).filter((id) => id && id !== '_BATCH_'));
   return unitText(rows.size.toLocaleString('en-US'), 'row');
+}
+
+/** «N rows», «N+ rows» when `floor` (the server counted to its cap). */
+function rowsText(n, floor) {
+  return unitText(`${Number(n).toLocaleString('en-US')}${floor ? '+' : ''}`, 'row');
 }
 
 function foldOf(group) {
@@ -521,26 +526,60 @@ export function needsTransactionRead(group) {
  *                  `logs` [line, ...], no `changed`
  *  The route's facts are its entries' `kinds` and `written_by`: a group whose `changed` carries them is read from it,
  *  a live line joined to it or not; one whose `changed` counts rows only (the release before, a line beside its
- *  counts) is read from its line. -> {at, who [], kinds [{label, cls}], table, log}: `log` the representative line,
- *  null in the route's shape. null for a group with neither. */
+ *  counts) is read from its line. -> {at, who [], kinds [{label, cls}], tables [{name, label, rows}], log}: `tables`
+ *  newest first, `name` the table a press jumps to, `rows` its count or null; `log` the representative line, null in
+ *  the route's shape. null for a group with neither. */
 export function groupFacts(group) {
   const log = (group && Array.isArray(group.logs) && group.logs[0]) || null;
   const changed = Array.isArray(group && group.changed) ? group.changed.filter(Boolean) : [];
   if (changed.some((t) => Array.isArray(t.kinds))) {
     const words = (key) => [...new Set(changed.flatMap((t) => (Array.isArray(t[key]) ? t[key] : [])).filter(Boolean))];
-    const names = changed.map((t) => t.table_name).filter(Boolean);
     const who = words('written_by');
     return {
       at: changed[0].at || null,
       who: who.length ? who : ['system'],
       kinds: words('kinds').map((label) => ({ label, cls: 'kind-auto' })),
-      table: names.length ? `${names[0]}${names.length > 1 ? ` +${names.length - 1}` : ''}` : '',
+      tables: changed.filter((t) => t.table_name).map((t) => ({ name: t.table_name, label: t.table_name,
+        rows: isCount(t.changed_rows) ? rowsText(t.changed_rows, t.changed_rows_truncated === true) : null })),
       log,
     };
   }
   if (!log) return null;
   return { at: log.timestamp, who: [log.updated_by || 'system'], kinds: [auditKind(group, log, group.total_count > 1)],
-    table: auditTargetTable(group) || log.table_name, log };
+    tables: [{ name: log.table_name, label: auditTargetTable(group) || log.table_name, rows: null }], log };
+}
+
+/** The Table cell: a name a table the line names, each pressed to its first changed row (owner 11-13 «여러 표라며»);
+ *  of several, those past the cell's first line fold into «+N» (foldTableNames), which unfolds the transaction. */
+function tableNames(tables) {
+  const names = tables.map((t) => `<span class="audit-target-table" data-wrap-ok data-table="${escapeHtml(t.name)}"`
+    + ` title="${escapeHtml(t.rows ? `${t.label} · ${t.rows}` : t.label)}">${tablePieces(t.label)}</span>`);
+  return names.join('') + (names.length > 1 ? `<span class="audit-tbl-more" hidden>+${names.length - 1}</span>` : '');
+}
+
+/** A Global line pressed (owner 11-13 «네비게이션»): `named` the table name pressed, else the line's first table. The
+ *  line's own row when its line names a row of that table; else the first row the transaction changed there, asked of
+ *  the transaction route (`?table=&limit=1`, owner 11-10 «바뀐 행 네비»). An answer with no row is said. */
+async function goToLine(group, named) {
+  const facts = groupFacts(group);
+  const table = named ? named.dataset.table : facts && facts.tables.length ? facts.tables[0].name : null;
+  if (!table) return undefined;
+  const log = facts.log;
+  if (log && log.row_id !== '_BATCH_' && log.table_name === table) return navigateToLog(log);
+  const txId = group.transaction_id;
+  try {
+    const res = await fetch(`${API_BASE}/audit_logs/transaction/${encodeURIComponent(txId)}`
+      + `?table=${encodeURIComponent(table)}&limit=1`);
+    if (!res.ok) { sayStopped(await refusalText(res, '❌ Changed rows not read')); return undefined; }
+    const body = await res.json();
+    const row = (Array.isArray(body && body.logs) ? body.logs : []).find((one) => one && one.table_name === table);
+    if (!row) { sayStopped(`No changed row of ${table} in this transaction`); return undefined; }
+    return navigateToLog({ table_name: table, row_id: row.row_id, column_name: row.column_name, transaction_id: txId });
+  } catch (err) {
+    console.error('Failed to read the changed rows', err);
+    sayStopped('❌ Changed rows not read');
+    return undefined;
+  }
 }
 
 export function createGlobalTimelineItemDom(group) {
@@ -570,8 +609,8 @@ export function createGlobalTimelineItemDom(group) {
   let colorClass = '';
 
   const fold = isSummary ? foldOf(group) : null;
-  // the title names the line's table; the route's shape names its tables (facts.table)
-  const titleTable = baseLog ? baseLog.table_name : facts.table;
+  // the title names the line's table; the route's shape names its tables
+  const titleTable = baseLog ? baseLog.table_name : facts.tables.map((t) => t.name).join(', ');
   if (isSummary) {
     if (fold.kind === 'ledger') {
       // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
@@ -642,7 +681,6 @@ export function createGlobalTimelineItemDom(group) {
   const timeStr = localClock(facts.at);
   // The table a column of its own (owner 10-12 「감사로그 대상 테이블 컬럼 따로 빼」), said once: the target cell
   // keeps the row and its column. 묶음 줄은 표본이면 첫 로그의 표라도 말합니다.
-  const keyTable = facts.table;
   const keyRow = isSummary ? '' : (baseLog.business_key || baseLog.row_id.slice(0, 8));
   const targetCol = isSummary ? fold.count : baseLog.column_name;
 
@@ -651,7 +689,7 @@ export function createGlobalTimelineItemDom(group) {
       <div class="audit-cell audit-time">${timeStr}</div>
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind">${facts.kinds.map((kind) => `<span class="audit-pill ${kind.cls}">${escapeHtml(kind.label)}</span>`).join(' ')}</div>
-      <div class="audit-cell audit-tbl"><span class="audit-target-table" data-wrap-ok title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>
+      <div class="audit-cell audit-tbl${facts.tables.length > 1 ? ' audit-tbl-names' : ''}">${tableNames(facts.tables)}</div>
       <div class="audit-cell audit-target">
         <span class="audit-target-key" title="${escapeHtml(keyRow)}"><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
@@ -704,8 +742,8 @@ export function createGlobalTimelineItemDom(group) {
           group.nextCursor = page.truncated ? page.nextCursor : null;
           state.fetchingTransactions.delete(txId);
           // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다.
-          const keyEl = li.querySelector('.audit-target-table');
-          if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
+          const tblEl = li.querySelector('.audit-tbl');
+          if (tblEl) { tblEl.innerHTML = tableNames(groupFacts(group).tables); fitAuditTable(); }
           renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
         } catch (err) {
           console.error('Failed to load transaction details', err);
@@ -732,12 +770,10 @@ export function createGlobalTimelineItemDom(group) {
         e.stopPropagation();
         const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
         setTransactionFilter(targetTxId);
-      } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator')) {
+      } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator') || e.target.closest('.audit-tbl-more')) {
         toggleExpand();
       } else {
-        if (group.logs && group.logs.length > 0 && group.logs[0].row_id !== '_BATCH_') {
-          navigateToLog(group.logs[0]);
-        }
+        goToLine(group, e.target.closest('.audit-target-table'));
       }
     });
 
@@ -752,11 +788,7 @@ export function createGlobalTimelineItemDom(group) {
         const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
         setTransactionFilter(targetTxId);
       } else {
-        if (baseLog.row_id !== '_BATCH_') {
-          navigateToLog(baseLog);
-        } else {
-          sayStopped('⚠️ Batch operations do not support cell positioning');
-        }
+        goToLine(group, e.target.closest('.audit-target-table'));
       }
     });
   }
@@ -833,6 +865,27 @@ function measureAuditTable() {
   box.classList.remove('audit-tbl-whole');
   const need = Math.max(widest('.audit-tbl-piece'), Math.min(cap, whole));
   if (need && (all ? need !== held : need > held)) box.style.setProperty('--audit-tbl-w', `${need}px`);
+  foldTableNames(roots);
+}
+
+/** A Table cell of several names: those on its first line shown, the rest «+N» (owner 11-13; «+N» unfolds the
+ *  transaction, which lists every table's rows). Read after the column's width is set. */
+function foldTableNames(roots) {
+  roots.flatMap((root) => [...root.querySelectorAll('.audit-tbl-names')]).forEach((cell) => {
+    const names = [...cell.querySelectorAll('.audit-target-table')];
+    const more = cell.querySelector('.audit-tbl-more');
+    if (!more || !names.length) return;
+    names.forEach((name) => { name.hidden = false; });
+    more.hidden = true;
+    const onFirst = (el) => el.offsetTop === names[0].offsetTop;
+    if (names.every(onFirst)) return;
+    more.hidden = false;
+    for (let shown = names.length - 1; shown > 0; shown -= 1) {
+      names[shown].hidden = true;
+      more.textContent = `+${names.length - shown}`;
+      if (names.slice(0, shown).every(onFirst) && onFirst(more)) return;
+    }
+  });
 }
 
 export function renderGlobalTimelineIncremental(log) {
