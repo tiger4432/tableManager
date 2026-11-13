@@ -42,6 +42,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
 import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
+import { opensAsPanel } from './lib/screens_panel.mjs';
 import { reachPlugin, touchedScreens } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
@@ -2401,7 +2402,7 @@ async function settle(chrome, log, quiet = 700, most = 8000) {
 }
 
 // ---- in the page: window.__screens = { measure, openNext, close }. Lines are {rule, path, what}.
-function screensLib(TOL) {
+function screensLib(TOL, opensAsPanel) {
   const css = (el) => getComputedStyle(el);
   const shown = (el) => {
     if (!el || !el.isConnected) return false;
@@ -2747,8 +2748,9 @@ function screensLib(TOL) {
     const now = openers().find((x) => keyOf(x) === key) || b;
     const boxed = (el) => { for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) { if (scrolls(css(e))) return true; } return false; };
     const fresh = floating().filter((e) => !before.has(e) && !boxed(e) && !e.closest('[aria-live]'));
-    const panel = fresh.find((e) => !fresh.some((o) => o !== e && o.contains(e))
-      && e.getBoundingClientRect().width > 40 && e.getBoundingClientRect().height > 20);
+    // the panel test is lib/screens_panel.mjs's (lead 11-13 ㄱ3): an AG Grid overlay is the grid redrawing, not a panel
+    const described = (e) => { const r = e.getBoundingClientRect(); return { classes: [...e.classList], width: r.width, height: r.height }; };
+    const panel = fresh.find((e) => !fresh.some((o) => o !== e && o.contains(e)) && opensAsPanel(described(e)));
     if (!panel) return { opener: key, panel: null, lines: [] };
     const a = now.getBoundingClientRect(), p = panel.getBoundingClientRect();
     const lines = [];
@@ -2848,7 +2850,7 @@ const openAgain = async (c, log) => {
   await c.send('Page.navigate', { url: `${ORIGIN}/testbed.html` });
   await sleep(1500);
   await settle(c, log);
-  await evaluate(c, `(${screensLib})(${TOL})`);
+  await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
 };
 // A column's one filter opened from its floating cell's button, the column rolled into view from the left first.
 const VALUE_FILTER_OPEN = (col) => `(async () => {
@@ -3211,7 +3213,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/source_tables.html?table=ledger_events` });
       await sleep(800);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "document.querySelectorAll('.tables-box__body tbody tr:not(.tb-table__pad)').length > 2", 15000);
     }],
     ['Ordered by a column', async (c) => {
@@ -3252,7 +3254,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#status-panel .stall-line:not([hidden])'))");
       await evaluate(c, "(() => { document.getElementById('status-btn').click(); return true; })()");
@@ -3278,7 +3280,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label.is-unknown'))");
       DECL_REFUSED.on = false;
@@ -3288,7 +3290,7 @@ const DRIVE = {
       await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, GRID_LOADED, 15000);
       await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label')) && !document.querySelector('#grid-source-label-host .is-unknown, #grid-source-label-host .is-pending')");
     }],
@@ -4298,7 +4300,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "document.querySelectorAll('.world-facts .world-fact').length === 4", 15000);
       WORLDS_OVERLAP.on = false;
     }],
@@ -4310,7 +4312,7 @@ const DRIVE = {
       await c.send('Page.reload', { ignoreCache: true });
       await sleep(1500);
       await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
+      await evaluate(c, `(${screensLib})(${TOL}, ${opensAsPanel})`);
       await until(c, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Edit in lab')", 15000);
       await evaluate(c, `(() => { const b = document.querySelector('button[data-action="new-declaration"][data-value="import"]');
         if (b) b.click(); return Boolean(b); })()`);
@@ -4348,7 +4350,7 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
         await chrome.send('Page.navigate', { url: `${ORIGIN}/${entry}` });
         await sleep(300);
         await settle(chrome, log);
-        await evaluate(chrome, `(${screensLib})(${TOL})`);
+        await evaluate(chrome, `(${screensLib})(${TOL}, ${opensAsPanel})`);
         const add = (state, lines) => { for (const l of lines) found.push({ entry, size, state, ...l }); };
         const built = await evaluate(chrome, 'document.documentElement.dataset.screensBuild || null');
         if (built !== STAMP) add('loaded', [{ rule: 'built now', path: entry, what: `the page is not this run's build (${built || 'no mark'})` }]);
