@@ -3555,15 +3555,12 @@ def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     (its `rowcount`). The one array writer: the notation fold, the unit mark and the flush's changed rows
     (`database.write_changed_rows_by_shape`, 총괄 8af4d378c) call it."""
     from sqlalchemy import text
-    from sqlalchemy.types import ARRAY
 
     valued = [name for name in names if name != "updated_at"]
     columns = [table.c[key]] + [table.c[name] for name in valued]
     params, casts = array_params(db, columns, rows)
     dialect = db.get_bind().dialect
-    sets = ['"%s" = %s' % (name, "CAST(v.a%d AS %s)" % (i, table.c[name].type.compile(dialect=dialect))
-                           if isinstance(table.c[name].type.dialect_impl(dialect), ARRAY) else "v.a%d" % i)
-            for i, name in enumerate(valued, start=1)]
+    sets = ['"%s" = %s' % (name, array_take(table.c[name], i, dialect)) for i, name in enumerate(valued, start=1)]
     if "updated_at" in names:
         sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
         params["updated_at"] = batch_now
@@ -3573,6 +3570,33 @@ def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
                            % (table.name, ", ".join(sets), ", ".join(casts),
                               ", ".join("a%d" % i for i in range(len(columns))),
                               table.name, key, table.name, key, casts[0])), params)
+
+
+def array_take(column, i, dialect) -> str:
+    """unnest's column `a<i>` as `column` takes it - an array column came as its text literal (`array_params`)."""
+    from sqlalchemy.types import ARRAY
+
+    if isinstance(column.type.dialect_impl(dialect), ARRAY):
+        return "CAST(v.a%d AS %s)" % (i, column.type.compile(dialect=dialect))
+    return "v.a%d" % i
+
+
+def insert_by_arrays(db, table, names, rows, conflict=None, key="row_id") -> list:
+    """`rows` [[a value per name]] into `table` in one statement, in the rows' order (two writers of the same new
+    keys meet the key index in one order); `conflict` a column whose unique index makes a row already there a row
+    not put (ON CONFLICT DO NOTHING). -> the `key` of each row put. update_by_arrays' INSERT (write_lines' new
+    rows, lead 11-13: 1k rows x 33 columns 0.47 -> 0.35 s against executemany's VALUES)."""
+    from sqlalchemy import text
+
+    params, casts = array_params(db, [table.c[name] for name in names], rows)
+    dialect = db.get_bind().dialect
+    on_conflict = "" if conflict is None else ' ON CONFLICT ("%s") DO NOTHING' % conflict
+    return db.execute(text('INSERT INTO "%s" (%s) SELECT %s FROM unnest(%s) WITH ORDINALITY AS v(%s, n) ORDER BY n%s '
+                           'RETURNING "%s"' % (table.name, ", ".join('"%s"' % name for name in names),
+                                              ", ".join(array_take(table.c[name], i, dialect)
+                                                        for i, name in enumerate(names)),
+                                              ", ".join(casts), ", ".join("a%d" % i for i in range(len(names))),
+                                              on_conflict, key)), params).scalars().all()
 
 
 def batch_write_instant(db):

@@ -33,6 +33,7 @@ KNOWN = {
     "chain/replay.py:full_reset": "allowed - the declared full reset (lead 11-11 ㄴ)",
     "scripts/dev_env/snapshot_db.py:copy_rows": "allowed - dev restore",
     "database/crud.py:update_by_arrays": "pending lead - the before_flush hook's write (11-14 gate item)",
+    "database/crud.py:insert_by_arrays": "allowed - write_lines._merge_now's new rows as arrays (lead 11-13)",
 }
 #: seats the census sees that write a table that is not t
 NOT_T = {

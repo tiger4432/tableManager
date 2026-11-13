@@ -118,7 +118,7 @@ def test_two_writers_of_the_same_new_keys_in_opposite_orders_wait_instead_of_dea
         while time.monotonic() < deadline and not waiting:
             with watch.cursor() as cur:
                 cur.execute("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE %s",
-                            ("%%INSERT INTO %s%%" % pg_table,))
+                            ("%%INSERT INTO %%%s%%" % pg_table,))           # quoted or not (crud.insert_by_arrays quotes it)
                 waiting = cur.fetchone()[0] > 0
             time.sleep(0.05)
         assert waiting, "this batch never waited on the other writer's K1 - the crossing was not made"

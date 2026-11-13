@@ -885,6 +885,14 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
     lt, kinds, chunks = s["lines"], s["kinds"], s["chunks"]
     by_bit = {bit: c for c, bit in s["bits"].items() if value_column(c) in lt.c and bit // BITS_PER_CHUNK < chunks
               and (columns is None or c in columns)}
+    cell_of = {c: value_column(c) for c in by_bit.values()}       # a column's line cell, named once a call
+    named = {}                                                     # a bit family's chunks -> its columns, once each
+
+    def columns_of(chunk_values):
+        key = tuple(chunk_values)
+        if key not in named:
+            named[key] = _columns_of(key, by_bit)
+        return named[key]
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     src, ov = LineSource.__table__, CellOverwrite.__table__
     terms = crud.rank_terms(table_name)
@@ -905,15 +913,15 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
         cells = {}                                                     # (row, col) -> [(line, says, value)]
         for r in db.execute(select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at,
                                    src.c.ranks_as, src.c.copy_of, *[lt.c[n] for n in heads + gone],
-                                   *[lt.c[value_column(c)] for c in by_bit.values()])
+                                   *[lt.c[cell_of[c]] for c in by_bit.values()])
                             .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
                             .where(lt.c.row_id.in_(part), or_(*[lt.c[h] != 0 for h in heads]))).mappings():
             line = {"ranks_as": r["ranks_as"], "copy_of": r["copy_of"], "owner_rule": r["owner_rule"],
                     "source_name": r["source_name"],
                     "at": crud.resolution_ingested_at({"ingested_at": r["at"]}), "line_id": r["line_id"]}
-            withdrawn = _columns_of([r[g] for g in gone], by_bit)
-            for col in _columns_of([r[h] for h in heads], by_bit):
-                cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[value_column(col)]))
+            withdrawn = columns_of([r[g] for g in gone])
+            for col in columns_of([r[h] for h in heads]):
+                cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[cell_of[col]]))
         for (row, col), said in cells.items():
             pin = pins.get((row, col))
             left = [(ln, v) for ln, ok, v in said if ok and (pin is None or ln["source_name"] == pin)

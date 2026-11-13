@@ -843,27 +843,36 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
         elif row_id in old and keeps and was_won[row_id] != won_by[row_id]:
             only_won.append(row_id)
     names = data + (["won_by"] if keeps else [])
+    # one answer to «do this write's rows go as arrays» for its INSERT and its UPDATE: PostgreSQL, and each column of
+    # one kind over every row it writes (an array takes one type - crud.one_kind)
+    arrays = lines.sets_at_once(db) and all(crud.one_kind([merged[r][c] for r in put + moved + only_won]) for c in data)
     lost = {}
     if put:                                        # a new row, once, with its values (lead 11-13 ㄱ)
         fresh = fresh or {}
-        statement = insert(now)
+        conflict = None
         if any(fresh.get(r) is not None for r in put) and lines.key_index_standing(db.connection(), table):
-            if db.get_bind().dialect.name == "postgresql":
-                from sqlalchemy.dialects.postgresql import insert as upsert
-            else:
-                from sqlalchemy.dialects.sqlite import insert as upsert
-            statement = upsert(now).on_conflict_do_nothing(index_elements=["business_key_val"])
-        # the rows as parameter sets of one statement (SQLAlchemy's insertmanyvalues pages them): built as
-        # .values(rows) it was compiled again every page, 0.59 s a 909-row page on sqlite (R3: _merge_now 0.48 ->
-        # 1.72 s a 1k write)
-        got = set(db.execute(statement.returning(now.c.row_id), [
-            {"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
-             **({"won_by": lines.won_by_stored(won_by[r], bits)} if keeps else {})} for r in put]).scalars())
+            conflict = "business_key_val"
+        rows = [{"row_id": r, "business_key_val": fresh.get(r), "updated_at": at, **merged[r],
+                 **({"won_by": lines.won_by_stored(won_by[r], bits)} if keeps else {})} for r in put]
+        if arrays:
+            # one statement of arrays (crud.insert_by_arrays, the set door's INSERT - lead 11-13)
+            cols = list(rows[0])
+            got = set(crud.insert_by_arrays(db, now, cols, [[row[c] for c in cols] for row in rows], conflict))
+        else:
+            # the rows as parameter sets of one statement (SQLAlchemy's insertmanyvalues pages them): built as
+            # .values(rows) it was compiled again every page, 0.59 s a 909-row page on sqlite (R3)
+            statement = insert(now)
+            if conflict:
+                if db.get_bind().dialect.name == "postgresql":
+                    from sqlalchemy.dialects.postgresql import insert as upsert
+                else:
+                    from sqlalchemy.dialects.sqlite import insert as upsert
+                statement = upsert(now).on_conflict_do_nothing(index_elements=[conflict])
+            got = set(db.execute(statement.returning(now.c.row_id), rows).scalars())
         lost.update({r: fresh.get(r) for r in put if r not in got})
         for r in lost:
             merged.pop(r, None)
-    if lines.sets_at_once(db) and all(
-            crud.one_kind([merged[r][c] for r in moved + only_won]) for c in data):
+    if arrays:
         # one statement a page (crud.update_by_arrays, the set door - lead 11-12 ㄴ): psycopg2 sends an UPDATE's
         # parameter sets one round trip each
         for ids, stamp in ((moved, ["updated_at"]), (only_won, [])):
