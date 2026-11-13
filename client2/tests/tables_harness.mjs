@@ -9,12 +9,12 @@
 //   L1    a line reads a cell's value, a column the row carries itself (row_id …) its own, a blank none
 //   P1-P2 paging: a next page only while the last came full and the count says more; the words under the table
 //   B1-B7 the box: unnarrowed it reads no row and says so; narrowed it reads the first page and counts; a page of exactly
-//         the count says all; scrolled near the end it reads the next; a head pressed orders by the server; a chip's
+//         the count says all; scrolled near the end it reads the next (after the last row read, lead 11-13); a head pressed orders by the server; a chip's
 //         remove reads again without it; a refusal is the server's sentence; two boxes on one page do not meet
 //   K1-K2 a box's rows marked + and − (Shift) under its name, a press again takes one out; a box opened by a server
 //         marking reads its rows without a narrowing, the marking in its page and its count
-//   R1-R4 the walk between tables (chain.js): a row's node id, the types a table names, the paths through a predicate the
-//         next table emits, a hop's two calls
+//   R1-R5 the walk between tables (chain.js): a row's node id, the types a table names, the paths through a predicate the
+//         next table emits, a hop's two calls, a kept marking's rows page by page after the last row read
 //   F1-F2 the compare (axis_compare.js): folded by the axis - text UniqueConcatenate, number Avg - differing lines up, one
 //         side's lines «−»; Differs only; the picks told to the page
 //   S1    the marking store's names (owner 11-11): nextName holds what it gives, two in one tick differ, a dropped one is
@@ -162,8 +162,9 @@ async function suite(mods) {
   Object.assign(wrap, { scrollHeight: 14000, clientHeight: 600, scrollTop: 13300 });
   wrap.dispatch('scroll', {});
   await settle();
-  eq('B4 near the end the next page is read, below the first', [b.srv.pages().length, new URLSearchParams((b.srv.pages()[1] || '?').split('?')[1]).get('skip'), b.foot()],
-    [2, '500', 'rows 1–1,000 of 1,284 · next page on scroll']);
+  const second = new URLSearchParams((b.srv.pages()[1] || '?').split('?')[1]);
+  eq('B4 near the end the next page is read, below the first - after the last row read, skip beside', [b.srv.pages().length, second.get('skip'), second.get('after'), b.foot()],
+    [2, '500', 'r00499', 'rows 1–1,000 of 1,284 · next page on scroll']);
   const head = walk(b.host).filter((n) => n.tagName === 'TH').find((th) => th.textContent.startsWith('dt_slot'));
   head.dispatch('click', {});
   await settle();
@@ -236,6 +237,16 @@ async function suite(mods) {
   eq('R4 a hop: the rows kept by row_id in a body (no world - a marking is the reader\'s), then the reach by the marking in the world',
     calls, [['a/markings', { table: 'insp', column: 'row_id', values: ['u-1', 7] }],
       ['a/api/ledger/subgraph?world=w2', { reach: { marking: 'k1', type: 'wafer', follow: ['processed_with'], to: 'proc' } }]]);
+  const kept = [];
+  const kfetch = async (url) => {
+    const q = new URLSearchParams(url.split('?')[1]);
+    kept.push([q.get('marking'), q.get('skip'), q.get('after'), q.get('world')]);
+    const skip = Number(q.get('skip'));
+    return { ok: true, status: 200, json: async () => ({ data: [{ row_id: `m${skip}` }, { row_id: `m${skip + 1}` }].slice(0, skip ? 1 : 2) }) };
+  };
+  const marked = await ch.rowsOf({ fetch: kfetch, apiBase: 'a', world: 'w2' }, 'insp', 'k1', 2);
+  eq('R5 a kept marking\'s rows page by page - the next page after the last row read, skip beside, in the world',
+    [kept, marked.map((r) => r.row_id)], [[['k1', '0', null, 'w2'], ['k1', '2', 'm1', 'w2']], ['m0', 'm1', 'm2']]);
 
   // ── the compare ──
   const cm = mods.compare;
@@ -305,6 +316,9 @@ const MUTANTS = [
   { id: 'XF3', what: 'Differs only keeps every line', catches: ['F2'], key: 'compare', mutate: swap('const kept = this.only ? lines.filter((l) => l.differs.length || l.one) : lines;', 'const kept = lines;') },
   { id: 'XS1', what: 'nextName does not hold what it gives', catches: ['S1'], key: 'store', mutate: swap('  store._marks.set(name, new Map());\n  return name;', '  return name;') },
   { id: 'XS2', what: 'a dropped name stays held', catches: ['S1'], key: 'store', mutate: swap('if (drop) this._marks.delete(name);', '') },
+  { id: 'XK1', what: 'a box\'s next page by skip alone', catches: ['B4'], mutate: swap("key: rowsKey(this.rows, 'after'), ", '') },
+  { id: 'XK2', what: 'a marking\'s next page by skip alone', catches: ['R5'], key: 'chain',
+    mutate: swap("    for (const [side, rowId] of Object.entries(rowsKey(out, 'after') || {})) p.set(side, rowId);\n", '') },
 ];
 console.log('');
 const { wrong } = await scoreMutants(MUTANTS, async (mu) => suite({ ...REAL, [mu.key || 'box']: (await loadWithProbe(SUBJECTS[mu.key || 'box'], { mutate: mu.mutate })).module }),

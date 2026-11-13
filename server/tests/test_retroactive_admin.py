@@ -223,7 +223,7 @@ class TestInventory:
         # `fold_withdrawal_events` the same night - a withdrawal's row-by-row events folded (eddf9e38e).
         # ⚰️ `reread_files` (976defaac) retired the same night - the retry door reads them (a4d135a06).
         # `remove_shell_rows` the same night - rows left with only the chain's keys (5eee501eb).
-        # `fold_units` joined on 2026-10-11 - a fold rule's answer written by pages (fold-units).
+        # ⚰️ `fold_units` (2026-10-11) retired 11-12 - a fold rule runs through chain_replay (owner 11-12).
         # `delete_every_row` joined on 2026-10-22 - every row of a table, the file checklist kept (4435b9b29).
         # `retype_column` joined on 2026-10-22 - a column the declaration retyped, converted (총괄 aa8ff1af5).
         # `retype_declared_columns` joined on 2026-10-31 - the columns already declared another type (fd7ef4de1).
@@ -232,7 +232,7 @@ class TestInventory:
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
             "set_aside", "rerun_set_aside", "fold_written_notation",
             "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
-            "remove_shell_rows", "fold_units", "retype_column", "retype_declared_columns"}
+            "remove_shell_rows", "retype_column", "retype_declared_columns"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.

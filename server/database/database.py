@@ -493,7 +493,17 @@ def _outbox_envelope():
 
 def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None,
                           only_rule=None, replay=False, old=None, page=None):
-    """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
+    """`collapsed_events`' rows added to `session` - staged in the flush that writes the rows they name."""
+    from .models import DatabaseOutbox
+
+    for one in collapsed_events(event_type, table_name, row_ids, columns, only_rule, replay, old, page):
+        session.add(DatabaseOutbox(**one))
+
+
+def collapsed_events(event_type, table_name, row_ids, columns=None, only_rule=None, replay=False, old=None,
+                     page=None) -> list:
+    """[OUTBOX-4] ONE outbox event naming `row_ids` instead of N events - its `database_outbox` columns, a chunk of
+    `row_ids` each (`stage_collapsed_event` stages them; `write_lines._stage` writes them as arrays).
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
     THE COLLAPSE. The event must commit atomically with the rows it names; an
@@ -543,13 +553,16 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     from .context import request_event_rows
 
     chunk = request_event_rows.get() or OUTBOX_COLLAPSE_CHUNK_ROWS
+    from .models import outbox_line_columns
+
+    out = []
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
     # poison row takes at most one chunk FAILED with it).
     for i in range(0, len(row_ids), chunk):
         id_chunk = row_ids[i:i + chunk]
-        chunk_event = DatabaseOutbox(
+        chunk_event = dict(
             event_uuid=str(uuid.uuid4()),
             event_type=event_type,
             table_name=table_name or "unknown",
@@ -582,16 +595,16 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # from anywhere else carries no key at all. An absent key and a 0 are different
         # facts and the reader has to be able to tell them apart.
         if chain_depth is not None:
-            chunk_event.payload[CHAIN_DEPTH_KEY] = chain_depth
+            chunk_event["payload"][CHAIN_DEPTH_KEY] = chain_depth
         # [CHANNEL] · [CASCADE] Same rule as the depth: present only when a door set them.
         if channel is not None:
-            chunk_event.payload[CHANNEL_KEY] = channel
+            chunk_event["payload"][CHANNEL_KEY] = channel
         if cascade:
-            chunk_event.payload[CASCADE_KEY] = True
+            chunk_event["payload"][CASCADE_KEY] = True
         if written_by:
-            chunk_event.payload[WRITTEN_BY_KEY] = sorted(written_by)
+            chunk_event["payload"][WRITTEN_BY_KEY] = sorted(written_by)
         if run_id:
-            chunk_event.payload[RUN_KEY] = run_id
+            chunk_event["payload"][RUN_KEY] = run_id
         # [ONLY-RULE] Same rule as the depth above, for the same reason: the key is ABSENT
         # unless a caller named a rule, because the reader defines absence as 「no limit」
         # (`event_constants.only_rule_of`). Writing `None` would make a limit that reads as
@@ -603,17 +616,18 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # exist was anything that puts it there, so a retroactive had to run its own loop to
         # keep itself to one rule. This parameter is that missing half, not a new axis.
         if only_rule:
-            chunk_event.payload[ONLY_RULE_KEY] = only_rule
+            chunk_event["payload"][ONLY_RULE_KEY] = only_rule
         # [REPLAY] Same rule: present only when the replay's staging seat says so.
         if replay:
-            chunk_event.payload[REPLAY_KEY] = True
+            chunk_event["payload"][REPLAY_KEY] = True
         if page:
-            chunk_event.payload[REPLAY_PAGE_KEY] = dict(
+            chunk_event["payload"][REPLAY_PAGE_KEY] = dict(
                 page, part=i // chunk + 1, parts=(len(row_ids) + chunk - 1) // chunk)
         old_chunk = list(old[i:i + chunk]) if old else []
         if any(old_chunk):
-            chunk_event.payload[OLD_VALUES_KEY] = old_chunk
-        session.add(chunk_event)
+            chunk_event["payload"][OLD_VALUES_KEY] = old_chunk
+        out.append({**chunk_event, **outbox_line_columns(chunk_event["payload"])})
+    return out
 
 
 
@@ -641,8 +655,8 @@ def row_values(row) -> dict:
 
 def row_event(event_type, table_name, data_row, old=None) -> dict:
     """The `database_outbox` columns of one per-row event for `data_row`, read by attribute
-    (`__table__`, `row_id`, `business_key_val`, each column) - `stage_event` stages it, and a bulk
-    writer holding a row's values off the ORM inserts the same (`replay.fold_written_notation`)."""
+    (`__table__`, `row_id`, `business_key_val`, each column) - `stage_event` stages it, and
+    `write_lines._stage` writes the same as one statement of arrays."""
     from event_constants import CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY, WRITTEN_BY_KEY, RUN_KEY, OLD_VALUES_KEY
 
     tx_id, user, source, ts, chain_depth, channel, cascade, written_by, run_id = _outbox_envelope()

@@ -497,10 +497,12 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
 
     line_tables.build(pg_session.get_bind(), TABLE)          # the product's shape: a table keeps lines (owner 11-11)
     url, _ = _resolve_pg_test_url()
+    # this table's own UNIQUE index on its key - the schema may hold another table's uq_bk_ (a test before this one
+    # ran the scheduler's key-index line over every declared table), and the first of two came back unordered (11-12)
     index_name = pg_session.execute(text(
-        "SELECT indexname FROM pg_indexes "
-        "WHERE schemaname = :s AND indexname LIKE 'uq\\_bk\\_%'"),
-        {"s": PG_TEST_SCHEMA}).scalar()
+        "SELECT indexname FROM pg_indexes WHERE schemaname = :s AND tablename = :t "
+        "AND indexdef LIKE 'CREATE UNIQUE%(business_key_val)'"),
+        {"s": PG_TEST_SCHEMA, "t": TABLE}).scalar()
     assert index_name == f"uq_bk_{TABLE}", (
         "precondition absent: without a real UNIQUE index the collision is a "
         "duplicate row and this test would pass while proving nothing")

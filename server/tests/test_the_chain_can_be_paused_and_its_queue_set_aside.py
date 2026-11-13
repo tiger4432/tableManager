@@ -1016,12 +1016,14 @@ def test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one
 
     for k in range(3):
         _write(db_q, PA, [{"k": "Q%d" % k, "n": "0"}])                 # three transaction lines
+    queries()                                                           # the kinds, counted behind and kept
     few, _answer = queries()
     for k in range(3, 40):
         _write(db_q, PA, [{"k": "Q%d" % k, "n": "0"}])
     many, _answer = queries()
-    # the kinds and the lines over the waiting rows, and the newest failures (3de34d292) over the failed ones
-    assert few == many == 3, (few, many)
+    # the lines off the index - their keys, first rows, the rows with no key and how many - the drawn lines' counts,
+    # and the newest failures (3de34d292); the kinds are counted behind (lead 11-13)
+    assert few == many == 6, (few, many)
 
     row = models.DatabaseOutbox(event_uuid="one-row", event_type="CREATE", table_name=PB,
                                 payload={"row_id": "r1"}, processed_chain=False)

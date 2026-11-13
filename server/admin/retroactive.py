@@ -1379,47 +1379,6 @@ def _judge_fold_duplicate_rows(params):
         raise RetroactiveRefused(str(e)) from None
 
 
-def _count_fold_units(db, params, scan_limit):
-    from chain import replay
-
-    s = replay.fold_units(db, params["rule"], log=lambda m: logger.debug(m))
-    return {
-        "affected": s["rows_to_mark"],
-        "absence": ABSENCE_TRULY_NONE if not (s["rows_to_mark"] or s["marks_withdrawn"]) else None,
-        "affected_label": "rows to mark",
-        "count_kind": COUNT_EXACT,
-        "scanned": s["rows_proposed"],
-        "scan_limit": scan_limit,
-        "truncated": False,
-        "detail": (f"{s['units']} unit row(s) in {s['groups']} group(s), {s['units_losing']} losing: "
-                   f"{s['rows_to_mark']} of the {s['rows_proposed']} row(s) of '{s['table']}' the rule names get "
-                   f"its mark ({s['rows_higher_layer']} keep showing a higher layer's value), "
-                   f"{s['rows_already_marked']} are marked so already, {s['marks_withdrawn']} old mark(s) are "
-                   f"withdrawn. No chain rule wakes - replay the copy rule next."),
-        "extra": {key: s[key] for key in ("units", "groups", "units_losing", "rows_proposed", "rows_higher_layer",
-                                          "rows_already_marked", "marks_withdrawn")},
-    }
-
-
-def _run_fold_units(db, params, log, control=None):
-    from chain import replay
-
-    s = replay.fold_units(db, params["rule"], apply=True, pace=params.get("pace"), log=log,
-                          checkpoint=_checkpoint(control))
-    _final_progress(control, s["rows_marked"], s)
-    return {key: s[key] for key in ("rows_marked", "rows_to_mark", "rows_already_marked", "marks_withdrawn",
-                                    "pages", "seconds", "stopped")}
-
-
-def _judge_fold_units(params):
-    from chain import cell_layer, replay
-
-    try:
-        replay.fold_units_target(params["rule"])
-    except cell_layer.ReplayRefused as e:
-        raise RetroactiveRefused(str(e)) from None
-
-
 def _count_remove_shell_rows(db, params, scan_limit):
     from chain import replay
 
@@ -2159,7 +2118,8 @@ OPERATIONS = {
         "what_is_missing": "data older than the rule has never been seen by that rule",
         "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘",
                      "꺼 둔 규칙을 이름 대고 이 웨이퍼만 한 번 돌려 보고 싶어", "리포트 폴더에 .send_failed 가 남았어, 중계 PC 고쳤으니 그 웨이퍼 다시 보내줘",
-                     "스펙 표를 바꿨는데 조인 fn 으로 매긴 S/O 판정이 옛 값 그대로야"],
+                     "스펙 표를 바꿨는데 조인 fn 으로 매긴 S/O 판정이 옛 값 그대로야",
+                     "웨이퍼마다 이긴 잡 하나만 남겨야 하는데 진 잡의 로그 행이 표시 안 됐다", "접기 규칙 빨리 돌려줘"],
         "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)",
                  "a report left <wafer>.html.send_failed in the reports folder: chain_replay of the report rule with "
                  "that wafer's report-table row - the file is made again and sent again"],
@@ -2452,31 +2412,6 @@ OPERATIONS = {
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back and the rules that recount run; with a mark column the rules "
                             "that exclude by it run on the marked rows and take back what they fed"),
-    },
-    "fold_units": {
-        "label": "Mark the losing units' rows (fold rule)",
-        "what_is_missing": "per group one unit wins; the other units' rows are not marked yet",
-        "examples": ["웨이퍼마다 이긴 잡 하나만 남겨야 하는데 진 잡의 로그 행이 표시 안 됐다", "접기 규칙 빨리 돌려줘"],
-        "next": ["chain_replay of the copy rule - the marks wake no rule (setup step 6)"],
-        "params": [_p("rule", help="the fold_by_unit chain rule on the unit table (GET /admin/chain/rules)"),
-                   _pace_param()],
-        "count": _count_fold_units,
-        "run": _run_fold_units,
-        "judge": _judge_fold_units,
-        "cli": "server/scripts/chain_replay_cli.py fold-units <rule> [--pace slow] --apply",
-        # 총괄 10-11: the write door's per-cell judgement, written set-based; then the edited unit rows'
-        # withdrawal the worker runs (replay.fold_units).
-        "deletes": "the rule's old marks a unit row no longer makes - its chain layer on the mark column",
-        "reads_as": "number",
-        "cancellable": True,
-        "restartable": True,
-        "commit_granularity": ("one commit per page of rows (replay.FOLD_UNITS_PAGE); a stop lands between pages "
-                               "and a re-run writes only what is left"),
-        "cli_only": [],
-        # 총괄 10-11: the end withdrawal does queue events - on the retroactive channel, waking no rule (application)
-        "downstream_note": ("No chain rule wakes - the marks carry no event and no screen is told of them; "
-                            "withdrawing old marks queues retroactive-channel edit events, which wake no rule. "
-                            "Replay the copy rule next (setup step 6)"),
     },
     "delete_every_row": {
         "label": "Delete every row of a table",

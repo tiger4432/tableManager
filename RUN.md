@@ -1,26 +1,63 @@
 # 지금 돌리면 되는 것
 
-> ## [11-13h] **이력 패널 — 펼친 묶음은 한 쪽(200 행)씩 · 접힌 줄의 행 수는 1,000 에서 «1,000+ rows»** — 새 릴리스로 올린 뒤 (서버 · 클라 같이)
+> ## [11-13 릴리스] **release-2026-11-13 — 갤러리 zip · 그리드 열쇠 읽기 · R&D 보드 hop 타입** — 번들 적용 · api 와 스케줄러 재기동
 >
 > ```
-> 볼 것    이력(Global) 에서 큰 묶음(이주 copy_lines:<표> · 큰 파일)을 펼친다
->          펼침     200 행 + 끝에 «Partial (200) · more» — 누르면 다음 200 행이 같은 목록 끝에 붙는다
->                   줄이 다 나오면 이어서 영수증만 있는 행(수식 쓰기)이 나온다. 마지막 쪽 뒤에는 컨트롤이 없다
->          접힌 줄   «N rows» — 그 묶음이 바꾼 행 수. 1,000 을 넘으면 «1,000+ rows» (그 이상은 세지 않는다)
->          박스 판(이주 묶음 790만 줄): 펼치기 한 번이 26~37 s 였다. 이제 한 쪽의 두 문장이 0.016 + 0.007 s (EXPLAIN ANALYZE, 경로 전체는 안 잼)
->          펼친 묶음의 긴 줄은 낱말 사이에서만 꺾인다. 목록을 다시 읽어도(Refresh · 실시간) 펼친 묶음은 펼친 채로 그려진다
+> 돌릴 것   git bundle verify release-2026-11-13.bundle
+>          git fetch release-2026-11-13.bundle release -> git merge --ff-only FETCH_HEAD
+>          런처 재기동 (api · 스케줄러)
+> 볼 것    1 그리드: 아래로 끝까지 스크롤 · Load All -> 깊은 쪽도 바로 온다 (쪽마다 «마지막 행 다음» 으로 읽음)
+>          2 갤러리: Download zip -> 그룹마다 폴더 하나인 zip (아래 [11-13] 줄)
+>          3 R&D 보드: 근거 hop 이 «entity» 대신 노드 타입 (예 wafer) 을 적는다
+> 답의 뜻   1 깊은 쪽이 몇 초씩 걸린다 -> 옛 클라 번들이 떠 있다. 브라우저 새로고침 (Ctrl+F5)
+>          2 405 Method Not Allowed -> 옛 api 가 돌고 있다. api 재기동이 안 됨
+>          3 hop 이 아직 «entity» -> 위 1 과 같음 (클라 번들)
+> 되돌리기  git reset --hard release-2026-11-11i -> 런처 재기동. 이 릴리스는 DB 를 안 바꾼다 (이주 없음)
+> ```
 >
-> 답의 뜻
->   Position expired · refresh   쪽 위치(커서)를 서버가 못 읽었다(400). 누르면 이력을 처음부터 다시 읽는다
->   Read failed · retry          그 쪽을 못 받았다(네트워크 · 서버). 이미 그린 행은 그대로, 다시 누르면 같은 쪽
->   «— rows»                     센 표가 없는 묶음(줄 표가 없는 표 · 원장 영수증)의 표본. 끝까지 펼쳐 읽으면 들고 있는 행을 센다
+> ---
 >
-> 끄기     없음 — 쪽 크기 200 · 셈 상한 1,000 은 코드 상수다. 되돌리려면 옛 릴리스로
-> 로그     새 줄 없음. 최근 이력의 걷기 문장이 recent_statement_seconds 를 넘으면 이제 NameError 대신
->          «[Audit] recent walk cut at N s - <걸음> past recent_statement_seconds N; answered N group(s), truncated»
->          경고 한 줄을 남기고 걸은 데까지 답한다 (그 갈래에 남아 있던 _cut 결함 고침)
+> ## [11-13] **체인 대기열 화면이 기다리는 행 수에 안 묶인다** — 이주 «없음» · 재기동 «서버 · 체인 워커»
+>
+> ```
+> 할 일    없음. 재기동 뒤 체인 대기열 화면을 연다
+> 볼 것    Waiting 카드와 소유자별 수 옆에 «… · Ns ago» (뒤에서 센 값과 그 시각, 최대 count_recount_seconds 낡음)
+>          처음 한 번은 «Counting…» 일 수 있다. 줄은 그대로 보이고, 이벤트가 200 을 넘는 줄은 «200+»
+> 뜻      줄 찾기와 줄 셈은 기다리는 행 수와 무관하다(박스 1.6M: 줄 찾기 0.02 s, 그리는 200 줄 셈 0.37 s 이하)
+>          슬롯 한 틱이 읽는 행도 줄마다 200 으로 묶인다(박스 1.6M: 161,390 -> 10,000 행)
+> 로그     [Count] the waiting events by event_type were not counted: … -> 그 셈이 실패. 카드는 마지막 값과 사유를 그린다
+> 끄기     없음. 셈의 간격은 ingestion_settings.json "count_recount_seconds" (기본 30)
 > ```
 
+> ## [11-13] **갤러리 «Download zip» — 서버 길(POST /api/images/zip)** — 새 릴리스로 재기동 뒤
+>
+> ```
+> 할 일    없음. 갤러리에서 Download zip 을 누르면 그룹마다 폴더 하나인 zip 이 내려온다
+> 볼 것    읽지 못한 그림이 있으면 zip 안 _not_included.txt 에 그 이름과 사유가 한 줄씩 있다
+> 거절     413 «N images asked; one zip holds at most 2000 - pick fewer groups or rows» -> 그룹이나 행을 줄여 다시
+>          2,000 장은 박스에서 작은 그림 14 s · 1 MB 그림 35 s(2 GB) · 서버 메모리 거의 그대로 · 그리드 읽기 영향 없음
+> 끄기     없음. 버튼을 안 누르면 아무 일도 없다
+> ```
+
+> ## [11-12] **접기 전용 명령(fold-units) 은퇴 — 접기는 체인 소급 리플레이로** — 이주 «없음» · 재기동 «서버»
+>
+> ```
+> 무엇     소급 탭 «Mark the losing units' rows (fold rule)» 와 명령 fold-units 가 없어짐 (소유자 11-12)
+>          같은 일: 소급 탭 «Replay chain rules over old data (R1)» 에 접기 규칙 이름 (예 dt_log_fold_by_inventory)
+>          또는 python server/scripts/chain_replay_cli.py replay dt_log_fold_by_inventory --apply
+>          예문 «접기 규칙 빨리 돌려줘» 는 이제 R1 이 받는다
+> 돌릴 것   git pull -> 서버 재기동
+> 대기열    옛 fold_units 행이 queued 면 할 일 없음 — 화면에 줄 없음, 다음 스케줄러 틱이 집어
+>          failed(unknown retroactive operation 'fold_units') 로 끝냄, 뒤 줄 안 막음
+>          running 으로 남으면 대기열 화면 그 줄의 × — 돌리는 프로세스가 없으면 놓임(failed)
+> 답의 뜻   R1 은 대기열에 넣고 끝남 — 표시는 체인 워커가 대기열을 비우면 섬 (chain_worker.log), 규칙은 안 깨움
+>          남는 것은 전과 같다: 표시 · 체인 층 · 이력, 다시 이긴 잡은 옛 표시를 거둠, 잡을 옮긴 로그 행도
+>          박스 판 (로그 10만 · 단위 2,000 -> 표시 50,000): 전 명령 17 초 · R1 34 초 (overhaul 트리 28 · 32 초)
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-13g] **grid 쪽 읽기 — 칸의 «누가 썼나» 색을 이름별로 한 번만 따진다** — 새 릴리스로 올린 뒤 (서버만)
 >
 > ```
@@ -9641,24 +9678,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >            withdraw 는 로그 표 fold_mark 의 체인 층 전부 — ⑤b 표시(fold_duplicate_rows 층)는 그대로
 > 옛 ⑤ 표시    잡을 가로질러 접었던 fold_duplicate_rows 층이 남아 있으면 이긴 잡의 행에도 남음 — 걷으려면
 >            python server/scripts/chain_replay_cli.py withdraw dt_log fold_duplicate_rows --columns fold_mark  (보고 --apply) -> ⑤b 다시
-> 스크립트로     python server/scripts/chain_replay_cli.py fold-units dt_log_fold_by_inventory   (미리보기, 쓰지 않음) -> 같은 명령 + --apply
-> (소유자 「맵퍼 말고」) 대기열 없이 위 replay 가 남기는 상태 그대로를 2만 행 쪽마다 씀 — 표시 · 행마다 체인 층 · 이력 줄 · 옛 표시 걷기까지
->            PostgreSQL 만 · 표시 쪽은 아웃박스 사건 · 화면 알림 · 규칙 깨우기 없음 — 끝의 옛 표시 걷기는 거둔 행마다 소급 채널 EDIT 사건,
->            규칙은 안 깨운다(진짜 런처 10-11: 이긴 잡을 옮긴 웨이퍼 하나 -> 사건 2 · channel retroactive · 복사 규칙 실행 0 · 공식 표 그대로)
->   진행      쪽마다 «[fold-units] x / N rows (page k, s s)»
->   답        units — 인벤토리 행 · 웨이퍼 · 진 잡 수 / rows the rule names — 진 잡의 로그 행
->            rows to mark — 이번에 체인 층을 쓰는 행, 그 아래 shown value stays — 사람 값 같은 더 높은 층이 쥐어 보이는 값이 그대로인 행
->            rows marked so already — 이미 같은 층 · 같은 표시(다시 돌리면 전부 여기, 쓰기 0)
->            old marks withdrawn — 이제 이긴 잡 · 다른 잡으로 옮긴 로그 행의 옛 표시를 거둔 수
->   그 뒤      ⑥ 복사 replay 를 꼭 — 이 명령은 아무 규칙도 안 깨운다. 열린 그리드는 새로 고침해야 보인다
->   멈춤      소급 탭 × — 쪽 사이에서 선다 · 다시 돌리면 남은 것만 · 멈춘 판은 옛 표시를 안 걷는다(끝까지 한 번 더)
-> 돌리는 동안    체인 워커를 재기동해도 안 끊긴다 — 5e5a9d049 pull 뒤(CLI 연결 assy_retroactive). 그 전 판에선 재기동의 기동 정리가
->            이 명령의 연결을 끊어 «server closed the connection unexpectedly» 로 멈춤(bb4d53e9e) — 멈췄으면 같은 명령을 다시
->   초기화      위 「초기화」 첫 줄 -> fold-units dt_log_fold_by_inventory --apply
->   박스 수     박스 DESKTOP-OVKV3HK(AMD Family 23) · assy_test 스크래치 스키마 · 만든 데이터(인벤토리 1,000 · 웨이퍼 400 · 로그 535,000 · 표시 321,000)
->            쪽으로 답하는 맵퍼(1,000 행 쪽) 그대로: 미리보기 26.7 초 · --apply 91.6 초(17 쪽, 쪽마다 4.7~6.5 초)
->            다시 돌림 29.8 초(쓰기 0) · 옛 표시 걷기 1.75 초(걷을 것 0)
->            --apply 중 59.5 초가 DB 쓰기(로그 행 21.0 · 이력 20.3 · 체인 층 18.2) — 체인 문이 쓰는 행 그대로라 한 연결로는 이 밑으로 못 줄임
+> 스크립트로     ⚰️ fold-units 는 11-12 은퇴 — 위 replay 줄이 그 일 (맨 위 «접기 전용 명령(fold-units) 은퇴» 블록)
 > 시험 수       pytest sqlite: CW1 AUTO 둘 -> 이른 것 · CW3 매뉴얼 + AUTO -> AUTO · CW2 하나 -> 0 · CW4 매뉴얼 둘 -> 이른 것
 >            + 진 잡에 새 로그 행 · 늦은 AUTO 잡이 들어옴 · 다시 돌리면 쓰기 0. 진짜 프로세스 판은 응용 rh_world_inv
 > 급할 때      체인 선언에서 두 줄을 지우고 저장(표시는 남음 — 초기화 첫 줄로 걷음) · 코드는 git revert <이 커밋>

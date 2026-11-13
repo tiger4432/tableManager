@@ -34,14 +34,14 @@ const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
 // 25 rows, ranks 1-9, tied 22, incomparable 0, measured 4. Trimmed to five rows that carry
 // one of each state, so a collapse between any two shows up here.
 const SEED = 'ledger-entity:v1:SEED';
-const hop = (kind, label, ref) => ({ id: `${kind}:x`, node_kind: kind, label, atom: null, ref });
+const hop = (kind, label) => ({ id: `${kind}:x`, type: kind, label });
 const row = (label, rank, extra, hops) => ({
   id: `ledger-quantity:v1:${label}`, type: 'Quantity', label, rank,
   top: false, tied: false, incomparable: false, ...extra,
   evidence: [{ seed: SEED, sign: '+', hops }],
 });
-const DECLARED = [hop('entity', 'W'), hop('collection', 'void'), hop('quantity', 'q', 'mechanism_models.json')];
-const REACHED = [hop('entity', 'W'), hop('claim', 'BONDING', 'eqp_log:SYN-BD-04'), hop('value', '{...}'), hop('quantity', 'q', 'mechanism_models.json')];
+const DECLARED = [hop('entity', 'W'), hop('collection', 'void'), hop('quantity', 'q')];
+const REACHED = [hop('entity', 'W'), hop('claim', 'BONDING'), hop('value', '{...}'), hop('quantity', 'q')];
 
 const BODY = {
   state: 'ok',
@@ -135,7 +135,7 @@ async function suite(mods) {
   //    무엇이 사라졌나: 후보 «순위»가 `collect` 축과 함께 꺼졌습니다
   //                    (실측: /subgraph -> propagation.state="not_requested" · ranked=0).
   //                    후보가 0 이므로 `candidate.measured` 는 적용 대상이 없습니다.
-  //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹입니다.
+  //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹였습니다(11-13 은퇴로 지움).
   //                    서버 실측은 `{ entity: 400 }` 입니다 — 그 종류는 더 이상 안 옵니다.
   //                    픽스처를 «지금 값»으로 바꾸면 정확히 이 단언들이 같은 이름으로 깨집니다.
   //    어디로 가나:     「후보 패널을 walk 부품으로 다시 짓는 라운드」가 데려갑니다.

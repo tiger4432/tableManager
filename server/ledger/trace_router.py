@@ -160,7 +160,7 @@ def _subgraph_contract_state(connection, relation):
 # POST as well: a continued page hands back its `resume` in the body (MORE, 총괄 ad3c03e71)
 def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
-                         description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
+                         description="opaque id of a declared entity node (ledger-entity:v1:) - one node kind"),
     world: list[str] | None = Query(
         None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
     hops: int = Query(ledger_subgraph.DEFAULT_HOPS, ge=0, le=ledger_subgraph.MAX_HOPS,
@@ -328,7 +328,6 @@ def evidence_subgraph(
             follow, _followable_predicates(world), reason="predicate_not_declared",
             what="predicate", world=world, argument="follow")
         follow_keys = {_bare_name(name): keys for name, keys in follow_keys.items()}
-    filters = _walk_filters(edge_filter, node_filter, world, db.connection())
     if isinstance(expand, (list, tuple)):
         expand = [_expanded_bundle(item, world) for item in expand]
     if isinstance(seed_type, str) and seed_type.strip():
@@ -368,6 +367,8 @@ def evidence_subgraph(
         raise HTTPException(status_code=422, detail={
             "reason": "interval_empty",
             "message": "since must be before until - swap them or widen the window"})
+    # after the refusals that need no data - a refused request opens no connection (lead 11-12)
+    filters = _walk_filters(edge_filter, node_filter, world, db.connection())
     time_page = _time_page_asked(
         {"around": around, "earlier": earlier, "later": later}, page,
         follow=follow, follow_keys=follow_keys, direction=direction, hops=hops,

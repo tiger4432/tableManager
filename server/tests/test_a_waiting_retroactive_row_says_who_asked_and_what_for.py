@@ -37,7 +37,7 @@ def _outbox(db, *, event_type, table_name, payload):
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), table_name=table_name, event_type=event_type,
         payload=dict(payload), processed_chain=False))
-    db.flush()
+    db.commit()
 
 
 def _groups(client):

@@ -1241,7 +1241,8 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
     whose shown values changed EDIT - those columns, their old values; none when nothing shown changed; a deleted row
     DELETE, collapsed always, its values as the old ones (`crud.delete_rows_batch`'s)."""
     from database.context import request_outbox_mode
-    from database.database import json_value, stage_collapsed_event, stage_event
+    from database.database import _notify_outbox_once, collapsed_events, json_value, row_event
+    from database.models import DatabaseOutbox
     from event_constants import OUTBOX_MODE_COLLAPSED, OUTBOX_PAYLOAD_EXCLUDED_COLUMNS
     from types import SimpleNamespace
 
@@ -1268,16 +1269,30 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
         moved = _moved(old, new, shown, types)
         if moved:
             events["EDIT"].append((row_id, moved, {c: json_value(old.get(c)) for c in moved}, (old, new)))
+    said = []                                      # every event's database_outbox columns, in the order staged
     for event_type, rows in events.items():
         if not rows:
             continue
         if collapsed or event_type == "DELETE":
-            stage_collapsed_event(db, event_type, table, [r[0] for r in rows],
-                                  sorted({c for r in rows for c in r[1] or ()}) or None,
-                                  old=[r[2] or {} for r in rows] if event_type != "CREATE" else None)
+            said += collapsed_events(event_type, table, [r[0] for r in rows],
+                                     sorted({c for r in rows for c in r[1] or ()}) or None,
+                                     old=[r[2] or {} for r in rows] if event_type != "CREATE" else None)
         else:
-            for row_id, _columns, old, (was, new) in rows:
-                stage_event(db, event_type, table, as_row(row_id, was, new), old=old)
+            said += [row_event(event_type, table, as_row(row_id, was, new), old=old)
+                     for row_id, _columns, old, (was, new) in rows]
+    if not said:
+        return
+    if lines.sets_at_once(db):
+        # one statement of arrays (crud.insert_by_arrays - lead 11-13; the ORM flush of 1,000 events was 0.26 s of a
+        # 1k write's commit): the columns the ORM fills by default given, and the NOTIFY the flush hook latches for an
+        # outbox row in the session (notify_on_outbox_change) asked here - these rows never are in it
+        said = [{"retry_count": 0, "processed_chain": False, **one} for one in said]
+        names = list(said[0])
+        crud.insert_by_arrays(db, DatabaseOutbox.__table__, names, [[one[n] for n in names] for one in said], key="id")
+        _notify_outbox_once(db)
+        return
+    for one in said:
+        db.add(DatabaseOutbox(**one))
 
 
 def _audit(db, table, said, transaction_id, at):

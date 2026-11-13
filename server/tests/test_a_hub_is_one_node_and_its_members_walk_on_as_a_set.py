@@ -177,7 +177,7 @@ def test_an_aux_verdict_splits_a_hub():
     """`_fold_hubs` after the aux verdicts: members found and members with none stand in two hubs (10-12)."""
     step = ledger_subgraph.hub_step_id("N", "p", "outgoing", "t")
     payload = {"walk": {"start": {"positive": 1, "negative": 0}}, "edges": [],
-               "nodes": [{"id": i, "type": "t", "label": i, "node_kind": "entity", "depth": 1,
+               "nodes": [{"id": i, "type": "t", "label": i, "depth": 1,
                           "aux": {"state": "found" if i == "a" else "none"}} for i in "abc"]}
     ledger_subgraph._fold_hubs(payload, {"members": dict.fromkeys("abc", step), "steps": {step: {
         "near": "N", "predicate": "p", "direction": "outgoing", "far_type": "t"}}}, None)
@@ -189,7 +189,7 @@ def test_a_contrast_splits_a_hub_by_the_reach_its_members_share():
     hub once, where its first member stood."""
     step = ledger_subgraph.hub_step_id("N", "p", "outgoing", "t")
     payload = {"walk": {"start": {"positive": 1, "negative": 1}}, "edges": [],
-               "nodes": [{"id": i, "type": "t", "label": i, "node_kind": "entity", "depth": 1} for i in "abc"],
+               "nodes": [{"id": i, "type": "t", "label": i, "depth": 1} for i in "abc"],
                "propagation": {"ranked": [{"id": "a", "reach": [1, 0]}, {"id": "b", "reach": [1, 1]},
                                           {"id": "c", "reach": [1, 0]}], "top_set": ["a", "c"]}}
     ids = ledger_subgraph._fold_hubs(payload, {"members": dict.fromkeys("abc", step), "steps": {step: {

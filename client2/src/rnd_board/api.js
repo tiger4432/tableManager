@@ -643,11 +643,7 @@ export function subgraphModel(result) {
         sign: ev.sign || null,
         hops: (ev.hops || []).map((h) => ({
           ...h,                                    // C-45
-          id: h.id || null, kind: h.node_kind || null, label: h.label || '',
-          ref: h.ref || null,
-          // A hop that points at the model file is a DECLARATION; one that points elsewhere is
-          // a thing in the world. The parts show that difference rather than the raw string.
-          declaredOnly: h.node_kind === 'quantity',
+          id: h.id || null, kind: h.type || null, label: h.label || '',   // its domain type (lead 11-13)
         })),
       })),
     };
