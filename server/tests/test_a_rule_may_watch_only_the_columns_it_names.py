@@ -78,7 +78,7 @@ def test_the_payload_carries_sorted_names_and_omits_the_key_when_empty():
 
     from database import database as db_module
 
-    body = inspect.getsource(db_module.stage_collapsed_event)
+    body = inspect.getsource(db_module.collapsed_events)
 
     assert '**({"columns": sorted(columns)} if columns else {})' in body, body[-800:]
 
