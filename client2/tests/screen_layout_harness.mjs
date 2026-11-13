@@ -655,9 +655,8 @@ const answerOf = (u) => {
 };
 // A paste of `text` on row 2's `col` cell in pivot view - its cell said on window.__pasteAt.
 async function pivotPasted(c, col, text) {
-  await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
   const sel = `.ag-row[row-index="2"] .ag-cell[col-id="${col}"]`;
-  await until(c, `!!document.querySelector(${JSON.stringify(sel)})`).catch(() => null);
+  await topRowDrawn(c, sel);
   const at = await evaluate(c, `(() => {
     const cell = document.querySelector(${JSON.stringify(sel)});
     window.__pasteAt = cell ? 'cell ' + cell.textContent.trim() : 'no ${col} cell on row 2';
@@ -1827,7 +1826,11 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off, filters carried back', rule
   ${CARRIED_CHIPS}
   const reads = (window.__switchReads || []).filter((u) => !u.includes('/count'));
   if (reads.length !== 1) return reads.length + ' reads of the rows for one switch: ' + JSON.stringify(reads);
-  if (![...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) return 'the item column is not shown again';
+  if (![...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) {
+    const across = document.querySelector('.ag-center-cols-viewport, .ag-body-horizontal-scroll-viewport');
+    return 'the item column is not shown again (scrolled ' + (across ? across.scrollLeft : 'none') + ' px across · '
+      + document.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id]').length + ' header cells drawn)';
+  }
   return null;
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
@@ -2813,6 +2816,18 @@ function screensLib(TOL, opensAsPanel) {
 // A wait that runs out leaves its state unreached: the drive loop says it under «answers», with the step, so a green
 // line is never a state the gate did not get to (lead 10-10 - the walk page passed once with every wait run out).
 const waitsRunOut = [];
+// A row near the top, drawn: the viewport put back at the top on every look until the row is there - the redraw after
+// the step before (Apply's) can scroll it away after one put (lead 11-13: three pivot steps pressed on rows never drawn
+// at 1920x950, 74 rows drawn and not row 1). The looks it took are said on the size's line.
+const topRowLooks = [];
+const topRowDrawn = async (chrome, sel, most = 10000) => {
+  const looks = await evaluate(chrome, `new Promise((ok) => { const t0 = Date.now(); let n = 0;
+  const tick = () => { n += 1; const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0;
+    if (document.querySelector(${JSON.stringify(sel)})) ok(n); else if (Date.now() - t0 > ${most}) ok(-n); else setTimeout(tick, 150); }; tick(); })`);
+  topRowLooks.push(looks);
+  if (looks < 0) waitsRunOut.push(`row never drawn at the top in ${most / 1000} s (${-looks} looks): ${sel}`);
+  return looks > 0;
+};
 const until = async (chrome, test, most = 10000) => {
   const held = await evaluate(chrome, `new Promise((ok) => { const t0 = Date.now();
   const tick = () => { let v = false; try { v = (${test}); } catch (e) {} if (v || Date.now() - t0 > ${most}) ok(Boolean(v)); else setTimeout(tick, 150); }; tick(); })`);
@@ -3462,8 +3477,7 @@ const DRIVE = {
     }],
     ['Pivot, a group deleted', async (c) => {
       // Add Row scrolled to the new row at the bottom: back to the top, where row 1 is drawn
-      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
-      await until(c, "!!document.querySelector('.ag-row[row-index=\"1\"] .ag-cell[col-id=\"#\"]')").catch(() => null);
+      await topRowDrawn(c, '.ag-row[row-index="1"] .ag-cell[col-id="#"]');
       // a press on the row's # cell picks it (enableClickSelection)
       await evaluate(c, `(() => { window.__confirms = []; window.confirm = (m) => { window.__confirms.push(m); return true; };
         window.__alerts = []; window.alert = (m) => { window.__alerts.push(m); };
@@ -4392,6 +4406,7 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
         } catch (err) {
           found.push({ entry, size, state: 'driving', rule: 'answers', path: entry, what: `could not be driven: ${err.message}` });
         }
+        if (topRowLooks.length) console.log(`  ${label} ${entry} ${size}: top rows drawn after ${topRowLooks.splice(0).join(' · ')} looks (minus: never)`);
         console.log(`  ${label} ${entry} ${size}: ${panels.length} panels opened${panels.length ? ` - ${panels.map((p) => `«${p}»`).join(' ')}` : ''}`);
         for (const u of log.missing) found.push({ entry, size, state: 'answers', rule: 'answers', path: u, what: 'no answer in screens_answers.json.gz' });
         if (log.refused.length) console.log(`  ${label} ${entry} ${size}: ${log.refused.length} non-GET refused (${[...new Set(log.refused)].join(', ')})`);
