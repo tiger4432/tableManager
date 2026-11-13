@@ -102,6 +102,13 @@ const RULES_OF = (state) => [state === TIMED_OUT ? { rule: 'lot_slot_join', rows
   : state.state === 'running' ? { rule: 'dt_log_to_dt_map', rows_in: 500, rows_out: null, running_seconds: 72 }
   : { rule: 'dt_log_to_dt_map', rows_in: null, rows_out: null, running_seconds: null }];
 const LINES = [...STATES.map((s) => s.chain_state), TIMED_OUT];
+// A count the server makes behind its answer (C 6210a4f90): the grid's whole-count shape, counted 30 s before the read.
+const countedNow = (total) => ({ total, capped: false, counted_at: new Date(Date.now() - 30000).toISOString(), count_seconds: 0.1,
+  counting: false, failed: null });
+// A line counted only to the server's 200 and a Waiting card not yet counted (lead 11-13): the line as a scratch server of
+// 6210a4f90 sent it - events 200, rows 240, counted_to 200.
+const COUNTED = { on: false, line: { transaction_id: 'tx-counted-0000-0000', events: 200, rows: 240, counted_to: 200,
+  tables: ['dt_log'], waiting_seconds: 60, cancel: { key: 'tx:counted' } } };
 const QUEUE = {
   '/outbox/queue/rows': {
     generated_at: '2026-10-08 20:00:00', clock: 'server', rules_known: ['dt_log_to_dt_map'],
@@ -111,7 +118,8 @@ const QUEUE = {
       rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] })),
   },
   '/admin/chain/queue': {
-    waiting: LINES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
+    get waiting() { return countedNow(LINES.length); }, get retried_among_waiting() { return countedNow(0); },
+    oldest_waiting_seconds: 60, waiting_by_owner: [],
     loop_seen_via: 'this_process', generated_at: '2026-10-08T20:00:00+09:00', now_running: [],
     waiting_transactions: LINES.map((state, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
       waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: state, slot_pid: 4242, rules: RULES_OF(state) })),
@@ -640,6 +648,11 @@ const answerOf = (u) => {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
   if (REPLAYS.on) { const v = replaysAnswer(u); if (v) return v; }
+  if (COUNTED.on && u.pathname === '/admin/chain/queue') {
+    const q = QUEUE['/admin/chain/queue'];
+    return { status: 200, type: 'application/json', body: { ...q, waiting: { total: null, capped: false, counted_at: null,
+      count_seconds: null, counting: true, failed: null }, waiting_transactions: [COUNTED.line, ...q.waiting_transactions] } };
+  }
   if (HELD_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], now_running: HELD_RUN.items,
       ...(CUT_RUN.on ? { interrupted_runs: [CUT_RUN.entry] } : {}) } };
@@ -1327,6 +1340,18 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
+// A line counted only to 200 says «200+ events» beside Rows «240+», and Waiting not yet counted says so (lead 11-13).
+CELLS.push({ entry: 'admin.html', after: 'Chain queue, a counted line and a counting Waiting', rule: 'contents', at: 'chain-queue', expr: `(() => {
+  const mount = document.querySelector('#chain-queue-mount');
+  const line = mount && mount.querySelector('tr[data-line-id="tx-counted-0000-0000"]');
+  if (!line) return 'no line for the counted transaction';
+  const rows = line.querySelector('td[data-col="rows"]');
+  const said = rows ? [...rows.children].map((n) => n.textContent) : [];
+  if (JSON.stringify(said) !== JSON.stringify(['200+ events', '240+'])) return 'its Rows says ' + JSON.stringify(said);
+  const card = mount.querySelector('.chain-queue-number[data-key="waiting"] .chain-queue-number-value');
+  const waiting = card ? card.textContent : '';
+  return waiting === 'Counting events…' ? null : 'its Waiting says ' + JSON.stringify(waiting);
 })()` });
 // owner 11-09 «리프레시 위로»: each queue panel's Refresh above its numbers, list and failures.
 CELLS.push({ entry: 'admin.html', after: 'Overview', rule: 'contents', at: 'chain-queue-refresh', expr: `(() => {
@@ -4253,9 +4278,19 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .run-line__summary');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // A line counted only to 200 and a Waiting card still counting (lead 11-13): the queue read again with both.
+    ['Chain queue, a counted line and a counting Waiting', async (c) => {
+      HELD_RUN.on = false;
+      COUNTED.on = true;
+      await evaluate(c, "document.querySelector('#chain-queue-mount .chain-queue-refresh').click(); true");
+      await until(c, "!!document.querySelector('#chain-queue-mount tr[data-line-id=\"tx-counted-0000-0000\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount tr[data-line-id="tx-counted-0000-0000"]');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     // An html cell (lead 10-22): its size and «Paste HTML»; a paste with plain text only, then one with HTML.
     ['Chain, an html cell', async (c) => {
       HELD_RUN.on = false;    // on till here: the queue's own poll read it again before the held run's cell
+      COUNTED.on = false;
       PASTE_HTML.on = true;
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
@@ -4619,6 +4654,8 @@ const MUTANTS = [
   { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
       "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },
+  { name: 'a line counted only to 200 drawn as exact', entry: 'admin.html', rule: 'contents', at: 'chain-queue',
+    file: 'src/chain_queue_panel.js', edits: [['const stopped = isCount(t.counted_to);', 'const stopped = false;']] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
