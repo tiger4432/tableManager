@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [착지 전 · 상설] **가지 밖 커밋 — 착지할 나무에 없는 레인 커밋을 착지 «전»에 센다** — 착지 병합을 짓는 사람 (소유자 11-14 «ㄱ»)
+>
+> ```
+> 돌릴 명령  cd server && conda run -n assy_manager python scripts/off_tree_commits.py origin/<착지할 가지>
+> 답의 뜻    stderr «N branch(es) read» 는 0 보다 커야 한다 (0 이면 명령이 틀렸다). stdout 이 0 줄 = 통과, 착지한다
+>          줄마다  레인 · SHA · server/client · 가지 · 제목 — 그 나무가 못 받은 커밋 (같은 patch 의 복사본 · main 이 가진 것은 빠짐)
+> 할 일      줄이 있으면 착지하지 않는다. 그 레인이 줄마다 답한다:
+>          필요   -> 착지할 가지로 cherry-pick 하고 다시 돌린다
+>          불필요 -> docs/process/off_tree_dismissed.txt 에 «patch-id 까닭 레인» 한 줄 (patch-id: git show <SHA> | git patch-id --stable)
+> 읽는 범위  로컬 · origin 가지 중 끝이 «그 나무가 main 에서 갈라진 곳» 뒤에 움직인 것. --since <SHA> 로 덮는다
+> 끄기      없음 (읽기 전용 · 쓰는 것은 dismissed 파일뿐)
+> ```
+
 > ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
 >
 > ```

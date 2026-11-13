@@ -1,0 +1,3 @@
+# Lane commits a landing tree does not need - read by server/scripts/off_tree_commits.py (owner 11-14).
+# One line each: <patch-id or SHA> <why, a few words> <lane>. The first word is what is matched.
+# patch-id: git show <SHA> | git patch-id --stable   (it survives a cherry-pick; a SHA does not)
