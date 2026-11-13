@@ -33,7 +33,9 @@ ROWS = 2000
 def fixture_db(request):
     session = request.getfixturevalue("pg_session" if request.param == "pg" else "db_session")
     models.init_dynamic_models(TABLES)
-    crud.TABLE_CONFIG.update(TABLES)
+    # undone at teardown: left in TABLE_CONFIG, the index work of a later file builds idx_shape_rows_updated on a
+    # table its schema lacks - UndefinedTable, 3 reds + 8 errors (lead 11-13, B's triage)
+    request.getfixturevalue("monkeypatch").setitem(crud.TABLE_CONFIG, T, TABLES[T])
     if request.param == "pg":
         from conftest import PG_TEST_SCHEMA
         scratch = MetaData(schema=PG_TEST_SCHEMA)
