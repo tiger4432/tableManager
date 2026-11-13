@@ -242,6 +242,24 @@ async function leftovers(M) {
   await settle();
   left.backAgain = { filter: Object.keys(model), columns: applied.at(-1) || null,
     reads: reads().filter((u) => u.includes('/tables/dt_log/data?')).length, page: S.pageCache.has(0) };
+  // A tab is the table as it was left (lead 11-14): its transaction filter too - another table has none, the tab taken
+  // back has it again and reads under it; cleared (the chip's ×), the tab left and taken back has none.
+  M.api.seatTableStates(new TableStateStore());
+  model = {};
+  S.currentTable = 'dt_log';
+  S.currentTransactionId = 'TX-45';
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  const txOther = S.currentTransactionId;
+  urls = [];
+  try { await M.api.switchTable('dt_log'); } catch (e) { /* as above */ }
+  await settle();
+  const txBack = S.currentTransactionId;
+  const underTx = reads().some((u) => u.includes('/tables/dt_log/data?') && u.includes('transaction_id=TX-45'));
+  S.currentTransactionId = null;   // the chip's × (setTransactionFilter(null))
+  try { await M.api.switchTable('ledger_atom_rows'); } catch (e) { /* as above */ }
+  try { await M.api.switchTable('dt_log'); } catch (e) { /* as above */ }
+  await settle();
+  left.tabTx = { other: txOther, back: txBack, underTx, afterClear: S.currentTransactionId };
   M.api.seatTableStates(null);
   // A stored 28.5 the grid holds since a Refresh; the edit was staged over the 28 from before it.
   const node = { data: { row_id: 'R1', data: { a: { value: 28.5, is_overwrite: true, priority_source: 'user' } } } };
@@ -937,6 +955,8 @@ function suite(out, sent) {
     out.left.jumpReads.ownLock, [true, true]);
   eq('W44 a table left and opened again comes back - its filter, its columns, its page from the pages it held, no read (owner 11-05, table tabs)',
     out.left.backAgain, { filter: ['row_id'], columns: [{ colId: 'a', hide: true, width: 90 }], reads: 0, page: true });
+  eq('W45 a tab keeps its transaction filter - none on another table, the same TX taken back and read under it, none after its × (lead 11-14)',
+    out.left.tabTx, { other: null, back: 'TX-45', underTx: true, afterClear: null });
   eq('W42 a log the socket brings while Row is shown marks Global old - read when picked; one while Global is shown leaves it',
     out.left.globalReads, [true, false]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
@@ -996,6 +1016,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      if (name === view.operating) {', '      if (false) {') },
   { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3 ', file: 'world_tabs.js',
     mutate: (t) => swap(t, 'const shown = view.current || view.operating;', 'const shown = view.current;') },
+  { id: 'G59', what: 'a tab is left without its transaction filter - the code before', catches: 'W45', file: 'api.js',
+    mutate: (t) => swap(t, '    transactionId: state.currentTransactionId || null,\n', '') },
   { id: 'G10', what: 'a switch keeps the last table\'s filters - the code before', catches: 'W10', file: 'api.js',
     mutate: (t) => swap(t, '  if (leaving !== tableName) await dropGridFilters();\n', '') },
   { id: 'G11', what: 'the same table switched again loses its filters', catches: 'W10', file: 'api.js',

@@ -239,7 +239,8 @@ export function seatTableStates(store) {
 }
 
 /** What the open table is left as (owner 11-05 ㄱ): its filters, sort, columns (hidden · widths · order), scroll and
- *  picked row, and its read pages - not while a transaction or a pivot view holds the rows (those are read again). */
+ *  picked row, its transaction filter (lead 11-14: a tab shows what it was left showing), and its read pages - not while
+ *  a transaction or a pivot view holds the rows (those are read again). */
 function leftAs() {
   const api = state.gridApi;
   const viewport = document.querySelector('#myGrid .ag-body-viewport');
@@ -247,6 +248,7 @@ function leftAs() {
   return {
     filterModel: api ? api.getFilterModel() : null,
     readFilters: state.readFilters,
+    transactionId: state.currentTransactionId || null,
     serverSort: state.serverSort,
     columnState: api && typeof api.getColumnState === 'function' ? api.getColumnState() : null,
     scrollTop: viewport ? viewport.scrollTop : 0,
@@ -332,7 +334,8 @@ export async function switchTable(tableName) {
 }
 
 /** Put a table back as it was left: its columns (hidden · widths · order), its sort and its filters (set without a read -
- *  dropGridFilters takes the grid's own event), and its held pages into the page cache. -> true when pages are held. */
+ *  dropGridFilters takes the grid's own event), its transaction filter, and its held pages into the page cache. -> true
+ *  when pages are held. */
 async function putBack({ settings, data }) {
   const api = state.gridApi;
   if (!settings || !api) return false;
@@ -342,6 +345,7 @@ async function putBack({ settings, data }) {
   state.serverSort = settings.serverSort ?? null;
   updateGridSortState();
   if (settings.filterModel && Object.keys(settings.filterModel).length) await dropGridFilters(settings.filterModel);
+  if (settings.transactionId) setTransactionFilter(settings.transactionId);
   if (!data) return false;
   state.readFilters = settings.readFilters;
   state.pageCache = new Map(data.pages);

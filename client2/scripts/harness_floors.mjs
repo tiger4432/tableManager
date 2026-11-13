@@ -1375,7 +1375,7 @@ export const FLOORS = new Map([
   // 77 -> 87: the lead's check of c3a3fd5cb (10-13) - W32 Take server drops every cell asked (one back at its pre-edit
   //    value too), W33 Tx turned off to apply keeps a mid-PUT edit staged, W34 a refused PUT turns Tx back on, W35 the PUT
   //    under the cap; V1 measures the cut, W28 a timer later; G45-G50.
-  ['grid_world_tabs_harness.mjs', 103],   // -> 102: W38-W42 the jump on the grid board, Global marked old by the socket, and G54-G58 (lead 10-28); -> 103: W44 a table left and opened again comes back (owner 11-05, table tabs)
+  ['grid_world_tabs_harness.mjs', 105],   // -> 102: W38-W42 the jump on the grid board, Global marked old by the socket, and G54-G58 (lead 10-28); -> 103: W44 a table left and opened again comes back (owner 11-05, table tabs); -> 105: W45 a tab keeps its transaction filter and G59 (lead 11-14)
   // the open tables' store and the Open tables row (owner 11-05 ㄱ, mockup v3)
   ['table_state_harness.mjs', 12],
   ['table_tabs_harness.mjs', 16],
