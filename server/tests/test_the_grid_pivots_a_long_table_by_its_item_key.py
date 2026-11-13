@@ -9,9 +9,11 @@ itemid) read as one row per (lot, wafer) and one cell per itemid, through the gr
            a set holding null takes a group without that item's row, as «blank» does (A ea92380da, 총괄 11-05)
   keys     an absent key part equals an absent part - on PostgreSQL as ARRAY[a] = ARRAY[b], which hashes; every
            read answered as a Python reckoning of the same rows (총괄 11-05 ㄴ)
-  sort     one item's value, a group without it last both ways; then the keys
+  sort     one item's value, then the keys; a group without it where the grid puts a blank - the database's
+           default (S-131): on PostgreSQL the largest, last ascending and first descending (lead 11-11), measured
+           in the PostgreSQL reckoning; SQLite's default is the other end
   carry    a carried column's filter an EXISTS of any of the group's rows - the group kept whole (소유자 11-11 ㄴ); its
-           sort the group's smallest value ascending, its largest descending, a group of none last
+           sort the group's smallest value ascending, its largest descending, a group of none as a blank
   items    the narrowed rows' DISTINCT itemid, up to pivot_max_columns, and how many more
   write    a cell by its row_id through the grid save door; a blank cell by its keys - the row is made
   search   a key group whose any long row matches q - the grid search's own condition - kept whole (총괄 10-22)
@@ -168,10 +170,18 @@ def test_a_blank_item_filter_keeps_the_groups_with_a_nameless_row_and_spreads_no
     assert _count(grid, filters) == 1
 
 
-def test_an_item_sort_puts_a_group_without_it_last_both_ways(grid):
-    assert _groups(_read(grid, order_by="item:b")) == [("L2", "W1"), ("L1", "W1"), ("L2", None), ("L1", "W2")]
-    assert _groups(_read(grid, order_by="item:b", order_desc="true")) == [
-        ("L2", None), ("L1", "W1"), ("L2", "W1"), ("L1", "W2")]
+def _blank_at_an_end(order, blank):
+    """`order` less the groups in `blank`, which stand together at one end - which end is the database's default."""
+    rest = [g for g in order if g not in blank]
+    assert set(order[:len(blank)]) == set(blank) or set(order[len(order) - len(blank):]) == set(blank), order
+    return rest
+
+
+def test_an_item_sort_orders_by_its_value_and_a_group_without_it_is_a_blank(grid):
+    up = _groups(_read(grid, order_by="item:b"))
+    assert _blank_at_an_end(up, {("L1", "W2")}) == [("L2", "W1"), ("L1", "W1"), ("L2", None)]
+    down = _groups(_read(grid, order_by="item:b", order_desc="true"))
+    assert _blank_at_an_end(down, {("L1", "W2")}) == [("L2", None), ("L1", "W1"), ("L2", "W1")]
     assert _groups(_read(grid, order_by="lot", order_desc="true"))[:2] == [("L2", None), ("L2", "W1")]
 
 
@@ -310,11 +320,11 @@ def test_a_carried_column_filters_whole_groups_and_sorts_by_its_smallest_or_larg
     assert grid.get("/tables/%s/data/count" % TABLE, params={"pivot": "true", "filters": is_y}).json()["total"] == 1
     assert _groups(_read(grid, filters=json.dumps({"note": {"filterType": "text", "type": "equals", "filter": "x"}}))) \
         == [("L1", "W1"), ("L1", "W2")]
-    up = _groups(_read(grid, order_by="note"))
-    down = _groups(_read(grid, order_by="note", order_desc="true"))
-    assert up[:2] == [("L1", "W1"), ("L1", "W2")], "ascending: both smallest x - then the keys"
-    assert down[:2] == [("L1", "W2"), ("L1", "W1")], "descending: (L1, W2)'s largest y first"
-    assert set(up[2:]) == set(down[2:]) == {("L2", "W1"), ("L2", None)}, "no note: last both ways"
+    none = {("L2", "W1"), ("L2", None)}
+    up = _blank_at_an_end(_groups(_read(grid, order_by="note")), none)
+    down = _blank_at_an_end(_groups(_read(grid, order_by="note", order_desc="true")), none)
+    assert up == [("L1", "W1"), ("L1", "W2")], "ascending: both smallest x - then the keys"
+    assert down == [("L1", "W2"), ("L1", "W1")], "descending: (L1, W2)'s largest y first"
     listed = grid.get("/tables/%s/data/values" % TABLE, params={"pivot": "true", "column": "note"})
     assert listed.status_code == 200 and listed.json()["values"][:2] == ["x", "y"], listed.text
 
@@ -393,7 +403,8 @@ def test_every_pivot_read_on_postgresql_answers_as_the_rows_reckoned(pg_session,
                           reverse=False)
             if desc:
                 held = sorted(held, key=lambda g: value[g], reverse=True)    # stable: keys stay in order within a tie
-            return held + [g for g in among if g not in value]
+            blank = [g for g in among if g not in value]
+            return blank + held if desc else held + blank     # a blank the largest (S-131): first descending
 
         assert read(filters={"item:i2": {"filterType": "number", "type": "lessThan", "filter": 20}}) == [
             g for g in groups if g in value and value[g] < 20]
@@ -414,11 +425,10 @@ def test_every_pivot_read_on_postgresql_answers_as_the_rows_reckoned(pg_session,
         assert len(notes) < len(groups) and any(len(set(v)) > 1 for v in notes.values()), "CANARY: none and several"
         assert read(filters={"note": {"filterType": "text", "type": "equals", "filter": "n07"}}) == [
             g for g in groups if "n07" in notes.get(g, ())]
-        assert read(order_by="note") == sorted((g for g in groups if g in notes), key=lambda g: min(notes[g])) + [
-            g for g in groups if g not in notes]
-        assert read(order_by="note", desc=True) == sorted(
-            (g for g in groups if g in notes), key=lambda g: max(notes[g]), reverse=True) + [
-            g for g in groups if g not in notes]
+        none = [g for g in groups if g not in notes]
+        assert read(order_by="note") == sorted((g for g in groups if g in notes), key=lambda g: min(notes[g])) + none
+        assert read(order_by="note", desc=True) == none + sorted(
+            (g for g in groups if g in notes), key=lambda g: max(notes[g]), reverse=True)
         assert read(filters={"item:i2": {"filterType": "set", "values": [value[groups[0]], None]}}) == [
             g for g in groups if g not in value or value[g] == value[groups[0]]]
     finally:
