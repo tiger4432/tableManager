@@ -43,6 +43,9 @@
 >   화면 넷    큰 표의 grid · 이력 패널 · 큐 · 갤러리 (D 의 점검표 — 리허설에서 이 자리에 붙인다)
 >   알려진 것  Global history no longer shows ledger batch receipts (owner 11-13: not needed). Table-wide (*) records:
 >             not shown yet – still recorded, they show once the history reads them (after 11-14)
+>             파일 하나가 끝날 때 남는 FILE 줄과 chunk 줄은 아직 옛 표 (audit logs · cell sources) 를 세고 있어서
+>             "audit logs / 0 rows", "side-table rows 0" 으로 나온다. 이력은 줄 표 (<표>__lines) 에 그대로 남는다
+>             (같은 파일에서 main 은 audit_logs 6 행, 착지 트리는 줄 6 개). 11-14 뒤에 FILE 줄이 "history lines / N" 을 싣도록 고친다
 >   ★ 어긋난 칸 파일  copy_mismatch_<표>.csv (⑥ 을 돌린 폴더)
 >             옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸이다. 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다
 >             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
