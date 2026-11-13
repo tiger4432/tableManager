@@ -37,6 +37,33 @@ def _new_cells(map_key, count):
 
 
 @pytest.fixture
+def write_spans(monkeypatch):
+    """Where in a recording the WRITE ran - `crud.apply_batch_updates`, which the route calls. The overhaul's write
+    reads cell_overwrites itself (its cells' pins, `write_lines._overwrites`; the row's shown value, `lines.merge`);
+    what this file budgets is the route's merge after the write (`grid_read.read_as_page`), so the write's statements
+    are set apart. -> (live: put the recording in it as "recorded", spans: [(start, end)])"""
+    from database import crud
+    live, spans, real = {}, [], crud.apply_batch_updates
+
+    def noted(*args, **kwargs):
+        start = len(live["recorded"]) if "recorded" in live else None
+        try:
+            return real(*args, **kwargs)
+        finally:
+            if start is not None:
+                spans.append((start, len(live["recorded"])))
+
+    monkeypatch.setattr(crud, "apply_batch_updates", noted)
+    return live, spans
+
+
+def _merge_selects(recorded, spans, table_name):
+    """The SELECTs of `table_name` outside the write (`write_spans`)."""
+    inside = {i for start, end in spans for i in range(start, end)}
+    return selects_from([call for i, call in enumerate(recorded) if i not in inside], table_name)
+
+
+@pytest.fixture
 def captured_broadcasts(monkeypatch):
     import main
     sent = []
@@ -49,10 +76,12 @@ def captured_broadcasts(monkeypatch):
 
 
 def test_refresh_sized_save_skips_the_merge_it_would_discard(
-        client, db_session, captured_broadcasts):
+        client, db_session, captured_broadcasts, write_spans):
     payload = _new_cells("P1_BIG", THRESHOLD + 1)
+    live, spans = write_spans
 
     with record_statements(db_session) as recorded:
+        live["recorded"] = recorded
         res = client.put("/tables/rmscope_test_map/data/updates", json=payload)
 
     assert res.status_code == 200
@@ -66,28 +95,32 @@ def test_refresh_sized_save_skips_the_merge_it_would_discard(
     assert refreshes[0]["change_count"] == THRESHOLD + 1
     assert refreshes[0]["table_name"] == "rmscope_test_map"
 
-    # ...and nothing read cell_overwrites back. All rows are new, so the batch
-    # itself never queries that table; a SELECT here can only be the merge.
-    assert selects_from(recorded, "cell_overwrites") == []
+    # ...and nothing read cell_overwrites back. The write's own statements are set apart
+    # (`write_spans`); a SELECT left can only be the merge.
+    assert spans, "CANARY: the write ran inside the recording"
+    assert _merge_selects(recorded, spans, "cell_overwrites") == []
 
     # The larger half of the bill. `crud.apply_batch_updates` commits, which
     # EXPIRES every instance in `results`; the merge's first act is `[r.row_id for
     # r in rows]`, so each expired row was reloaded one statement at a time. The
-    # batch's own key lookup is the single legitimate SELECT on this table.
-    assert len(selects_from(recorded, "rmscope_test_map")) == 1, (
+    # write's own reads of this table are the write's (`write_spans`); after it,
+    # none - a reload per row would be THRESHOLD + 1 of them.
+    assert len(_merge_selects(recorded, spans, "rmscope_test_map")) == 0, (
         "a discarded merge also pays one ORM refresh per row, because the commit "
         "inside crud expired them all")
 
 
 def test_item_sized_save_still_merges_because_it_ships_the_items(
-        client, db_session, captured_broadcasts):
+        client, db_session, captured_broadcasts, write_spans):
     """The other side of the pair. `msg_items` IS the payload below the
     threshold, so the merge must still run - a skip that swallowed this case
     would ship rows with no `is_overwrite`/`priority_source` and the grid would
     silently lose every overwrite marker."""
     payload = _new_cells("P1_SMALL", THRESHOLD)
+    live, spans = write_spans
 
     with record_statements(db_session) as recorded:
+        live["recorded"] = recorded
         res = client.put("/tables/rmscope_test_map/data/updates", json=payload)
 
     assert res.status_code == 200
@@ -102,4 +135,5 @@ def test_item_sized_save_still_merges_because_it_ships_the_items(
     assert set(cell) >= {"value", "is_overwrite", "priority_source"}
     assert cell["priority_source"] == "user"
 
-    assert len(selects_from(recorded, "cell_overwrites")) == 1
+    assert spans, "CANARY: the write ran inside the recording"
+    assert len(_merge_selects(recorded, spans, "cell_overwrites")) == 1
