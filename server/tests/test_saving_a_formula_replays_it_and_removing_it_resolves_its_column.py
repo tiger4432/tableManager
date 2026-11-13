@@ -8,7 +8,7 @@ no value is left with no source. No other cell under two layers is touched.
     POST /admin/chain/formula + base      the rule saved on; R1 queued for it
     ... formula ""                        the rule gone, a backup made; R3 queued with formula_removed
     remove_chain_rule_raw                 refused by name while a run holds the rule; the file as opened
-    R3 formula_removed                    no layer -> blank, one layer -> its value, a person's stays; a row it asks merged whole
+    R3 formula_removed                    no layer -> blank, one layer -> its value, a person's stays; other cells kept
     chain_rules.json changed              the grid pool started again, the walk pool not (it reads nothing of it)
     /tables/{t}/schema                    «formulas» as saved, gone when removed, absent on a table with none
 """
@@ -87,23 +87,36 @@ def test_removal_is_refused_by_name_while_a_run_holds_the_rule_and_on_a_stale_ba
     ((), {"k1": 7, "k2": 100, "k3": 7}),
 ])
 def test_r3_resolves_a_column_that_lost_its_formula_and_no_other_cell_under_two_layers(db, removed, expected):
+    """R3 merges the column it asks (c) and no other: every other cell keeps its value and won_by - lead 11-12 b
+    («merge only the cells the write touched»), which supersedes the 11-11 sentence «row-unit merge is canonical» for
+    a merge's scope. The table as it runs: its line table built, every value as the product leaves it."""
+    from database import lines
+    from tests.support import line_tables
+
+    line_tables.build(db.get_bind(), T)
     _put(db, [{"k": "k1", "a": 1}, {"k": "k2", "a": 1, "c": 100}, {"k": "k3", "a": 1}])
     model = models.DYNAMIC_TABLES[T]
-    rows = {row.k: row for row in db.query(model)}
+    ids = {row.k: row.row_id for row in db.query(model)}
     crud.apply_batch_updates(db, T, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-        row_id=rows["k3"].row_id, updates={"c": 50}, source_name="f.csv", updated_by="f.csv")]))   # k3's «c»: one layer
+        row_id=ids["k3"], updates={"c": 50}, source_name="f.csv", updated_by="f.csv")]))   # k3's «c»: one layer
     db.commit()
-    for k in ("k1", "k3"):
-        rows[k].c = 7                                       # what a formula wrote, with no layer
-    rows["k1"].a = 9                                        # a one-layer cell out of step with its layer
+    t, bits = lines.current_table(db, T, crud.TABLE_CONFIG[T], won_by=True, stored=True), lines.bit_map(db, T)
+    won = lines.won_by_of(db, T, list(ids.values()), bits)
+    for k in ("k1", "k3"):                                  # what a formula wrote: its value, its slot, no line
+        db.execute(t.update().where(t.c.row_id == ids[k]).values(
+            c=7, won_by=lines.won_by_stored(dict(won.get(ids[k]) or {}, c=lines.FORMULA_WON), bits)))
     db.commit()
+
+    def kept():
+        db.expire_all()
+        won_now = lines.won_by_of(db, T, list(ids.values()), bits)
+        return {row.k: (row.a, (won_now.get(row.row_id) or {}).get("a")) for row in db.query(model)}
+
+    before = kept()
     replay.recompute_display_values(db, T, apply=True, formula_removed=removed, log=lambda _l: None)
     db.expire_all()
-    shown = {row.k: (row.c, row.a) for row in db.query(model)}
-    assert {k: c for k, (c, _a) in shown.items()} == expected
-    # the row is the unit (lead 11-11: row-unit merge is canonical): a row R3 asks is merged whole - k1's «a» takes
-    # its line's 1; a row it does not ask keeps t's 9
-    assert shown["k1"][1] == (1 if removed else 9)
+    assert {row.k: row.c for row in db.query(model)} == expected
+    assert kept() == before and {a for a, _w in before.values()} == {1} and all(w for _a, w in before.values())
 
 
 def test_a_rules_file_change_starts_the_grid_pool_again_and_not_the_walk_pool(monkeypatch):
