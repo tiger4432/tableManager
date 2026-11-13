@@ -50,7 +50,8 @@ import { FAILED, NONE, WAITING, unitText } from './ui_words.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
 import { retroactiveNote } from './retroactive_note.js';
-import { NO_TIME, localShort, localStamp } from './server_time.js';
+import { NO_TIME, localShort, localStamp, parseServerInstant } from './server_time.js';
+import { countOf as wholeCount, countNumberText, matchCountText } from './match_count.js';
 import { RunLines } from './run_lines.js';
 import { buildProgressCell } from './retroactive_view.js';
 import { failureFactOf, fetchFailureLine, retroFailureLine } from './config_resolve_view.js';
@@ -66,9 +67,16 @@ export function cancelOf(cancel) {
   return null;
 }
 
+/** A line's count as drawn: «N+» when the server stopped counting the line (`counted_to`, lead 11-13), else the int. */
+const lineCount = (v, stopped) => (stopped && isCount(v) ? `${localeCountText(v)}+` : countText(v));
+
+/** A whole count (the grid's shape, or an older server's int) as the bare number - «…» while counting, a dash for a key
+ *  that did not come or a count that failed before its first. */
+const wholeText = (x) => { const c = wholeCount(x); return c.total !== null || c.counting ? countNumberText(c) : ABSENT; };
+
 /** What a × carries: the cancel and the one question asked before it goes. */
-const skipOf = (cancel, events) => (cancel ? Object.freeze({ cancel,
-  question: isCount(events) ? `Skip ${unitText(countText(events), 'event')}?` : 'Skip this line?' }) : null);
+const skipOf = (cancel, events, stopped) => (cancel ? Object.freeze({ cancel,
+  question: isCount(events) ? `Skip ${unitText(lineCount(events, stopped), 'event')}?` : 'Skip this line?' }) : null);
 
 /** What a × says of a line that had already stopped waiting - the server's `already` (lead be5457365) - or ''. */
 const ALREADY = Object.freeze({ processed: 'Already ran', set_aside: 'Already set aside', gone: 'Gone' });
@@ -227,6 +235,12 @@ export function formatAge(seconds) {
   const d = Math.floor(h / 24);
   return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
 }
+
+/** The age from a server instant to `now` (ms), through formatAge - a dash when the instant does not read. */
+const ageSince = (at, now) => {
+  const t = parseServerInstant(at);
+  return (t && formatAge(Math.max(0, (now - t.getTime()) / 1000))) ?? ABSENT;
+};
 
 // 🔴 248ae20cd — a queue line's chain state is the server's `{state, why}` (one function there), drawn ONE way
 //    in both queues, the admin's lines and the grid's rows: the token as it comes, on the base layer's tag, and
@@ -430,6 +444,8 @@ export function queueView(payload, opts = {}) {
     });
   }
 
+  const now = opts.now ?? Date.now();
+  const waiting = wholeCount(payload.waiting);
   const secs = payload.oldest_waiting_seconds;
   // ── rule ①: three distinct states, three distinct readings ──
   //   null    nothing is waiting
@@ -528,8 +544,10 @@ export function queueView(payload, opts = {}) {
   const pickup = withQueue ? pickupState(withQueue.queue) : null;
   const byOwner = buckets.map(b => Object.freeze({
     owner: String((b && b.owner) == null ? '' : b.owner),
-    waiting: countOf(b && b.waiting),
-    age: formatAge(b && b.oldest_waiting_seconds) ?? '—',
+    // its share of the whole count, the number alone (the Waiting card says when it was counted), and the age of its
+    // oldest row from when that row was made (`oldest_at`, C 11-13)
+    waiting: wholeText(b && b.waiting),
+    age: ageSince(b && b.oldest_at, now),
     eventTypes: Object.freeze(Array.isArray(b && b.event_types) ? b.event_types.map(String) : []),
     blocked: blockedView(b && b.blocked_by),
     // \u{1f534} 「못 읽었다」는 「도는 것이 없다」가 아닙니다. 둘 다 `blocked_by: null` 로 오고,
@@ -544,13 +562,14 @@ export function queueView(payload, opts = {}) {
   const splitByOwner = byOwner.length > 1;
 
   const src = Array.isArray(payload.waiting_transactions) ? payload.waiting_transactions : [];
-  const rows = src.map(t => Object.freeze({
+  const rows = src.map((t) => { const stopped = isCount(t.counted_to); return Object.freeze({
     ...lineName(t),
     // `rows` is the rows the line carries; `events` its outbox events (lead b3a4334db). The event
-    // count is said only where it is not the row count — a 「1 event」 on every plain row is noise.
-    rows: countOf(t.rows),
-    eventsNote: isCount(t.events) && Number(t.events) !== Number(t.rows)
-      ? unitText(countOf(t.events), 'event') : '',
+    // count is said only where it is not the row count — a 「1 event」 on every plain row is noise —
+    // or where the line was counted only to `counted_to` (lead 11-13).
+    rows: lineCount(t.rows, stopped),
+    eventsNote: isCount(t.events) && (stopped || Number(t.events) !== Number(t.rows))
+      ? unitText(lineCount(t.events, stopped), 'event') : '',
     // 🔴 S-36. A RETROACTIVE ROW SAYS WHAT IT IS, IN THE SLOT THAT SAID 「—」. Its `tables` is
     //    empty by construction (the run is not about one table), so this column was a dash on
     //    exactly the rows an operator most needs to identify — and the answer was already in
@@ -571,11 +590,11 @@ export function queueView(payload, opts = {}) {
     // An empty string means zero retries. The badge exists to surface the NON-zero ones,
     // and a 「0」 on every row is noise that hides the one row that is not 0.
     maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
-    skip: skipOf(cancelOf(t.cancel), t.events),
+    skip: skipOf(cancelOf(t.cancel), t.events, stopped),
     // The server's `{state, why}` (248ae20cd), drawn under the age - no sixth column (d886307b6, lead 10-08).
     chainState: t.chain_state || null,
     slotPid: t.slot_pid ?? null,
-  }));
+  }); });
 
   // Cut replays (총괄 fc1e1e385): no event waits for them, so no line above - one line each, after the waiting ones.
   const cutRows = Array.isArray(payload.interrupted_runs) ? payload.interrupted_runs.map(interruptedRow) : [];
@@ -598,7 +617,11 @@ export function queueView(payload, opts = {}) {
     key, label, value, sub: '', tone: '', ...extra });
   const numbers = [];
   // Waiting counts outbox events, not rows (lead 10-28) - the card and each owner's line say so.
-  if (isCount(payload.waiting)) numbers.push(cell('waiting', WAITING, unitText(countOf(payload.waiting), 'event')));
+  // The server counts them behind its answer, the grid's whole-count shape (C, lead 11-13): «812 events · 10s ago»,
+  // «Counting events…», «Count failed (<reason>)» - through the grid footer's one seat. A key that did not come: dropped.
+  if (waiting.total !== null || waiting.counting || waiting.failed) {
+    numbers.push(cell('waiting', WAITING, matchCountText(waiting, now, 'event')));
+  }
   if (oldest !== null) numbers.push(cell('oldest', 'Oldest', oldest));
   // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
   //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
@@ -618,7 +641,7 @@ export function queueView(payload, opts = {}) {
   // ⚠️ A piece whose key did not come is '' and is dropped HERE; the drawing side does not
   //    decide again (S-16 · S-20: an older server draws nothing, not a made-up 「0」 or 「now」).
   const meta = [
-    { key: 'retried', text: `retried ${countOf(payload.retried_among_waiting)}` },
+    { key: 'retried', text: `retried ${wholeText(payload.retried_among_waiting)}` },
     { key: 'log', text: logName ? `Log ${logName}` : '' },
     { key: 'restart', text: restart },
     { key: 'generated', text: generatedAt ? `As of ${generatedAt}` : '' },
@@ -630,7 +653,7 @@ export function queueView(payload, opts = {}) {
     numbers: Object.freeze(numbers),
     runningRows: Object.freeze(runningRows),
     meta: Object.freeze(meta),
-    depth: countOf(payload.waiting),
+    depth: wholeText(payload.waiting),
     byOwner: Object.freeze(byOwner),
     splitByOwner,
     pickup: pickup ? Object.freeze(pickup) : null,

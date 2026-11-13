@@ -420,12 +420,15 @@ console.log('\n[7] two panels on one page');
 //    layer out, and no existing assertion would notice.
 console.log('\n[8] the owner split, and unknown is not chain');
 {
+  // an owner's oldest is the instant its oldest row was made (`oldest_at`, C 11-13), aged to the screen's now
+  const NOW = Date.parse('2026-11-13T03:00:00Z');
+  const ago = (seconds) => new Date(NOW - seconds * 1000).toISOString();
   const OWNED = {
     ...BACKED_UP,
     waiting: 8,
     waiting_by_owner: [
-      { owner: 'chain', waiting: 5, oldest_waiting_seconds: 90, event_types: ['CREATE'] },
-      { owner: 'scheduler', waiting: 2, oldest_waiting_seconds: 3725.4,
+      { owner: 'chain', waiting: 5, oldest_at: ago(90), event_types: ['CREATE'] },
+      { owner: 'scheduler', waiting: 2, oldest_at: ago(3725.4),
         event_types: ['RETRO'],
         blocked_by: {
           run_id: 'run-77', op: 'ledger_rescope', state: 'running', moving: 'stalled',
@@ -433,14 +436,14 @@ console.log('\n[8] the owner split, and unknown is not chain');
           processed_rows: 12, total_rows: 400, cancel_reaches: 'never',
           recovery: '이 실행은 취소로 멈출 수 없습니다.',
         } },
-      { owner: 'unknown', waiting: 1, oldest_waiting_seconds: 5, event_types: ['WAT'] },
+      { owner: 'unknown', waiting: 1, oldest_at: ago(5), event_types: ['WAT'] },
     ],
     waiting_transactions: [
       { ...BACKED_UP.waiting_transactions[0], owners: ['chain'] },
       { ...BACKED_UP.waiting_transactions[1], owners: ['scheduler', 'unknown'] },
     ],
   };
-  const v = queueView(OWNED);
+  const v = queueView(OWNED, { now: NOW });
 
   // 🔴 THE DISCRIMINANT. Compared against the server's own numbers, not a fixed string.
   eq('three buckets stay three', v.byOwner.map(b => b.owner), ['chain', 'scheduler', 'unknown']);
@@ -448,7 +451,9 @@ console.log('\n[8] the owner split, and unknown is not chain');
   ok('and not the sum of chain + unknown', v.byOwner[0].waiting !== '6', v.byOwner[0].waiting);
   ok('nor the whole queue', v.byOwner[0].waiting !== '8', v.byOwner[0].waiting);
   eq('unknown is its own bucket with its own number', v.byOwner[2].waiting, '1');
-  eq('each bucket keeps its own age', v.byOwner[1].age, '1h 2m');
+  eq('each bucket keeps its own age, from its oldest_at to now', v.byOwner[1].age, '1h 2m');
+  eq('NEGATIVE CONTROL: an owner with no oldest_at is a dash, not 0s',
+    queueView({ ...OWNED, waiting_by_owner: [{ owner: 'chain', waiting: 1 }] }, { now: NOW }).byOwner[0].age, ABSENT);
 
   // one owner is not a split
   const ONE = { ...OWNED, waiting_by_owner: [OWNED.waiting_by_owner[0]] };
@@ -862,6 +867,23 @@ async function xSuite(m, say) {
   const bare = seat({ ...BODY, waiting_transactions: BODY.waiting_transactions.map(({ cancel, ...t }) => t) });
   say('X7 a table with no × on any line keeps its five columns', byTag(bare.host, 'TH').length === 5
     && rowXs(bare.host).every((x) => !x), String(byTag(bare.host, 'TH').length));
+  // A line the server counted only to `counted_to` says so in its badge, its Rows and its question; a line without the
+  // key is exact, drawn as before (lead 11-13).
+  const seatCounted = (extra) => seat({ ...BODY, waiting_transactions: [{ transaction_id: 'dddddddd-1111', events: 200,
+    rows: 200, tables: ['wafer_process'], waiting_seconds: 40, cancel: { key: 'tx:dddddddd-1111' }, ...extra }] });
+  const rowsDrawn = (s) => [...[...rowsOf(s.host)[0].children].find((td) => td.getAttribute('data-col') === 'rows').children]
+    .map((n) => n.textContent);
+  const stoppedSeat = seatCounted({ counted_to: 200 });
+  press(rowXs(stoppedSeat.host)[0]);
+  say('XC1 a line counted only to 200: «200+ events» beside Rows «200+», its × asks «Skip 200+ events?»',
+    same([rowsDrawn(stoppedSeat), stoppedSeat.asked], [['200+ events', '200+'], ['Skip 200+ events?']]), JSON.stringify([rowsDrawn(stoppedSeat), stoppedSeat.asked]));
+  const moreRows = seatCounted({ counted_to: 200, rows: 1450 });
+  say('XC3 a counted line whose rows pass counted_to: Rows says its own rows «1,450+», not «200+»',
+    same(rowsDrawn(moreRows), ['200+ events', '1,450+']), JSON.stringify(rowsDrawn(moreRows)));
+  const exactSeat = seatCounted({});
+  press(rowXs(exactSeat.host)[0]);
+  say('XC2 the same line without the key is exact, drawn as before',
+    same([rowsDrawn(exactSeat), exactSeat.asked], [['200'], ['Skip 200 events?']]), JSON.stringify([rowsDrawn(exactSeat), exactSeat.asked]));
   const sent = [];
   const answer = (status, body) => async (url, init) => {
     sent.push({ url, method: init.method, body: init.body });
@@ -1068,6 +1090,20 @@ async function xSuite(m, say) {
   say('U2 each owner line says events - «chain · waiting 1 event», «retro · waiting 4 events»',
     /^chain · waiting 1 event · /.test(ownerText[0] || '') && /^retro · waiting 4 events · /.test(ownerText[1] || ''),
     JSON.stringify(ownerText));
+  // Waiting is counted behind the answer, the grid's whole-count shape (C, lead 11-13): counted says its age, not yet
+  // counted draws «Counting events…» where the card used to drop, a failed first count its reason; no key, no card.
+  const at = Date.parse('2026-11-13T03:00:00Z');
+  const cardOf = (waiting) => (m.queueView({ ...BODY, waiting }, { now: at }).numbers.find((n) => n.key === 'waiting') || {}).value;
+  const cards = [cardOf({ total: 1234, capped: false, counted_at: '2026-11-13T02:59:30Z', count_seconds: 0.2, counting: false, failed: null }),
+    cardOf({ total: null, capped: false, counted_at: null, count_seconds: null, counting: true, failed: null }),
+    cardOf({ total: null, counting: false, failed: { reason: 'statement timeout', at: '2026-11-13T02:59:50Z' } }), cardOf(undefined)];
+  say('U3 Waiting as a whole count: «1,234 events · 30s ago» · «Counting events…» · «Count failed (<reason>)» · no key, no card',
+    same(cards, ['1,234 events · 30s ago', 'Counting events…', 'Count failed (statement timeout)', undefined]), JSON.stringify(cards));
+  const told = m.queueView({ ...BODY, waiting: { total: null, counting: true },
+    retried_among_waiting: { total: 17, counted_at: '2026-11-13T02:59:30Z' } }, { now: at });
+  say('U4 the depth and the retried count read the same shape - «…» while counting, the number once counted',
+    same([told.depth, (told.meta.find((x) => x.key === 'retried') || {}).text], ['…', 'retried 17']),
+    JSON.stringify([told.depth, told.meta]));
 }
 const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
@@ -1086,7 +1122,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'XM3', what: 'no question is asked', catches: 'X3',
       mutate: swap('if (skip && this.confirm(skip.question)) this.onCancel(skip.cancel);', 'if (skip) this.onCancel(skip.cancel);') },
     { id: 'XM4', what: 'the question does not say how many', catches: 'X2',
-      mutate: swap("`Skip ${unitText(countText(events), 'event')}?`", "'Skip this line?'") },
+      mutate: swap("`Skip ${unitText(lineCount(events, stopped), 'event')}?`", "'Skip this line?'") },
+    { id: 'XM11', what: 'a line counted only to counted_to is drawn as exact', catches: 'XC1',
+      mutate: swap('const stopped = isCount(t.counted_to);', 'const stopped = false;') },
     { id: 'XM5', what: 'the × column always stands', catches: 'X7',
       mutate: swap('const act = rows.some((r) => r.skip || r.resume);', 'const act = true;') },
     { id: 'XM6', what: 'the POST carries no key', catches: 'X8', mutate: swap('body: JSON.stringify({ key })', 'body: JSON.stringify({})') },
@@ -1104,7 +1142,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'KM4', what: 'a one-row line copies its words', catches: 'K3',
       mutate: swap('  if (!run && t.outbox_id != null) {', '  if (false) {') },
     { id: 'UM1', what: 'the Waiting number is drawn bare', catches: 'U1',
-      mutate: swap("cell('waiting', WAITING, unitText(countOf(payload.waiting), 'event'))", "cell('waiting', WAITING, countOf(payload.waiting))") },
+      mutate: swap("cell('waiting', WAITING, matchCountText(waiting, now, 'event'))", "cell('waiting', WAITING, countNumberText(waiting))") },
+    { id: 'UM3', what: 'a count not yet made drops the Waiting card', catches: 'U3',
+      mutate: swap('if (waiting.total !== null || waiting.counting || waiting.failed) {', 'if (waiting.total !== null) {') },
     { id: 'UM2', what: 'an owner line is drawn bare', catches: 'U2',
       mutate: swap("waiting ${unitText(b.waiting, 'event')} · oldest", 'waiting ${b.waiting} · oldest') },
     { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
