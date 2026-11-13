@@ -9,8 +9,8 @@ is the dynamic one - t (DYNAMIC_TABLES[...], a model handed in) or t__lines. A w
 (Core); db.query(<target>)...update()/delete(); db.add/add_all/merge/delete of a t row; bulk_insert_mappings /
 bulk_update_mappings(<target>); setattr(<t row>, <a column named at run time>, ...) or `<row>.business_key_val = ...`;
 a SQL text (a constant or an f-string) that writes a table named by a placeholder whose value is not a fixed table's
-name. Not seen: SQL joined with `+`, and SQL a raw cursor runs that was built elsewhere. An ORM edit of a row handed in
-is flushed by database.py's `write_changed_rows_by_shape` through `crud.update_by_arrays` - counted there.
+name. Not seen: SQL joined with `+`, SQL a raw cursor runs that was built elsewhere, and an ORM edit of a row handed in
+(a plain flush UPDATE - the before_flush hook that wrote it as arrays is retired on the overhaul, lead 11-13 ㄱ).
 """
 import ast
 import re
@@ -32,7 +32,7 @@ ALLOWED_MODULES = ("database/write_lines.py:", "database/lines.py:", "database/l
 KNOWN = {
     "chain/replay.py:full_reset": "allowed - the declared full reset (lead 11-11 ㄴ)",
     "scripts/dev_env/snapshot_db.py:copy_rows": "allowed - dev restore",
-    "database/crud.py:update_by_arrays": "pending lead - the before_flush hook's write (11-14 gate item)",
+    "database/crud.py:update_by_arrays": "allowed - write_lines._merge_now's changed rows and line_migration's won_by copy as arrays (lead 11-13)",
     "database/crud.py:insert_by_arrays": "allowed - write_lines._merge_now's new rows as arrays (lead 11-13)",
 }
 #: seats the census sees that write a table that is not t

@@ -30,3 +30,5 @@ b13a0e056caec7b99ec7d44eff674f109ed0b695 da32cf72e folded into the CELL_SOURCE_O
 aff7201305b330fa12dbb02be3675f9604219dc5 ee9fd2277 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
 d23317958502f6933823eb577c31876e54f397cb f3e06b118 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
 99ddaf09e7030ee09742047ca64c01b153447dc3 same change as 5c49a5184 (8f54079ae, the main checkout copy came through another EOL path) lead
+54c8c8ba229b977baa256533b7fae854c018327a b3a11d779 the hook retirement on 61f3 - its rebase onto main is 54dc0f331's patch (4c97b6b6); this one's docs say main keeps the hook, untrue since 35685064e A
+ba1be540bc753dbdfb3e3fbc8c578a551fa4d398 081177ce1 copies as history (lead 11-12 ㄱ) - not chosen: main has dfd5dccff, copies rank behind the holder's own (lead 11-12 ㄴ) A
