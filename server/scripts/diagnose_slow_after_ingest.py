@@ -511,9 +511,7 @@ def section_autovacuum(p):
 
     from database import lines
 
-    # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
-    schemas = sa.inspect(p.conn).get_schema_names()
-    names = sorted({t for s in schemas for t in lines.base_tables(p.conn, lines=True, schema=s)})
+    schemas, names = lines.every_schema_tables(p.conn)
     rows = p.rows("""
         SELECT s.relname, s.n_live_tup, s.n_dead_tup, s.n_mod_since_analyze,
                s.last_autovacuum, s.last_autoanalyze, s.last_vacuum, s.last_analyze,
@@ -829,9 +827,7 @@ def section_sizes(p, limit=20):
     sub("순차 스캔 vs 인덱스 스캔 (대량 적재 후 플래너가 뒤집혔는지의 단서)")
     from database import lines
 
-    # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
-    schemas = sa.inspect(p.conn).get_schema_names()
-    names = sorted({t for s in schemas for t in lines.base_tables(p.conn, lines=True, schema=s)})
+    schemas, names = lines.every_schema_tables(p.conn)
     rows = p.rows("""
         SELECT relname, seq_scan, seq_tup_read, idx_scan,
                CASE WHEN seq_scan > 0 THEN (seq_tup_read / seq_scan)::bigint ELSE 0 END

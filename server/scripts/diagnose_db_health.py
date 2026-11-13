@@ -180,9 +180,7 @@ with engine.connect() as conn:
           f"{DEAD_ABSOLUTE_FLAG:,} absolute; page density judged separately)")
     from database import lines
 
-    # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
-    schemas = sa.inspect(conn).get_schema_names()
-    names = sorted({t for s in schemas for t in lines.base_tables(conn, lines=True, schema=s)})
+    schemas, names = lines.every_schema_tables(conn)
     rows = conn.execute(sa.text("""
         SELECT s.relname, s.n_live_tup, s.n_dead_tup, s.last_autovacuum, s.last_autoanalyze,
                s.last_analyze, s.n_mod_since_analyze, c.reltuples::bigint, c.relpages,

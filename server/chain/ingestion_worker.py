@@ -4202,14 +4202,10 @@ def _report_layer_table_health():
     if engine is None:
         return rest
     try:
-        from sqlalchemy import inspect as _inspect
-
         from database import lines
 
         with engine.connect() as conn:
-            # every schema's base tables, line tables too - by the one seat that lists them (lead 11-13 ㄱ)
-            schemas = _inspect(conn).get_schema_names()
-            names = sorted({t for s in schemas for t in lines.base_tables(conn, lines=True, schema=s)})
+            schemas, names = lines.every_schema_tables(conn)
             tables = conn.execute(_text(LAYER_HEALTH_TABLES),
                                   {"n": int(units or 1), "schemas": schemas, "names": names}).fetchall()
     except Exception as exc:                                           # noqa: BLE001 - the watch alone goes quiet

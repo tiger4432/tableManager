@@ -181,6 +181,15 @@ def base_tables(conn, lines: bool = False, schema=None) -> list:
     return sorted(t for t in inspect(conn).get_table_names(schema=schema) if lines or not is_line_table(t))
 
 
+def every_schema_tables(conn) -> tuple:
+    """(every schema, their base tables - line tables too - sorted) - `base_tables` over get_schema_names, for the
+    health reports that filter pg_stat_user_tables by schemaname / relname (lead 11-13 ㄱ)."""
+    from sqlalchemy import inspect
+
+    schemas = inspect(conn).get_schema_names()
+    return schemas, sorted({t for s in schemas for t in base_tables(conn, lines=True, schema=s)})
+
+
 def is_line_table(name: str) -> bool:
     """Whether a table of the database is a line table (`lines_relation`'s name) - the one seat every catalogue reader
     asks (lead 11-12: the business key picker built a UNIQUE on t__lines). Exact by name: a declared name ending in

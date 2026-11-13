@@ -15,8 +15,6 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import sqlalchemy                                                   # noqa: E402
-
 import pacing                                                       # noqa: E402
 from database import lines                                          # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
@@ -42,8 +40,7 @@ def _engine(monkeypatch, tables, asked):
             return type("R", (), {"fetchall": lambda self: tables})()
 
     monkeypatch.setattr(stall_watch, "_kept", lambda: type("E", (), {"connect": lambda self: Conn()})())
-    monkeypatch.setattr(sqlalchemy, "inspect", lambda conn: type("I", (), {"get_schema_names": lambda self: SCHEMAS})())
-    monkeypatch.setattr(lines, "base_tables", lambda conn, lines=False, schema=None: ["cell_sources", "dt_log"])
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (SCHEMAS, ["cell_sources", "dt_log"]))
 
 
 def _lines(caplog):
