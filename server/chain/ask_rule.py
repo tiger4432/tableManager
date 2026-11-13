@@ -471,47 +471,85 @@ def remember(db, rule, row_ids):
     return {"updates": updates, "refusal": None, "calls": 0}
 
 
-def memory_lines(db, spec, purpose, situation):
-    """The «past corrections» lines of a prompt: this purpose's memory rows whose `prompts.memory.scope` values are
-    this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it.
-    A scope column the situation or the remembered key does not hold matches nothing (lead 10-28): a column held on
-    neither side is a declaration slip, and «all match» would carry another wafer's corrections. A rule with no `memory`
-    block reads `MEMORY_READING` - the rule's whole memory, no scope (owner 11-10 «설정 안 해도»); one that wrote the
-    block reads only by its `prompts.memory`, as before."""
+def memory_lines(db, spec, purpose, situation, text=""):
+    """The «past corrections» lines of one prompt text - `memory_blocks` for one."""
+    return memory_blocks(db, spec, purpose, [(situation, text)])[0]
+
+
+def memory_blocks(db, spec, purpose, asks, clock=None):
+    """The «past corrections» lines of each of `asks` [(situation, text)]: this purpose's memory rows whose
+    `prompts.memory.scope` values are that situation's, `limit` of them (default 5), nearest the question in meaning
+    first (`help_guides.by_meaning`: the remembered situation · cell · right · memo against the situation and the text,
+    one embedding call for every ask) - an equal meaning, no embedding model or a failed embedding newest first, the
+    failure said once. The one reader - an ask prompt and a report prompt call it. A scope column the situation or the
+    remembered key does not hold matches nothing (lead 10-28): a column held on neither side is a declaration slip,
+    and «all match» would carry another wafer's corrections. A rule with no `memory` block reads `MEMORY_READING` - the
+    rule's whole memory, no scope (owner 11-10 «설정 안 해도»); one that wrote the block reads only by its
+    `prompts.memory`, as before. `clock`: {"memory_seconds", "memory_by"} for the caller's line."""
+    import time
+
+    from admin import help_guides
+
     memory, reading = memory_of(spec), (spec.get("prompts") or {}).get("memory")
     if not isinstance(reading, dict):
         if isinstance(spec.get("memory"), dict):
-            return ""
+            return ["" for _ask in asks]
         reading = MEMORY_READING
     named = memory.get("columns") or {}
-    if not purpose:
-        return ""
+    if not purpose or not asks:
+        return ["" for _ask in asks]
     model = _model(memory["table"])
     roles = [r for r in ("key", "cell", "ai", "right", "memo", "when") if named.get(r)]
     found = [dict(zip(roles, row)) for row in db.query(*(getattr(model, named[r]) for r in roles))
              .filter(getattr(model, named["purpose"]) == purpose).all()]
+    if not found:
+        return ["" for _ask in asks]
+    started = time.perf_counter()
+    # every row of the purpose is ranked, and the scope then keeps its own in that order - the same order as ranking
+    # the kept ones (lead 11-11 ㄱ: the scope says which corrections answer, the meaning only orders them), and the
+    # purpose's vectors file keeps every row it has
+    pieces = [{"name": "", "text": " ".join(str(m.get(r) or "") for r in ("key", "cell", "right", "memo"))}
+              for m in found]
+    orders, how = help_guides.by_meaning(
+        pieces, [" ".join([json.dumps(situation, ensure_ascii=False, default=str), str(text or "")])
+                 for situation, text in asks],
+        [str(m.get("when") or "") for m in found], "newest first", "ai_memory_%s" % purpose, help_guides._model())
+    if clock is not None:
+        clock["memory_seconds"] = clock.get("memory_seconds", 0.0) + time.perf_counter() - started
+        clock["memory_by"] = how
+    if how.startswith("newest first (embedding failed"):
+        from chain.rule_run import RULE_LOG_TAG
+        logger.warning("[%s] %s: past corrections went newest first, not nearest the question - %s",
+                       RULE_LOG_TAG, purpose, how[len("newest first ("):-1])
     scope = list(reading.get("scope") or ())
-    keys = [(m, json.loads(m.get("key") or "{}")) for m in found]
-    picked = [m for m, held in keys if all(c in held and c in situation and str(held[c]) == str(situation[c])
-                                           for c in scope)]
-    picked.sort(key=lambda m: str(m.get("when") or ""), reverse=True)
     comment = comment_column(spec)
-    lines = [("- %s reviewer comment: %s" % (m.get("key"), m.get("right")) if comment and m.get("cell") == comment
-              else "- %s %s: you said %s; correct: %s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right")))
-             + (" - note: %s" % m["memo"] if m.get("memo") else "")
-             for m in picked[:int(reading.get("limit") or 5)]]
-    return "\n".join([MEMORY_HEADING] + lines) if lines else ""
+    blocks = []
+    for (situation, _text), order in zip(asks, orders):
+        picked = []
+        for m in (found[i] for i in order):
+            held = json.loads(m.get("key") or "{}")
+            if all(c in held and c in situation and str(held[c]) == str(situation[c]) for c in scope):
+                picked.append(m)
+        lines = [("- %s reviewer comment: %s" % (m.get("key"), m.get("right")) if comment and m.get("cell") == comment
+                  else "- %s %s: you said %s; correct: %s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right")))
+                 + (" - note: %s" % m["memo"] if m.get("memo") else "")
+                 for m in picked[:int(reading.get("limit") or 5)]]
+        blocks.append("\n".join([MEMORY_HEADING] + lines) if lines else "")
+    return blocks
 
 
-def prompt(db, spec, request, choices_line, purpose=None):
-    """The prompt of one request [(id, text)] - also what a Test run shows. `purpose`: whose corrections it carries."""
+def prompt(db, spec, request, choices_line, purpose=None, clock=None):
+    """The prompt of one request [(id, text)] - also what a Test run shows. `purpose`: whose corrections it carries;
+    `clock`: `memory_blocks`' seconds and how it picked, for the rule's line."""
     from database import crud
 
     by = list((spec.get("input") or {}).get("group_by") or ())
     memos = [m for m in (_memo(db, spec, dict(zip(by, json.loads(ident)))) for ident, _t in request) if m]
     carry = (spec.get("output") or {}).get("carry") or {}
-    remembered = [memory_lines(db, spec, purpose, {out: group.get(src) for out, src in carry.items()})
-                  for group in (dict(zip(by, json.loads(ident))) for ident, _t in request)] if purpose else []
+    remembered = memory_blocks(db, spec, purpose, [({out: group.get(src) for out, src in carry.items()}, text)
+                                                   for group, text in ((dict(zip(by, json.loads(ident))), text)
+                                                                       for ident, text in request)],
+                               clock) if purpose else []
     common = (spec.get("prompts") or {}).get("common")
     out_spec = spec.get("output") or {}
     keys = [out_spec[k] for k in ("line", "item") if out_spec.get(k)] + list(out_spec.get("cells") or ())
@@ -586,8 +624,13 @@ def answer(db, rule, row_ids):
             raise llm.LlmRefused("the answer has no row")
         return out
 
-    got, why, asked = llm.ask_batch(texts, lambda request: prompt(db, spec, request, choices_line, rule_shape.declaration_of(rule)), read, ANSWER_KEY,
-                                    llm.settings()["batch_chars"], logger) if texts else ({}, {}, 0)
+    import time
+
+    clock, started = {}, time.perf_counter()
+    got, why, asked = llm.ask_batch(texts, lambda request: prompt(db, spec, request, choices_line,
+                                                                  rule_shape.declaration_of(rule), clock),
+                                    read, ANSWER_KEY, llm.settings()["batch_chars"], logger) if texts else ({}, {}, 0)
+    spent = time.perf_counter() - started
     for ident, (carried, lines, reused) in plan.items():
         if ident in why:
             continue                                            # a refused text says nothing is gone
@@ -602,8 +645,11 @@ def answer(db, rule, row_ids):
             updates.append({"source_name": crud.CHAIN_SOURCE, "updated_by": name, "updates": written})
         updates.extend(_gone(db, rule, carried, answered, lines))
     from chain.rule_run import RULE_LOG_TAG
-    logger.info("[%s] %s: asked %d text(s) in %d call(s), %d window(s) reused whole - %d row(s), %d refused",
-                RULE_LOG_TAG, name, len(texts), asked, len(plan) - len(texts), len(updates), len(why))
+    # the model's seconds beside the past corrections' (lead 11-11: «small» is said measured)
+    logger.info("[%s] %s: asked %d text(s) in %d call(s), %d window(s) reused whole - %d row(s), %d refused - "
+                "%.2f s asking, past corrections %s in %.2f s", RULE_LOG_TAG, name, len(texts), asked,
+                len(plan) - len(texts), len(updates), len(why), spent - clock.get("memory_seconds", 0.0),
+                clock.get("memory_by", "none"), clock.get("memory_seconds", 0.0))
     size = dict(texts)
     # which group and how long its text was, so the operator sees «which product and why» (lead 10-27)
     refusal = "; ".join("%s (%d chars): %s" % (ident, len(size.get(ident, "")), said)

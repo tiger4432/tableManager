@@ -755,7 +755,8 @@ def _one_wafer(db, rule, spec, name, keys, written, comments, situation, wafer, 
     read = report_reads.fresh_reading()                    # the tables this wafer's report reads, named by keep
     try:
         report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
-        memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), situation)
+        memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), situation,
+                                       " / ".join(comments.get(wafer) or ()))   # the reviewer's words: the nearest
         _tell(live)
         out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory,
                                  "memo": ask_rule._memo(db, spec, situation),
