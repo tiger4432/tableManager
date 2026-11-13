@@ -18,7 +18,8 @@ if SERVER_DIR not in sys.path:
 
 from conftest import retire_dynamic_model                         # noqa: E402
 from database.database import Base                                # noqa: E402
-from database import crud, models, schemas                        # noqa: E402
+from database import crud, lines, models, schemas                 # noqa: E402
+from tests.support import line_tables                             # noqa: E402
 
 LEFT, RIGHT = "instant_left", "instant_right"
 TABLES = {
@@ -39,10 +40,13 @@ def fixture_db(pg_engine):
     crud.TABLE_CONFIG.update(TABLES)
     with pg_engine.begin() as conn:
         for name in TABLES:
+            conn.execute(text('DROP TABLE IF EXISTS "%s"' % lines.lines_relation(name)))
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
             conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": name})
     Base.metadata.create_all(bind=pg_engine,
                              tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
+    for name in TABLES:                                         # a table has its line table (the product's shape)
+        line_tables.build(pg_engine, name)
     session = sessionmaker(bind=pg_engine)()
     try:
         yield session
@@ -55,21 +59,21 @@ def fixture_db(pg_engine):
             retire_dynamic_model(name)
         with pg_engine.begin() as conn:
             for name in TABLES:
+                conn.execute(text('DROP TABLE IF EXISTS "%s"' % lines.lines_relation(name)))
                 conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
                 conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
                              {"t": name})
 
 
 def _apply(db, table, updates):
-    """Changed cells, ROW_UPDATE lines and outbox events one write left on LEFT."""
-    lines = db.query(models.AuditLog).filter(models.AuditLog.table_name == LEFT,
-                                             models.AuditLog.column_name == "ROW_UPDATE")
+    """Changed cells, lines (the write's history) and outbox events one write left on LEFT."""
+    said = text('SELECT count(*) FROM "%s"' % lines.lines_relation(LEFT))
     events = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.table_name == LEFT)
-    before = (lines.count(), events.count())
+    before = (db.execute(said).scalar(), events.count())
     _rows, changed, _logs, _deleted = crud.apply_batch_updates(
         db, table, schemas.GeneralUpdateBatch(updates=updates))
     db.commit()
-    return len(changed), lines.count() - before[0], events.count() - before[1]
+    return len(changed), db.execute(said).scalar() - before[0], events.count() - before[1]
 
 
 def _file(rows, source="instant.csv"):
@@ -155,13 +159,13 @@ def test_r3_counts_neither_a_respelled_instant_nor_a_stored_blank(db):
     _blank_the_stored(db, "E")
     ids = dict(db.execute(text('SELECT k, row_id FROM "%s"' % LEFT)).all())
     late = datetime.now(timezone.utc) + timedelta(minutes=1)
-    for key, column, source, value in (
-            ("S", "t", "late.csv", "2026-09-29T01:00:00Z"),
-            ("D", "t", "late.csv", "2026-09-29T02:00:00Z"),
-            ("E", "job", crud.CHAIN_SOURCE, None)):
-        db.add(models.CellSource(table_name=LEFT, row_id=ids[key], column_name=column,
-                                 source_name=source, value=value, ingested_at=late,
-                                 updated_by="t"))
+    with db.get_bind().begin() as conn:                        # the newer layers, as lines
+        for key, column, source, value in (
+                ("S", "t", "late.csv", "2026-09-29T01:00:00Z"),
+                ("D", "t", "late.csv", "2026-09-29T02:00:00Z"),
+                ("E", "job", crud.CHAIN_SOURCE, None)):
+            line_tables.line(conn, LEFT, line_tables.bits_of(LEFT), ids[key], source=source, at=late,
+                             written_by="t", values={column: value}, business_key=key)
     db.commit()
 
     stats = replay.recompute_display_values(db, LEFT, columns=["t", "job"], log=lambda *a: None)
