@@ -20,7 +20,6 @@ TO_MOVE = {
     "scripts/diagnose_slow_after_ingest.py:section_autovacuum": "autovacuum report - line tables wanted",
     "scripts/diagnose_slow_after_ingest.py:section_sizes": "seq scan report - line tables wanted",
     "scripts/ledger_deploy_preflight.py:inspect_database": "a table count, read only",
-    "scripts/list_undeclared_tables.py:physical_tables": "residue report, line tables of declared tables left out",
 }
 
 
