@@ -266,7 +266,7 @@ export const FLOORS = new Map([
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
   // 267 -> 271: the Waiting number and each owner line say «events» - U1-U2 and their two mutants (lead 10-28).
-  ['chain_queue_panel_harness.mjs', 277],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
+  ['chain_queue_panel_harness.mjs', 285],   // 277 -> 285: a line counted only to counted_to says «N+», its own rows - XC1-XC3 and their mutant; Waiting as a whole count, an owner aged from oldest_at - U3-U4, UM3 (lead 11-13)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -1190,6 +1190,10 @@ export const FLOORS = new Map([
   ['grid_look_harness.mjs', 73],
   // the screen checker's --mutant (lead 11-07): a named mutant runs, the others do not, an unknown name is said
   ['mutant_pick_harness.mjs', 7],
+  // the screen checker's «is this the pressed button's panel» (lead 11-13): overlays not, popovers wherever they sit, P1-P6
+  ['screens_panel_harness.mjs', 6],
+  // the screen checker's page-start buffer for request timings (lead 11-13): set once, past the most a page held, B1-B4
+  ['screens_resource_buffer_harness.mjs', 4],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes
