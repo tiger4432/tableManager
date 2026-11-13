@@ -165,7 +165,7 @@ const WANTED = [
   'renderGlobalTimeline', 'createGlobalTimelineItemDom', 'auditKind', 'auditVal',
   // The 2c filter strip's helpers, called directly by cases in section H.
   // ⚰️ Until C-58, leaving them out made the SLICE throw and section H paint nothing.
-  'auditFilterState', 'groupKindLabel', 'fillAuditFilterOptions', 'auditFilterPasses',
+  'auditFilterState', 'groupFacts', 'fillAuditFilterOptions', 'auditFilterPasses',
   // ⚰️ The 2c row asks which table the transaction touched. Leaving it out used to make the
   //    slice throw and section H paint nothing -- which is how this harness reported THAT
   //    change: as its own breakage, on product code that was correct.
@@ -315,6 +315,8 @@ globalThis.document = {
     if (id === 'timeline') return CURRENT.timeline;
     if (id === 'tab-row') return CURRENT.tabRowBtn;
     if (id === 'performance-log') return CURRENT.performanceLog;
+    // section R's filter strip - only a sandbox that builds one has it
+    if (CURRENT.filters && id in CURRENT.filters) return CURRENT.filters[id];
     return null;
   },
   addEventListener() {},
@@ -1341,6 +1343,13 @@ async function sectionI() {
 // G — the mutation corpus. Every defect must be CAUGHT; the controls must not fire.
 // ════════════════════════════════════════════════════════════════════════════════
 const MUTANTS = [
+  // ── R (lead 11-13): the Global list in the route's shape, logs [] ──
+  { name: 'the filter needs a log line again (the code before)', defect: true,
+    find: '  const facts = groupFacts(group);\n  if (!facts) return false;',
+    repl: '  const facts = groupFacts(group);\n  if (!group.logs?.[0]) return false;\n  if (!facts) return false;' },
+  { name: 'the line needs a log line again (the code before)', defect: true,
+    find: '  const facts = groupFacts(group);\n  if (!facts) return null;',
+    repl: '  const facts = groupFacts(group);\n  if (!group.logs[0]) return null;\n  if (!facts) return null;' },
   // ── U (owner 11-09): the Global list while it is read again ──
   { name: 'a stale Global list is wiped to Loading again (the code before)', defect: true,
     find: '    if (state.globalHistoryData.length) {\n      state.globalHistoryUpdating = true;',
@@ -1356,8 +1365,8 @@ const MUTANTS = [
     find: '  const isUser = byPerson(log);',
     repl: "  const isUser = log.updated_by !== 'system';" },
   { name: 'the global pane takes «not system» for a person again (the code before)', defect: true,
-    find: '  const isUser = byPerson(baseLog);',
-    repl: "  const isUser = (baseLog.updated_by || 'system') !== 'system';" },
+    find: '  const isUser = Boolean(baseLog) && byPerson(baseLog);',
+    repl: "  const isUser = Boolean(baseLog) && (baseLog.updated_by || 'system') !== 'system';" },
   { name: 'envelope assigned where the array belongs (the original defect)', defect: true,
     find: 'state.cellRowHistoryData = page.logs;',
     repl: 'state.cellRowHistoryData = page;' },
@@ -1721,6 +1730,98 @@ async function sectionP() {
   resetState();
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// R — the Global list in the shapes the server SENDS (lead 11-13, release stop on reh_c)
+//
+// 🔴 THE PANEL SAID «No history matches · 0 of 4» WITH EVERY FILTER AT ALL. The overhaul's
+//    /audit_logs/recent sends each group `logs: []` and its facts under `changed`
+//    (main.py `_shape_recent_groups`); the filter and the draw both began at `logs[0]` and
+//    dropped every group. No harness saw it: every fixture here carried logs. These do not.
+// ════════════════════════════════════════════════════════════════════════════════
+const pick = (value = '') => ({
+  options: [{ value: '' }], value,
+  remove(i) { this.options.splice(i, 1); },
+  appendChild(option) { this.options.push(option); return option; },
+});
+const optionsOf = (select) => select.options.slice(1).map(o => o.value);
+const entry = (table, rows, kinds, who, at, floor = false) => ({
+  table_name: table, changed_rows: rows, changed_rows_truncated: floor, kinds, written_by: who, at,
+});
+const routeGroup = (txId, changed) => ({
+  transaction_id: txId, total_count: changed.length, logs: [], changed,
+});
+
+async function sectionR() {
+  const now = new Date().toISOString();
+  const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  let S = await buildSandbox();
+  S.filters = { 'audit-filter-user': pick(), 'audit-filter-kind': pick(), 'audit-filter-when': pick() };
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([
+    // the migration's copy: counted to the server's cap
+    routeGroup('copy_lines:sb_wide', [entry('sb_wide', 1000, ['copy'], [], now, true)]),
+    routeGroup('TX-A', [entry('lot_event', 3, ['edit'], ['kim'], now)]),
+    // two tables, newest first as the route sends them
+    routeGroup('TX-B', [entry('t2', 5, ['new'], ['parser'], now), entry('t1', 2, ['edit'], ['kim'], now)]),
+    routeGroup('TX-OLD', [entry('t1', 1, ['edit'], ['lee'], old)]),
+  ]) });
+  await S.ctx.loadHistory();
+  const drawn = () => items(S.timeline).map(li => li.dataset.txId);
+  const redraw = (user, kind, when) => {
+    S.filters['audit-filter-user'].value = user;
+    S.filters['audit-filter-kind'].value = kind;
+    S.filters['audit-filter-when'].value = when;
+    S.ctx.renderGlobalTimeline();
+    return drawn();
+  };
+
+  check('R1 the route shape draws a line a group, filters at All',
+    drawn(), ['copy_lines:sb_wide', 'TX-A', 'TX-B', 'TX-OLD']);
+  check('R1b ... and never says «No history matches»', S.timeline.innerHTML.includes('No history matches'), false);
+  check('R2 the copy line says its rows at the cap', entryHtml(S.timeline, 0).includes('1,000+ rows'), true);
+  check('R2b ... its table and its kind as the server sent it',
+    [entryHtml(S.timeline, 0).includes('sb_wide'), entryHtml(S.timeline, 0).includes('>copy</span>')], [true, true]);
+  check('R2c ... and «system» for a batch no one is named on', entryHtml(S.timeline, 0).includes('>system</div>'), true);
+  check('R3 a two-table transaction: the newest table, «+1», the rows of both',
+    [entryHtml(S.timeline, 2).includes('t2 +1'), entryHtml(S.timeline, 2).includes('7 rows')], [true, true]);
+  check('R3b ... and every writer and kind it names',
+    [entryHtml(S.timeline, 2).includes('parser, kim'),
+     entryHtml(S.timeline, 2).includes('>new</span>'), entryHtml(S.timeline, 2).includes('>edit</span>')], [true, true, true]);
+  check('R4 the user list is the writers the groups name',
+    optionsOf(S.filters['audit-filter-user']), ['kim', 'lee', 'parser', 'system']);
+  check('R4b the kind list is the kinds the groups name', optionsOf(S.filters['audit-filter-kind']), ['copy', 'edit', 'new']);
+  check('R5 a user', redraw('kim', '', ''), ['TX-A', 'TX-B']);
+  check('R6 a kind', redraw('', 'new', ''), ['TX-B']);
+  check('R7 today', redraw('', '', 'today'), ['copy_lines:sb_wide', 'TX-A', 'TX-B']);
+  check('R7b a user and today', redraw('lee', '', 'today'), []);
+  check('R7c ... and that one says it', S.timeline.innerHTML.includes('No history matches'), true);
+
+  // a live line joining a route group: the group keeps the route's facts
+  redraw('', '', '');
+  S.ctx.appendHistoryLocally({ ...log(31, 'ROW-31'), transaction_id: 'TX-A', updated_by: 'park', table_name: 'lot_event' }, true);
+  check('R8 a live line joining a route group keeps it drawn by the route facts',
+    [redraw('kim', '', ''), optionsOf(S.filters['audit-filter-user'])], [['TX-A', 'TX-B'], ['kim', 'lee', 'parser', 'system']]);
+
+  // -- the broadcast's shape: created_logs lines (crud._said_logs), no `changed` --
+  S = await buildSandbox();
+  S.filters = { 'audit-filter-user': pick(), 'audit-filter-kind': pick(), 'audit-filter-when': pick() };
+  resetState();
+  state.activeHistoryTab = 'global';
+  state.globalHistoryData = [];
+  S.ctx.appendHistoryLocally({ ...log(41, 'ROW-41', 'qty'), transaction_id: 'TX-L', updated_by: 'kim',
+    table_name: 'lot_event', timestamp: now }, true);
+  S.ctx.renderGlobalTimeline();
+  check('R9 a live write before any list read draws its line', drawn(), ['TX-L']);
+  check('R9b ... its writer, its kind, its table, its column and its value',
+    ['>kim</div>', '>OVERWRITE</span>', 'lot_event', '>qty</span>', '>b</span>'].map(w => entryHtml(S.timeline, 0).includes(w)),
+    [true, true, true, true, true]);
+  check('R9c ... and the filters read it',
+    [redraw('kim', 'OVERWRITE', 'today'), optionsOf(S.filters['audit-filter-user']), optionsOf(S.filters['audit-filter-kind'])],
+    [['TX-L'], ['kim'], ['OVERWRITE']]);
+  resetState();
+}
+
 async function sectionG() {
   for (const m of MUTANTS) {
     // 🔴 THE MUTANT IS A WHOLE MODULE NOW, NOT A FRAGMENT. `applyOnce` still refuses an anchor
@@ -1749,6 +1850,7 @@ async function sectionG() {
       await sectionL();
       await sectionU();
       await sectionP();
+      await sectionR();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1786,6 +1888,7 @@ await sectionK();
 await sectionL();
 await sectionU();
 await sectionP();
+await sectionR();
 const beforeG = { pass, fail };
 await sectionG();
 
