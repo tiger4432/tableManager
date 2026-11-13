@@ -4110,16 +4110,24 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     if not tables:
         return []
 
+    from database import lines
+    from ledger import schema as ledger_schema
+
     db = db_session_factory()
     try:
         from sqlalchemy import text as sql_text
 
+        # the declared tables, their line tables and the ledger's - by the one seat that lists the catalogue
+        line_tables = {lines.lines_relation(t) for t in tables}
+        names = [name for name in lines.base_tables(db.connection(), lines=True)
+                 if name in tables or name in line_tables or ledger_schema.owns_table(name)]
         # only the relation the name resolves to through the search path - the one `ANALYZE "<name>"` reaches: a
         # name in two schemas is analysed once, one in no schema of the path not at all (C 11-05, lead ㄱ)
         rows = db.execute(sql_text(
             "SELECT relname, n_mod_since_analyze FROM pg_stat_user_tables "
-            "WHERE n_mod_since_analyze >= :threshold AND relid = to_regclass(quote_ident(relname))"),
-            {"threshold": threshold}).all()
+            "WHERE n_mod_since_analyze >= :threshold AND relname = ANY(:names) "
+            "AND relid = to_regclass(quote_ident(relname))"),
+            {"threshold": threshold, "names": names}).all()
     except Exception as exc:                                           # noqa: BLE001
         # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
         logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "
@@ -4128,10 +4136,7 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     finally:
         db.close()
 
-    from ledger import schema as ledger_schema
-
-    stale = [(name, int(modified or 0)) for name, modified in rows
-             if name in tables or ledger_schema.owns_table(name)]
+    stale = [(name, int(modified or 0)) for name, modified in rows]
     stale += [(name, 0) for name in sorted(set(built) & tables - {name for name, _m in stale})]
     if not stale:
         logger.info("[Chain] statistics are current on all %d declared table(s) "

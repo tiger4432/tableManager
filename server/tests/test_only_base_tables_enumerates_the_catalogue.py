@@ -14,7 +14,6 @@ NAMED = re.compile(r"\b(table_name|relname|tablename)\s*(=\s*(ANY\s*\(|:|%s|%\(\
 THE_SEAT = "database/lines.py:base_tables"
 #: enumerators not moved yet - the next round's list (target 0), each with why it is not wrong today
 TO_MOVE = {
-    "chain/ingestion_worker.py:_analyze_stale_tables_sync": "boot ANALYZE - should take line tables too",
     "chain/ingestion_worker.py:<module>": "layer table health report - line tables wanted",
     "scripts/diagnose_db_health.py:<module>": "bloat report - line tables wanted",
     "scripts/diagnose_slow_after_ingest.py:section_autovacuum": "autovacuum report - line tables wanted",
