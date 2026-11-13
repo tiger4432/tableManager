@@ -387,14 +387,17 @@ def test_droppable_is_decided_by_the_query_layer_not_the_caller(monkeypatch):
 # server-enforced behaviour test in.
 
 
-def test_run_reports_both_sections_and_returns_them():
+def test_run_reports_both_sections_and_returns_them(monkeypatch):
     """Kept, not deleted - this one asserts the report SHAPE, not the guard's mechanics.
 
     It broke only because `run()` gained a `readonly_engine=` seam, so the fake has to be
     handed to the connection the counting pass actually uses. Deleting a test because its
     double no longer fits the seam loses the assertion for free.
     """
+    from database import lines
+
     conn = CatalogueConn(redundant_rows=[("t", "ix_t_id", "t_pkey", 8, "d", "p")])
+    monkeypatch.setattr(lines, "base_tables", lambda c, **kw: list(c._tables))   # the fake has no catalogue to inspect
     out = mig.run(apply=False, engine=FakeEngine(conn), readonly_engine=FakeEngine(conn))
     assert out["results"] == []
     assert [r["index"] for r in out["redundant"]["found"]] == ["ix_t_id"]
