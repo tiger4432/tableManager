@@ -228,6 +228,10 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
             return {"table": table, "again": len(rows), "copied": n, "mismatched": len(mismatched),
                     "record": path if mismatched else None}
         rows = total
+        # an earlier run's committed pages: the line starts from them and the time left is over the rest (lead 11-13)
+        through = line_migration.copied_through(db, table, cfg, tx)
+        already = 0 if through is None else db.execute(select(func.count(func.distinct(cs.c.row_id))).where(
+            cs.c.table_name == table, cs.c.row_id <= through)).scalar()
         started = said = time.perf_counter()
         while True:
             try:
@@ -248,6 +252,8 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                 mismatched = []
             copied += n
             pages += 1
+            if pages == 1 and already:
+                say("%s: resuming - already copied %d / %d rows (an earlier run's pages)" % (table, already, rows))
             after = after_next
             now = time.perf_counter()
             if after is None:
@@ -269,8 +275,8 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                         "record": path if found else None, "vacuumed": took}
             if now - said >= SAY_EVERY:
                 said = now
-                done = min(pages * page, rows)
-                rate = done / (now - started)
+                done = min(already + pages * page, rows)
+                rate = (done - already) / (now - started)
                 say("%s: %d / %d rows, %d layer(s) copied, %d mismatched so far, about %.0f min left"
                     % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
 

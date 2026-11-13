@@ -48,6 +48,24 @@ def test_a_table_copies_to_its_end_and_a_second_run_says_already_copied():
     assert said[-1].startswith("t: already copied")
 
 
+def test_a_resumed_copy_says_the_rows_an_earlier_run_copied_and_counts_from_them(monkeypatch):
+    """Lead 11-13 (the rehearsal's resume said «5000 / 2174000 rows» after 1,264,000 were copied): the first line of a
+    resumed table says the rows already copied, and its progress counts from them against the table's rows."""
+    from database import line_migration
+
+    engine, said = build("b"), []
+    with Session(bind=engine) as db:                          # an earlier run: its first page committed, then stopped
+        line_migration.copy_page(db, "t", CFG, None, 1, transaction_id="copy_lines:t")
+        db.commit()
+    assert copied_rows(engine) == ["r1"], "CANARY: one row copied before the resume"
+    monkeypatch.setattr(script, "SAY_EVERY", 0.0)
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append)
+    assert said[0] == "t: resuming - already copied 1 / 2 rows (an earlier run's pages)", said
+    progress = [line for line in said if " / 2 rows, " in line]
+    assert progress and progress[0].startswith("t: 2 / 2 rows, "), said
+    assert (out["copied"], copied_rows(engine)) == (1, ["r1", "r2"])
+
+
 def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():
     engine, said = build("b"), []
     with engine.begin() as conn:
