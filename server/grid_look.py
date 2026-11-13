@@ -120,15 +120,20 @@ def written_of(rows) -> dict:
 
 def _named(rows, columns, kinds):
     """The cells of `columns` (None = all) the page read's `priority_source` names say it in `written_by` when it is
-    one of `kinds`. -> the row ids of the cells it leaves unnamed."""
+    one of `kinds`. -> the row ids of the cells it leaves unnamed. `crud.writer_kind` is asked once per name of this
+    call - a page of 30 k cells names ~900 (lead 11-13 ㄴ, 0.054 -> 0.016 s); held for this call only, a layer's kind
+    follows the config."""
     from database import crud
 
-    ids = set()
+    ids, kind_of = set(), {}
     for row in rows:
         for column, cell in (row.get("data") or {}).items():
             if (columns is None or column in columns) and isinstance(cell, dict) and "priority_source" in cell:
-                if cell["priority_source"] is not None:
-                    _said(cell, crud.writer_kind(cell["priority_source"]), kinds)
+                name = cell["priority_source"]
+                if name is not None:
+                    if name not in kind_of:
+                        kind_of[name] = crud.writer_kind(name)
+                    _said(cell, kind_of[name], kinds)
                 elif row.get("row_id") is not None:
                     ids.add(row.get("row_id"))
     return ids
