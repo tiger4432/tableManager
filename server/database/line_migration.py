@@ -1,13 +1,6 @@
-"""migrate_to_lines - the stage functions B's retro job calls (docs/design/CELL_SOURCE_OVERHAUL.md «이주»)."""
+"""The migration's copy of the old layers into the line tables - what server/scripts/copy_layers_to_lines.py runs a
+page at a time (docs/design/CELL_SOURCE_OVERHAUL.md «이주»)."""
 from . import lines
-
-
-class GateFailed(Exception):
-    """A migration gate found a difference; the stage rolls back and the job stops."""
-
-
-class SwapLockBusy(Exception):
-    """The swap could not take its table lock in time; the job retries."""
 
 
 def declared_vs_stored(db, tables: dict) -> list:

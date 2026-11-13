@@ -23,7 +23,7 @@ VALUE_PREFIX = "v_"
 WON_BY = "won_by"
 #: won_by's word for «the column's formula shows» - a formula holds no line (lead 10-28 ㄴ, A 11-11)
 FORMULA_WON = 0
-LINE_KINDS = ("write", "withdraw", "deleted", "mark")
+LINE_KINDS = ("write", "withdraw", "deleted", "created", "mark")
 BIT_FAMILIES = ("written", "head", "withdrawn")
 BITS_PER_CHUNK = 64
 #: tables a stamped_by statement asks (a UNION ALL arm each) - under sqlite's 500 compound terms

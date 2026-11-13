@@ -1822,7 +1822,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     `write` column's notation fold (`notation_norm.fold_for_write`), then, on every text column, the
     cast (`crud.cast_value_by_type`, which stores a number in `clean_str_value`'s spelling).
 
-    On lines (cell-source overhaul, design «쓰기» 53): each head line whose value folds gets a new line of
+    On lines (cell-source overhaul, design «쓰기»): each head line whose value folds gets a new line of
     the same source, hand, input row and owner that KEEPS ITS «WHEN» (`write_lines` item `at`) - the head
     moves to it, the rank does not, the old line stays as history, and the batch keeps when the fold was
     done. A shown value no line said is folded by a line of the backfill's own. The shown values are

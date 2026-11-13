@@ -18,7 +18,7 @@ An item is a dict:
     acted_by      who did this write when it is not the value's author (written_by) - a retroactive op re-spelling a
                   person's line keeps the person as its author and names itself here; the audit row says it (lead
                   11-11: a line's written_by is its value's author, an audit row's the write's actor)
-    at            a line's «when» kept from the line it re-spells (design «쓰기» 53: a fold writes a new line whose
+    at            a line's «when» kept from the line it re-spells (design «쓰기»: a fold writes a new line whose
                   rank does not move); else the write's instant - the batch keeps when it was done
     respelled     true: the line re-spells what is stored (the notation backfill) - no new hand: it moves no mark or
                   pin, and a key merge reads it as neither named nor a person's
@@ -51,8 +51,7 @@ from database import crud, lines
 
 logger = logging.getLogger(__name__)
 
-WRITE, WITHDRAW, DELETED, CREATED, MARK = "write", "withdraw", "deleted", "created", "mark"
-LINE_KINDS = (WRITE, WITHDRAW, DELETED, CREATED, MARK)
+WRITE, WITHDRAW, DELETED, CREATED, MARK = lines.LINE_KINDS
 #: bound parameters one statement carries at most - under sqlite's 32,766
 PARAMS_MOST = 30000
 BITS_A_CHUNK = 64
@@ -147,8 +146,9 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     items = [dict(it, line_kind=it.get("line_kind") or WRITE) for it in items]
     n = len(items)                                 # step 2 may split an item (`of`); the answer is per given item
     for it in items:
-        if it["line_kind"] not in LINE_KINDS:
-            raise ValueError("write_lines: line kind %r is not one of %s" % (it["line_kind"], ", ".join(LINE_KINDS)))
+        if it["line_kind"] not in lines.LINE_KINDS:
+            raise ValueError("write_lines: line kind %r is not one of %s"
+                             % (it["line_kind"], ", ".join(lines.LINE_KINDS)))
         unknown = [c for c in list(it.get("values") or ()) + list(it.get("columns") or ()) if c not in data]
         if unknown:
             raise ValueError("write_lines: %r is not a column of %r" % (unknown[0], table))

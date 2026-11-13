@@ -30,7 +30,7 @@
   - 줄 칸: line_id(PK, 늘기만 함) · line_kind · source_name · at · written_by · batch(= transaction_id) · input_row · owner_rule · owner_key · confirmed · `written_N` · `head_N` · `withdrawn_N`(칸 64 개에 bigint 하나).
   - t 의 칸: row_id · business_key_val · created_at · updated_at, 그리고 선언 칸은 `v_<칸>` 이다(`value_column`). 값 칸은 선언 타입과 무관하게 글자다 — 쓸 때 `crud.line_text`, 읽을 때 `crud.line_value`.
   - 인덱스: `_ra`(row_id, at) · `_b`(batch) · `_p`(사람 줄의 at) · `_h`(row_id, source_name, 머리 비트 ≠ 0. 묶음이 늘면 `_h2` …) · `_i`(input_row, NULL 아님).
-- 줄 종류(`write_lines.py:LINE_KINDS`): write(값을 말함) · withdraw(말 없음) · deleted(행 지움) · created(값 없이 행 만듦) · mark(고정 · 다시 합치기 · 병합 표시).
+- 줄 종류(`lines.py:LINE_KINDS`): write(값을 말함) · withdraw(말 없음) · deleted(행 지움) · created(값 없이 행 만듦) · mark(고정 · 다시 합치기 · 병합 표시).
 - 비트: write 는 말한 칸을 written · head 에, withdraw 는 written · head · withdrawn 에 적는다. 같은 (행, 출처)의 앞선 줄 머리는 쓰기 4 가 내린다.
 - `line_columns`(표 · 비트 · 칸 · retired_at): 칸 → 비트 자리. 저자는 `assign_bits` 하나이고 자리는 다시 쓰지 않는다.
 - `line_sources`(source_name · ranks_as · copy_of): 순위가 읽는 출처 이름. 키 병합이 옮긴 층은 copy_of 에 원래 이름을 든다(`note_sources`).
