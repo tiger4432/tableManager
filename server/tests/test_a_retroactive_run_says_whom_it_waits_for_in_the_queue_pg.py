@@ -162,10 +162,11 @@ def test_work_on_names_the_claim_whose_pid_it_is():
     import db_waits
 
     now = time.time()
-    beats = {"chain-slot-1": {"stale": False, "work": {"what": "tx A · 5 row(s) of t", "facts": {
-                 "db_pid": 11, "rule_run": {"rule": "r1", "started": now}}}},
-             "chain-slot-2": {"stale": False, "work": {"what": "tx B", "facts": {"lock_db_pid": 12}}},
-             "watcher": {"stale": True, "work": {"what": "file f", "facts": {"db_pid": 13}}}}
+    # a beat's open claims, as `heartbeat.note_work` publishes them since 99efe22d8: «works», a list
+    beats = {"chain-slot-1": {"stale": False, "works": [{"what": "tx A · 5 row(s) of t", "facts": {
+                 "db_pid": 11, "rule_run": {"rule": "r1", "started": now}}}]},
+             "chain-slot-2": {"stale": False, "works": [{"what": "tx B", "facts": {"lock_db_pid": 12}}]},
+             "watcher": {"stale": True, "works": [{"what": "file f", "facts": {"db_pid": 13}}]}}
     assert db_waits.work_on(11, beats) == "chain-slot-1 · tx A · 5 row(s) of t, rule r1"
     assert db_waits.work_on(12, beats) == "chain-slot-2 · tx B", "a lock connection's pid names its claim too"
     assert db_waits.work_on(13, beats) is None, "a stale beat names nothing"
