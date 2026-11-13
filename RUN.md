@@ -13,6 +13,26 @@
 > 끄기      없음 (읽기 전용 · 쓰는 것은 dismissed 파일뿐)
 > ```
 
+> ## [11-14] **AI 규칙이 싣는 지난 교정이 «최근 5» 가 아니라 «지금 물음과 닮은 5»** — git pull · 런처 재기동(API · 체인 워커)
+>
+> ```
+> 무엇     ask · report 규칙이 프롬프트에 싣는 교정을 scope 로 거른 뒤 지금 물음과 닮은 순으로 고름
+>          (llm_config.json 의 embedding_model 로 — 운영은 bge-m3). 동점 · 모델 없음 · 임베딩 실패는 최근 순, 전과 같음
+>          도움말 안내서 답과 같은 한 함수(help_guides.by_meaning) — 안내서 답은 그대로
+>          한 프롬프트의 그룹 물음은 임베딩 한 번에 묶음. 기억 행 벡터는 규칙마다 DATA_ROOT/cache/ai_memory_<규칙>_<모델>.json
+> 볼 것    chain_worker.log 의 규칙 줄 끝 «- N s asking, past corrections embedding in M s» — 생성 초와 임베딩 초가 나란히
+> 답의 뜻  «past corrections newest first in …» = 임베딩 모델이 없음(전과 같은 최근 순)
+>          «[ChainRule] <규칙>: past corrections went newest first, not nearest the question - embedding failed: …»
+>          = 게이트웨이 임베딩이 실패해 그 프롬프트는 최근 순으로 감 (물음 자체는 그대로 감)
+> 총괄에게  운영 첫 ask · report 실행 뒤 그 규칙 줄의 asking 초(N)와 past corrections 초(M)를 총괄에게
+>          (박스 가짜 게이트웨이엔 임베딩이 없어 이 두 수는 운영에서만 나옴). M 이 N 에 비해 크면 «쓸 때 저장»(안 3)
+> 첫 실행  그 규칙이 처음 보는 기억 행을 그 자리에서 한 번에 임베딩함 -> 운영 첫 실행이 느릴 수 있음, 다음부터는 물음만
+> 메모리   벡터 파일은 체인 워커 프로세스(ask · report 규칙을 돌리는 곳)가 읽어 들고 있음 — API 는 도움말 안내서 벡터만
+>          인프로세스 셈(게이트웨이 스텁, 1024 차원): 기억 5000 행에 파일 104 MB, 그 정도가 체인 워커 메모리에 듦
+>          운영 서버 16 GB. 기억 행이 그보다 훨씬 많아지면 이 파일 크기부터 볼 것 (DATA_ROOT/cache/ai_memory_*)
+> 끄기     없음 (llm_config.json 에서 embedding_model 을 비우면 최근 순 — 도움말 안내서 답도 낱말 순이 됨)
+> ```
+
 > ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
 >
 > ```

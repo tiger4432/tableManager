@@ -220,43 +220,62 @@ def reader():
     return out
 
 
-def _cache_path(model):
-    return os.path.join(paths.DATA_ROOT, "cache", "help_guides_%s.json" % re.sub(r"[^\w.-]", "_", model))
+#: The guides' vectors file name - each caller of `by_meaning` names its own, so one's pieces never drop another's.
+GUIDES_CACHE = "help_guides"
+
+
+def _cache_path(model, cache=GUIDES_CACHE):
+    return os.path.join(paths.DATA_ROOT, "cache", re.sub(r"[^\w.-]", "_", "%s_%s" % (cache, model)) + ".json")
 
 
 def _piece_key(piece):
     return hashlib.sha1((piece["name"] + "\n" + piece["text"]).encode("utf-8")).hexdigest()
 
 
-def _vectors(model, pieces):
-    """[vector] of `pieces` from `model` - kept in its cache file by each section's text, so a restart or an unchanged
-    guide asks nothing; the sections not kept yet asked EMBED_BATCH at a time, the file written whole after each batch
-    (sections gone dropped) - a refused batch raises with the ones before it kept."""
+#: {path: ((mtime_ns, size), {key: vector})} - a vectors file read once and held until it changes on disk.
+_held_vectors = {}
+
+
+def _stamp_of(path):
+    stat = os.stat(path)
+    return stat.st_mtime_ns, stat.st_size
+
+
+def _vectors(model, pieces, cache=GUIDES_CACHE):
+    """[vector] of `pieces` from `model` - kept in the `cache` file by each piece's text, so a restart or an unchanged
+    piece asks nothing; the pieces not kept yet asked EMBED_BATCH at a time and the file written whole ONCE, after the
+    last batch or the one refused (pieces gone dropped) - a refused batch raises with the ones before it kept. Written
+    after every batch it was quadratic: thousands of an AI rule's memory rows rewrote a growing file hundreds of
+    times (B 11-11, probe_by_meaning_seconds)."""
     from utils import llm
 
-    path = _cache_path(model)
+    path = _cache_path(model, cache)
     try:
-        with open(path, encoding="utf-8") as handle:
-            kept = json.load(handle)
+        stamp = _stamp_of(path)
+        held = _held_vectors.get(path)
+        if held is None or held[0] != stamp:
+            with open(path, encoding="utf-8") as handle:
+                held = _held_vectors[path] = (stamp, json.load(handle))
+        kept = dict(held[1])
     except (OSError, ValueError):
         kept = {}
     keys = [_piece_key(p) for p in pieces]
     missing = [i for i, key in enumerate(keys) if key not in kept]
-    for start in range(0, len(missing), EMBED_BATCH):
-        batch = missing[start:start + EMBED_BATCH]
-        for i, vector in zip(batch, llm.embed([pieces[i]["name"] + "\n" + pieces[i]["text"] for i in batch])):
-            kept[keys[i]] = vector
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
-        with os.fdopen(handle, "w", encoding="utf-8") as out:
-            json.dump({key: kept[key] for key in keys if key in kept}, out)
-        os.replace(temporary, path)
+    try:
+        for start in range(0, len(missing), EMBED_BATCH):
+            batch = missing[start:start + EMBED_BATCH]
+            for i, vector in zip(batch, llm.embed([pieces[i]["name"] + "\n" + pieces[i]["text"] for i in batch])):
+                kept[keys[i]] = vector
+    finally:
+        if missing or set(kept) - set(keys):
+            written = {key: kept[key] for key in keys if key in kept}
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+            with os.fdopen(handle, "w", encoding="utf-8") as out:
+                json.dump(written, out)
+            os.replace(temporary, path)
+            _held_vectors[path] = (_stamp_of(path), written)
     return [kept[key] for key in keys]
-
-
-def _cosine(a, b):
-    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-    return sum(x * y for x, y in zip(a, b)) / norm if norm else 0.0
 
 
 def _model():
@@ -269,29 +288,46 @@ def _model():
         return None
 
 
+def by_meaning(pieces, searches, tie, fallback, cache, model, forced=False):
+    """([order of `pieces`, one for each of `searches`], how) - nearest in meaning first by the embedding `model`
+    (cosine; the searches embedded in ONE call), an equal meaning broken by `tie` [one comparable a piece], the larger
+    first. No model (unless `forced`, the bench's), or the embedding failed: by `tie` alone, `how` the `fallback` and,
+    on a failure, why. `cache` names the pieces' vectors file - the caller's own. The one ranking by meaning: the
+    guides' answer (`nearest`) and an AI rule's past corrections (`ask_rule.memory_blocks`) both call it."""
+    from error_said import told
+    from utils import llm
+
+    by_tie = sorted(range(len(pieces)), key=lambda i: tie[i], reverse=True)
+    if not (model or forced):
+        return [by_tie for _search in searches], fallback
+    try:
+        if not model:
+            raise llm.LlmRefused("no embedding_model in config/%s" % llm.CONFIG_FILE)
+        import numpy
+
+        vectors = numpy.asarray(_vectors(model, pieces, cache), dtype=float).reshape(len(pieces), -1)
+        norms = numpy.linalg.norm(vectors, axis=1)
+        asked = llm.embed(list(searches)) if searches else []
+        orders = []
+        for vector in asked:
+            vector = numpy.asarray(vector, dtype=float)
+            under = norms * numpy.linalg.norm(vector)
+            near = numpy.divide(vectors @ vector if len(pieces) else numpy.zeros(0), under,
+                                out=numpy.zeros(len(pieces)), where=under > 0)            # cosine, 0 for a zero vector
+            orders.append(sorted(range(len(pieces)), key=lambda i: (round(float(near[i]), 6), tie[i]), reverse=True))
+        return orders, "embedding"
+    except Exception as e:                                           # noqa: BLE001 - said by the caller
+        return [by_tie for _search in searches], "%s (embedding failed: %s: %s)" % (fallback, type(e).__name__, told(e))
+
+
 def nearest(search, retrieval=None):
     """(the sections the declaration prompt carries for `search`, how they were picked). The PICKED nearest - by
     embedding when a model is named (`retrieval` "bm25" or "embedding" forces one, the bench's), else BM25 - stopped
     before one would pass SECTION_TOKENS (the first always goes)."""
-    from error_said import told
-    from utils import llm
-
     found = index()
     words = found.scores(search)
-    model = _model() if retrieval != "bm25" else None
-    how = "bm25"
-    order = sorted(range(len(words)), key=lambda i: words[i], reverse=True)
-    if model or retrieval == "embedding":
-        try:
-            if not model:
-                raise llm.LlmRefused("no embedding_model in config/%s" % llm.CONFIG_FILE)
-            vectors = _vectors(model, found.pieces)
-            [asked] = llm.embed([search])
-            near = [_cosine(asked, vector) for vector in vectors]
-            order = sorted(range(len(words)), key=lambda i: (round(near[i], 6), words[i]), reverse=True)
-            how = "embedding"
-        except Exception as e:                                       # noqa: BLE001 - said on the answer
-            how = "bm25 (embedding failed: %s: %s)" % (type(e).__name__, told(e))
+    ([order], how) = by_meaning(found.pieces, [search], words, "bm25", GUIDES_CACHE,
+                                _model() if retrieval != "bm25" else None, forced=retrieval == "embedding")
     out, spent = [], 0
     for piece in (found.pieces[i] for i in order[:PICKED]):
         cost = estimated_tokens(piece["name"] + "\n" + piece["text"])
