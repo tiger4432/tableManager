@@ -3,8 +3,14 @@
 > ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
 >
 > ```
-> 창 전에   (옛 릴리스 그대로, 서비스 켠 채) 4 시간 창에 들어가는지 본다
+> 창 전에   (서비스 켠 채) 4 시간 창에 들어가는지 본다 — 추정 스크립트는 «새 릴리스»에만 있다. 옛 릴리스 폴더에서는 안 돈다
+>          새 릴리스를 운영 폴더 «밖»에 받아 운영 설정으로 돌린다 (DB 는 통계만 읽는다. 운영 폴더는 안 바뀐다)
+>            git clone <운영 저장소 폴더> D:\assy_est
+>            cd D:\assy_est ; git fetch <받은 .bundle> release ; git checkout FETCH_HEAD
+>            set ASSY_DATA_ROOT=<운영 저장소 폴더>\server
 >          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
+>              (박스 11-14 03:2x: 새 트리 + 돌고 있는 박스 서버의 설정으로 돌려 끝 줄까지 나왔다)
+>          건너뛰어도 된다: 창 안 ⑤ 가 같은 추정을 한다. 거기서 길면 ⑨ 로 되돌린다
 >              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - ...
 >              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다. 층 16,348/s (BOX_RATE, 박스의 전체 다시 옮기기)와
 >              100 만 행에 VACUUM 0.2 분 (VACUUM_MIN_PER_MILLION_ROWS)으로 센다 — 이 디스크 속도가 아니다
