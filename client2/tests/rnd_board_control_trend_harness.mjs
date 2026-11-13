@@ -86,13 +86,10 @@ const WALK = {
     ranked: [
       { id: 'q-measured', type: 'Quantity', label: 'bond_temp · void_formation', rank: 1,
         top: true, tied: false, incomparable: false,
-        // 🔴 `node_kind` IS THE FIELD THE DERIVATION READS -- `kind` is the one the card prints.
-        //    A fixture carrying only one of them scores a candidate as name-only and the whole
-        //    measured/name-only split silently inverts.
-        evidence: [{ seed: 'seed', hops: [{ node_kind: 'value', kind: 'value', label: 'x', ref: 'recipe_book:R@1' }] }] },
+        evidence: [{ seed: 'seed', hops: [{ type: 'recipe', label: 'x' }] }] },
       { id: 'q-name', type: 'Quantity', label: 'outgassing · void_formation', rank: 2,
         top: false, tied: false, incomparable: false,
-        evidence: [{ seed: 'seed', hops: [{ node_kind: 'quantity', kind: 'quantity', label: 'y' }] }] },
+        evidence: [{ seed: 'seed', hops: [{ type: 'Quantity', label: 'y' }] }] },
     ],
     top_set: ['q-measured'],
   },
@@ -272,7 +269,7 @@ async function suite(mods) {
     //    무엇이 사라졌나: 후보 «순위»가 `collect` 축과 함께 꺼졌습니다
     //                    (실측: /subgraph -> propagation.state="not_requested" · ranked=0).
     //                    후보가 0 이므로 `candidate.measured` 는 적용 대상이 없습니다.
-    //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹입니다.
+    //    왜 초록이었나:   이 파일의 픽스처가 `node_kind: 'value'|'quantity'` 를 «손으로» 먹였습니다(11-13 은퇴로 지움).
     //                    서버 실측은 `{ entity: 400 }` 입니다 — 그 종류는 더 이상 안 옵니다.
     //                    픽스처를 «지금 값»으로 바꾸면 정확히 이 단언들이 같은 이름으로 깨집니다.
     //    어디로 가나:     「후보 패널을 walk 부품으로 다시 짓는 라운드」가 데려갑니다.

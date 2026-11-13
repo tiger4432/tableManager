@@ -399,6 +399,8 @@ def _walk(world, worlds, node_type, keys, hops=2):
 
 
 @pytest.mark.pg
+@pytest.mark.usefixtures("stored_walks")   # a stored-ledger contract: two worlds' atoms are two claims there; the
+#   virtual walk's answer (owner 11-13 «one fact») is the test below
 def test_two_worlds_are_independent_and_meet_only_in_a_walk_that_picks_both(world):
     _seed(world)
     a = _make(world, A, _only(KEPT), KEPT)                           # lot slot -> wafer
@@ -434,6 +436,28 @@ def test_two_worlds_are_independent_and_meet_only_in_a_walk_that_picks_both(worl
     (alone,) = [e for e in _edges(world, [C], "wafer", {"wafer": "W1"}, hops=1)
                 if e["predicate"] == "processed_with"]
     assert (alone["id"], alone["worlds"]) == (edge["id"], [C])      # the id does not move
+
+
+@pytest.mark.pg
+def test_the_same_source_in_two_worlds_is_one_fact_on_the_virtual_walk_and_names_both_worlds(world):
+    """Owner 11-13 (ㄱ «one fact»): two worlds that declare the same source say one fact - the virtual walk reads the
+    source's row once, so the edge carries one claim_id and one record, and its by_world names both worlds (in the
+    order picked). The stored ledger keeps an atom per world (the test above, stored_walks)."""
+    from ledger import trace_router
+    assert trace_router.DEFAULT_ENGINE == "virtual", "CANARY: this test asks the walk that names no engine"
+    _seed(world)
+    _make(world, A, _only(KEPT, CHANGED), KEPT, CHANGED)
+    _make(world, C, _only(CHANGED), CHANGED)
+
+    (edge,) = [e for e in _edges(world, [A, C], "wafer", {"wafer": "W1"}, hops=1)
+               if e["predicate"] == "processed_with"]
+    assert [said["world"] for said in edge["by_world"]] == edge["worlds"] == [A, C]   # both worlds named
+    assert len({said["claim_id"] for said in edge["by_world"]}) == 1                   # one fact
+    assert edge["claim_id"] == edge["by_world"][0]["claim_id"]
+    assert len(edge["records"]) == 1, edge["records"]                                 # one record
+    (alone,) = [e for e in _edges(world, [C], "wafer", {"wafer": "W1"}, hops=1)
+                if e["predicate"] == "processed_with"]
+    assert (alone["id"], alone["claim_id"], alone["worlds"]) == (edge["id"], edge["claim_id"], [C])
 
 
 @pytest.mark.pg

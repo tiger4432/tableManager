@@ -193,8 +193,8 @@ subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup)
 {
   "schema_version": 3,
   "state": "ready",
-  "seed": {"id": "...", "node_kind": "entity"},
-  "seeds": [{"id": "...", "sign": "+", "node_kind": "entity"}],
+  "seed": {"id": "...", "type": "wafer", "label": "..."},
+  "seeds": [{"id": "...", "sign": "+"}],
   "nodes": [{"id": "...", "type": "wafer", "label": "...", "depth": 0,
              "claim_count": 7, "predicates": [{"predicate": "inspected", "count": 1}]}],
   "edges": [{"id": "...", "source": "...", "target": "...", "predicate": "inspected",
@@ -205,8 +205,8 @@ subgraph({"positive": [id, ...], "negative": [id, ...]}, lookup)
                 "reach": [2, 0], "reachable": [2, 2],
                 "rank": 1, "top": true, "tied": false, "incomparable": false,
                 "evidence": [{"seed": "...", "sign": "+",
-                              "hops": [{"id": "...", "node_kind": "entity",
-                                        "label": "...", "atom": null, "ref": "..."}]}]}],
+                              "hops": [{"id": "...", "type": "recipe",
+                                        "label": "..."}]}]}],
     "top_set": ["..."], "message": null
   },
   "walk": {"mode": "evidence_graph", "direction": "both",
