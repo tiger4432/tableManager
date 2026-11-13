@@ -43,6 +43,7 @@ def fixture_db(pg_engine):
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % lines.lines_relation(name)))
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
             conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": name})
+            conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": name})
     Base.metadata.create_all(bind=pg_engine,
                              tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
     for name in TABLES:                                         # a table has its line table (the product's shape)
@@ -63,6 +64,7 @@ def fixture_db(pg_engine):
                 conn.execute(text('DROP TABLE IF EXISTS "%s"' % name))
                 conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
                              {"t": name})
+                conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": name})
 
 
 def _apply(db, table, updates):
