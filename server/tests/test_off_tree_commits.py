@@ -72,3 +72,16 @@ def test_since_overrides_where_the_tree_left_main(tmp_path):
     rows, _read = off_tree_commits.off_tree("trial", "main", since=c["lost"], dismissed_path=str(tmp_path / "x"),
                                             cwd=repo)
     assert rows == [], "a branch whose tip is not after --since is not read"
+
+
+def test_a_commit_whose_twin_main_holds_is_not_listed_when_the_tree_is_main(tmp_path):
+    """Client2 11-14: with main as the tree, `tree...tip ^main` emptied the side the twin was on - 82db74e7f listed."""
+    repo, c = _repo(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "e-twin", c["old"])
+    twin = _commit(repo, "client2/src/twin.js", "twin", "2026-11-09T00:00:00")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "cherry-pick", twin, when="2026-11-10T00:00:00")
+    rows, _read = off_tree_commits.off_tree("main", "main", since=c["old"], dismissed_path=str(tmp_path / "x"),
+                                            cwd=repo)
+    assert twin[:9] not in [r["sha"] for r in rows], rows
+    assert c["lost"][:9] in [r["sha"] for r in rows], "canary: the real miss is still listed"

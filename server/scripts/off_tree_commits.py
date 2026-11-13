@@ -48,6 +48,11 @@ def side(sha, cwd=None):
                             for t in tops})) or "none"
 
 
+def lacking(ref, tip, cwd=None):
+    """Commits of `tip` that `ref` holds neither as themselves nor as a patch (each side of ref...tip compared whole)."""
+    return git("rev-list", "--cherry-pick", "--right-only", "--no-merges", "%s...%s" % (ref, tip), cwd=cwd).split()
+
+
 def off_tree(tree, main, since=None, dismissed_path=DISMISSED, cwd=None):
     """-> ([{lane, sha, side, branches, subject}], branches read)."""
     since = since or fork_point(tree, main, cwd)
@@ -61,8 +66,8 @@ def off_tree(tree, main, since=None, dismissed_path=DISMISSED, cwd=None):
         if int(when) <= after or tip in skip or name.endswith("/HEAD"):
             continue
         read += 1
-        for sha in git("rev-list", "--cherry-pick", "--right-only", "--no-merges", "%s...%s" % (tree, tip),
-                       "^" + main, cwd=cwd).split():
+        in_main = set(lacking(main, tip, cwd))
+        for sha in (s for s in lacking(tree, tip, cwd) if s in in_main):
             if sha not in found:
                 found[sha] = {"sha": sha[:9], "branches": [], "full": sha}
             found[sha]["branches"].append(name)
@@ -84,6 +89,7 @@ def main():
     parser.add_argument("--since", help="read branches whose tip moved after this commit (default: the tree's fork)")
     parser.add_argument("--dismissed", default=DISMISSED)
     args = parser.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8")             # a subject's « on a cp949 console cut the list short (D 11-14)
     rows, read = off_tree(args.tree, args.main, args.since, args.dismissed)
     print("[off-tree] %d branch(es) read, %d commit(s) off %s" % (read, len(rows), args.tree), file=sys.stderr)
     for r in rows:
