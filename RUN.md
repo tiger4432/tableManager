@@ -23,12 +23,17 @@
 >             <표>  N layer(s) on M row(s) · to copy | copied | lines not built - start the server once
 >             total N layer(s) to copy · preview only - add --apply
 > ⑤ 시간 다시   python scripts/copy_layers_to_lines.py --estimate --workers 4     «at least B h» 가 창의 남은 시간을 넘으면 멈추고 총괄께
+>             시간이 긴 표인데 그 이력이 당장 필요 없으면: ⑥ 에서 그 표만 빼고 (--table <나머지 표> 를 하나씩) 옮기고,
+>             나중에 서버를 끈 채 --apply --table <그 표>. 그 사이 쓴 값은 그대로 이기고 옛 층은 그 밑 이력으로 들어간다
+>             (박스 리허설: 3,000 행 9,504 층, 사람 편집 · 빈 값 위의 새 쓰기 셋 다 그대로 · 어긋남 0)
 > ⑥ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
 >             진행  <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
 >             끝    <표>: done - K layer(s) copied in S s - vacuumed ...   VACUUM (ANALYZE) 는 표 끝마다 스크립트가 한다. 따로 할 일 없음
 >                   copied A table(s), B already, C stopped - D cell(s) do not match (<파일>…)   C 가 0 이 아니면 exit 1
 >             이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ⑥ 을 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
->                       (--workers 4 프로세스를 죽였다 다시 돌린 첫 줄 · 끝 상태는 리허설에서 잰 뒤 채운다)
+>                       첫 줄  <표>: resuming - already copied N / M rows (an earlier run's pages)
+>                       박스 리허설: 58 % 에서 프로세스를 죽이고 다시 돌린 끝이 안 끊긴 판과 같았다(행 · 줄 · copy 감사 행 · 어긋남 98,804)
+>             시간      박스 리허설은 기계를 같이 쓴 판: 죽기 전 43 분 + 이어 하기 24 분 (속도로 읽지 않는다. 시간은 위 81 분 판)
 > ⑦ 런처 띄우기
 > ⑧ 확인
 >   시작 검사  [Indexes] line index '<표>__lines_<x>' ...   빠진 줄 표 인덱스를 짓는 줄 — 짓는 동안 시작이 기다린다. 다 있으면 조용하다
@@ -36,6 +41,8 @@
 >             [Lines] <표>__lines: dropped uq_bk_<표>__lines - ...        할 일 없음. 시작마다 나오면 그 줄을 총괄께
 >   /health   응답이 오면 api 가 떴다
 >   화면 넷    큰 표의 grid · 이력 패널 · 큐 · 갤러리 (D 의 점검표 — 리허설에서 이 자리에 붙인다)
+>   알려진 것  Global history does not show ledger batch receipts or table-wide (*) records yet – they are still recorded
+>             and will show once the history reads them (after 11-14)
 >   ★ 어긋난 칸 파일  copy_mismatch_<표>.csv (⑥ 을 돌린 폴더)
 >             옮긴 줄을 다시 합친 값이 화면(t)의 값과 다른 칸이다. 칸: table, row_id, column, t_value, lines_value — 엑셀로 연다
 >             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
@@ -46,17 +53,22 @@
 >   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
 >   refused: lines not built for <표>                 ③ 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
 >   <표>: already copied (...) - skipped              그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   <표>  N layer(s) on M row(s) · copied            미리보기 · ⑥ 의 표 줄. 이미 다 옮긴 표 — ⑥ 이 건너뛴다. 정상
+>   맨 위의 [Report] causes.values: the ledger declaration was not read + Traceback ... no ledger world '<이름>'
+>          체인 규칙 하나가 선언되지 않은 ledger world 를 이름에 든다(config 의 규칙 쪽 일). 이주와 무관 — 복사는 계속된다
 >   REFUSED - <표>: cell_sources has no owner_rule / owner_key - ...
 >          release-2026-11-09 보다 오래된 릴리스로만 돌던 DB 다. 아무것도 안 옮겼다
 >          할 일: 옛 릴리스로 런처를 한 번 띄웠다 끈 뒤(그 부팅이 칸을 더한다) ② 부터
 >
 > ⑨ ★ 되돌리기 — 옛 릴리스를 같은 DB 위에 (소유자 11-13: 백업 없음). 줄 표 · won_by 칸은 DB 에 남는다
 >          런처를 끈다 -> git reset --hard <② 의 이전 커밋> -> 런처를 띄운다. 옛 층 표는 이주가 읽기만 했다
->   뜨는가        (리허설 (1) — 아직 안 쟀다: 옛 릴리스가 줄 표 · won_by 칸을 두고 뜨는지, grid 열 · 스키마 점검 줄)
->   grid 의 값    (리허설 (2) — 아직 안 쟀다: 착지 뒤 쓴 값이 그대로 보이는지)
->   이력 · 셀 소스 (리허설 (3) — 아직 안 쟀다: 착지 뒤 쓴 칸에 무엇이 보이는지, 글 그대로)
->   되돌아가는 값  (리허설 (4) — 아직 안 쟀다: 같은 행의 다른 칸 쓰기 · 소급 리플레이 · 재계산이 착지 뒤 값을 바꾸는지)
->   다시 올릴 때   (리허설 (5) — 아직 안 쟀다: 다시 새 릴리스 · ⑥ 뒤 t 와 줄 표가 다른 칸 수, 다음 쓰기가 무엇을 하는지)
+>   뜬다          시작 줄 [Schema] no drift - ... (N unmapped column group(s), harmless) — 줄 표 · won_by 를 세고 지나간다. won_by 는 grid 열이 아니다
+>   보이는 것      grid 는 착지 뒤 값을 그대로 보이지만, 착지 뒤 쓴 칸의 셀 소스 · 이력은 옛 층만 보인다
+>                 셀 소스 패널은 옛 파일 층을 «이긴 층» 으로 적는데 칸은 새 값이다. 칸이 맞고 패널이 옛 것이다
+>                 재계산(R3 resolve)은 아무것도 안 바꾼다 (박스, 세 행) · 같은 행의 다른 칸을 써도 그 칸은 그대로
+>   못 잰 것       옛 릴리스에서 체인 리플레이가 착지 뒤 쓴 칸을 지날 때
+>   다시 올리면    ⑥ 은 그 표를 «· copied» 로 건너뛴다. 옛 릴리스 동안 쓴 칸은 값은 남고 그 쓰기 이력은 새 이력에 없다
+>                 그 행의 다른 칸을 새로 써도 그 칸 값은 그대로다 (박스, 한 칸)
 >   되돌린 뒤 소급(표기 소급 · 체인 리플레이)은 돌리지 않는다
 > 끄기     없음 — 이주 명령은 사람이 돌릴 때만 돈다
 > ```
