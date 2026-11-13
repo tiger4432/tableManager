@@ -13,9 +13,10 @@ import zipfile
 import image_sources
 from error_said import told
 
-#: images one request may hold - refused before any read. A PLACEHOLDER, not measured (lead 11-13): the cap's
-#: measured value and its effect on grid reads come after the box's R4 marathon
-MAX_IMAGES = 500
+#: images one request may hold - refused before any read. The bound is time and download size (lead 11-13): on the
+#: box (2cf9ef63f, 11-13) 2,000 took 14 s at its 327 B images and 35 s at 1 MB each (2 GB out); server RSS +1~8 MB,
+#: no DB connection held, grid page reads unchanged beside it
+MAX_IMAGES = 2000
 #: the gallery's word for a blank group (client2/src/gallery.js `empty`)
 BLANK = "(Empty)"
 NOT_INCLUDED = "_not_included.txt"

@@ -5,8 +5,8 @@
 > ```
 > 할 일    없음. 갤러리에서 Download zip 을 누르면 그룹마다 폴더 하나인 zip 이 내려온다
 > 볼 것    읽지 못한 그림이 있으면 zip 안 _not_included.txt 에 그 이름과 사유가 한 줄씩 있다
-> 거절     413 «N images asked; one zip holds at most 500 - pick fewer groups or rows» -> 그룹이나 행을 줄여 다시
->          500 은 «임시 값»이다 (잰 값 아님). 잰 값과 그리드 읽기에 주는 영향은 박스 판 뒤에 바뀐다
+> 거절     413 «N images asked; one zip holds at most 2000 - pick fewer groups or rows» -> 그룹이나 행을 줄여 다시
+>          2,000 장은 박스에서 작은 그림 14 s · 1 MB 그림 35 s(2 GB) · 서버 메모리 거의 그대로 · 그리드 읽기 영향 없음
 > 끄기     없음. 버튼을 안 누르면 아무 일도 없다
 > ```
 

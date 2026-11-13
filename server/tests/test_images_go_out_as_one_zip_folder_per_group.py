@@ -68,12 +68,14 @@ def test_two_folders_nested_a_collision_and_a_refused_ref(client):
 
 
 def test_too_many_is_refused_before_any_read(client, monkeypatch):
-    monkeypatch.setattr(image_zip, "MAX_IMAGES", 4)
+    monkeypatch.setattr(image_zip, "MAX_IMAGES", 5)
+    _zip(client.post("/api/images/zip", json=BODY))                                  # 5 images at a cap of 5 - streamed
+    six = dict(BODY, folders=BODY["folders"] + [{"path": ["c"], "refs": [{"ref": "pics:a/x.png"}]}])
     read = []
     monkeypatch.setattr(image_sources, "resolve", lambda ref, *a, **k: read.append(ref))
-    answer = client.post("/api/images/zip", json=BODY)
+    answer = client.post("/api/images/zip", json=six)
     assert answer.status_code == 413 and read == []
-    assert answer.json()["detail"] == "5 images asked; one zip holds at most 4 - pick fewer groups or rows"
+    assert answer.json()["detail"] == "6 images asked; one zip holds at most 5 - pick fewer groups or rows"
 
 
 def test_the_route_opens_no_session_and_writes_nothing_to_disk(client, monkeypatch, tmp_path):
