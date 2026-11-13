@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-13 릴리스] **release-2026-11-13 — 갤러리 zip · 그리드 열쇠 읽기 · R&D 보드 hop 타입** — 번들 적용 · api 와 스케줄러 재기동
+>
+> ```
+> 돌릴 것   git bundle verify release-2026-11-13.bundle
+>          git fetch release-2026-11-13.bundle release -> git merge --ff-only FETCH_HEAD
+>          런처 재기동 (api · 스케줄러)
+> 볼 것    1 그리드: 아래로 끝까지 스크롤 · Load All -> 깊은 쪽도 바로 온다 (쪽마다 «마지막 행 다음» 으로 읽음)
+>          2 갤러리: Download zip -> 그룹마다 폴더 하나인 zip (아래 [11-13] 줄)
+>          3 R&D 보드: 근거 hop 이 «entity» 대신 노드 타입 (예 wafer) 을 적는다
+> 답의 뜻   1 깊은 쪽이 몇 초씩 걸린다 -> 옛 클라 번들이 떠 있다. 브라우저 새로고침 (Ctrl+F5)
+>          2 405 Method Not Allowed -> 옛 api 가 돌고 있다. api 재기동이 안 됨
+>          3 hop 이 아직 «entity» -> 위 1 과 같음 (클라 번들)
+> 되돌리기  git reset --hard release-2026-11-11i -> 런처 재기동. 이 릴리스는 DB 를 안 바꾼다 (이주 없음)
+> ```
+>
+> ---
+>
 > ## [11-13] **체인 대기열 화면이 기다리는 행 수에 안 묶인다** — 이주 «없음» · 재기동 «서버 · 체인 워커»
 >
 > ```
