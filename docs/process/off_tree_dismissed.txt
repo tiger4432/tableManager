@@ -10,3 +10,22 @@ ff69e6da87cabb8b70cb0c32dc13d1c393fcd27f 693a2a5b3 not needed: an 11-11 RUN.md b
 6012f536d3d11d72c7837b49292dcf743c7cbd98 9c787bb57 replaced by 23093ada1..6645253c5 (groupFacts, jump, row shape); per-table lines on D's board D
 e969b5ad69479d7e10d41c805983a87b38a97b72 799ff2379 not needed: the legend reads the cell updated_by, which main fills with the writer (probe 11-14: Kim Probe, row updated_at = write time) Client2
 4b77eb387fc62bbbebe16bd430279528ef8d4545 5d54abf44 rebased: landed as 56148679d (rank_terms 2c) C
+15903b06449829830a117ff4ded722551882a708 153e50f70 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+dc07f68a1925e4db858f6ee78a11bad220af4a62 1e6307ef0 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+ee7fb0a98c0318fea79622c11bc82d7513451f19 348203669 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+b7bc1d38fc3863b7981dc5ec2eef5a6d5d2c14ca 47947ad41 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+9f580d6d46507928701a3785cb1847b940fe9bfa 5e34c2b33 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+eae76d8c7bed85ed30166c7670f010f3cb2b7cea 679e94f0f folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+8349d6b6354870e98ffa240a16c7b6b36d46d9dc 6faf9c0c7 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+2d3433fe3c24c97dfec2af8806f0224f142fe7cc 8b1e5d21b folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+9b2ea2beb9cc375fcba3a0806c1f62f1be4cf29e 93152f40b folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+6c7c0892010546ffde16938df779eb40ff62ed90 9d9808d88 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+49e05ee768030da0422b1eb98a9bc9df26756977 a3b66ff73 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+488b2fe25e02bcbde6ec5e3590f94ccfc53d5585 aa2ba8eae folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+295bf645bdfc33721d1f238deb2c5039f572d735 c7708a777 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+e8b13a318d91054ba19bf0eb9468cf6befa71a11 cf6a084e9 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+c280d286e37ba9f1c4e7cd01ab6f3fded9284bff d7fbc303c folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+1022c23f051c7b268fcdce4b819cf6dfffa918d7 d90a099db folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+b13a0e056caec7b99ec7d44eff674f109ed0b695 da32cf72e folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+aff7201305b330fa12dbb02be3675f9604219dc5 ee9fd2277 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
+d23317958502f6933823eb577c31876e54f397cb f3e06b118 folded into the CELL_SOURCE_OVERHAUL.md rewrite as shipped in release-2026-11-14b C
