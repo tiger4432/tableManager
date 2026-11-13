@@ -10,8 +10,7 @@ its line there.
     a priority pin         state: none         plain: the cell's line
     a layer deleted        state: none         plain: the cell's line
     a collision merge      state: none         plain: the cell's line
-    a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)
-    the replay's lines     test_fold_units_leaves_what_the_chain_leaves_pg"""
+    a state cell blanked   test_the_system_catalogue_keeps_each_parts_state_pg (the queue draining, PostgreSQL)"""
 import uuid
 
 import pytest

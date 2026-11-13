@@ -80,8 +80,8 @@ def census(config, monkeypatch):
 
 def test_every_enabled_cell_compiles(config, monkeypatch):
     assert len(gate.CELLS) == len(gate.SEATS) * len(gate.TYPES) - len(gate.CANNOT_EXIST) == 94
-    assert len(gate.ENABLED) == 83 and gate.ENABLED <= set(gate.CELLS)      # 94 - the value row (owner) - a bound formatted time
-    assert all(gate.not_yet(*cell) in (gate.PENDING_OWNER, gate.D_SHARE) for cell in gate.CELLS if cell not in gate.ENABLED)
+    assert len(gate.ENABLED) == 93 and gate.ENABLED <= set(gate.CELLS)      # 94 - a bound formatted time
+    assert all(gate.not_yet(*cell) == gate.D_SHARE for cell in gate.CELLS if cell not in gate.ENABLED)
     reds, compared = census(config, monkeypatch)
     assert len(reds) == len(gate.CELLS), "canary: every cell compiled"
     held = {gate.name(*cell): reds[gate.name(*cell)] for cell in sorted(gate.ENABLED)}

@@ -48,19 +48,26 @@ REFUSED = {("event_time", kind): "{0} is {1} - declare {0} datetime".format(f"c_
 #: attribute and neither does the walk (lead 11-11 A)
 REFUSED.update({("qualifier_required_attribute", kind):
                 f"predicate 'p_qualifier_required_attribute_{kind}' requires role 'q'" for kind in TYPES})
-PENDING_OWNER = "pending owner: the walk draws no value object (retired 2026-08-28) - the owner's ruling (lead 11-11)"
+#: the value row is held as «no node»: a value is not a node - it is a Quantity edge's qualifier (owner 11-11; the
+#: 08-28 retirement of value nodes stands). This board declares no Quantity, so the walk is held to draw none
+VALUE_IS_A_QUALIFIER = "by design not a node - a value is a Quantity edge qualifier (owner 11-11)"
+#: the qualifier and attribute seats take timestamptz without a zone; only the value role asks for one (lead 11-12:
+#: kept refused - that rule belongs to the retired value path and is not widened)
+REFUSED[("value", "timestamptz")] = ("role 'value' carries a timestamp, so its column binding must declare the "
+                                     "timezone a naive reading is in - the compiler cannot know it and every atom "
+                                     "would be refused without it")
 #: a walk that binds a predicate on a qualifier (`follow=<predicate>:<qualifier>`, `VirtualEvidenceLookup._bound`) - its
 #: sentence is an optional qualifier's here; bound from S1 it comes back to S4 alone. A time read by a format is not
 #: compared yet - refused by name (`walk_filter.NotRead`)
 D_SHARE = "a bound time read by a format - the walk does not compare it yet (lead 11-11, D)"
-#: the cells the gate holds - every cell but the value-object row and the bound formatted time
-ENABLED = frozenset(cell for cell in CELLS if cell[0] != "value" and cell != ("follow_bound", "text_format"))
+#: the cells the gate holds - every cell but the bound formatted time
+ENABLED = frozenset(cell for cell in CELLS if cell != ("follow_bound", "text_format"))
 VALUE_TYPES = {"text": "string", "boolean": "boolean", **{kind: "timestamp" for kind in TIMES}}
 
 
 def not_yet(seat, kind):
     """Why a cell is walked but not held - None for an enabled one."""
-    return None if (seat, kind) in ENABLED else D_SHARE if seat == "follow_bound" else PENDING_OWNER
+    return None if (seat, kind) in ENABLED else D_SHARE
 
 
 def column(kind, seat=None):

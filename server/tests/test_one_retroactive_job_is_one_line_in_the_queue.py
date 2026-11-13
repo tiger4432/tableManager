@@ -110,7 +110,7 @@ def _queue(client):
 def _event(db, payload, event_type="EDIT", table="raw_table_1"):
     db.add(models.DatabaseOutbox(event_uuid=str(uuid.uuid4()), table_name=table,
                                  event_type=event_type, payload=payload, processed_chain=False))
-    db.flush()
+    db.commit()
 
 
 def _lines(body, **match):
@@ -149,7 +149,8 @@ def test_the_fold_comes_before_the_cut(client, db_session):
     _event(db_session, {"transaction_id": "tx-behind-the-big-job"})
 
     body = _queue(client)
-    assert [g["events"] for g in _lines(body, run_id=run)] == [250]
+    assert [(g["events"], g["counted_to"]) for g in _lines(body, run_id=run)] == [(200, 200)], \
+        "counted to its first COUNTED_TO events, and says so (lead 11-13)"
     assert _lines(body, transaction_id="tx-behind-the-big-job"), "the job behind it is hidden"
 
 
