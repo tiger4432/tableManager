@@ -164,3 +164,57 @@ def test_a_files_blank_clears_a_column_of_no_history_and_is_dropped_on_one_that_
     _write(db, {"gauge_id": "G1", column: ""}, "c.csv")
     db.expire_all()
     assert getattr(_row(db), column) == shown
+
+
+@pytest.mark.parametrize("source", ["system_catalog", "user"])
+def test_a_blank_clears_a_cell_of_a_table_that_keeps_no_lines(db_session, monkeypatch, source):
+    """Lead 11-13 ㄴ: a table that keeps no lines (`lines.keeps_lines` - here a shipped sys_* table) keeps no history
+    on any column, so a blank is written, the last write wins: a machine's blank cleared nothing before (dropped as
+    «not yet written», the old value shown on - sys_columns.key_of stayed 'lots' when a key moved), a person's did."""
+    import copy
+
+    import shipped
+
+    entry = copy.deepcopy(shipped.tables()["sys_columns"])
+    monkeypatch.setitem(crud.TABLE_CONFIG, "sys_columns", entry)
+    models.init_dynamic_models({"sys_columns": entry})
+    Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES["sys_columns"].__table__])
+    assert not lines.keeps_lines("sys_columns", entry), "CANARY: a shipped table keeps no lines"
+
+    def write(value):
+        crud.apply_batch_updates(db_session, "sys_columns", schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"table_name": "lots", "column_name": "lot_id", "key_of": value},
+                                      source_name=source, updated_by=source)]))
+        db_session.commit()
+        db_session.expire_all()
+        return [r.key_of for r in db_session.query(models.DYNAMIC_TABLES["sys_columns"]).all()]
+
+    assert write("lots") == ["lots"], "CANARY: the value was written"
+    assert write(None) == [None]
+
+
+def test_a_queue_line_set_aside_on_a_table_that_keeps_no_lines_leaves_its_record(db_session, monkeypatch):
+    """Lead 11-13 ㄱ: a «*» record - here the chain queue's «skipped» line - is an operations record, no cell's
+    history, so a table that keeps no lines (a shipped sys_* table) still gets it: `create_audit_log` asks
+    `keeps_history` of a declared column only."""
+    import copy
+
+    import shipped
+    from chain import set_aside
+
+    entry = copy.deepcopy(shipped.tables()["sys_columns"])
+    monkeypatch.setitem(crud.TABLE_CONFIG, "sys_columns", entry)
+    models.init_dynamic_models({"sys_columns": entry})
+    Base.metadata.create_all(bind=db_session.get_bind(), tables=[models.DYNAMIC_TABLES["sys_columns"].__table__])
+    assert not crud.keeps_history("sys_columns", "key_of"), "CANARY: a shipped table keeps no history"
+    tx = str(uuid.uuid4())
+    crud.apply_batch_updates(db_session, "sys_columns", schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        updates={"table_name": "lots", "column_name": "lot_id", "key_of": "lots"}, source_name=crud.CHAIN_SOURCE,
+        updated_by=crud.CHAIN_SOURCE)], transaction_id=tx))
+    db_session.commit()
+    done = set_aside.set_aside_line(db_session, tx, set_aside.OPERATOR)
+    db_session.commit()
+    assert done["marked"] >= 1, ("CANARY: the write staged a chain event the line set aside", done)
+    said = [(a.table_name, a.row_id, a.column_name) for a in
+            db_session.query(models.AuditLog).filter_by(source_name=set_aside.QUEUE_SKIP_SOURCE)]
+    assert said == [("sys_columns", "*", "*")]

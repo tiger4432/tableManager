@@ -291,8 +291,6 @@ export function createTimelineItemDom(log) {
         <div class="change-detail">
           <span class="change-field">${escapeHtml(log.column_name)}</span>
           <div class="change-values">
-            <span class="val-old">${escapeHtml(formatVal(log.old_value, true))}</span>
-            <span class="val-arrow">→</span>
             <span class="val-new">${escapeHtml(formatVal(log.new_value, false))}</span>
           </div>
         </div>
@@ -398,13 +396,18 @@ const FOLDS = {
 export function changedRowsOf(group) {
   const tables = Array.isArray(group && group.changed) ? group.changed.filter((t) => t && isCount(t.changed_rows)) : [];
   if (tables.length) {
-    const n = tables.reduce((sum, t) => sum + Number(t.changed_rows), 0);
-    return unitText(`${n.toLocaleString('en-US')}${tables.some((t) => t.changed_rows_truncated === true) ? '+' : ''}`, 'row');
+    return rowsText(tables.reduce((sum, t) => sum + Number(t.changed_rows), 0),
+      tables.some((t) => t.changed_rows_truncated === true));
   }
   if (!holdsAll(group)) return `${ABSENT} rows`;
   const logs = group && Array.isArray(group.logs) ? group.logs : [];
   const rows = new Set(logs.map((log) => log && log.row_id).filter((id) => id && id !== '_BATCH_'));
   return unitText(rows.size.toLocaleString('en-US'), 'row');
+}
+
+/** «N rows», «N+ rows» when `floor` (the server counted to its cap). */
+function rowsText(n, floor) {
+  return unitText(`${Number(n).toLocaleString('en-US')}${floor ? '+' : ''}`, 'row');
 }
 
 function foldOf(group) {
@@ -512,11 +515,78 @@ export function needsTransactionRead(group) {
   return !(group && 'nextCursor' in group) && !holdsAll(group);
 }
 
+/** A group's line facts - THE seat the Global line, its filter and the filter's lists read (lead 11-13). Two shapes reach
+ *  the list:
+ *    the route     GET /audit_logs/recent (server main.py `_shape_recent_groups`): `logs` [] and `changed`, a table an
+ *                  entry, newest first - {table_name, changed_rows, changed_rows_truncated, kinds, written_by, at}
+ *    a live write  a broadcast's `created_logs` (server database/crud.py `_said_logs`, sent by main.py
+ *                  `apply_batch_updates_endpoint` and the workers' batch_refresh), grouped by `appendHistoryLocally`:
+ *                  `logs` [line, ...], no `changed`
+ *  The route's facts are its entries' `kinds` and `written_by`: a group whose `changed` carries them is read from it,
+ *  a live line joined to it or not; one whose `changed` counts rows only (the release before, a line beside its
+ *  counts) is read from its line. -> {at, who [], kinds [{label, cls}], tables [{name, label, rows}], log}: `tables`
+ *  newest first, `name` the table a press jumps to, `rows` its count or null; `log` the representative line, null in
+ *  the route's shape. null for a group with neither. */
+export function groupFacts(group) {
+  const log = (group && Array.isArray(group.logs) && group.logs[0]) || null;
+  const changed = Array.isArray(group && group.changed) ? group.changed.filter(Boolean) : [];
+  if (changed.some((t) => Array.isArray(t.kinds))) {
+    const words = (key) => [...new Set(changed.flatMap((t) => (Array.isArray(t[key]) ? t[key] : [])).filter(Boolean))];
+    const who = words('written_by');
+    return {
+      at: changed[0].at || null,
+      who: who.length ? who : ['system'],
+      kinds: words('kinds').map((label) => ({ label, cls: 'kind-auto' })),
+      tables: changed.filter((t) => t.table_name).map((t) => ({ name: t.table_name, label: t.table_name,
+        rows: isCount(t.changed_rows) ? rowsText(t.changed_rows, t.changed_rows_truncated === true) : null })),
+      log,
+    };
+  }
+  if (!log) return null;
+  return { at: log.timestamp, who: [log.updated_by || 'system'], kinds: [auditKind(group, log, group.total_count > 1)],
+    tables: [{ name: log.table_name, label: auditTargetTable(group) || log.table_name, rows: null }], log };
+}
+
+/** The Table cell: a name a table the line names, each pressed to its first changed row (owner 11-13 «여러 표라며»);
+ *  of several, those past the cell's first line fold into «+N» (foldTableNames), which unfolds the transaction. */
+function tableNames(tables) {
+  const names = tables.map((t) => `<span class="audit-target-table" data-wrap-ok data-table="${escapeHtml(t.name)}"`
+    + ` title="${escapeHtml(t.rows ? `${t.label} · ${t.rows}` : t.label)}">${tablePieces(t.label)}</span>`);
+  return names.join('') + (names.length > 1 ? `<span class="audit-tbl-more" hidden>+${names.length - 1}</span>` : '');
+}
+
+/** A Global line pressed (owner 11-13 «네비게이션»): `named` the table name pressed, else the line's first table. The
+ *  line's own row when its line names a row of that table; else the first row the transaction changed there, asked of
+ *  the transaction route (`?table=&limit=1`, owner 11-10 «바뀐 행 네비»). An answer with no row is said. */
+async function goToLine(group, named) {
+  const facts = groupFacts(group);
+  const table = named ? named.dataset.table : facts && facts.tables.length ? facts.tables[0].name : null;
+  if (!table) return undefined;
+  const log = facts.log;
+  if (log && log.row_id !== '_BATCH_' && log.table_name === table) return navigateToLog(log);
+  const txId = group.transaction_id;
+  try {
+    const res = await fetch(`${API_BASE}/audit_logs/transaction/${encodeURIComponent(txId)}`
+      + `?table=${encodeURIComponent(table)}&limit=1`);
+    if (!res.ok) { sayStopped(await refusalText(res, '❌ Changed rows not read')); return undefined; }
+    const body = await res.json();
+    const row = (Array.isArray(body && body.logs) ? body.logs : []).find((one) => one && one.table_name === table);
+    if (!row) { sayStopped(`No changed row of ${table} in this transaction`); return undefined; }
+    return navigateToLog({ table_name: table, row_id: row.row_id, column_name: row.column_name, transaction_id: txId });
+  } catch (err) {
+    console.error('Failed to read the changed rows', err);
+    sayStopped('❌ Changed rows not read');
+    return undefined;
+  }
+}
+
 export function createGlobalTimelineItemDom(group) {
   const txId = group.transaction_id;
-  const isSummary = group.total_count > 1;
-  const baseLog = group.logs[0];
-  if (!baseLog) return null;
+  const facts = groupFacts(group);
+  if (!facts) return null;
+  const baseLog = facts.log;
+  // the route's shape has no line to draw a cell from: its line is the transaction's, unfolded by the transaction route
+  const isSummary = !baseLog || group.total_count > 1;
 
   const li = document.createElement('li');
   li.className = 'timeline-item';
@@ -529,30 +599,32 @@ export function createGlobalTimelineItemDom(group) {
     li.classList.add('active-tx-log');
   }
 
-  const user = baseLog.updated_by || 'system';
-  const isUser = byPerson(baseLog);
+  const user = facts.who.join(', ');
+  const isUser = Boolean(baseLog) && byPerson(baseLog);
   li.classList.add(isUser ? 'user-change' : 'system-change');
 
   let displayTitle = '';
   let colorClass = '';
 
   const fold = isSummary ? foldOf(group) : null;
+  // the title names the line's table; the route's shape names its tables
+  const titleTable = baseLog ? baseLog.table_name : facts.tables.map((t) => t.name).join(', ');
   if (isSummary) {
     if (fold.kind === 'ledger') {
       // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
       const chainless = txId === NO_TRANSACTION_BUCKET;
-      displayTitle = `📒 ${receiptLabel(baseLog.new_value)} · ${fold.count} · ${baseLog.table_name}`
+      displayTitle = `📒 ${receiptLabel(baseLog && baseLog.new_value)} · ${fold.count} · ${titleTable}`
         + `${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
     } else if (fold.kind === 'delete') {
-      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${fold.count} deleted`;
+      displayTitle = `🗑️ [${user}] | ${titleTable} | ${fold.count} deleted`;
       colorClass = 'color-delete';
     } else if (fold.kind === 'create') {
-      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${fold.count} created`;
+      displayTitle = `🆕 [${user}] | ${titleTable} | ${fold.count} created`;
       colorClass = 'color-create';
     } else {
-      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${fold.count}`;
-      colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
+      displayTitle = `📦 [${user}] | ${titleTable} | ${fold.count}`;
+      colorClass = baseLog && baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
     }
   } else {
     const targetId = baseLog.business_key ? (baseLog.business_key.length > 10 ? baseLog.business_key.slice(0, 10) + '...' : baseLog.business_key) : baseLog.row_id.slice(0, 8);
@@ -580,7 +652,7 @@ export function createGlobalTimelineItemDom(group) {
     }
   }
 
-  if (baseLog.is_row_deleted) {
+  if (baseLog && baseLog.is_row_deleted) {
     displayTitle = `❌ [deleted] ` + displayTitle;
   }
 
@@ -588,38 +660,34 @@ export function createGlobalTimelineItemDom(group) {
   // expand and Tx-filter handlers below query `.timeline-card`, `.tx-tag`, `.filter-tx-btn` and
   // `.expand-indicator`, and all four are still here. Only the layout changed.
   li.classList.add('audit-row');
-  const kind = auditKind(group, baseLog, isSummary);
   // 🔴 C-55 ②. 원장 배치의 영수증만 이 줄을 얻습니다. 다른 종류는 «한 글자도» 안 바뀝니다 —
   //    빈 문자열이면 아래가 종전 값 칸을 그대로 그립니다.
   //    접힌 묶음은 그 트랜잭션의 영수증이 «어느 세상들»에 쓰였는지를 그 자리에 — 대표 영수증 하나의 수는
   //    묶음의 수가 아닙니다(총괄, 서버 c49217a06).
   const installWorlds = state.tableList && state.tableList.worlds;
   const receiptLine = (isSummary ? receiptWorldsLine(group, installWorlds) : '')
-    || (baseLog.column_name === LEDGER_BATCH_COLUMN ? ledgerReceiptLine(baseLog.new_value, installWorlds) : '');
+    || (baseLog && baseLog.column_name === LEDGER_BATCH_COLUMN ? ledgerReceiptLine(baseLog.new_value, installWorlds) : '');
   // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
   // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
   // An old value belongs to its own log's new value: where the receipt line stands instead, no arrow
   // (the folded row's log is the person's edit since 67f156c11 - 「RCP-1 → Ledger · …」 was false).
-  const hadOldValue = !receiptLine
+  const hadOldValue = !receiptLine && Boolean(baseLog)
     && baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
   // `toLocaleTimeString()` writes 「오후 11:31:31」 in this locale, which does not fit 58px and
   // wrapped the cell to two lines. The mockup's `09:31:12` is what a scan needs: fixed width,
   // no marker to read past - on the product's zone (owner 11-07), not the machine's.
-  const timeStr = localClock(baseLog.timestamp);
+  const timeStr = localClock(facts.at);
   // The table a column of its own (owner 10-12 「감사로그 대상 테이블 컬럼 따로 빼」), said once: the target cell
   // keeps the row and its column. 묶음 줄은 표본이면 첫 로그의 표라도 말합니다.
-  const targetTable = auditTargetTable(group);
-  const rowKey = baseLog.business_key || baseLog.row_id.slice(0, 8);
-  const keyTable = isSummary ? (targetTable || baseLog.table_name) : targetTable;
-  const keyRow = isSummary ? '' : rowKey;
+  const keyRow = isSummary ? '' : (baseLog.business_key || baseLog.row_id.slice(0, 8));
   const targetCol = isSummary ? fold.count : baseLog.column_name;
 
   li.innerHTML = `
     <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}" title="${escapeHtml(displayTitle)}">
       <div class="audit-cell audit-time">${timeStr}</div>
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
-      <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
-      <div class="audit-cell audit-tbl"><span class="audit-target-table" data-wrap-ok title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>
+      <div class="audit-cell audit-kind">${facts.kinds.map((kind) => `<span class="audit-pill ${kind.cls}">${escapeHtml(kind.label)}</span>`).join(' ')}</div>
+      <div class="audit-cell audit-tbl${facts.tables.length > 1 ? ' audit-tbl-names' : ''}">${tableNames(facts.tables)}</div>
       <div class="audit-cell audit-target">
         <span class="audit-target-key" title="${escapeHtml(keyRow)}"><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
@@ -631,7 +699,7 @@ export function createGlobalTimelineItemDom(group) {
           //    읽을 수 없고, 그렇다고 「배치」 한 낱말만 두면 조작자가 펼쳐야 수를 봅니다.
           //    수는 여기, 문장(문지기의 error 전문)은 펼친 자리에 그대로 남습니다.
           ? `<span class="val-new val-receipt">${escapeHtml(receiptLine)}</span>`
-          : `<span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>`}
+          : baseLog ? `<span class="val-new">${escapeHtml(auditVal(baseLog.new_value, false))}</span>` : ''}
       </div>
       ${txId ? `<div class="audit-cell audit-tx tx-tag" data-tx-id="${txId}"><span class="filter-tx-btn" data-tx-id="${txId}" title="Only this transaction">…${txId.slice(-8)}</span>${isSummary ? '<span class="expand-indicator">▶</span>' : ''}</div>` : '<div class="audit-cell audit-tx"></div>'}
     </div>
@@ -672,8 +740,8 @@ export function createGlobalTimelineItemDom(group) {
           group.nextCursor = page.truncated ? page.nextCursor : null;
           state.fetchingTransactions.delete(txId);
           // 첫 쪽과 커서를 들었습니다. 접힌 줄의 … 는 이제 커서가 답합니다(남은 쪽이 있으면 그대로). 그 칸만 고칩니다.
-          const keyEl = li.querySelector('.audit-target-table');
-          if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
+          const tblEl = li.querySelector('.audit-tbl');
+          if (tblEl) { tblEl.innerHTML = tableNames(groupFacts(group).tables); fitAuditTable(); }
           renderSubDetails(detailsContainer, group.logs, transactionPane(group, txId, detailsContainer));
         } catch (err) {
           console.error('Failed to load transaction details', err);
@@ -700,12 +768,10 @@ export function createGlobalTimelineItemDom(group) {
         e.stopPropagation();
         const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
         setTransactionFilter(targetTxId);
-      } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator')) {
+      } else if (e.target.closest('.tx-tag') || e.target.closest('.expand-indicator') || e.target.closest('.audit-tbl-more')) {
         toggleExpand();
       } else {
-        if (group.logs && group.logs.length > 0 && group.logs[0].row_id !== '_BATCH_') {
-          navigateToLog(group.logs[0]);
-        }
+        goToLine(group, e.target.closest('.audit-target-table'));
       }
     });
 
@@ -720,11 +786,7 @@ export function createGlobalTimelineItemDom(group) {
         const targetTxId = e.target.closest('.filter-tx-btn').dataset.txId;
         setTransactionFilter(targetTxId);
       } else {
-        if (baseLog.row_id !== '_BATCH_') {
-          navigateToLog(baseLog);
-        } else {
-          sayStopped('⚠️ Batch operations do not support cell positioning');
-        }
+        goToLine(group, e.target.closest('.audit-target-table'));
       }
     });
   }
@@ -801,6 +863,27 @@ function measureAuditTable() {
   box.classList.remove('audit-tbl-whole');
   const need = Math.max(widest('.audit-tbl-piece'), Math.min(cap, whole));
   if (need && (all ? need !== held : need > held)) box.style.setProperty('--audit-tbl-w', `${need}px`);
+  foldTableNames(roots);
+}
+
+/** A Table cell of several names: those on its first line shown, the rest «+N» (owner 11-13; «+N» unfolds the
+ *  transaction, which lists every table's rows). Read after the column's width is set. */
+function foldTableNames(roots) {
+  roots.flatMap((root) => [...root.querySelectorAll('.audit-tbl-names')]).forEach((cell) => {
+    const names = [...cell.querySelectorAll('.audit-target-table')];
+    const more = cell.querySelector('.audit-tbl-more');
+    if (!more || !names.length) return;
+    names.forEach((name) => { name.hidden = false; });
+    more.hidden = true;
+    const onFirst = (el) => el.offsetTop === names[0].offsetTop;
+    if (names.every(onFirst)) return;
+    more.hidden = false;
+    for (let shown = names.length - 1; shown > 0; shown -= 1) {
+      names[shown].hidden = true;
+      more.textContent = `+${names.length - shown}`;
+      if (names.slice(0, shown).every(onFirst) && onFirst(more)) return;
+    }
+  });
 }
 
 export function renderGlobalTimelineIncremental(log) {
@@ -1117,12 +1200,6 @@ function auditFilterState() {
   };
 }
 
-function groupKindLabel(group) {
-  const baseLog = group.logs?.[0];
-  if (!baseLog) return '';
-  return auditKind(group, baseLog, group.total_count > 1).label;
-}
-
 function fillAuditFilterOptions(groups) {
   const fill = (id, values) => {
     const select = document.getElementById(id);
@@ -1139,17 +1216,18 @@ function fillAuditFilterOptions(groups) {
     // A choice that no longer exists in the data must not go on filtering invisibly.
     select.value = values.includes(chosen) ? chosen : '';
   };
-  fill('audit-filter-user', [...new Set(groups.map(g => g.logs?.[0]?.updated_by || 'system'))].sort());
-  fill('audit-filter-kind', [...new Set(groups.map(groupKindLabel).filter(Boolean))].sort());
+  const facts = groups.map(groupFacts).filter(Boolean);
+  fill('audit-filter-user', [...new Set(facts.flatMap(f => f.who))].sort());
+  fill('audit-filter-kind', [...new Set(facts.flatMap(f => f.kinds.map(k => k.label)))].sort());
 }
 
 function auditFilterPasses(group, filters) {
-  const baseLog = group.logs?.[0];
-  if (!baseLog) return false;
-  if (filters.user && (baseLog.updated_by || 'system') !== filters.user) return false;
-  if (filters.kind && groupKindLabel(group) !== filters.kind) return false;
+  const facts = groupFacts(group);
+  if (!facts) return false;
+  if (filters.user && !facts.who.includes(filters.user)) return false;
+  if (filters.kind && !facts.kinds.some(k => k.label === filters.kind)) return false;
   if (filters.when) {
-    const stamp = new Date(baseLog.timestamp);
+    const stamp = new Date(facts.at);
     const now = new Date();
     // today on the product's wall clock (owner 11-07), the day the history column shows
     if (filters.when === 'today' && localStamp(stamp).slice(0, 10) !== localStamp(now).slice(0, 10)) return false;
@@ -1255,6 +1333,9 @@ export function createSubDetailItemDom(log) {
   let labelText = '';
   if (col === 'ROW_UPDATE') {
     labelText = `ROW_UPDATE: ${val} (ID: ${targetId})`;
+  } else if (col == null) {
+    // a row the transaction route names (owner 11-10 «바뀐 행 네비»: a row, no column, no value) - its key and who wrote it
+    labelText = log.is_row_deleted ? `Deleted (ID: ${targetId})` : `${targetId} · by ${log.updated_by || 'system'}`;
   } else {
     labelText = `[${col}] ${val} (ID: ${targetId})`;
   }
@@ -1508,7 +1589,7 @@ export function navigatorStep2(log, jump = null) {
   const rowNode = state.gridApi.getRowNode(log.row_id);
   if (rowNode) {
     // Cache Hit -> directly scroll (Step 4)
-    navigatorFinalScroll(rowNode, log.column_name, jump);
+    navigatorFinalScroll(rowNode, log.column_name, jump, log.business_key);
   } else {
     // Check if row exists in any of the cached pages
     for (const [skip, cached] of state.pageCache.entries()) {
@@ -1526,7 +1607,7 @@ export function navigatorStep2(log, jump = null) {
         setTimeout(() => {
           const node = state.gridApi.getRowNode(log.row_id);
           if (node) {
-            navigatorFinalScroll(node, log.column_name, jump);
+            navigatorFinalScroll(node, log.column_name, jump, log.business_key);
           } else {
             releaseNavigationGuard('❌ Failed to locate row in cached page', jump);
           }
@@ -1616,7 +1697,7 @@ export async function navigatorStep3(log, jump = null) {
       if (cut()) { releaseNavigationGuard('', jump); return; }
       const rowNode = state.gridApi.getRowNode(log.row_id);
       if (rowNode) {
-        navigatorFinalScroll(rowNode, log.column_name, jump);
+        navigatorFinalScroll(rowNode, log.column_name, jump, log.business_key);
       } else {
         releaseNavigationGuard('❌ Failed to locate row after server fetch', jump);
       }
@@ -1630,9 +1711,11 @@ export async function navigatorStep3(log, jump = null) {
   }
 }
 
-// Step 4: Scroll and Focus Column Cell
-export function navigatorFinalScroll(rowNode, columnName, jump = null) {
+// Step 4: Scroll and Focus Column Cell - a jump to a row the history names with no column (the transaction route's,
+// owner 11-10 «바뀐 행 네비») selects the row and focuses no cell; `rowKey` is the row's business key, said for it.
+export function navigatorFinalScroll(rowNode, columnName, jump = null, rowKey = null) {
   try {
+    const column = columnName || null;
     // 1. Ensure visible
     state.gridApi.ensureNodeVisible(rowNode, 'middle');
 
@@ -1640,25 +1723,27 @@ export function navigatorFinalScroll(rowNode, columnName, jump = null) {
     rowNode.setSelected(true, true);
 
     // 3. Focus Cell
-    state.gridApi.setFocusedCell(rowNode.rowIndex, columnName);
+    if (column) state.gridApi.setFocusedCell(rowNode.rowIndex, column);
 
     // 4. Trigger flash micro-animation
     state.gridApi.flashCells({
       rowNodes: [rowNode],
-      columns: [columnName],
+      ...(column ? { columns: [column] } : {}),
       flashDelay: 1000
     });
 
     // 5. Sync details panel manually
     state.selectedCell = {
       rowId: rowNode.data.row_id,
-      colId: columnName,
-      value: rowNode.data.data?.[columnName]?.value ?? '',
-      rowIndex: rowNode.rowIndex
+      colId: column,
+      value: column ? rowNode.data.data?.[column]?.value ?? '' : null,
+      rowIndex: rowNode.rowIndex,
+      rowKey: rowKey || null
     };
     updateSelectedCellUI();
 
-    elements.performanceLog.textContent = `🎯 Jumped to ${columnName} at Row ${rowNode.data.row_id}`;
+    const row = rowKey || rowNode.data.row_id;
+    elements.performanceLog.textContent = column ? `🎯 Jumped to ${column} at Row ${row}` : `🎯 Jumped to Row ${row}`;
 
     // Finalize
     releaseNavigationGuard('', jump);

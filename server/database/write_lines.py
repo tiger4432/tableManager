@@ -366,6 +366,7 @@ def _claim(db, table, cfg, now, items):
                               .with_for_update()).mappings():
             old[row["row_id"]] = dict(row)
     keys_of = cfg.get("composite_key_source") or []
+    made_key = _keys_of_made_rows(table, items, old)
     wanted, by_key, bare, looked = {}, {}, [], {}  # key -> minted row_id · item -> key · rows of no key · found only
     for i, it in enumerate(items):
         if it.get("row_id") in old:
@@ -377,6 +378,11 @@ def _claim(db, table, cfg, now, items):
         bk = it.get("business_key_val")
         if bk is None and it.get("key") and keys_of:
             bk = crud.compose_business_key(table, [it["key"].get(c) for c in keys_of], keys_of)
+        if bk is None and it.get("row_id") in made_key:
+            bk, key_column = made_key[it["row_id"]]
+            it["business_key_val"] = bk
+            if it.get("values"):
+                it["values"] = {**it["values"], **key_column}
         if it["line_kind"] == CREATED and crud.is_blank_value(bk):   # made with no value - its row_id or a minted one
             targets[i] = crud._engine_minted_row_id(it.get("row_id"), table)
             bare.append(targets[i])
@@ -414,6 +420,28 @@ def _claim(db, table, cfg, now, items):
                 targets[i] = holder[bk]["row_id"]
     fresh.update(dict.fromkeys(bare))            # a row of no key, put by step 5 too
     return targets, old, keys, fresh
+
+
+def _keys_of_made_rows(table, items, old) -> dict:
+    """A NEW row a row_id names, sent no key -> (its key, {its key column: key} or {}), by the one assembler
+    (`crud.assemble_composite_business_key`) on the row's values over the batch's writes, a later one winning - so a
+    row made and moved in one batch is keyed once. The assembler skips a row_id item (ruling 190: a row_id names a
+    row and is never re-keyed onto another - a row in `old` still is not), so such a row was put keyless and never
+    merged into its key's holder (lead 11-13) - a table keyed by one column too (its `_key_from_the_key_column`)."""
+    from types import SimpleNamespace
+
+    made = {}
+    for it in items:
+        if (it.get("row_id") and it["row_id"] not in old and it["line_kind"] == WRITE and it.get("values")
+                and it.get("business_key_val") is None):
+            made.setdefault(it["row_id"], {}).update(it["values"])
+    out = {}
+    for row_id, values in made.items():
+        shaped = SimpleNamespace(row_id=None, updates=dict(values), business_key_val=None,
+                                 _supplied_business_key_val=None)
+        if crud.assemble_composite_business_key(table, shaped):
+            out[row_id] = (shaped.business_key_val, {c: v for c, v in shaped.updates.items() if c not in values})
+    return out
 
 
 def _by_old_key(db, now, items, targets, old, wanted, by_key) -> None:

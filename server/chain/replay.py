@@ -1803,19 +1803,6 @@ def _mark_folded(db, table_name, mark, page, woken) -> int:
     return len(page)
 
 
-def _insert_by_arrays(db, table, mappings):
-    """The rows of `mappings` (every column but the key) into `table` in one statement."""
-    from sqlalchemy import text
-    from database import crud
-
-    if not mappings:
-        return
-    columns = [column for column in table.columns if not column.primary_key]
-    params, casts = crud.array_params(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
-    db.execute(text('INSERT INTO "%s" (%s) SELECT * FROM unnest(%s)' % (
-        table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
-
-
 #: The writer of the history line a notation backfill leaves on each cell it folds.
 NOTATION_BACKFILL_SOURCE = "notation_backfill"
 

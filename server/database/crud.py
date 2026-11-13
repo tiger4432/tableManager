@@ -2323,12 +2323,15 @@ def loadable_columns(table_info: dict) -> tuple:
 def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, old_val: Any, new_val: Any, source: str, user: str, transaction_id: str = None, business_key: str = None, add_to_cache: bool = True):
     """감사 로그를 기록합니다. (저장 전 인코딩 정제 수행)
 
-    None - no line, no db.add, nothing cached - for a column its table keeps no history for (`keeps_history`).
+    None - no line, no db.add, nothing cached - for a column its table keeps no history for (`keeps_history`), asked
+    of a cell's line only: a «*» record (a queue skip, a late source skipped, a full reset) or a receipt names no
+    declared column - an operations record, written on every table (lead 11-13 ㄱ).
     add_to_cache=False는 인메모리 캐시 추가뿐 아니라 DB persist(db.add)도 생략한다.
     이 경우 호출자가 반환된 log_dict를 모아 commit 전에 bulk_insert_audit_logs로
     직접 DB에 적재할 책임을 진다.
     """
-    if not keeps_history(table_name, col_name):     # owner 11-09 ㄴ · lead ㅁ''': whoever wrote it
+    declared = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    if col_name in declared and not keeps_history(table_name, col_name):     # owner 11-09 ㄴ · lead ㅁ''': whoever wrote it
         return None
     if not transaction_id:
         transaction_id = str(uuid6.uuid7())
@@ -2439,8 +2442,13 @@ def keeps_history(table_name, column_name) -> bool:
     """Whether a change of this cell leaves a history line - asked where a line is made: `create_audit_log` (a cell's
     line, whoever wrote it) and `_said_logs` (the columns a row's line names). Not when the table's entry lists
     the column in `no_history_columns` (owner 11-09 ㄴ: the system tables' state cells, a person's hand write too -
-    lead ㅁ'''). Unsaid: every column keeps its history."""
-    return column_name not in ((TABLE_CONFIG.get(table_name) or {}).get("no_history_columns") or ())
+    lead ㅁ'''). Unsaid: every column keeps its history - of a table that keeps lines: one that keeps none
+    (`lines.keeps_lines` - a shipped system table, a view, an undeclared relation) keeps no history on any column
+    (lead 11-13 ㄴ, the owner's 11-12 ㄴ rule at table level: no layers, the last write wins, a blank too)."""
+    from database import lines
+
+    entry = TABLE_CONFIG.get(table_name) or {}
+    return lines.keeps_lines(table_name, entry) and column_name not in (entry.get("no_history_columns") or ())
 
 
 def bulk_insert_audit_logs(db: Session, logs: list[dict]):
@@ -3145,7 +3153,9 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     removed the business-key half, because a supplied key switching the assembly off is
     how two payloads with the same composite columns became two rows under one identity.
     Only `row_id` still stops it: a caller naming a row by id is not asking about
-    identity. A supplied key is kept instead - see 판정 191 below.
+    identity. A supplied key is kept instead - see 판정 191 below. A row_id naming NO
+    row is a new row: `write_lines._keys_of_made_rows` keys it here with the row_id
+    cleared (lead 11-13).
 
     It always sets the framework-owned `update_item.business_key_val`. When the table
     ALSO declares a physical `business_key` column - one of its `loadable_columns` - it keeps the

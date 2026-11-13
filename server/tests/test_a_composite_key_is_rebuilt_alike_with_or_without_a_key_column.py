@@ -23,6 +23,7 @@ itself is the only thing one shape has and the other has not.
                        wrote                                         the holder's value kept as a layer
 """
 import os
+import re
 import sys
 
 import pytest
@@ -33,7 +34,8 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from conftest import PG_TEST_SCHEMA, retire_dynamic_model            # noqa: E402
-from database import crud, models, schemas                           # noqa: E402
+from database import crud, lines, models, schemas                    # noqa: E402
+from tests.support import line_tables                                 # noqa: E402
 
 pytestmark = pytest.mark.pg
 PARTS = ["job", "x", "y"]
@@ -43,6 +45,8 @@ SHAPES = {
                "column_types": {"k": "string", **COLUMNS}},
     "rk_parts": {"composite_key_source": PARTS, "column_types": dict(COLUMNS)},
 }
+ONE = "rk_one"                                   # keyed by one column - not a shape the branches compare
+TABLES = {**SHAPES, ONE: {"business_key": "k", "column_types": {"k": "string", **COLUMNS}}}
 
 
 @pytest.fixture(name="world")
@@ -50,34 +54,38 @@ def fixture_world(pg_engine):
     with pg_engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"),
                             {"s": PG_TEST_SCHEMA}).scalar() == 1
-    config = {t: {**c, "display_columns": list(c["column_types"])} for t, c in SHAPES.items()}
+    config = {t: {**c, "display_columns": list(c["column_types"])} for t, c in TABLES.items()}
     saved = dict(crud.TABLE_CONFIG)
-    for table in SHAPES:
+    for table in TABLES:
         retire_dynamic_model(table)
     models.init_dynamic_models(config)
     crud.TABLE_CONFIG.update(config)
     scratch = MetaData(schema=PG_TEST_SCHEMA)
-    for table in SHAPES:
+    for table in TABLES:
         models.DYNAMIC_TABLES[table].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
     with pg_engine.begin() as conn:
-        for table in SHAPES:
+        for table in TABLES:
             conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS "uq_bk_%s" ON "%s"."%s" (business_key_val)'
                               % (table, PG_TEST_SCHEMA, table)))
+    for table in TABLES:
+        line_tables.build(pg_engine, table)            # every declared table keeps lines (11-11)
     session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
     try:
         yield {"db": session, "engine": pg_engine}
     finally:
         session.close()
+        for table in TABLES:
+            line_tables.drop(pg_engine, table)
         with pg_engine.begin() as conn:
-            for table in SHAPES:
+            for table in TABLES:
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, table)))
                 for side in ("cell_sources", "cell_overwrites", "audit_logs", "database_outbox"):
                     conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t'
                                       % (PG_TEST_SCHEMA, side)), {"t": table})
         crud.TABLE_CONFIG.clear()
         crud.TABLE_CONFIG.update(saved)
-        for table in SHAPES:
+        for table in TABLES:
             retire_dynamic_model(table)
 
 
@@ -209,6 +217,20 @@ def _made_then_moved_onto_a_key(db, table):
     _write(db, table, [(made, _part("J2", 2), "chain:b"), (made, {"job": "J1"}, "user")])
 
 
+def _named_with_every_part_onto_a_key(db, table):
+    """Ruling 190: a row_id naming a row keeps its row - a person writes every key part of R, P's key: the write lands
+    on R and R merges into P (its layer kept under R's key), never claimed by P's key the way a made row is (lead
+    11-13)."""
+    _write(db, table, [(None, _part("J1", 1), "chain:a")])
+    _write(db, table, [(None, _part("J2", 2), "chain:a")])
+    row = [r for r, k in _keyed(db, table) if k == "J2_1_2"][0]
+    _write(db, table, [(row, _part("J1"), "user")])
+
+
+def _keyed(db, table):
+    return list(db.execute(text('SELECT row_id, business_key_val FROM "%s"."%s"' % (PG_TEST_SCHEMA, table))))
+
+
 BRANCHES = {"by_key": (_by_key, ["J1_1_2"]), "named": (_named, ["J1_1_2"]),
             "made_onto_a_key": (_made_onto_a_key, ["J1_1_2"]),
             "made_then_moved_onto_a_key": (_made_then_moved_onto_a_key, ["J1_1_2"]),
@@ -219,7 +241,11 @@ BRANCHES = {"by_key": (_by_key, ["J1_1_2"]), "named": (_named, ["J1_1_2"]),
             "pinned_onto_a_key": (_pinned_onto_a_key, ["J1_1_2"]),
             "pinned_onto_a_persons_value": (_pinned_onto_a_persons_value, ["J1_1_2"]),
             "written_onto_a_persons_value": (_written_onto_a_persons_value, ["J1_1_2"]),
-            "written_over_a_persons_value": (_written_over_a_persons_value, ["J1_1_2"])}
+            "written_over_a_persons_value": (_written_over_a_persons_value, ["J1_1_2"]),
+            "named_with_every_part_onto_a_key": (_named_with_every_part_onto_a_key, ["J1_1_2"])}
+
+
+UUID_TAIL = re.compile(r"_?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\)$")
 
 
 def _answer(world, table):
@@ -228,11 +254,13 @@ def _answer(world, table):
         rows = conn.execute(text('SELECT row_id, business_key_val, job, x, y, netdie, note FROM "%s"."%s"'
                                  % (PG_TEST_SCHEMA, table))).all()
         key_of = {r[0]: r[1] for r in rows}
-        layers = conn.execute(text(
-            'SELECT row_id, column_name, source_name, value FROM "%s".cell_sources '
-            "WHERE table_name = :t AND column_name <> 'k'" % PG_TEST_SCHEMA), {"t": table}).all()
+    # a cell's lines (11-11); a merged layer's name carries the whole merged row_id (aa14dd278) - each shape has its
+    # own ids, so it is compared without it
+    layers = [(row, column, UUID_TAIL.sub(")", source), "" if said["value"] is None else str(said["value"]))
+              for (row, column), by in lines.layers(world["db"], table, list(key_of)).items() if column != "k"
+              for source, said in by.items()]
     return (sorted((r[1] or "", r[2] or "", str(r[3]), str(r[4]), str(r[5]), r[6] or "") for r in rows),
-            sorted((key_of.get(l[0]) or "", l[1], l[2], l[3] or "") for l in layers))
+            sorted((key_of.get(l[0]) or "", l[1], l[2], l[3]) for l in layers))
 
 
 def _outliving(world, table):
@@ -256,11 +284,10 @@ def test_both_shapes_give_one_answer(world, branch):
         assert [r[0] or None for r in answers[table][0]] == keys, (table, answers[table][0])
     assert answers["rk_key"] == answers["rk_parts"]
     if branch.startswith("made"):
-        with world["engine"].connect() as conn:
-            merged = conn.execute(text(
-                'SELECT count(*) FROM "%s".audit_logs WHERE table_name = :t '
-                "AND source_name = 'collision_merge'" % PG_TEST_SCHEMA), {"t": "rk_parts"}).scalar()
-        assert merged >= 1                                          # the merge left its line
+        # the made row is claimed by its key (lead 11-13): its write lands on P itself - no shell, so no merge
+        assert any(layer[:3] == ("J1_1_2", "netdie", "chain:b") for layer in answers["rk_parts"][1])
+    if branch == "named_with_every_part_onto_a_key":
+        assert ("J1_1_2", "job", "user (J2_1_2)", "J1") in answers["rk_parts"][1], answers["rk_parts"][1]
     if branch == "pinned_onto_a_key":
         rows, layers = answers["rk_parts"]
         assert rows[0][4] == "3.0"                                  # R's human value, on P
@@ -275,3 +302,16 @@ def test_both_shapes_give_one_answer(world, branch):
         assert rows[0][4] == "3.0"                                  # the write shows
         assert any(layer[:2] == ("J1_1_2", "netdie") and layer[2].startswith("user (old_exist_")
                    and layer[3] == "9" for layer in layers)         # the holder's, kept
+
+
+def test_a_row_made_by_its_row_id_on_a_one_column_key_gets_that_key(world):
+    """Lead 11-13 ㄴ: a table keyed by one column - a row made by a row_id is keyed by its key column's value (the
+    assembler's `_key_from_the_key_column`, the seat a keyed write goes through): onto P's key the write lands on P,
+    onto a new key the row is made under its row_id with that key. Both were put keyless beside P."""
+    db = world["db"]
+    _write(db, ONE, [(None, {"k": "P", "netdie": 1}, "chain:a")])
+    held = [r for r, _k in _keyed(db, ONE)]
+    _write(db, ONE, [(str(uuid6.uuid7()), {"k": "P", "netdie": 2}, "chain:b")])
+    made = str(uuid6.uuid7())
+    _write(db, ONE, [(made, {"k": "N", "netdie": 3}, "chain:b")])
+    assert sorted(_keyed(db, ONE), key=lambda r: r[1]) == [(made, "N"), (held[0], "P")]

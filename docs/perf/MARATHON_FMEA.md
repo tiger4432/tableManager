@@ -75,8 +75,9 @@ S 심각도 · O 발생 · D 검출 (1~5, D 는 «높을수록 늦게 잡힌다�
 - 운영자가 보는 것: 큐 화면의 «Read N s ago» 가 계속 커지다 «Read timed out · retrying».
 - 검출: STALL 줄의 경로 /admin/chain/queue · EXPLAIN (D 가 대기 40 만 행에서 잼: 861.7 ms, seq scan 뒤 정렬 — explain_queue_400k.json).
 - 고침: c21494810 (C, main 에서 6210a4f90 을 거쳐 trial 에도) — idx_outbox_line 으로 줄을 찾고, 그린 줄만 센다.
-- 남은 위험: R6 의 시간 잰 구간에 STALL 0 이다. 1 s 를 넘는 느린 줄은 12 개 남았다 (1.06~1.69 s, db 143~793 ms, 13 문장).
+- 남은 위험: R6 의 시간 잰 구간에 STALL 0 이다. 1 s 를 넘는 느린 줄은 실행 전체에 12 개다 (1.06~1.69 s, db 143~793 ms, 13 문장). 20:13~20:25 에 대기 행이 1,165 → 245 로 빠지는 동안만 나왔고, 그 뒤 22 분은 0 이다. 시간 잰 시작 (20:17:18) 앞이 5 개, 뒤가 7 개.
 - 증거: R4 STALL 42 중 41, 큐 느린 줄 R4 186 · R5 36 · R6 12, explain_queue_400k.json. (이 문서 앞 판의 R5 «72» 는 한 줄에서 두 토큰을 센 두 배였다.)
+- R6 사본 EXPLAIN (11-13 22:35, 읽기 전용, explain_queue_r6.py → explain_queue_r6.json): 대기가 0 으로 다 빠진 뒤라, 라우트 함수가 보내는 문장은 10 개다. 각 문장의 실행은 0.03~7.7 ms 이고 공유 버퍼 적중뿐이다 (read 0). 같은 프로세스에서 다시 부르면 라우트 0.017 s (SQL 0.011 s), 첫 부름은 1.085 s 중 SQL 0.069 s 다 (queue_route_warm.py). 대기 행이 쌓인 모양은 이 사본에서 다시 만들 수 없었다. 그래서 느린 줄의 db 몫이 대기 행 수에 비례하는지는 재지 않았다.
 
 ### F7 시각 칸 표의 알림이 조용히 안 간다
 - 원인: crud._said_logs 가 사람 쓰기의 created_logs.new_value 에 쓴 값을 그대로 싣는다. datetime 이면 async_broadcast 의 json.dumps 가 TypeError 로 죽는다. main 의 옛 길은 isoformat 문자열이었다.

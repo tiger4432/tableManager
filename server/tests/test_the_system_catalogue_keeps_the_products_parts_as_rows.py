@@ -120,7 +120,9 @@ def test_a_column_that_stops_being_a_key_has_its_key_cell_withdrawn(db_session, 
     said = system_catalog.sync(db_session)
     db_session.commit()
     keyed = {r.column_name: r.key_of for r in _rows(db_session, "sys_columns") if r.table_name == "lots"}
-    assert keyed == {"lot_id": None, "grade": "lots", "owner_name": None} and said["sys_columns"]["withdrawn"] == 2
+    # a shipped table keeps no lines, so no history: the cleared cell is written blank (lead 11-13 ㄴ)
+    assert keyed == {"lot_id": None, "grade": "lots", "owner_name": None}
+    assert said["sys_columns"] == {"written": 2, "marked": 0}
 
 
 def test_the_shipped_world_loads_with_every_source_planned():

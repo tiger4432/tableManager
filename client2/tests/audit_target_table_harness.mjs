@@ -164,10 +164,10 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
-  ['the row\'s table cell left empty', swap(' title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>',
-    ' title="${escapeHtml(keyTable)}"></span></div>')],
-  ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : rowKey;",
-    "  const keyRow = isSummary ? keyTable : `${keyTable} · ${rowKey}`;")],
+  ['the row\'s table cell left empty', swap('">${tablePieces(t.label)}</span>`);',
+    '"></span>`);')],
+  ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : (baseLog.business_key || baseLog.row_id.slice(0, 8));",
+    "  const keyRow = isSummary ? facts.tables[0].label : `${facts.tables[0].label} · ${baseLog.business_key || baseLog.row_id.slice(0, 8)}`;")],
   ['the first log is taken as the representative',
     swap('  const names = [...new Set(logs.map((log) => log && log.table_name).filter(Boolean))];',
       '  const names = logs.length ? [logs[0].table_name].filter(Boolean) : [];')],

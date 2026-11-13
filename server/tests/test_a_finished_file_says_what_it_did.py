@@ -5,8 +5,9 @@ cells changed, the rows each side table took, where the time went (소유자 202
 「헤비 레인 쓰기 속도 느린 거는 로그는 추가해 봐」 · 「(ㄱ + 넓힌 ㄴ) ㅇㅇ»: two files of one
 table with the same columns, one slow - side by side, the lines show what differs).
 
-The chunk line names the four side-table writes apart, each with its seconds and its rows.
-Every number comes from what the write already holds; no query is added to count it.
+Every number comes from what the write already holds; no query is added to count it. On the overhaul the history
+is the table's lines (one per new or changed row); the line's side-table part still counts the old tables - a board
+row, «history lines / N», after 11-14 (lead 11-14).
 """
 import os
 import re
@@ -25,7 +26,7 @@ for path in (server_dir, os.path.join(server_dir, "parsers")):
 
 import directory_watcher                                                   # noqa: E402
 from conftest import retire_dynamic_model                                  # noqa: E402
-from database import crud, models                                          # noqa: E402
+from database import crud, lines, models                                   # noqa: E402
 from database.database import Base                                         # noqa: E402
 from directory_watcher import IngestionHandler                             # noqa: E402
 from test_heavy_lane import FakeLane                                       # noqa: E402
@@ -69,6 +70,7 @@ def fixture_env(tmp_path, monkeypatch):
     models.init_dynamic_models({TABLE: dict(INFO)})
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(INFO))
     Base.metadata.create_all(bind=engine)
+    assert lines.ensure_declared(engine, [TABLE]) == {}            # the table's line table (old-shape recipe, owner 11-11)
     models.ensure_ingestion_checkpoint_table(engine)
     monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {TABLE: INFO})
     monkeypatch.setattr(directory_watcher, "SessionLocal", session_factory)
@@ -116,21 +118,30 @@ def test_one_file_line_counts_what_the_file_did(env, lane, shape, monkeypatch, c
     with caplog.at_level("INFO"):
         _drop(handler, workspace, FILE_NAME, rows, lane, monkeypatch)
 
-    lines = [r.getMessage() for r in caplog.records if " FILE %s:" % FILE_NAME in r.getMessage()]
-    assert len(lines) == 1, lines
-    got = LINE.search(lines[0])
-    assert got, lines[0]
+    said = [r.getMessage() for r in caplog.records if " FILE %s:" % FILE_NAME in r.getMessage()]
+    assert len(said) == 1, said
+    got = LINE.search(said[0])
+    assert got, said[0]
     assert got["lane"] == lane and got["waited"] != "not measured"
     assert got["span"] == {"heavy": "queue + table lock", "normal": "table lock"}[lane]
     assert (int(got["rows"]), int(got["new"]), int(got["changed"]), int(got["unchanged"]),
             int(got["cells"])) == (len(rows), new, changed, unchanged, cells)
-    # every side table's rows on the line are the rows its writer was handed
-    for name, n in written.items():
-        assert " %s " % name in got["write"] and "/ %d rows" % n in got["write"].split(
-            " %s " % name, 1)[1].split(" · ", 1)[0], (name, n, got["write"])
-    assert int(got["side"]) == sum(written.values())
-    if shape == "all unchanged":
-        assert sum(written.values()) == 0, "an unchanged file writes no side table"
+    # what the operator reads besides the line: the file's row on the ingestion page, and the history the file left -
+    # one line per new or changed row (an unchanged one leaves none), under the file's source, in its transaction
+    db = directory_watcher.SessionLocal()
+    try:
+        log = db.query(models.FileIngestionLog).filter_by(filename=FILE_NAME).one()
+        assert (log.status, log.rows_read, log.rows_new, log.rows_changed, log.rows_unchanged) == (
+            "SUCCESS", len(rows), new, changed, unchanged)
+        ln = lines.shape(db, TABLE, crud.TABLE_CONFIG[TABLE], assign=False)["lines"]
+        kept = list(db.execute(ln.select().where(ln.c.batch == log.transaction_id)).mappings())
+        assert len(kept) == new + changed and {r["source_name"] for r in kept} <= {"parts.csv"}, kept
+        ids = {r.part_no: r.row_id for r in db.query(models.DYNAMIC_TABLES[TABLE])}
+        layers = lines.layers(db, TABLE, list(ids.values()), ["category"])
+        assert {part_no: layers[(ids[part_no], "category")]["parts.csv"]["value"] for part_no, _c, _q in rows} == {
+            part_no: category for part_no, category, _q in rows}
+    finally:
+        db.close()
     if shape == "all new":
         assert int(got["changed"]) == 0
 
@@ -153,44 +164,6 @@ def test_the_work_after_the_last_chunk_has_its_own_stage_name(env, monkeypatch):
     _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
 
     assert seen == [["finish"]], seen
-
-
-def test_a_retried_write_counts_only_the_attempt_that_committed(env, monkeypatch, caplog):
-    """총괄 69aad666e ②: a business-key race rolls one attempt back and writes again - the
-    line's side-table rows and row-build cells are the committing attempt's, as its cells are."""
-    from sqlalchemy.exc import IntegrityError
-
-    tmp_path, written = env
-    workspace = str(tmp_path / "ws")
-    for sub in ("raws", "archives", "err"):
-        os.makedirs(os.path.join(workspace, sub))
-    handler = IngestionHandler(workspace, None, os.path.join(workspace, "archives"),
-                               default_table_name=TABLE, heavy_lane=FakeLane())
-    lost, real = {}, crud.bulk_delete_cell_overwrites
-
-    def race_once(db, rows):
-        if not lost:
-            lost.update(written)
-            raise IntegrityError("INSERT ...", {}, Exception(
-                "UNIQUE constraint failed: %s.business_key_val" % TABLE))
-        return real(db, rows)
-    monkeypatch.setattr(crud, "bulk_delete_cell_overwrites", race_once)
-
-    with caplog.at_level("INFO"):
-        _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
-
-    messages = [r.getMessage() for r in caplog.records]
-    assert sum("BK Conflict Recovered" in m for m in messages) == 1, "the race was retried"
-    assert sum(lost.values()) > 0, "the rolled-back attempt wrote side-table rows"
-    [line] = [m for m in messages if " FILE %s:" % FILE_NAME in m]
-    got = LINE.search(line)
-    assert got, line
-    for name, n in written.items():
-        assert "/ %d rows" % (n - lost[name]) in got["write"].split(
-            " %s " % name, 1)[1].split(" · ", 1)[0], (name, n, lost[name], got["write"])
-    assert int(got["side"]) == sum(written.values()) - sum(lost.values())
-    assert re.search(r" · row build [\d.]+ s / %s cells changed" % got["cells"],
-                     got["write"]), got["write"]
 
 
 def test_reading_the_new_rows_asks_the_database_nothing(env):
@@ -250,8 +223,8 @@ def test_a_tally_that_breaks_silences_the_line_and_not_the_file(env, monkeypatch
         db.close()
 
 
-def test_the_chunk_line_names_the_four_side_writes_apart(env, monkeypatch, caplog):
-    tmp_path, written = env
+def test_the_chunk_line_says_its_row_build_apart(env, monkeypatch, caplog):
+    tmp_path, _written = env
     workspace = str(tmp_path / "ws")
     for sub in ("raws", "archives", "err"):
         os.makedirs(os.path.join(workspace, sub))
@@ -262,7 +235,5 @@ def test_the_chunk_line_names_the_four_side_writes_apart(env, monkeypatch, caplo
         _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
 
     [chunk] = [r.getMessage() for r in caplog.records if " chunk 1:" in r.getMessage()]
-    for name in WRITERS:
-        assert re.search(r" · %s [\d.]+ s / %d rows" % (name, written[name]), chunk), chunk
     assert "side tables" not in chunk
     assert re.search(r" · row build [\d.]+ s / 9 cells changed", chunk), chunk
