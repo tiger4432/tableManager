@@ -66,6 +66,22 @@ def test_a_resumed_copy_says_the_rows_an_earlier_run_copied_and_counts_from_them
     assert (out["copied"], copied_rows(engine)) == (1, ["r1", "r2"])
 
 
+def test_a_resumed_copys_end_line_says_this_runs_cells_and_what_the_file_holds(tmp_path, monkeypatch):
+    """Lead 11-13 (the rehearsal's resume said 44,893 while its file held 98,804): an earlier run's recorded cell and
+    this run's are both in the file, and the end line says each."""
+    from database import line_migration
+
+    monkeypatch.chdir(tmp_path)
+    engine, said = build("not b"), []
+    script.record(script.RECORD % "t", "t", [("r0", "lot", "x", "y")])      # an earlier run's mismatched cell
+    with Session(bind=engine) as db:                          # and its first page committed (r1 matches)
+        line_migration.copy_page(db, "t", CFG, None, 1, transaction_id="copy_lines:t")
+        db.commit()
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append)
+    assert (out["mismatched"], out["held"]) == (1, 2), out
+    assert "this run 1 · the file now holds 2 mismatched cell(s)" in said[-1], said[-1]
+
+
 def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():
     engine, said = build("b"), []
     with engine.begin() as conn:
@@ -122,7 +138,7 @@ def test_a_cell_whose_lines_do_not_give_t_is_recorded_and_its_page_lands(page, t
     assert out["mismatched"] == 1 and copied_rows(engine) == ["r1", "r2"] and copy_audits(engine) == 1
     with open(out["record"], encoding="utf-8") as f:
         assert f.read().splitlines() == ["table,row_id,column,t_value,lines_value", "t,r2,lot,not b,b"]
-    assert "1 cell(s) do not match" in said[-1] and "--rows %s" % out["record"] in said[-1]
+    assert "this run 1 · the file now holds 1 mismatched cell(s)" in said[-1] and "--rows %s" % out["record"] in said[-1]
     lot, won_by = shown(engine, "r2")
     assert lot == "not b" and "lot" not in won_by          # t shows its value; no line is named its winner
     assert "lot" in shown(engine, "r1")[1]

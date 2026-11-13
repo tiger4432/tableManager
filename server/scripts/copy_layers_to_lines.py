@@ -266,13 +266,19 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                         c.execute(text(('VACUUM (ANALYZE) "%s"' if engine.dialect.name == "postgresql"
                                         else 'ANALYZE "%s"') % rel))
                         took[rel] = time.perf_counter() - began
+                held = 0                                  # an earlier run's cells are in the file too (lead 11-13)
+                if os.path.exists(path):
+                    import csv
+                    with open(path, newline="", encoding="utf-8") as f:
+                        held = max(0, sum(1 for _ in csv.reader(f)) - 1)
                 say("%s: done - %d layer(s) copied in %.0f s - vacuumed %s%s" % (
                     table, copied, now - started, " · ".join("%s in %.0f s" % kv for kv in took.items()),
-                    (" - %d cell(s) do not match, listed in %s: each shows t's value until its column is written, "
-                     "then its lines' winner; to copy those rows again: python server/scripts/copy_layers_to_lines.py "
-                     "--apply --rows %s" % (found, path, path)) if found else ""))
-                return {"table": table, "copied": copied, "seconds": now - started, "mismatched": found,
-                        "record": path if found else None, "vacuumed": took}
+                    (" - this run %d · the file now holds %d mismatched cell(s) (%s): each shows t's value until its "
+                     "column is written, then its lines' winner; to copy those rows again: python "
+                     "server/scripts/copy_layers_to_lines.py --apply --rows %s" % (found, held, path, path))
+                    if found or held else ""))
+                return {"table": table, "copied": copied, "seconds": now - started, "mismatched": found, "held": held,
+                        "record": path if found or held else None, "vacuumed": took}
             if now - said >= SAY_EVERY:
                 said = now
                 done = min(already + pages * page, rows)
@@ -434,10 +440,10 @@ def main(argv=None) -> int:
         results = [_one(w) for w in work]
     stopped = [r["table"] for r in results if r.get("stopped")]
     records = [r["record"] for r in results if r.get("record")]
-    print("copied %d table(s), %d already, %d stopped%s - %d cell(s) do not match%s" % (
-        sum(1 for r in results if "seconds" in r), sum(1 for r in results if r.get("already")), len(stopped),
-        (" - " + ", ".join(stopped)) if stopped else "", sum(r.get("mismatched") or 0 for r in results),
-        (" (" + ", ".join(records) + ")") if records else ""))
+    print("copied %d table(s), %d already, %d stopped%s - this run %d · the files now hold %d mismatched cell(s)%s"
+          % (sum(1 for r in results if "seconds" in r), sum(1 for r in results if r.get("already")), len(stopped),
+             (" - " + ", ".join(stopped)) if stopped else "", sum(r.get("mismatched") or 0 for r in results),
+             sum(r.get("held") or 0 for r in results), (" (" + ", ".join(records) + ")") if records else ""))
     return 1 if stopped else 0
 
 

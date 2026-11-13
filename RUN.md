@@ -29,7 +29,7 @@
 > ⑥ 옮기기     python scripts/copy_layers_to_lines.py --apply --workers 4
 >             진행  <표>: N / M rows, K layer(s) copied, D mismatched so far, about X min left   표마다 10 초에 한 줄
 >             끝    <표>: done - K layer(s) copied in S s - vacuumed ...   VACUUM (ANALYZE) 는 표 끝마다 스크립트가 한다. 따로 할 일 없음
->                   copied A table(s), B already, C stopped - D cell(s) do not match (<파일>…)   C 가 0 이 아니면 exit 1
+>                   copied A table(s), B already, C stopped - this run D · the files now hold H mismatched cell(s) (<파일>…)   C 가 0 이 아니면 exit 1
 >             이어 하기  끊겨도(Ctrl+C · 창 닫힘 · 정전) ⑥ 을 다시 돌린다. 표마다 마지막으로 커밋한 쪽 다음부터 간다
 >                       첫 줄  <표>: resuming - already copied N / M rows (an earlier run's pages)
 >                       박스 리허설: 58 % 에서 프로세스를 죽이고 다시 돌린 끝이 안 끊긴 판과 같았다(행 · 줄 · copy 감사 행 · 어긋남 98,804)
