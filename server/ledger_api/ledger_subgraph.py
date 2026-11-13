@@ -2251,7 +2251,7 @@ def _absence_verdicts(nodes, complete, cut_reason):
     if not confirmers:
         return
     for node in nodes.values():
-        if node.get("node_kind") not in {"entity", "event"}:
+        if "hub" in node:
             continue
         counts = {_bare(str(row.get("predicate"))): row.get("count") or 0
                   for row in (node.get("predicates") or ())}
@@ -2432,7 +2432,6 @@ def _node_label(entity_type, keys, attributes=None):
 
 def _entity_node(entity_type, keys):
     node = explorer._entity(entity_type, keys)
-    node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
     node["label"] = _node_label(entity_type, keys) or node["label"]
     return node
 
@@ -2767,11 +2766,8 @@ def _evidence(nodes, parents, seed_signs, node_id, between):
                 for item in path}
         hops = [{
             "id": item,
-            "node_kind": held[item].get("node_kind"),
+            "type": held[item].get("type"),                  # its domain type (no node-kind axis, lead 11-13)
             "label": held[item].get("label"),
-            "atom": (held[item].get("keys") or {}).get("id"),
-            "ref": (held[item].get("source_raw_ref")
-                    or held[item].get("basis")),
         } for item in path]
         for index in range(1, len(hops)):
             # this page's edges between the two, and what the page that drew the hop said (MORE, 응용 18766: [] after a
@@ -2949,9 +2945,8 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=(), carried=No
         return pair
     collected = [{
         "id": node["id"],
-        # 🔴 THE DECLARED ENTITY TYPE, not `node_kind`.  `node_kind` is this projection's
-        # own plumbing word and every node carries the same value of it now; what tells a
-        # recipe from a die is the type the declaration gives them.
+        # 🔴 THE DECLARED ENTITY TYPE - what tells a recipe from a die is the type the declaration gives them
+        # (⚰️ the projection's own `node_kind` retired 11-13, lead: no node-kind axis).
         "type": node.get("type"), "label": node.get("label"),
         "reach": reach.get(node["id"], [0, 0]),
     } for node in nodes.values()
@@ -3252,14 +3247,14 @@ def _fold_hubs(payload, state, sample):
         label = "%s \u00d7 %d via %s" % (_bare_name(str(far_type)), len(folded), _bare_name(str(cells["predicate"])))
         if in_ledger is not None and in_ledger > cells.get("reached", 0):
             label += " (of %d in the ledger)" % in_ledger
-        kept.append({"id": hub_id, "type": far_type, "node_kind": "hub", "label": label,
+        kept.append({"id": hub_id, "type": far_type, "label": label,
                      "depth": min(int(node.get("depth") or 0) for node in folded),
                      "hub": {"near": cells["near"], "predicate": cells["predicate"],
                              "direction": cells["direction"], "far_type": cells["far_type"],
                              "value": hub_cells(hub_id)["value"], "count": len(folded),
                              **({"in_ledger": in_ledger} if in_ledger is not None else {}),
                              "sample": [node["id"] for node in folded[:sample or 0]]}})
-    payload["nodes"] = sorted(kept, key=lambda item: (item["depth"], item["node_kind"], item["label"], item["id"]))
+    payload["nodes"] = sorted(kept, key=lambda item: (item["depth"], "hub" in item, item["label"], item["id"]))
     joined = {}
     for edge in payload["edges"]:
         source, target = hub_of.get(edge["source"], edge["source"]), hub_of.get(edge["target"], edge["target"])
@@ -3590,8 +3585,7 @@ def _time_page(seed_id, lookup, page, *, direction, follow, cardinalities=None):
         "state": "ready" if edges else "empty",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": seed_node,
-        "nodes": sorted(nodes.values(), key=lambda item: (
-            item["depth"], item["node_kind"], item["label"], item["id"])),
+        "nodes": sorted(nodes.values(), key=lambda item: (item["depth"], item["label"], item["id"])),
         "edges": edges,
         "seeds": [{"id": seed, "sign": "+"}],
         "walk": {"mode": "time_page", "direction": direction,
@@ -3857,7 +3851,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # Whether a measurement should share the entity budget is a ruling, not a default.
         if member is not None:
             hub_members[node_id] = member           # a hub's member rides free: the hub is what the answer shows
-        elif node.get("node_kind") != "value" and carried(node):
+        elif carried(node):
             if budgeted >= node_limit:
                 node_cut = True
                 return False
@@ -4452,7 +4446,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 attached_claims[endpoint][claim_id] = edge["predicate"]
     for node_id, node in page.items():
         node["depth"] = depths[node_id]
-        if node.get("node_kind") in {"entity", "event"}:
+        if "hub" not in node:
             node["claim_count"] = len(attached_claims[node_id])
             counts = {}
             for predicate in attached_claims[node_id].values():
@@ -4517,8 +4511,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     _apply_registrations(page, registrations, order)
     _apply_current_conflicts(page, fetched, cardinalities)
-    ordered_nodes = sorted(page.values(), key=lambda item: (
-        item["depth"], item["node_kind"], item["label"], item["id"]))
+    ordered_nodes = sorted(page.values(), key=lambda item: (item["depth"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
     # reached, so `seed` and `propagation` below read the full population - which is the
     # ruling. Versions are stripped on both sides: a caller writes `defect`, the

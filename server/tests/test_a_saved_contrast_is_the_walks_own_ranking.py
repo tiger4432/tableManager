@@ -198,6 +198,8 @@ def test_the_stored_trail_names_the_predicates_it_crossed(db):
 
     assert trails and all(hop["predicates"] == ["derived_from"]
                           for trail in trails for hop in trail["hops"][1:])
+    # a hop says its node's declared type, and no node kind nor the retired kinds' atom / ref (lead 11-13)
+    assert all(hop["type"] and not {"node_kind", "atom", "ref"} & set(hop) for trail in trails for hop in trail["hops"])
 
 
 def test_include_superseded_is_read_as_true_or_false_and_anything_else_is_refused():
