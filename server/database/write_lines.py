@@ -1331,11 +1331,13 @@ def _stage(db, table, cfg, view_columns, changed, keys, wrote):
 def _audit(db, table, said, transaction_id, at):
     """Step 6 - one audit row a (work kind, who) of the batch: transaction, table, who, work kind, at. No values, no
     count - the panel counts the transaction's lines. `said`: {(work kind, who): the distinct row_ids it wrote lines
-    for}. -> the rows for the caller's after-commit add_changed, each with that count."""
+    for}. -> the rows for the caller's after-commit add_changed, each with that count and its batch id (the history
+    list adds a batch once - `audit_cache.add_changed`)."""
     order = sorted(said, key=lambda p: (p[0], p[1] or ""))
-    if order:
-        db.execute(insert(lines.AuditBatch.__table__), [{"transaction_id": transaction_id, "table_name": table,
-                                                         "written_by": who, "work_kind": work_kind, "at": at}
-                                                        for work_kind, who in order])
+    ab = lines.AuditBatch.__table__
+    ids = db.execute(insert(ab).returning(ab.c.id, sort_by_parameter_order=True),
+                     [{"transaction_id": transaction_id, "table_name": table, "written_by": who, "work_kind": work_kind,
+                       "at": at} for work_kind, who in order]).scalars().all() if order else []
     return [{"transaction_id": transaction_id, "table_name": table, "changed_rows": len(said[(work_kind, who)]),
-             "kind": work_kind, "written_by": who} for work_kind, who in order]
+             "kind": work_kind, "written_by": who, "batch_id": batch_id}
+            for (work_kind, who), batch_id in zip(order, ids)]
