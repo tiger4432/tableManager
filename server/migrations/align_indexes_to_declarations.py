@@ -306,9 +306,10 @@ def run(apply=False, reverse=False, engine=None, readonly_engine=None):
         db = conn.execute(text("SELECT current_database()")).scalar()
         print(f"database: {db}\n")
 
+        from database import lines
+
         plan = declared_plan()
-        present = {r[0] for r in conn.execute(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public'")).fetchall()}
+        present = set(lines.base_tables(conn, schema="public"))
         tables = [t for t in sorted(plan) if t in present]
         missing = [t for t in sorted(plan) if t not in present]
         if missing:
