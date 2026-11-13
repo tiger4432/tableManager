@@ -205,19 +205,12 @@ def tables_with_business_key(conn) -> list:
     act on what the database HAS. A table declared but never created, or created under
     an older schema, would otherwise turn into a crash or a silent miss.
     """
-    rows = conn.execute(text("""
-        SELECT c.table_name
-        FROM information_schema.columns c
-        JOIN information_schema.tables t
-          ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-        WHERE c.table_schema = current_schema()
-          AND c.column_name = :col
-          AND t.table_type = 'BASE TABLE'
-        ORDER BY c.table_name
-    """), {"col": BK_COLUMN}).fetchall()
-    from database.lines import is_line_table    # t__lines carries the key on every line of a row - never unique
+    from database.lines import base_tables      # t__lines carries the key on every line of a row - never unique
 
-    return [r[0] for r in rows if not is_line_table(r[0])]
+    return [r[0] for r in conn.execute(text(
+        "SELECT table_name FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND column_name = :col AND table_name = ANY(:names) ORDER BY table_name"),
+        {"col": BK_COLUMN, "names": base_tables(conn)}).fetchall()]
 
 
 def existing_unique_index(conn, table: str):

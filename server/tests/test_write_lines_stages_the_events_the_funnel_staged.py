@@ -151,7 +151,8 @@ def test_a_column_of_no_history_changes_t_and_its_event_with_no_line_and_no_audi
     assert (same["items"][0]["work"], _events(db)) == ("left_out", []), "the same state again moves nothing"
     both = _write(db, "f2", k="A", n="off", m="3")
     t = lines.shape(db, TABLE, CFG)["table"]
-    now = db.execute(select(t.c.n, t.c.m, t.c.won_by)).one()
-    assert (both["lines"], now.n, now.m, set(now.won_by)) == (1, "off", 3, {"k", "m"}), (both, now)
+    now = db.execute(select(t.c.row_id, t.c.n, t.c.m)).one()
+    won = lines.won_by_of(db, TABLE, [now.row_id])[now.row_id]
+    assert (both["lines"], now.n, now.m, set(won)) == (1, "off", 3, {"k", "m"}), (both, now, won)
     assert lined == [None] and db.execute(select(n).where(n.is_not(None))).scalars().all() == [], \
         "no line ever holds the column"

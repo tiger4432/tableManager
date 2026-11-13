@@ -528,14 +528,8 @@ def winners(db, table_name, row_ids) -> dict:
 
     if not lines.has_lines(db, table_name):
         return {}
-    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String),
-                   sa.Column("won_by", sa.JSON))
-    won = {}
-    for i in range(0, len(ids), 1000):
-        for row_id, by in db.execute(sa.select(now.c.row_id, now.c.won_by).where(now.c.row_id.in_(ids[i:i + 1000]))):
-            for column, line_id in (by or {}).items():
-                won[(row_id, column)] = int(line_id)
+    won = {(row_id, column): line_id for row_id, cells in lines.won_by_of(db, table_name, row_ids).items()
+           for column, line_id in cells.items()}
     t = line_table(table_name, {})
     named = sorted(set(won.values()))
     line = {}

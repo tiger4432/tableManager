@@ -77,9 +77,9 @@ def line(conn, table, bits, row_id, *, kind="write", source="probe.csv", at=None
 
 
 def now(conn, table, row_id, business_key, values=None, won_by=None):
-    """t's row `row_id` - its values and won_by {column: line_id}."""
+    """t's row `row_id` - its values and won_by {column: line_id} (`lines.won_by_stored`)."""
     row = dict({"row_id": row_id, "business_key_val": business_key}, **(values or {}))
-    row["won_by"] = won_by or {}
+    row["won_by"] = lines.won_by_stored(won_by or {}, lines.bit_map(conn, table))
     conn.execute(Table(table, MetaData(), autoload_with=conn).insert().values(row))
 
 

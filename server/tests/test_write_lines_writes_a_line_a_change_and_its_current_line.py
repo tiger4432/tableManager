@@ -65,8 +65,9 @@ def _lines(db):
 
 
 def _now(db):
-    now = lines.shape(db, TABLE, CFG)["table"]
-    return {r["row_id"]: dict(r) for r in db.execute(select(now)).mappings()}
+    s = lines.shape(db, TABLE, CFG)
+    return {r["row_id"]: {**dict(r), lines.WON_BY: lines.won_by_cells(r[lines.WON_BY], s["bits"])}
+            for r in db.execute(select(s["table"])).mappings()}
 
 
 def _write(db, *items, kind="funnel", tx="tx1"):

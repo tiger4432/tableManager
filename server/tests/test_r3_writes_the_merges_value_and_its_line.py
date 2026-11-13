@@ -47,9 +47,8 @@ def _world(db, said, shows, n=None):
 
 
 def _t(db, column="v"):
-    value, won_by = db.execute(text('SELECT %s, won_by FROM "%s" WHERE row_id = :r' % (column, TABLE)),
-                               {"r": "r1"}).one()
-    return value, (won_by if isinstance(won_by, dict) else json.loads(won_by)).get(column)
+    value = db.execute(text('SELECT %s FROM "%s" WHERE row_id = :r' % (column, TABLE)), {"r": "r1"}).scalar_one()
+    return value, lines.won_by_of(db, TABLE, ["r1"]).get("r1", {}).get(column)
 
 
 def _run(db, **kw):

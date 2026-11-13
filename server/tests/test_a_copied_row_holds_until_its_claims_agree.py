@@ -246,9 +246,10 @@ def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_r
     config = crud.TABLE_CONFIG[hw.OFFICIAL]
     said, now = lines.merge(db, hw.OFFICIAL, config, [official_id])[official_id], lines.current_table(
         db, hw.OFFICIAL, config, won_by=True)
-    won = dict(db.execute(select(now.c.won_by).where(now.c.row_id == official_id)).scalar() or {})
+    won = lines.won_by_of(db, hw.OFFICIAL, [official_id]).get(official_id, {})
     db.execute(now.update().where(now.c.row_id == official_id).values(
-        **{c: value for c, (value, _line) in said.items()}, won_by={**won, **{c: line for c, (_v, line) in said.items()}}))
+        **{c: value for c, (value, _line) in said.items()}, won_by=lines.won_by_stored(
+            {**won, **{c: line for c, (_v, line) in said.items()}}, lines.bit_map(db, hw.OFFICIAL))))
     db.commit()
     assert db.execute(select(now.c.note).where(now.c.row_id == official_id)).scalar() == "x", "canary: merged"
     last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]

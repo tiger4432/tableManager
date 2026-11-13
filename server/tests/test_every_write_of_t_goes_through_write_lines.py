@@ -33,6 +33,7 @@ KNOWN = {
     "chain/replay.py:full_reset": "allowed - the declared full reset (lead 11-11 ㄴ)",
     "scripts/dev_env/snapshot_db.py:copy_rows": "allowed - dev restore",
     "database/crud.py:update_by_arrays": "pending lead - the before_flush hook's write (11-14 gate item)",
+    "database/crud.py:insert_by_arrays": "allowed - write_lines._merge_now's new rows as arrays (lead 11-13)",
 }
 #: seats the census sees that write a table that is not t
 NOT_T = {
@@ -43,7 +44,7 @@ NOT_T = {
     "scripts/archive/migrate_updated_at.py:migrate": "the retired DataRow model",
 }
 CANARY = {"database/write_lines.py:" + name
-          for name in ("_claim", "_heads", "_merge_into", "_merge_now", "_put_keys", "write_lines")} | {
+          for name in ("_heads", "_merge_into", "_merge_now", "_put_keys", "_take_over", "write_lines")} | {
     "database/lines.py:insert_lines"}                    # _lines sends its lines through it (lead 11-12)
 
 

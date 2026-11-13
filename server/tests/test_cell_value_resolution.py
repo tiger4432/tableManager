@@ -113,12 +113,25 @@ def _layers(db, row_id, col):
             lines.layers(db, "cvres_test_map", [row_id], {col}).get((row_id, col), {}).items()}
 
 
+#: three lines alike but in time - dated older, dated newer, undated: a term that tells two of them apart is a time term
+_TIMES = [{"ranks_as": "f.csv", "copy_of": None, "owner_rule": None, "source_name": "f.csv", "at": at, "line_id": n}
+          for n, at in ((1, 1.0), (2, 2.0), (3, None))]
+
+
 def _without_recency(monkeypatch):
     """THE MUTATION: the layer order with its time terms (2a dated, 2b newest, 2c the later line of one instant)
-    taken out - the order the resolution had before recency: ranks, then the name decides."""
+    taken out - the order the resolution had before recency: ranks, then the name decides. Picked by what a term
+    answers on `_TIMES`, not its place - a term put before them (1a, dfd5dccff) moved the places and the mutation
+    took 1d out with 2a and 2b, leaving 2c to pick the newer line."""
     keep = crud.rank_terms
-    monkeypatch.setattr(crud, "rank_terms",
-                        lambda table_name=None: [t for i, t in enumerate(keep(table_name)) if i not in (4, 5, 6)])
+
+    def timeless(table_name=None):
+        terms = keep(table_name)
+        kept = [t for t in terms if len({t(ln, False) for ln in _TIMES}) == 1]
+        assert len(terms) - len(kept) == 3, "CANARY: the order has three time terms"
+        return kept
+
+    monkeypatch.setattr(crud, "rank_terms", timeless)
 
 
 def _audit(db, row_id, col):

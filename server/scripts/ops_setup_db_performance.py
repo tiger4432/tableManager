@@ -278,11 +278,13 @@ def setup_performance():
             # 실제 count로 보정한다 — 그렇지 않으면 갓 적재한 대형 테이블이
             # "작은 테이블"로 잘못 분류되어 인덱스 없이 조용히 남는다.
             row_counts = {}
+            from database.lines import base_tables     # no count(*) over a line table (lead 11-12)
+
             for name, reltuples in conn.execute(text(
                 "SELECT relname, reltuples FROM pg_class c "
                 "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                "WHERE n.nspname = 'public' AND c.relkind = 'r'"
-            )).fetchall():
+                "WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = ANY(:names)"
+            ), {"names": base_tables(conn, schema="public")}).fetchall():
                 row_counts[name] = int(reltuples) if reltuples and reltuples > 0 else -1
             for name, count in list(row_counts.items()):
                 if count < 0:

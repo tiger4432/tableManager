@@ -92,7 +92,7 @@ def _drained(world):
 
 def _naming_state(lines):
     """The (table, column, new value) lines that name a state cell - its own line, or a row's line naming it - whatever
-    wrote them (a state cell blanked leaves «delete_source:system_runtime», not the layer's own name)."""
+    wrote them."""
     quiet = {table: set(crud.TABLE_CONFIG[table].get("no_history_columns") or ())
              for table in ("sys_tables", "sys_chain_rules", "sys_ingestion", "sys_collectors")}
     assert all(quiet.values()), "CANARY: the system tables list their state cells"
@@ -158,7 +158,7 @@ def test_each_parts_state_is_written_once_and_keeps_no_history(world, monkeypatc
     world["db"].expire_all()
     wafers = _row(world, "sys_tables", table_name="wafers")
     assert (wafers.events_waiting, wafers.oldest_waiting_at) == (0, None), "CANARY: the drained queue blanked a cell"
-    assert _state_history(world) == []                     # its layer withdrawn, no line (lead 11-09 ㅁ)
+    assert _state_history(world) == []                     # written blank, no line (lead 11-09 ㅁ, 11-12 안 1)
     _drained(world)
     again = system_catalog.tick(world["db"])
     assert all(not any(counts.values()) for counts in again.values()), again

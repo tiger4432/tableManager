@@ -1972,7 +1972,10 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     col_type = ((crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}).get(mark, "string")
     counts = Counter()
     ids = list(dict.fromkeys(item.row_id for item in batch.updates if item.row_id))
-    there = {r for (r,) in db.query(model.row_id).filter(model.row_id.in_(ids))} if ids else set()
+    # the rows still there and the mark they show before the write - the write's answer gives the rows it changed, so
+    # nothing is read after the door's commit (a second checkout a page - lead 11-12)
+    was = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(ids))) if ids else {}
+    there = set(was)
     judged = [item for item in batch.updates if item.row_id in there]
     counts["rows_gone"] += len(batch.updates) - len(judged)
     before = lines.layers(db, table_name, sorted(there), [mark])
@@ -1992,7 +1995,9 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
             if item.row_id in wrote:
                 after.setdefault((item.row_id, mark), {})[item.source_name] = {
                     "value": crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)}
-        shown = dict(db.query(model.row_id, getattr(model, mark)).filter(model.row_id.in_(sorted(there)))) if there else {}
+        shown = dict(was)
+        shown.update({got["row_id"]: got["new"][mark] for got in (work if judged else ())
+                      if got["new"] is not None and mark in got["new"]})
     for item in judged:
         clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
         said = lambda layers: (layers.get((item.row_id, mark)) or {}).get(item.source_name)   # noqa: E731
@@ -2190,9 +2195,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         heads = lines.layers(db, table_name, ids, folded)
         won_by = {}                     # row -> {column: the line its shown value is}
         if heads:
-            now = lines.current_table(db, table_name, config)
-            won_by = {r: dict(w or {}) for r, w in db.execute(
-                select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(ids)))}
+            won_by = lines.won_by_of(db, table_name, ids)
             # a cell with lines that t was never stamped as (copied where t showed another spelling - the copy
             # stores what today's write would): its winner is asked of the merge, as the write will merge it
             loose = sorted({r for (r, c) in heads if c not in won_by.get(r, {})})
@@ -2240,7 +2243,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     cells[column] = (old, new)
             written = {c for line in said.values() for c in line["values"]} | set(bare)
             plans[row.row_id] = {"row": row, "cells": cells, "lines": list(said.values()), "bare": bare,
-                                 "key": None, "remerge": bool(set(cells) - written)}
+                                 "key": None, "remerge": sorted(set(cells) - written)}
         if unknown:
             stats["time_left"][notation_norm.NO_ARRIVAL] = (stats["time_left"].get(notation_norm.NO_ARRIVAL, 0)
                                                             + len(unknown))
@@ -2330,7 +2333,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                       for row_id, plan in plans.items() if plan["bare"]]
             # a re-spelled key moves no cell: its row is re-keyed by the write all the same (owner 10-20); a cell
             # whose winning line already holds the folded spelling moves by a merge of its row - a mark asks it
-            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "rekey": bool(plan.get("respelled")),
+            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "scope": plan.get("remerge") or [],
+                       "rekey": bool(plan.get("respelled")),
                        "source_name": NOTATION_BACKFILL_SOURCE, "written_by": NOTATION_BACKFILL_SOURCE}
                       for row_id, plan in plans.items() if plan.get("respelled") or plan.get("remerge")]
             twins = sorted((row_id, plan["twin"]) for row_id, plan in plans.items() if plan.get("twin"))
@@ -2549,17 +2553,19 @@ def recompute_display_values(db, table_name: str, columns: list = None,
             # (`_merges_again` - a mark of no column; `blank` the removed formula's columns, owner 11-11 ㄱ), so the
             # merge, a declared formula, won_by, the claim's row lock and the batch audit go the way every write's go
             # (lead 11-11 ㄱ). The row is the unit (lead 11-11): every cell of it the merge moves is a change here.
+            # its scope: the cells it examined, row by row (lead 11-12 - the merge re-decides those alone, as main did)
+            asked = {}
+            for (r, col), _srcs, _row in gated:
+                asked.setdefault(r, set()).add(col)
             items = [{"row_id": r, "line_kind": "mark", "columns": [], "blank": list(formula_removed or ()),
-                      "written_by": R3_AUDIT_SOURCE} for r in sorted({c[0] for c, _, _ in gated})]
+                      "scope": sorted(cols), "written_by": R3_AUDIT_SOURCE} for r, cols in sorted(asked.items())]
             changed = {}
             if items:
                 with contextlib.nullcontext() if apply else session_contract.held(db):
                     changed = write_lines(db, table_name, items, kind="recompute", transaction_id=tx_id)["changed"]
             won = {}
             if changed and keeps:
-                now = lines.current_table(db, table_name, crud.TABLE_CONFIG.get(table_name) or {})
-                won = {r: dict(w or {}) for r, w in db.execute(
-                    select(now.c.row_id, now.c[lines.WON_BY]).where(now.c.row_id.in_(sorted(changed))))}
+                won = lines.won_by_of(db, table_name, sorted(changed))
 
             for row_id, col in sorted((r, c) for r, change in changed.items() for c in declared
                                       if crud.values_differ((change.get("old") or {}).get(c),

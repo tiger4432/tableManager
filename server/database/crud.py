@@ -255,13 +255,17 @@ def _new_drop_stats() -> dict:
     }
 
 
-def _refuse_two_values_in_one_answer(table_name, items, drop_stats):
+def _refuse_two_values_in_one_answer(table_name, items, drop_stats, owners=None):
     """The cells one owner's items give two different values in this batch, taken off every such item and counted
-    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked."""
+    (`DROP_TWO_VALUES`). Only an owned layer has an owner - a file's or a person's items are never asked. `owners`
+    takes each item's source's owner as read here - read once an item, the write reads it from there (lead 11-12)."""
     types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     seen = {}
     for item in items:
-        if layer_owner(item.source_name) is None:
+        owner = layer_owner(item.source_name)
+        if owners is not None:
+            owners[item.source_name] = owner
+        if owner is None:
             continue
         row = item.row_id or item.business_key_val
         for column, value in (item.updates or {}).items():
@@ -859,13 +863,17 @@ def human_source_clause():
     return text(lines.HUMAN_SOURCE_SQL)
 
 
-def layer_ranks_as(source_name):
+#: an owner not read yet - `layer_owner` reads it (a caller that read it once hands it on - lead 11-12)
+_UNREAD = object()
+
+
+def layer_ranks_as(source_name, owner=_UNREAD):
     """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
     chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
     collision-merge copy of another writer keeps today's rank) - and an owned layer as its base. The one seat that
-    asks it."""
+    asks it. `owner`: the name's `layer_owner`, when the caller read it already."""
     writer = layer_writer(source_name)
-    return writer if writer == CHAIN_SOURCE or layer_owner(source_name) else source_name
+    return writer if writer == CHAIN_SOURCE or (layer_owner(source_name) if owner is _UNREAD else owner) else source_name
 
 
 _MACHINE_LAYER_NAMES = []
@@ -1205,7 +1213,8 @@ TABLE_CONFIG = sys._table_config_singleton
 
 
 class ReadOnlyRelation(ValueError):
-    """⛔ THIS RELATION DOES NOT ACCEPT WRITES — a REFUSAL, not a fault.
+    """⛔ THIS RELATION DOES NOT ACCEPT WRITES — a REFUSAL, not a fault. Also a pin or a layer removal on a column
+    that keeps no layers (`refuse_layers_of_no_history`).
 
     A `ValueError` still, because that is what the sentence was raised as before it moved
     here and callers already catch it that way; a NAME so the route can answer 422 with the
@@ -1238,6 +1247,16 @@ def refuse_write_to_view(table_name):
     if catalog_kind(TABLE_CONFIG.get(table_name)) == "view":
         raise ReadOnlyRelation(
             "'%s' is read-only (kind: view) - the catalogue declares it a view, so it takes no writes." % table_name)
+
+
+def refuse_layers_of_no_history(table_name, columns, asked):
+    """A pin or a layer removal (`asked`, what it does, and what to do instead) on a column of no history refused by
+    name - it keeps no layers, its value is t's, the last write's (`keeps_history`; lead 11-12 안 1). THE seat both
+    ask (`set_cell_manual_priority_batch`, `delete_cell_source_batch`)."""
+    kept = [c for c in dict.fromkeys(columns) if not keeps_history(table_name, c)]
+    if kept:
+        raise ReadOnlyRelation("%s of '%s' keep%s no history - %s" % (
+            ", ".join("'%s'" % c for c in kept), table_name, "s" if len(kept) == 1 else "", asked))
 
 
 def normalize_stored_text(value: Any) -> Any:
@@ -2058,11 +2077,12 @@ def _formulas():
     return _FORMULAS[0]
 
 
-def formula_written(table_name: str, column: str, source_name) -> Optional[str]:
+def formula_written(table_name: str, column: str, source_name, owner=_UNREAD) -> Optional[str]:
     """The formula's name («formula T.c») when this write is a formula column's - a chain write to a column a formula
     computes, which only the formula's rule may write (`formula.second_writers`) - else None. Such a write holds no
-    layer and leaves no line of its own: the value is the declaration's, its history the batch's receipt (lead 10-28)."""
-    if layer_ranks_as(source_name) != CHAIN_SOURCE or (table_name, column) not in _formulas().columns():
+    layer and leaves no line of its own: the value is the declaration's, its history the batch's receipt (lead 10-28).
+    `owner`: as `layer_ranks_as`."""
+    if layer_ranks_as(source_name, owner) != CHAIN_SOURCE or (table_name, column) not in _formulas().columns():
         return None
     return _formulas().RULE_NAME % (table_name, column)
 
@@ -3501,10 +3521,19 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     return []
 
 def array_params(db, columns, rows):
-    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor."""
+    """`(params, casts)` - one PostgreSQL array per column, each value through its column's bind processor; an
+    array column's value as its text literal (unnest flattens an array of arrays - `update_by_arrays` casts it back,
+    t.won_by - lead 11-13 안 1)."""
+    from sqlalchemy.types import ARRAY
+
     dialect = db.get_bind().dialect
     params, casts = {}, []
     for i, (column, values) in enumerate(zip(columns, zip(*rows))):
+        if isinstance(column.type.dialect_impl(dialect), ARRAY):
+            params["a%d" % i] = [None if v is None else "{%s}" % ",".join("NULL" if x is None else str(x) for x in v)
+                                 for v in values]
+            casts.append("CAST(:a%d AS TEXT[])" % i)
+            continue
         bind = column.type.bind_processor(dialect)
         params["a%d" % i] = [bind(value) if bind else value for value in values]
         casts.append("CAST(:a%d AS %s[])" % (i, column.type.compile(dialect=dialect)))
@@ -3530,7 +3559,8 @@ def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
     valued = [name for name in names if name != "updated_at"]
     columns = [table.c[key]] + [table.c[name] for name in valued]
     params, casts = array_params(db, columns, rows)
-    sets = ['"%s" = v.a%d' % (name, i) for i, name in enumerate(valued, start=1)]
+    dialect = db.get_bind().dialect
+    sets = ['"%s" = %s' % (name, array_take(table.c[name], i, dialect)) for i, name in enumerate(valued, start=1)]
     if "updated_at" in names:
         sets.append('"updated_at" = %s' % ("now()" if batch_now is None else ":updated_at"))
         params["updated_at"] = batch_now
@@ -3540,6 +3570,33 @@ def update_by_arrays(db, table, names, rows, batch_now, key="row_id"):
                            % (table.name, ", ".join(sets), ", ".join(casts),
                               ", ".join("a%d" % i for i in range(len(columns))),
                               table.name, key, table.name, key, casts[0])), params)
+
+
+def array_take(column, i, dialect) -> str:
+    """unnest's column `a<i>` as `column` takes it - an array column came as its text literal (`array_params`)."""
+    from sqlalchemy.types import ARRAY
+
+    if isinstance(column.type.dialect_impl(dialect), ARRAY):
+        return "CAST(v.a%d AS %s)" % (i, column.type.compile(dialect=dialect))
+    return "v.a%d" % i
+
+
+def insert_by_arrays(db, table, names, rows, conflict=None, key="row_id") -> list:
+    """`rows` [[a value per name]] into `table` in one statement, in the rows' order (two writers of the same new
+    keys meet the key index in one order); `conflict` a column whose unique index makes a row already there a row
+    not put (ON CONFLICT DO NOTHING). -> the `key` of each row put. update_by_arrays' INSERT (write_lines' new
+    rows, lead 11-13: 1k rows x 33 columns 0.47 -> 0.35 s against executemany's VALUES)."""
+    from sqlalchemy import text
+
+    params, casts = array_params(db, [table.c[name] for name in names], rows)
+    dialect = db.get_bind().dialect
+    on_conflict = "" if conflict is None else ' ON CONFLICT ("%s") DO NOTHING' % conflict
+    return db.execute(text('INSERT INTO "%s" (%s) SELECT %s FROM unnest(%s) WITH ORDINALITY AS v(%s, n) ORDER BY n%s '
+                           'RETURNING "%s"' % (table.name, ", ".join('"%s"' % name for name in names),
+                                              ", ".join(array_take(table.c[name], i, dialect)
+                                                        for i, name in enumerate(names)),
+                                              ", ".join(casts), ", ".join("a%d" % i for i in range(len(names))),
+                                              on_conflict, key)), params).scalars().all()
 
 
 def batch_write_instant(db):
@@ -3619,7 +3676,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     cannot mean emptied are dropped and counted by reason (the funnel's drop report); a formula's
     column holds no line (its value is the merge's, its history the batch's receipt, tallied in `plan["receipts"]`).
     The item is named by its row_id or its assembled key - write_lines claims it. `plan`: what the batch works out
-    once (loadable, unmapped, refused_times, receipts, map_judged). -> (the write_lines item, the formulas whose
+    once (loadable, unmapped, refused_times, receipts, map_judged, owners). -> (the write_lines item, the formulas whose
     column it carried - their receipts name the item's row)."""
     config = TABLE_CONFIG.get(table_name, {})
     types = config.get("column_types") or {}
@@ -3629,6 +3686,9 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
                  "line_kind": "created", "source_name": update_item.source_name,
                  "written_by": update_item.updated_by}, [])   # makes (the boundary test_write_path_drop_report pins)
     values, cast, formulas = {}, {}, []
+    owner = (plan.get("owners") or {}).get(update_item.source_name, _UNREAD)    # read once an item (lead 11-12)
+    if owner is _UNREAD:
+        owner = layer_owner(update_item.source_name)
     for col_name, val in update_item.updates.items():
         reason = (DROP_SYSTEM_COLUMN if col_name in SYSTEM_COLUMNS
                   else DROP_UNDECLARED_COLUMN if col_name not in plan["loadable"] else None)
@@ -3642,7 +3702,7 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, reason, val)
             continue
         col_type = types.get(col_name, "string")
-        formula = formula_written(table_name, col_name, update_item.source_name)
+        formula = formula_written(table_name, col_name, update_item.source_name, owner)
         tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0, "column": col_name,
                                                        "who": update_item.updated_by}) if formula else None)
         try:
@@ -3665,7 +3725,8 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
             tally["blank"] += val is None
             formulas.append(formula)
             continue                                # a formula's column: no line
-        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map) \
+                and keeps_history(table_name, col_name):     # no history: last write wins, a blank too (lead 11-12 안 1)
             _record_dropped_cell(drop_stats, named, update_item.business_key_val, col_name, DROP_ABSENT_NOT_WRITTEN,
                                  clean_val)
             continue
@@ -3674,11 +3735,11 @@ def update_item_as_line(table_name: str, update_item: schemas.GeneralUpdateItem,
     if formulas and not values:                    # a formula's column alone: its row merged again, no line (lead 11-11)
         return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": {},
                  "line_kind": "mark", "columns": [], "source_name": update_item.source_name,
-                 "written_by": update_item.updated_by, "work": "formula"}, formulas)
+                 "written_by": update_item.updated_by, "work": "formula", "owner": owner or (None, None)}, formulas)
     return ({"row_id": update_item.row_id, "business_key_val": update_item.business_key_val, "values": values,
              "old_key": update_item._supplied_business_key_val,       # ruling 191: asked when the key is nobody's
              "cast": cast,                          # what it cast - write_lines does not cast it again (lead 11-12 c)
-             "source_name": update_item.source_name, "written_by": update_item.updated_by,
+             "source_name": update_item.source_name, "written_by": update_item.updated_by, "owner": owner or (None, None),
              "input_row": update_item.origin_row_id, "version_judged": plan.get("map_judged", False)}, formulas)
 
 
@@ -4247,8 +4308,10 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         items_report: Optional[list] = None):
     """Batch write - its cells as lines (`write_lines`, through `_apply_batch_updates_once`).
 
-    items_report: optional out-param (list) - one {"row_id", "work"} an item `write_lines` was handed, in its order:
-    the row it was claimed as and what became of it (a work, or "left_out" / "gated" / None) - lead 11-12 a.
+    items_report: optional out-param (list) - one {"row_id", "work", "new"} an item `write_lines` was handed, in its
+    order: the row it was claimed as, what became of it (a work, or "left_out" / "gated" / None) - lead 11-12 a - and
+    the row's shown values after the write for the columns the item asked, None when the write did not change the row
+    (the caller's read from before stands; a read after the door's commit is a second checkout - lead 11-12).
 
     returning_rows: False - the written rows are not read back (results and serialized_logs come back empty), for a
     caller that reads neither (lead 11-12 d). The write itself is the same.
@@ -4593,9 +4656,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         drop_stats = _new_drop_stats()
         # Whole rows refused before the write, by name - not cell drops, they ride beside the cell accounting.
         drop_stats["row_refusals"] = vjoin_refusals
-        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats)
+        owners = {}
+        _refuse_two_values_in_one_answer(table_name, batch.updates, drop_stats, owners)
         plan = {"loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))), "unmapped": {},
-                "map_judged": map_judged, "receipts": {}, "refused_times": refused_times}
+                "map_judged": map_judged, "receipts": {}, "refused_times": refused_times, "owners": owners}
         alignment_batch_counts.write_count("cells offered", sum(len(item.updates) for item in batch.updates),
                                            "cells offered")
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
@@ -4605,7 +4669,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                  transaction_id=tx_id)
             resolved = answer["items"]
             if items_report is not None:
-                items_report.extend({"row_id": got["row_id"], "work": got["work"]} for got in resolved)
+                items_report.extend(
+                    {"row_id": got["row_id"], "work": got["work"],
+                     "new": None if (answer["changed"].get(got["row_id"]) or {}).get("new") is None else
+                     {c: answer["changed"][got["row_id"]]["new"].get(c) for c in item.updates}}
+                    for item, got in zip(batch.updates, resolved))
             total_changed_cells = _changed_cells(answer, resolved)
             count(len(total_changed_cells))
 
@@ -4937,6 +5005,8 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
     # ⛔ A VIEW FIRST. `delete_cell_source` delegates here, so the single-cell control is
     # gated by this one line too (S-224).
     refuse_write_to_view(table_name)
+    refuse_layers_of_no_history(table_name, [item["column_name"] for item in cells],
+                                "no layers to take a source off; write a blank to clear it.")
     from database.write_lines import write_lines
 
     if not cells:
@@ -5004,6 +5074,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     entry a cell whose shown value moved - no before value; the rows merged away)."""
     # ⛔ A VIEW FIRST. `set_cell_manual_priority` delegates here (S-224).
     refuse_write_to_view(table_name)
+    refuse_layers_of_no_history(table_name, [item["column_name"] for item in updates],
+                                "no layers to pin; its value is the last one written.")
     from database import lines
     from database.write_lines import write_lines
 

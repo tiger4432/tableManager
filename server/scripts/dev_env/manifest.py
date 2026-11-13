@@ -74,10 +74,9 @@ def capture_db(db_url):
     engine = create_engine(db_url)
     result = {}
     with engine.connect() as conn:
-        tables = [r[0] for r in conn.execute(text(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema='public' ORDER BY table_name"
-        ))]
+        from database.lines import base_tables     # no COUNT(*) over every line table (lead 11-12)
+
+        tables = base_tables(conn, schema="public")
         for t in tables:
             cols = {r[0] for r in conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "

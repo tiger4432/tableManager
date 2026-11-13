@@ -1,7 +1,7 @@
 """The cell-source overhaul's table shape - ONE author (docs/design/CELL_SOURCE_OVERHAUL.md).
 
-A declared table t stays what it is - the current values (owner 11-11) - plus one column `won_by` (column ->
-winning line_id). Its history is `t__lines` (one line per write). The line-table name, the column -> bit map and
+A declared table t stays what it is - the current values (owner 11-11) - plus one column `won_by` (by bit slot,
+the winning line_id - `won_by_cells`). Its history is `t__lines` (one line per write). The line-table name, the column -> bit map and
 every DDL on the pair go through here; nothing else spells «__lines».
 """
 import contextlib
@@ -10,7 +10,7 @@ import math
 
 from sqlalchemy import (BigInteger, Column, DateTime, Index, Integer, MetaData, String, Table,
                         func, select, text)
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.types import JSON
 
 from .database import Base
@@ -38,8 +38,9 @@ FRAMEWORK = (("row_id", String), ("business_key_val", String), ("created_at", Da
 
 
 class LineColumn(Base):
-    """Column -> bit slot of a table's lines. Append-only: a dropped column keeps its row (retired_at set) and its
-    slot is never handed out again - an old line's bit would otherwise name another column."""
+    """Column -> bit slot of a table's lines. Append-only: a slot is never handed out again - an old line's bit would
+    otherwise name another column. A column taken out of the declaration stays live (owner 11-13: data and writes as
+    today, as main); retired_at is set by nothing now."""
 
     __tablename__ = "line_columns"
 
@@ -154,6 +155,9 @@ def table_name_refusal(table_name: str):
     """None when t's name can carry line tables; else «reason - action» - the name half of `build_refusal`."""
     if '"' in table_name or "$" in table_name:
         return "its name carries a quote or a dollar sign - declare it under a plain name"
+    if is_line_table(table_name):        # the name says «a line table» (is_line_table) - a main table may not say it
+        return (f"its name ends in {LINES_SUFFIX}, which names a table's line table - rename {table_name} "
+                f"(the Tables list shows the names) and declare it again")
     size = len(table_name.encode("utf-8"))
     if size <= MAX_TABLE_NAME_BYTES:
         return None
@@ -166,9 +170,21 @@ def lines_relation(table_name: str) -> str:
     return _checked(table_name + LINES_SUFFIX)
 
 
+def base_tables(conn, lines: bool = False, schema=None) -> list:
+    """The base tables of this connection's current schema (or `schema`), sorted - THE one seat that enumerates the
+    catalogue's tables (lead 11-12: a line table carries t's columns, so a seat listing tables by catalogue or column
+    took t__lines for a main table). Line tables left out unless `lines` (is_line_table)."""
+    from sqlalchemy import inspect
+
+    if schema is None and conn.dialect.name == "postgresql":
+        schema = conn.execute(text("SELECT current_schema()")).scalar()
+    return sorted(t for t in inspect(conn).get_table_names(schema=schema) if lines or not is_line_table(t))
+
+
 def is_line_table(name: str) -> bool:
-    """Whether a table of the database is a declared table's line table (`lines_relation`'s name) - the one seat
-    every catalogue reader asks (lead 11-12: the business key picker built a UNIQUE on t__lines)."""
+    """Whether a table of the database is a line table (`lines_relation`'s name) - the one seat every catalogue reader
+    asks (lead 11-12: the business key picker built a UNIQUE on t__lines). Exact by name: a declared name ending in
+    the suffix is refused (`table_name_refusal`), and an orphaned t__lines - its t no longer declared - still says yes."""
     return name.endswith(LINES_SUFFIX) and len(name) > len(LINES_SUFFIX)
 
 
@@ -218,6 +234,68 @@ def insert_lines(db, ln, rows: list, ids: bool = False) -> list:
         return sorted(r[0] for r in got)
     finally:
         cursor.close()
+
+
+#: ingestion_settings.json - the most dead lines a line table waits for before autovacuum (lead 11-12 나): a write's
+#: head UPDATE leaves a dead line for each earlier line it moves, never HOT (the head columns are in _h's condition),
+#: and PostgreSQL's own 20 % of a 7.9 M-line table waited for 1.6 M. Absent: the default; null: the line tables' own
+#: left alone. Held by the declared storage line (`maintenance_line`, source «lines») - a value set by hand is kept.
+LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT = "lines_autovacuum_threshold", 50000
+#: ingestion_settings.json - the most dead rows a declared table t waits for (lead 11-13 ga): each row a
+#: write moves is rewritten once (D's R1: t's own autovacuum ran from minute 9 on, one pass past 31 min on 5.4 GB, deep
+#: grid pages 1.1 -> 20.8 s p95). 100,000 = 100 writes of 1,000 rows at 1,000 dead rows a write (box 11-13), ~2 % of
+#: R1's t (3.2 M live + 1.7 M dead) - tune_layer_tables' own scale 0.02, as a count. A table_config "storage" cell wins.
+TABLE_AUTOVACUUM_SETTING, TABLE_AUTOVACUUM_DEFAULT = "table_autovacuum_threshold", 100000
+#: a pass that finishes (tune_layer_tables «한 바퀴가 끝나게»): PostgreSQL's 200 left R1's passes unfinished - t's past
+#: 31 min, sb_wide__lines' begun at minute 37 still «vacuuming indexes» at the end - line tables and t alike
+AUTOVACUUM_COST_LIMIT = 2000
+#: ONE rule for line tables and t (lead 11-13): PostgreSQL's threshold, AUTOVACUUM_BASE + AUTOVACUUM_SCALE of the rows
+#: (tune_layer_tables' 0.02), capped at the setting's count (autovacuum_vacuum_max_threshold, PostgreSQL 18 - ops runs
+#: 18): 5,000 rows -> 150, 300,000 -> 6,050, 3 M -> 60,050 or the cap. A fixed count alone left a 5,000-row table to
+#: 20x its size. Below 18 the parameter is refused and the storage line says «not set».
+AUTOVACUUM_BASE, AUTOVACUUM_SCALE = 50, 0.02
+#: wrong values said already - the storage line asks at every merge, the line is said once a process
+_SAID_SETTING = set()
+
+
+def _dead_rows_setting(setting, default):
+    """A dead-row count setting: the number, None (null - left alone), or the default for anything else (said once)."""
+    import logging
+
+    from ingestion.settings import read_ingestion_settings
+
+    value = read_ingestion_settings().get(setting, default)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2147483647:
+        if (setting, repr(value)) not in _SAID_SETTING:
+            _SAID_SETTING.add((setting, repr(value)))
+            logging.getLogger(__name__).warning(
+                "[Storage] ingestion_settings.json: %s is %r - a whole number of dead rows from 0, or null to leave "
+                "those tables alone; read as %s", setting, value, default)
+        value = default
+    return value
+
+
+def line_storage():
+    """{parameter: value} a line table is held at, or None (the setting null): the one rule (`_autovacuum`) and no end
+    truncation (owner 11-09, as cell_sources and the ledger partitions)."""
+    return _autovacuum(_dead_rows_setting(LINES_AUTOVACUUM_SETTING, LINES_AUTOVACUUM_DEFAULT))
+
+
+def _autovacuum(cap):
+    """The one rule, capped at `cap` dead rows; None when the setting is null."""
+    if cap is None:
+        return None
+    return {"autovacuum_vacuum_scale_factor": AUTOVACUUM_SCALE, "autovacuum_vacuum_threshold": AUTOVACUUM_BASE,
+            "autovacuum_vacuum_max_threshold": cap, "autovacuum_vacuum_cost_limit": AUTOVACUUM_COST_LIMIT,
+            "vacuum_truncate": "false"}
+
+
+def table_storage():
+    """{parameter: value} a declared table t is held at under its own table_config "storage" cells, or None (the
+    setting null): the one rule, as a line table, at its own cap."""
+    return _autovacuum(_dead_rows_setting(TABLE_AUTOVACUUM_SETTING, TABLE_AUTOVACUUM_DEFAULT))
 
 
 def keeps_lines(table_name: str, table_cfg) -> bool:
@@ -314,13 +392,6 @@ def assign_bits(db, table_name: str, columns) -> dict:
             live[name] = nxt
     db.flush()
     return live
-
-
-def retire_bits(db, table_name: str, columns) -> None:
-    """Mark dropped columns' slots retired; the slots stay taken."""
-    db.query(LineColumn).filter(LineColumn.table_name == table_name, LineColumn.column_name.in_(list(columns)),
-                                LineColumn.retired_at.is_(None)).update({LineColumn.retired_at: func.now()},
-                                                                        synchronize_session=False)
 
 
 def chunk_count(db, table_name: str) -> int:
@@ -490,7 +561,41 @@ def value_column(name: str) -> str:
 
 
 def won_by_type():
-    return JSON().with_variant(JSONB, "postgresql")
+    """t.won_by: a bigint array by bit slot - won_by[bit] the winning line_id, FORMULA_WON where the formula shows,
+    NULL where no line won (lead 11-13 안 1: column names made t 2.4x main's width); sqlite the same list as JSON.
+    Read and written only through `won_by_cells` / `won_by_stored` / `won_by_of`."""
+    return JSON().with_variant(ARRAY(BigInteger), "postgresql")
+
+
+def won_by_cells(stored, bits: dict) -> dict:
+    """THE reading of a row's won_by: {column: line_id} - `bits` t's {column: bit} (`bit_map`, a shape's); a slot no
+    live column holds is left out."""
+    if not stored:
+        return {}
+    by_bit = {b: c for c, b in bits.items()}
+    return {by_bit[n]: int(v) for n, v in enumerate(stored) if v is not None and n in by_bit}
+
+
+def won_by_stored(cells: dict, bits: dict):
+    """THE writing of a row's won_by: {column: line_id} -> the stored list; None when no cell has a winner."""
+    if not cells:
+        return None
+    out = [None] * (1 + max(bits[c] for c in cells))
+    for c, line_id in cells.items():
+        out[bits[c]] = int(line_id)
+    return out
+
+
+def won_by_of(db, table_name: str, row_ids, bits: dict = None) -> dict:
+    """{row_id: {column: line_id}} of these rows of t (`won_by_cells`), a statement a page."""
+    bits = bit_map(db, table_name) if bits is None else bits
+    t = Table(table_name, MetaData(), Column("row_id", String), Column(WON_BY, won_by_type()))
+    ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
+    out = {}
+    for at in range(0, len(ids), 1000):
+        for row_id, stored in db.execute(select(t.c.row_id, t.c[WON_BY]).where(t.c.row_id.in_(ids[at:at + 1000]))):
+            out[row_id] = won_by_cells(stored, bits)
+    return out
 
 
 def ensure_line_table(db, table_name: str, table_cfg: dict) -> dict:
@@ -552,7 +657,8 @@ def drop_every_line_table(engine) -> list:
     Base.metadata.drop_all, which never sees them (each lives on shape's own MetaData). -> the names dropped."""
     from sqlalchemy import inspect
 
-    names = [n for n in inspect(engine).get_table_names() if is_line_table(n)]
+    with engine.connect() as conn:
+        names = [n for n in base_tables(conn, lines=True) if is_line_table(n)]
     with engine.begin() as conn:
         for name in names:
             conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{_checked(name)}"')
@@ -607,26 +713,24 @@ def _built_chunks(conn, table_name: str) -> int:
     return sum(1 for i in range(len(names)) if f"head_{i}" in names)
 
 
-def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=None) -> list:
+def alter_columns(db, table_name: str, table_cfg: dict, add=()) -> list:
     """Column DDL in the caller's transaction: t and `t__lines` get the same column names in the same order.
-    `t__lines` value cells are text, so retype changes t only.
-    add: column names in table_cfg's column_types (the cfg AFTER the change); drop: column names; retype: {column:
-    USING expression} from admin/retype.using - the cast has one author there, and sqlite skips it as today's
-    retype does. A rename is a drop + a new column (a new bit).
+    add: column names in table_cfg's column_types (the cfg AFTER the change). Nothing else: a retype is admin/retype's
+    own ALTER on t alone (`t__lines` value cells are text); nothing drops a column - one taken out of the declaration
+    stays live, and a rename is a new column (a new bit) beside the old one, its history under the old name (owner
+    11-13).
     -> the statements run (the same text an operator is shown)."""
     from .models import sql_type_of
 
     conn = db.connection()
     dialect = conn.dialect.name
     types = table_cfg.get("column_types") or {}
-    for name in [*add, *drop, *(retype or {})]:
+    for name in add:
         _checked(name)
     statements = []
     before = _built_chunks(conn, table_name)
     if add:
         assign_bits(db, table_name, list(add))
-    if drop:
-        retire_bits(db, table_name, list(drop))
     after = chunk_count(db, table_name)
     from sqlalchemy import inspect
 
@@ -639,12 +743,6 @@ def alter_columns(db, table_name: str, table_cfg: dict, add=(), drop=(), retype=
             type_sql = (sql_type_of(types[name]) if rel == table_name else String()).compile(
                 dialect=conn.dialect)
             statements.append(f'ALTER TABLE "{rel}" ADD COLUMN "{cell(name)}" {type_sql}')
-        for name in drop:
-            statements.append(f'ALTER TABLE "{rel}" DROP COLUMN "{cell(name)}"')
-        for name, using in (retype or {}).items():
-            if dialect == "postgresql" and rel == table_name:
-                type_sql = sql_type_of(types[name]).compile(dialect=conn.dialect)
-                statements.append(f'ALTER TABLE "{rel}" ALTER COLUMN "{name}" TYPE {type_sql} USING {using}')
     for family in BIT_FAMILIES:
         for name in bit_columns(family, after)[before:]:
             statements.append(f'ALTER TABLE "{lines_relation(table_name)}" ADD COLUMN "{name}" BIGINT NOT NULL DEFAULT 0')
@@ -787,6 +885,14 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
     lt, kinds, chunks = s["lines"], s["kinds"], s["chunks"]
     by_bit = {bit: c for c, bit in s["bits"].items() if value_column(c) in lt.c and bit // BITS_PER_CHUNK < chunks
               and (columns is None or c in columns)}
+    cell_of = {c: value_column(c) for c in by_bit.values()}       # a column's line cell, named once a call
+    named = {}                                                     # a bit family's chunks -> its columns, once each
+
+    def columns_of(chunk_values):
+        key = tuple(chunk_values)
+        if key not in named:
+            named[key] = _columns_of(key, by_bit)
+        return named[key]
     heads, gone = bit_columns("head", chunks), bit_columns("withdrawn", chunks)
     src, ov = LineSource.__table__, CellOverwrite.__table__
     terms = crud.rank_terms(table_name)
@@ -807,15 +913,15 @@ def merge(db, table_name: str, table_cfg: dict, row_ids, exclude_source: str = N
         cells = {}                                                     # (row, col) -> [(line, says, value)]
         for r in db.execute(select(lt.c.row_id, lt.c.line_id, lt.c.source_name, lt.c.owner_rule, lt.c.at,
                                    src.c.ranks_as, src.c.copy_of, *[lt.c[n] for n in heads + gone],
-                                   *[lt.c[value_column(c)] for c in by_bit.values()])
+                                   *[lt.c[cell_of[c]] for c in by_bit.values()])
                             .select_from(lt.outerjoin(src, src.c.source_name == lt.c.source_name))
                             .where(lt.c.row_id.in_(part), or_(*[lt.c[h] != 0 for h in heads]))).mappings():
             line = {"ranks_as": r["ranks_as"], "copy_of": r["copy_of"], "owner_rule": r["owner_rule"],
                     "source_name": r["source_name"],
                     "at": crud.resolution_ingested_at({"ingested_at": r["at"]}), "line_id": r["line_id"]}
-            withdrawn = _columns_of([r[g] for g in gone], by_bit)
-            for col in _columns_of([r[h] for h in heads], by_bit):
-                cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[value_column(col)]))
+            withdrawn = columns_of([r[g] for g in gone])
+            for col in columns_of([r[h] for h in heads]):
+                cells.setdefault((r["row_id"], col), []).append((line, col not in withdrawn, r[cell_of[col]]))
         for (row, col), said in cells.items():
             pin = pins.get((row, col))
             left = [(ln, v) for ln, ok, v in said if ok and (pin is None or ln["source_name"] == pin)

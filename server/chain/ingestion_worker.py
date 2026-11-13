@@ -4804,6 +4804,9 @@ async def start_chain_ingestion_worker(db_session_factory):
     logger.info("[Chain] startup %.1f s - %s", sum(s for _n, s in steps),
                 " · ".join("%s %.1f s" % step for step in steps))
 
+    from utils.logger import booted
+
+    booted()
     first_beat = True
 
     pool = slots.SlotPool()
