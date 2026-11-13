@@ -32,6 +32,20 @@ def tables() -> dict:
         return json.load(handle)
 
 
+#: TABLES_FILE -> its table names, read once. It may be cached because nothing in the product writes TABLES_FILE while
+#: the process runs - the file ships with the release, and `tables()` is the one seat that opens it (git grep
+#: TABLES_FILE, 11-14). Asked per cell (`crud.keeps_history` through `lines.keeps_lines`), where reading the file cost
+#: 0.5 ms a call.
+_NAMES = {}
+
+
+def names() -> frozenset:
+    """The shipped table names - `tables()`' keys, read once."""
+    if TABLES_FILE not in _NAMES:
+        _NAMES[TABLES_FILE] = frozenset(tables())
+    return _NAMES[TABLES_FILE]
+
+
 def merged(owner: dict) -> dict:
     """The owner's tables and the shipped ones; an owner table under a shipped name is left out, said once."""
     shipped = tables()

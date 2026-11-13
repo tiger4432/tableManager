@@ -11,7 +11,7 @@ before it inserted.
 
 That "happened to" is the whole problem. `apply_batch_updates` resolves identity with a
 prefetch whose proof of absence is valid against *this session's* loop and nothing else
-(`crud.ProbedIdentity`, `crud._absence_is_proven`). A second OS process committing the
+(the old write door's prefetch proof). A second OS process committing the
 same key inside the window produces **two rows with one business key, silently, with no
 error** - reproduced with two real processes at the production chunk size of 1,000 items,
 window 2.4 s (`agent_workspace/reports/Server_M2_race_reachability.md`). There is no
@@ -19,10 +19,11 @@ cross-process lock to fall back on: `grep -rn "pg_advisory" server/` returns not
 the only serialisation that exists is a `threading.Lock` whose own comment says
 cross-process exclusion is out of scope.
 
-A unique index converts that silent duplicate into an `IntegrityError`, which
-`apply_batch_updates` now catches, re-prefetches and merges (see `crud.py`,
-`_is_business_key_unique_violation`). Index first, recovery second: without the index the
-recovery never fires, and without the recovery the index turns a race into a failed batch.
+A unique index is what `write_lines`' claim asks: a new key goes in with ON CONFLICT on it
+and the row holding it is read back under the lock, so two writers of one key end on one
+row in one try (the replay that once merged the lost race is retired, lead 11-11 ㄹ).
+Without the index the claim cannot ask ON CONFLICT and the race window stays
+(`lines.key_index_next` says why on the rules list).
 
 WHAT ABOUT D2 ("surplus 389 rows, which D3 requires first")?
 ------------------------------------------------------------
@@ -53,17 +54,17 @@ path wrote `''` (true of the dev census: zero such rows) and that if one appeare
 collision is the correct answer". Both halves were wrong.
 
 A path did write it: any payload whose key column arrived blank went through
-`crud._update_row_business_key`, which stored the stripped value however empty it was.
+the old write door's key write, which stored the stripped value however empty it was.
 And the collision was NOT the correct answer, because `''` is the shared identity of
 every KEYLESS row rather than a duplicate of one real identity. Measured on this
 workstation against real PostgreSQL with this index installed: five such rows in one
-batch collide with EACH OTHER, the `IntegrityError` recovery below cannot help - it
-re-reads a database in which none of them was ever committed, so the replay reproduces
-the identical collision - and after `BK_CONFLICT_MAX_RETRIES` the whole batch is
-refused. **0 rows written, on each of three pushes.** One source file with a blank key
+batch collided with EACH OTHER, the `IntegrityError` recovery of the time (a replay, retired
+11-11) could not help - it re-read a database in which none of them was ever committed, so
+the replay reproduced the identical collision - and after its retry bound the whole batch
+was refused. **0 rows written, on each of three pushes.** One source file with a blank key
 column would stop that table's ingestion outright: loud, but stopped.
 
-`crud._update_row_business_key` now stores **NULL** for a blank key column, which the
+A blank key column is stored as **NULL** now (`write_lines._rekey` writes nothing for it), which the
 paragraph above already establishes is safe here - a plain UNIQUE index treats NULLs as
 distinct, so any number of keyless rows may coexist. That is deliberately the whole fix.
 No synthetic identity is minted for such rows: they arise only from manual grid work,
@@ -204,17 +205,12 @@ def tables_with_business_key(conn) -> list:
     act on what the database HAS. A table declared but never created, or created under
     an older schema, would otherwise turn into a crash or a silent miss.
     """
-    rows = conn.execute(text("""
-        SELECT c.table_name
-        FROM information_schema.columns c
-        JOIN information_schema.tables t
-          ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-        WHERE c.table_schema = current_schema()
-          AND c.column_name = :col
-          AND t.table_type = 'BASE TABLE'
-        ORDER BY c.table_name
-    """), {"col": BK_COLUMN}).fetchall()
-    return [r[0] for r in rows]
+    from database.lines import base_tables      # t__lines carries the key on every line of a row - never unique
+
+    return [r[0] for r in conn.execute(text(
+        "SELECT table_name FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND column_name = :col AND table_name = ANY(:names) ORDER BY table_name"),
+        {"col": BK_COLUMN, "names": base_tables(conn)}).fetchall()]
 
 
 def existing_unique_index(conn, table: str):

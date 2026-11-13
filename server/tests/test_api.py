@@ -151,14 +151,12 @@ def test_chained_ingestion(client, db_session, monkeypatch, tmp_path):
     assert target_row is not None
     assert target_row.stock_qty == 100
     
-    src = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == "inventory_master",
-        models.CellSource.row_id == target_row.row_id,
-        models.CellSource.column_name == "stock_qty"
-    ).first()
-    assert src is not None
+    from database import lines
+    said = lines.layers(db_session, "inventory_master", [target_row.row_id], ["stock_qty"])
+    heads = said.get((target_row.row_id, "stock_qty"), {})
+    assert heads, "the chained write left a layer on the cell (the table's lines)"
     # the layer is signed by the rule that wrote it (총괄 bc9710454 가-1 ㄱ, `rule_run.signed`)
-    assert src.updated_by == "production_to_inventory_reservation_batch"
+    assert {head["updated_by"] for head in heads.values()} == {"production_to_inventory_reservation_batch"}
     
 
 def test_cell_sources_api(client):
@@ -205,16 +203,13 @@ def test_priority_toggle_api(client, db_session):
     row = res.json()["data"][0]
     row_id = row["row_id"]
     
-    # Add a cell source to satisfy the validation
-    db_session.add(models.CellSource(
-        table_name="raw_table_1",
-        row_id=row_id,
-        column_name="EQP_ID",
-        source_name="pipeline_parser",
-        value="TEST_VAL",
-        ingested_at=datetime.now(),
-        updated_by="system"
-    ))
+    # The source a pin names says something on the cell - a line (cell-source overhaul: a pin reads head lines)
+    from database import crud, lines
+    from database.write_lines import write_lines
+    lines.ensure_line_table(db_session, "raw_table_1", crud.TABLE_CONFIG["raw_table_1"])
+    write_lines(db_session, "raw_table_1", [{"row_id": row_id, "values": {"EQP_ID": row["data"]["EQP_ID"]},
+                                             "source_name": "pipeline_parser", "written_by": "system"}],
+                kind="funnel", transaction_id="tx-seed")
     db_session.commit()
     
     # 2. Put manual priority source as 'pipeline_parser'
@@ -425,37 +420,7 @@ def test_file_ingestion_callback_direct(db_session, tmp_path, monkeypatch):
 
 def test_bulk_upsert_deduplication(db_session):
     from database import models
-    from database.crud import bulk_upsert_cell_sources, bulk_upsert_cell_overwrites
-    
-    # Verify cell_sources deduplication (keep last)
-    mappings_sources = [
-        {
-            "table_name": "inventory_master",
-            "row_id": "row-dedup-1",
-            "column_name": "part_no",
-            "source_name": "test_src",
-            "value": '"ABC-1"',
-            "updated_by": "system"
-        },
-        {
-            "table_name": "inventory_master",
-            "row_id": "row-dedup-1",
-            "column_name": "part_no",
-            "source_name": "test_src",
-            "value": '"ABC-2"',
-            "updated_by": "user1"
-        }
-    ]
-    bulk_upsert_cell_sources(db_session, mappings_sources)
-    db_session.commit()
-    
-    srcs = db_session.query(models.CellSource).filter(
-        models.CellSource.row_id == "row-dedup-1",
-        models.CellSource.column_name == "part_no"
-    ).all()
-    assert len(srcs) == 1
-    assert srcs[0].value == '"ABC-2"'
-    assert srcs[0].updated_by == "user1"
+    from database.crud import bulk_upsert_cell_overwrites
     
     # Verify cell_overwrites deduplication (keep last)
     mappings_overwrites = [
@@ -509,74 +474,25 @@ def test_internal_events_endpoints(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_internal_events_updates_cache_and_broadcasts(client):
+def test_internal_events_updates_cache_and_broadcasts(client, monkeypatch):
+    """Both relays put a message's `changed` items on the recent history's list at once (cell-source overhaul)."""
     from admin.audit_cache import audit_cache
-    # Initialize cache & force loaded state for testing add_logs_batch
-    audit_cache.groups = []
-    audit_cache.is_loaded = True
+    monkeypatch.setattr(audit_cache, "groups", [])
+    monkeypatch.setattr(audit_cache, "is_loaded", True)
+    item = {"table_name": "inventory_master", "changed_rows": 3, "kind": "edit", "written_by": "batch_ingester"}
 
-    # 1. Test batch-refresh updates web server's audit cache
-    payload_refresh = {
-        "table_name": "inventory_master",
-        "change_count": 1,
-        "created_logs": [
-            {
-                "id": 9999,
-                "table_name": "inventory_master",
-                "row_id": "test_row_123",
-                "column_name": "unit_price",
-                "old_value": "10.0",
-                "new_value": "20.0",
-                "source_name": "batch_ingester",
-                "updated_by": "test_agent",
-                "transaction_id": "tx_refresh_test",
-                "business_key": "bk_refresh_test",
-                "timestamp": "2026-06-14T20:30:00+09:00"
-            }
-        ]
-    }
-    response = client.post("/internal/events/batch-refresh", json=payload_refresh)
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    response = client.post("/internal/events/batch-refresh", json={
+        "table_name": "inventory_master", "change_count": 3, "changed": [dict(item, transaction_id="tx_refresh")]})
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
+    assert [(g["transaction_id"], g["changed"]) for g in audit_cache.groups] == [
+        ("tx_refresh", {"inventory_master": 3})]
 
-    # Verify audit cache updated
-    assert len(audit_cache.groups) > 0
-    assert audit_cache.groups[0]["transaction_id"] == "tx_refresh_test"
-    from admin.audit_cache import representative
-    assert representative(audit_cache.groups[0]).row_id == "test_row_123"
-
-    # Reset cache
-    audit_cache.groups = []
-
-    # 2. Test broadcast updates cache and routes
-    payload_broadcast = {
-        "event": "batch_row_upsert",
-        "table_name": "inventory_master",
-        "transaction_id": "tx_broadcast_test",
-        "created_logs": [
-            {
-                "id": 9998,
-                "table_name": "inventory_master",
-                "row_id": "test_row_456",
-                "column_name": "qty",
-                "old_value": "5",
-                "new_value": "15",
-                "source_name": "chain_ingestion",
-                "updated_by": "chain_worker",
-                "transaction_id": "tx_broadcast_test",
-                "business_key": "bk_broadcast_test",
-                "timestamp": "2026-06-14T20:45:00+09:00"
-            }
-        ]
-    }
-    response = client.post("/internal/events/broadcast", json=payload_broadcast)
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-    # Verify audit cache updated
-    assert len(audit_cache.groups) > 0
-    assert audit_cache.groups[0]["transaction_id"] == "tx_broadcast_test"
-    assert representative(audit_cache.groups[0]).row_id == "test_row_456"
+    response = client.post("/internal/events/broadcast", json={
+        "event": "batch_row_upsert", "table_name": "inventory_master", "transaction_id": "tx_broadcast",
+        "changed": [dict(item, transaction_id="tx_broadcast", kind="new")]})
+    assert (response.status_code, response.json()) == (200, {"status": "ok"})
+    top = audit_cache.groups[0]
+    assert (top["transaction_id"], top["tables"]["inventory_master"]["kinds"]) == ("tx_broadcast", ["new"])
 
 
 def test_automatic_schema_alteration(db_session):

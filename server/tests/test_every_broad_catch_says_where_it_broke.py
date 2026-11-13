@@ -25,7 +25,6 @@ KEPT = {
     "server/scripts/ledger_deploy_preflight.py": 1,
 }
 QUIET_KEPT = {
-    "server/admin/audit_cache.py": {"hot": 1},
     "server/admin/auth.py": {"probe": 3},
     "server/admin/dev_bench.py": {"cleanup": 1, "import": 2, "parse": 1},
     "server/admin/retroactive.py": {"cleanup": 2, "parse": 1, "probe": 1},
@@ -58,11 +57,10 @@ QUIET_KEPT = {
     "server/mapper_sdk.py": {"import": 1, "probe": 1},
     "server/outbox_listener.py": {"cleanup": 1},
     "server/parsers/advanced_ingester.py": {"parse": 1},
-    "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 3},
+    "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 2},
     "server/run_watcher.py": {"import": 2},
     "server/runtime/process_supervisor.py": {"cleanup": 2, "logging": 4, "parse": 1, "probe": 5, "elsewhere": 1},
     "server/scripts/check_one_row_one_fact.py": {"stream": 1},
-    "server/scripts/count_absent_null_layers.py": {"stream": 1},
     "server/scripts/dev_env/devenv.py": {"probe": 1},
     "server/scripts/diagnose_db_health.py": {"cleanup": 2, "probe": 1},
     "server/scripts/diagnose_slow_after_ingest.py": {"cleanup": 1, "probe": 1, "elsewhere": 2, "stream": 1},
@@ -73,7 +71,6 @@ QUIET_KEPT = {
     "server/scripts/measure_ledger_followup_lag.py": {"probe": 1},
     "server/scripts/migrate_decide_aggregations.py": {"stream": 1},
     "server/scripts/preview_unified_declarations.py": {"stream": 1},
-    "server/scripts/probe_ingestion_stages.py": {"probe": 1},
     "server/scripts/seed_syn_valid_die_floors.py": {"import": 1, "parse": 1},
     "server/scripts/support/finding_kinds.py": {"import": 1},
     "server/transfer_plan.py": {"parse": 4},

@@ -42,16 +42,16 @@ guarding a WRITE, and there is no longer a write:
   - `key_column` refused a derived column that was the business key or a member of
     `composite_key_source`, because a derived value must never move a row's
     identity. Nothing is written now, so no identity can move. `business_key_val`
-    is computed by `crud._update_row_business_key` from the STORED values and this
+    is computed by the key rebuild (`write_lines._rekey`) from the STORED values and this
     module never touches storage.
 Both refusals were therefore vacuous, not relaxed, and this paragraph said: if a future
 round ever writes a folded value anywhere, both must come back.
 ⚰️ REVERSED BY THE OWNER'S DECISION, NOT FORGOTTEN (총괄 5ee9d3bd1 ③ - owner: 「접두랑 분기
 문자열, 원장에도 같은 게 키가 달라져서 크리티컬함. 아예 쓰기단에서 정규화 필요」). A `write`
 column IS stored folded, key columns included - the key is exactly what differed - so neither
-refusal returns. What each protected is carried instead: the spelling that arrived is kept as
-the `old_value` of the audit line the fold writes, and the backfill stops on a column whose
-stored values a second fold would move again (`moves_again`).
+refusal returns. What each protected is carried instead: the backfill stops on a column whose
+stored values a second fold would move again (`moves_again`). The spelling that arrived was kept
+on an audit line until the owner dropped it (11-10 ㄱ: an audit line holds six items, no before value).
 
 [THE RULES - independently switchable, on purpose]
     separator   a RUN of '.', '_', '-' or whitespace  ->  a single '-'  (LOW risk)

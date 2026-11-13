@@ -10,7 +10,6 @@ other value keeps today's path.
 import json
 import os
 import sys
-from datetime import datetime, timezone
 
 import numpy as np
 import pytest
@@ -21,10 +20,10 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
-from chain import cell_layer                                       # noqa: E402
 from conftest import retire_dynamic_model                          # noqa: E402
-from database import crud, models, schemas                         # noqa: E402
+from database import crud, lines, models, schemas                  # noqa: E402
 from database.database import Base                                 # noqa: E402
+from tests.support import line_tables                              # noqa: E402
 
 T = "numtext_probe"
 TABLE = {"business_key": "k",
@@ -54,14 +53,6 @@ def test_everything_else_keeps_todays_path(value, stored):
     assert isinstance(crud.cast_value_by_type(1.0, "number", "n"), float)
 
 
-def test_the_cell_a_layer_recompute_shows_is_the_same_answer():
-    """`cell_layer` re-decides a shown cell from its stored layers through the same cast."""
-    row = type("Row", (), {"v": None})()
-    layers = {"f.csv": {"value": 1.0, "ingested_at": datetime(2026, 10, 1, tzinfo=timezone.utc)}}
-    decided = cell_layer._resolve_cell(T, TABLE["column_types"], row, "v", layers, None)
-    assert decided["new_value"] == "1"
-
-
 def _write(db, rows):
     crud.apply_batch_updates(db, T, schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(updates=dict(r), source_name="f01.csv", updated_by="t",
@@ -76,10 +67,13 @@ def fixture_table(db_session):
     models.init_dynamic_models({T: TABLE})
     crud.TABLE_CONFIG[T] = TABLE
     Base.metadata.create_all(bind=db_session.get_bind())
+    line_tables.drop(db_session.get_bind(), T)
+    line_tables.build(db_session.get_bind(), T)      # the table keeps its lines - a layer is a line there
     db_session.query(models.DYNAMIC_TABLES[T]).delete()
-    db_session.query(models.CellSource).filter(models.CellSource.table_name == T).delete()
     db_session.commit()
     yield db_session
+    db_session.rollback()
+    line_tables.drop(db_session.get_bind(), T)
     crud.TABLE_CONFIG.pop(T, None)
     retire_dynamic_model(T)
 
@@ -87,13 +81,11 @@ def fixture_table(db_session):
 def test_the_funnel_stores_the_folded_text_in_the_cell_and_in_its_layer(table):
     _write(table, ROWS)
     rows = {r.k: r for r in table.query(models.DYNAMIC_TABLES[T]).all()}
-    layers = {(row_id, column): value for row_id, column, value in table.query(
-        models.CellSource.row_id, models.CellSource.column_name, models.CellSource.value)
-        .filter(models.CellSource.table_name == T)}
+    layers = lines.layers(table, T, [row.row_id for row in rows.values()], ["v"])
     for i, (_, stored) in enumerate(FOLDS):
         row = rows[f"r{i}"]
         assert (row.v, row.w) == (stored, stored)
-        assert layers[(row.row_id, "v")] == stored, "the layer holds the same text"
+        assert layers[(row.row_id, "v")]["f01.csv"]["value"] == stored, "the layer holds the same text"
         assert row.n == 1.0 and isinstance(row.n, float), "a number column is untouched"
 
 
@@ -104,10 +96,11 @@ def fixture_pg_table(pg_engine):
     models.init_dynamic_models({T: TABLE})
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
-        conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
         conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
+    line_tables.drop(pg_engine, T)
     Base.metadata.create_all(bind=pg_engine, tables=[models.DYNAMIC_TABLES[T].__table__])
     crud.TABLE_CONFIG[T] = TABLE
+    line_tables.build(pg_engine, T)
     db = sessionmaker(bind=pg_engine, autoflush=False)()
     try:
         yield db, pg_engine
@@ -116,9 +109,9 @@ def fixture_pg_table(pg_engine):
         crud.TABLE_CONFIG.clear()
         crud.TABLE_CONFIG.update(saved)
         retire_dynamic_model(T)
+        line_tables.drop(pg_engine, T)
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
-            conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
             conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
 
 
@@ -127,17 +120,19 @@ def test_python_and_postgres_read_one_answer_from_the_cell_and_its_layer(pg_tabl
     db, engine = pg_table
     _write(db, ROWS)
     with engine.connect() as conn:
-        cells = dict(conn.execute(text('SELECT k, v FROM "%s"' % T)).all())
-        layers = dict(conn.execute(text(
-            'SELECT t.k, s.value #>> \'{}\' FROM cell_sources s JOIN "%s" t ON t.row_id = s.row_id '
-            "WHERE s.table_name = :t AND s.column_name = 'v'" % T), {"t": T}).all())
+        rows = conn.execute(text('SELECT k, v, row_id FROM "%s"' % T)).all()
+    cells = {k: v for k, v, _row_id in rows}
+    said = lines.layers(db, T, [row_id for _k, _v, row_id in rows], ["v"])
+    layers = {k: said[(row_id, "v")]["f01.csv"]["value"] for k, _v, row_id in rows}
     for i, (_, stored) in enumerate(FOLDS):
         key = f"r{i}"
         assert cells[key] == layers[key] == stored
         assert crud.clean_str_value(cells[key]) == stored
 
 
-# --- ② what was stored before the fold is folded in place (fold_written_notation, widened) -------
+# --- ② what was stored before a declaration: a key moves only when its cells still spell it -------
+# (A 11-11: a line holds text, so «a number left in a text layer» - what this section folded - is no state of a
+# table with lines; the migration's copy is where such a layer gets its spelling.)
 
 C = "numtext_comp"
 COMP_TABLE = {"business_key": "row_key", "composite_key_source": ["lot", "wafer"],
@@ -145,129 +140,93 @@ COMP_TABLE = {"business_key": "row_key", "composite_key_source": ["lot", "wafer"
               "column_types": {"row_key": "string", "lot": "string", "wafer": "string"}}
 
 
-def _stored_as_production_did(db, table, key, column, written_text, number, stored_key=None):
-    """The state a number left before ①: PostgreSQL wrote its text into the shown cell, the layer
-    kept the JSON number. Written through the funnel as text, then the layer is set back."""
-    model = models.DYNAMIC_TABLES[table]
-    row = db.query(model).filter(model.business_key_val == key).one()
-    layer = db.query(models.CellSource).filter(
-        models.CellSource.table_name == table, models.CellSource.row_id == row.row_id,
-        models.CellSource.column_name == column).one()
-    assert getattr(row, column) == written_text
-    layer.value = number
-    if stored_key is not None:
-        row.business_key_val = stored_key
-    db.commit()
-    return row.row_id
-
-
-def _layer(db, table, row_id, column):
-    return db.query(models.CellSource.value).filter(
-        models.CellSource.table_name == table, models.CellSource.row_id == row_id,
-        models.CellSource.column_name == column).scalar()
-
-
 @pytest.fixture(name="comp")
-def fixture_comp(table):
+def fixture_comp(table, tmp_path, monkeypatch):
+    import notation_norm as nn
+    from database import config_watcher, lines
+
     models.init_dynamic_models({C: COMP_TABLE})
     crud.TABLE_CONFIG[C] = COMP_TABLE
     Base.metadata.create_all(bind=table.get_bind())
+    lines.ensure_line_table(table, C, COMP_TABLE)
     table.query(models.DYNAMIC_TABLES[C]).delete()
-    table.query(models.CellSource).filter(models.CellSource.table_name == C).delete()
+    table.execute(text('DELETE FROM "%s"' % lines.lines_relation(C)))
     table.commit()
-    yield table
+    rules = tmp_path / "notation_rules.json"
+    rules.write_text(json.dumps({"columns": {}}), encoding="utf-8")
+    monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(rules))
+    config_watcher.forget_held()
+    yield table, rules
+    config_watcher.forget_held()
     crud.TABLE_CONFIG.pop(C, None)
     retire_dynamic_model(C)
 
 
-def test_a_number_stored_in_a_text_layer_is_counted_folded_and_shown_as_the_layer_decides(table):
-    from chain import replay
-
-    _write(table, [{"k": "r", "v": "1.0", "n": 1.0}])
-    row_id = _stored_as_production_did(table, T, "r", "v", "1.0", 1.0)
-    dry = replay.fold_written_notation(table, T)
-    assert (dry["cells_folded"], dry["layers_folded"]) == (1, 1), "counted - before the fold, 0"
-    replay.fold_written_notation(table, T, apply=True)
-    row = table.query(models.DYNAMIC_TABLES[T]).filter_by(row_id=row_id).one()
-    assert (row.v, _layer(table, T, row_id, "v")) == ("1", "1")
-    assert row.n == 1.0, "a number column is not the text fold's"
-    again = replay.fold_written_notation(table, T)
-    assert (again["cells_folded"], again["layers_folded"]) == (0, 0)
-
-
-def test_a_write_column_with_a_number_layer_is_counted_where_the_notation_fold_saw_nothing(
-        table, tmp_path, monkeypatch):
-    """총괄 0f5992e74: the notation fold reads text, so before ② the number layer counted 0."""
-    import notation_norm as nn
-    from chain import replay
-
-    path = tmp_path / "notation_rules.json"
-    path.write_text(json.dumps({"columns": {T: {"v": {"write": True, "rules": {
-        "replace": [["x", "y"]]}}}}}), encoding="utf-8")
-    monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(path))
-    from database import config_watcher
-    config_watcher.forget_held()
-    try:
-        _write(table, [{"k": "r", "v": "1.0"}])
-        row_id = _stored_as_production_did(table, T, "r", "v", "1.0", 1.0)
-        assert replay.fold_written_notation(table, T)["layers_folded"] == 1
-        replay.fold_written_notation(table, T, apply=True)
-        row = table.query(models.DYNAMIC_TABLES[T]).filter_by(row_id=row_id).one()
-        assert (row.v, _layer(table, T, row_id, "v")) == ("1", "1")
-        assert replay.fold_written_notation(table, T)["layers_folded"] == 0
-    finally:
-        from database import config_watcher
-        config_watcher.forget_held()
+def _key(db, row_id, key):
+    """A key as an older writer stored it - its cells spell another."""
+    db.execute(text("UPDATE %s SET business_key_val = :k WHERE row_id = :r" % C), {"k": key, "r": row_id})
+    db.commit()
 
 
 def test_a_key_moves_only_when_its_cells_still_spell_it(comp):
-    """총괄 c6a8c069c ㉡ 가. Four rows, a number layer under `wafer` in three of them:
-        born     key built from the number (L1_1), cell '1.0'  -> cell folds, key already right
-        off      key in an older separator (L2:2.0)            -> skipped and named, untouched
-        spelled  key spelled from its cells (L3_3.0)           -> re-keyed to L3_3
-        still    older separator, nothing folds (L4:x)         -> not touched, not counted
+    """총괄 c6a8c069c ㉡ 가. Three rows, `wafer` declared to fold after they were stored:
+        off      key in an older separator (L2:w2)    -> skipped and named, untouched - its cells too
+        spelled  key spelled from its cells (L3_w3)    -> re-keyed to L3_w03
+        still    older separator, nothing folds (L4:x) -> not touched, not counted
     """
     from chain import replay
+    from database import config_watcher
 
-    crud.apply_batch_updates(comp, C, schemas.GeneralUpdateBatch(updates=[
-        schemas.GeneralUpdateItem(updates={"lot": lot, "wafer": wafer}, source_name="f01.csv",
-                                  updated_by="t")
-        for lot, wafer in (("L1", "1.0"), ("L2", "2.0"), ("L3", "3.0"), ("L4", "x"))],
-        silent=True))
-    born = _stored_as_production_did(comp, C, "L1_1.0", "wafer", "1.0", 1.0, stored_key="L1_1")
-    off = _stored_as_production_did(comp, C, "L2_2.0", "wafer", "2.0", 2.0, stored_key="L2:2.0")
-    spelled = _stored_as_production_did(comp, C, "L3_3.0", "wafer", "3.0", 3.0)
+    db, rules = comp
+    crud.apply_batch_updates(db, C, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"lot": lot, "wafer": wafer}, source_name="f01.csv", updated_by="t")
+        for lot, wafer in (("L2", "w2"), ("L3", "w3"), ("L4", "x"))], silent=True))
+    db.commit()
     model = models.DYNAMIC_TABLES[C]
-    still = comp.query(model).filter(model.business_key_val == "L4_x").one()
-    still.business_key_val = "L4:x"
-    comp.commit()
+    ids = {r.lot: r.row_id for r in db.query(model)}
+    off, spelled, still = ids["L2"], ids["L3"], ids["L4"]
+    _key(db, off, "L2:w2")
+    _key(db, still, "L4:x")
+    rules.write_text(json.dumps({"columns": {C: {"wafer": {"write": True, "rules": {"pad_last_number": 2}}}}}),
+                     encoding="utf-8")
+    config_watcher.forget_held()
 
-    stats = replay.fold_written_notation(comp, C, apply=True)
-    rows = {r.row_id: r for r in comp.query(model).all()}
-    assert (rows[born].wafer, rows[born].business_key_val) == ("1", "L1_1")
-    assert (rows[off].wafer, rows[off].business_key_val) == ("2.0", "L2:2.0"), "identity kept"
-    assert _layer(comp, C, off, "wafer") == 2.0, "a skipped row keeps its layers too"
-    assert (rows[spelled].wafer, rows[spelled].business_key_val) == ("3", "L3_3")
-    assert rows[still.row_id].business_key_val == "L4:x"
+    stats = replay.fold_written_notation(db, C, apply=True)
+    db.expire_all()
+    rows = {r.row_id: r for r in db.query(model).all()}
+    assert (rows[off].wafer, rows[off].business_key_val) == ("w2", "L2:w2"), "identity kept"
+    assert (rows[spelled].wafer, rows[spelled].business_key_val) == ("w03", "L3_w03")
+    assert (rows[still].wafer, rows[still].business_key_val) == ("x", "L4:x")
     assert (stats["keys_changed"], stats["keys_not_rebuilt"]) == (1, 1)
-    assert [s["business_key_val"] for s in stats["not_rebuilt"]] == ["L2:2.0"]
+    assert [s["business_key_val"] for s in stats["not_rebuilt"]] == ["L2:w2"]
 
 
-@pytest.mark.pg
-def test_postgres_reads_one_answer_after_the_stored_fold(pg_table):
+@pytest.fixture(name="lined")
+def fixture_lined(table):
+    from database import lines
+
+    lines.ensure_line_table(table, T, TABLE)
+    table.execute(text('DELETE FROM "%s"' % lines.lines_relation(T)))
+    table.commit()
+    return table
+
+
+def test_a_cell_copied_in_the_spelling_a_write_stores_shows_it_after_the_backfill(lined):
+    """The state C's copy leaves (lead 11-11): a layer JSON 1.0 in a text column is copied as the line «1» - what
+    today's write stores - while t still shows «1.0» and its won_by names no line there. The backfill shows the
+    line's value; the number layer the retired tests folded is this state after the copy."""
     from chain import replay
 
-    db, engine = pg_table
-    _write(db, [{"k": "r", "v": "1.0"}])
-    row_id = _stored_as_production_did(db, T, "r", "v", "1.0", 1.0)
-    with engine.connect() as conn:
-        assert conn.execute(text("SELECT json_typeof(value) FROM cell_sources WHERE row_id = :r "
-                                 "AND column_name = 'v'"), {"r": row_id}).scalar() == "number"
-    assert replay.fold_written_notation(db, T)["layers_folded"] == 1
-    replay.fold_written_notation(db, T, apply=True)
-    with engine.connect() as conn:
-        shown = conn.execute(text('SELECT v FROM "%s" WHERE row_id = :r' % T), {"r": row_id}).scalar()
-        layer = conn.execute(text("SELECT value #>> '{}' FROM cell_sources WHERE row_id = :r "
-                                  "AND column_name = 'v'"), {"r": row_id}).scalar()
-    assert shown == layer == "1"
-    assert replay.fold_written_notation(db, T)["layers_folded"] == 0
+    _write(lined, [{"k": "r", "v": 1.0}])
+    lined.commit()
+    model = models.DYNAMIC_TABLES[T]
+    row_id = lined.query(model).filter_by(business_key_val="r").one().row_id
+    assert lined.query(model).filter_by(row_id=row_id).one().v == "1", "canary: a write stores the read spelling"
+    lined.execute(text("UPDATE %s SET v = '1.0', won_by = NULL WHERE row_id = :r" % T), {"r": row_id})
+    lined.commit()
+    dry = replay.fold_written_notation(lined, T)
+    assert (dry["cells_folded"], dry["layers_folded"]) == (1, 0)
+    replay.fold_written_notation(lined, T, apply=True)
+    lined.expire_all()
+    assert lined.query(model).filter_by(row_id=row_id).one().v == "1"
+    assert replay.fold_written_notation(lined, T)["cells_folded"] == 0, "a second run moves nothing"

@@ -8,7 +8,9 @@ test_rules_that_wake_each_other_by_column_are_refused.
     case                                        gate
     a column another rule writes                the formula follows it
     another formula's column                    the formula follows it
-    its own write                               wakes nothing - one receipt an edit
+    its own write                               wakes nothing - one run, one receipt (a row written before the
+                                                formula is declared: the write that moves c; after an edit the
+                                                merge has answered c and the run moves nothing)
 """
 import json
 
@@ -70,13 +72,11 @@ def test_a_formula_follows_another_formula(db, declare):
 def test_its_own_write_wakes_nothing(db, declare, monkeypatch):
     from chain import join_into
 
+    _put(db, [{"k": "k1", "a": 5}])                       # before the formula: its run is the write that moves c
     rules = declare(("c", "=[a]*2"))
-    _put(db, [{"k": "k1", "a": 1}])
-    _drain(db, rules)
     ran, answer = [], join_into.answer
     monkeypatch.setattr(join_into, "answer",
                         lambda db_, rule, read: ran.append(rule.get("name")) or answer(db_, rule, read))
-    _put(db, [{"k": "k1", "a": 5}])
     _drain(db, rules)
     receipts = db.query(models.AuditLog).filter(models.AuditLog.column_name == RECEIPT_COLUMN).count()
-    assert _row(db)["c"] == 10 and receipts == 2 and ran == ["formula fx.c"], "one run an edit"
+    assert _row(db)["c"] == 10 and receipts == 1 and ran == ["formula fx.c"], "one run, its write wakes it no more"

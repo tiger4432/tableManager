@@ -5,12 +5,12 @@ and 65% of its wall clock was Python and SQLAlchemy rather than the database.
 Three of those costs are attacked here, and each one is a place where "faster"
 and "wrong" are one edit apart:
 
-  1. Two identity SELECTs per row (`_get_or_create_row` -> `get_row_by_business_key`,
+  1. Two identity SELECTs per row (the old row lookup -> the old key lookup,
      and the composite-key collision probe). Both are replaced by reading the proof
-     the batch prefetch already produced - `ProbedIdentity`.
+     the batch prefetch already produced - the old prefetch proof.
   2. One `INSERT ... RETURNING` per new row, because `updated_at=func.now()` put a
      SQL expression in the parameter set and SQLAlchemy cannot batch those.
-  3. `bulk_upsert_cell_sources` building a fresh multi-row VALUES clause per chunk.
+  3. the old layer upsert building a fresh multi-row VALUES clause per chunk.
 
 🔴 WHAT THESE TESTS ARE REALLY GUARDING. A statement-count assertion alone would
 pass for an implementation that stopped looking up rows at all - which is to say
@@ -20,11 +20,30 @@ with an assertion about what LANDED: row identity, the layering verdict, the
 audit trail and the outbox.
 """
 
-import pytest
-from sqlalchemy.sql import func
+import re
 
-from database import crud, models, schemas
-from sql_budget import inserts_into, record_statements, selects_from
+import pytest
+
+from database import crud, lines, models, schemas
+from sql_budget import record_statements
+
+
+def _relation(sql):
+    """The relation a statement writes (INSERT INTO / UPDATE / DELETE FROM) or first reads (FROM)."""
+    text = " ".join(sql.split())
+    hit = re.match(r'(?i)(?:insert(?: or \w+)? into|update|delete from)\s+"?(\w+)"?', text)
+    if hit is None:
+        hit = re.search(r'(?i)\bfrom\s+"?(\w+)"?', text)
+    return hit.group(1) if hit else None
+
+
+def _by_relation(recorded):
+    """{(verb, relation): statements} of a recorded block - an executemany is one statement."""
+    out = {}
+    for call in recorded:
+        key = (call.sql.strip().split()[0].upper(), _relation(call.sql))
+        out[key] = out.get(key, 0) + 1
+    return out
 
 
 #: `xscope_safe_map` is the shipped map shape: business key `cell_key` assembled
@@ -45,7 +64,7 @@ def _item(lot, slot, cx, cy, bn, source="probe.csv", by="watcher", cell_key=""):
     this file budgets is unchanged either way - neither value ever equals the
     assembled key - but `''` is a VALUE, so every keyless row in the database shared
     one identity and collided under `uq_bk_<table>`. See
-    `crud._update_row_business_key` and `data_model.md` §3.1-bis.
+    the old key write and `data_model.md` §3.1-bis.
     """
     updates = {"lot": lot, "slot": slot, "cx": cx, "cy": cy, "bn": bn}
     if cell_key is not None:
@@ -66,7 +85,7 @@ def test_fresh_insert_costs_one_identity_select_for_the_whole_chunk(db_session):
     """The headline: identity is resolved once per CHUNK, not twice per ROW.
 
     Before this change a 200-row fresh chunk issued 401 SELECTs against the data
-    table (1 prefetch + 200 `get_row_by_business_key` + 200 collision probes).
+    table (1 prefetch + 200 key lookups + 200 collision probes).
     """
     n = 200
     items = [_item("L1", "01", i, 0, "1") for i in range(n)]
@@ -84,10 +103,11 @@ def test_fresh_insert_costs_one_identity_select_for_the_whole_chunk(db_session):
     assert keys == {f"L1_01_{i}_0" for i in range(n)}, \
         "identity must still be the assembled composite key, not a fresh uuid per row"
 
-    data_selects = selects_from(recorded, TABLE)
-    assert len(data_selects) == 1, (
-        f"a fresh chunk must cost ONE prefetch SELECT on the data table, got "
-        f"{len(data_selects)}:\n" + "\n".join(s.sql[:100] for s in data_selects[:5]))
+    # per relation, a chunk's reads, never a row's (the overhaul's record - lead 11-12): t - the claim's keys, read
+    # once under lock (a key put answers its row), the funnel's answer rows; t__lines - the head lines (_spoken), a
+    # person's heads (_marks), the merge's
+    counts = _by_relation(recorded)
+    assert (counts.get(("SELECT", TABLE)), counts.get(("SELECT", lines.lines_relation(TABLE)))) == (2, 3), counts
 
 
 def test_fresh_insert_does_not_emit_one_insert_per_row(db_session):
@@ -111,11 +131,14 @@ def test_fresh_insert_does_not_emit_one_insert_per_row(db_session):
     with record_statements(db_session) as recorded:
         crud.apply_batch_updates(db_session, TABLE, _batch(items))
 
-    data_inserts = inserts_into(recorded, TABLE)
-    assert len(data_inserts) < n / 4, (
-        f"{n} new rows produced {len(data_inserts)} INSERT statements; the flush is "
-        f"not batching. A SQL expression (func.now()) in the parameter set is the "
-        f"usual cause.")
+    counts = _by_relation(recorded)
+    assert counts.get(("INSERT", TABLE)) == 1, (
+        f"{n} new rows must be claimed by one INSERT statement a page: {counts}")
+    # t__lines' INSERT ... RETURNING goes a row at a time on sqlite - SQLAlchemy keeps the parameter order that way,
+    # the driver, not this code; it is one statement a page on PostgreSQL and pinned there
+    # (test_a_new_rows_lines_go_in_a_statement_a_page_pg)
+    print("sqlite: %d t__lines INSERT statements, counted on PostgreSQL only"
+          % counts.get(("INSERT", lines.lines_relation(TABLE)), 0))
 
 
 def test_new_rows_still_get_an_updated_at(db_session):
@@ -157,7 +180,7 @@ def test_second_push_updates_the_same_rows_instead_of_duplicating_them(db_sessio
 
 
 def test_a_business_key_with_surrounding_whitespace_still_matches(db_session):
-    """`get_row_by_business_key` strips before comparing and the prefetch filter is
+    """the old key lookup strips before comparing and the prefetch filter is
     built from stripped values, so the membership test must strip too. Testing the
     raw value would be merely slow; testing a DIFFERENT normalisation on either side
     is what mints a duplicate."""
@@ -269,7 +292,7 @@ def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_sessi
     re-deriving. Here the payload carries the STRING '1234.0', which `clean_str_value`
     leaves alone, while the item was resolved by '1234'.
 
-    The item's key is what the prefetch filtered on and what `_get_or_create_row`
+    The item's key is what the prefetch filtered on and what the old row lookup
     matched, so storing anything else saves the row under a handle nothing looks it up
     by."""
     item = schemas.GeneralUpdateItem(
@@ -286,16 +309,18 @@ def test_the_items_own_key_wins_over_any_re_derivation_from_the_payload(db_sessi
 
 
 def test_the_read_side_spells_a_float_the_way_the_write_side_did(db_session):
-    """`get_row_by_business_key` is the other end of the same seam. Given the value the
-    payload carried, it must reach the row that value stored.
+    """The other end of the same seam: a later write that names no key and carries the value 931.0 must reach the
+    row that value stored - the write's row claim (`write_lines._claim`) reads the key as the write side spelled it
+    (the old door's key lookup retired with the lines, 11-11).
 
     ⚠️ It folds a FLOAT, not a string that looks like one: `'931.0'` is a different
     identity and stays one. This unifies how a VALUE is spelled, it does not add
     string-level normalisation."""
     crud.apply_batch_updates(db_session, PLAIN,
                              _batch([_plain_item(931.0, 8, key="931")]))
-    found = crud.get_row_by_business_key(db_session, PLAIN, 931.0)
-    assert found is not None and found.business_key_val == "931"
+    crud.apply_batch_updates(db_session, PLAIN, _batch([_plain_item(931.0, 9)]))
+    rows = _plain_rows(db_session, "931")
+    assert [(r.business_key_val, r.stock_qty) for r in rows] == [("931", 9)]
 
 
 def test_a_rename_inside_one_batch_does_not_orphan_the_old_key(db_session):
@@ -374,10 +399,10 @@ def test_a_supplied_key_that_names_nothing_still_resolves_onto_the_assembled_row
     🔴 RENAMED AND RE-STATED BECAUSE WHAT IT MEASURES MOVED, and that was MEASURED
     rather than reasoned (2026-09-09, 판정 191). It used to be the collision-merge test:
     the assembly returned early on a supplied key, so the payload was looked up under
-    "SOMETHING_ELSE", missed, and `_find_business_key_conflict` had to run and merge.
+    "SOMETHING_ELSE", missed, and the old collision probe had to run and merge.
     Since 190/191 the assembly runs anyway and the prefetch carries the assembled key,
     so this row now comes back from `row_cache` and the merge is never reached. Stubbing
-    `_find_business_key_conflict` to return None leaves this test GREEN - its old
+    the old collision probe to return None leaves this test GREEN - its old
     docstring claimed the opposite, which is why the claim is not simply repeated here.
 
     ⚠️ THE MERGE ARM IS NOT UNCOVERED, also measured with that same stub:
@@ -399,7 +424,7 @@ def test_a_supplied_key_that_names_nothing_still_resolves_onto_the_assembled_row
 
     # THE discriminating assertion: with the probe skipped the merge never happens and
     # this row still reads "old". Proved to ring - stubbing
-    # `_find_business_key_conflict` to return None fails exactly this and nothing else.
+    # the old collision probe to return None fails exactly this and nothing else.
     #
     # ⚠️ Deliberately NOT asserting the row count. The merge leaves its shell row
     # behind (`db.delete` on a still-pending instance, inside a bare `except: pass`),
@@ -438,10 +463,8 @@ def test_a_user_layer_still_beats_a_later_parser_write(db_session):
         "the parser layer overwrote the user layer - the priority computation no "
         "longer sees the stored `user` CellSource")
 
-    stored = {s.source_name: s.value for s in db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id == row.row_id,
-        models.CellSource.column_name == "bn").all()}
+    stored = {source: said["value"] for source, said in
+              lines.layers(db_session, TABLE, [row.row_id], ["bn"]).get((row.row_id, "bn"), {}).items()}
     assert stored == {"user": "USER_VALUE", "pipeline_parser": "PARSER_VALUE"}, \
         "both layers must be stored; only the resolved value is decided by priority"
 
@@ -463,129 +486,19 @@ def test_every_new_row_still_stages_an_outbox_event(db_session):
 
 
 def test_audit_trail_still_records_the_ingest(db_session):
+    """The write's own audit row and its own lines - one a row (the overhaul's record: audit_batches + the lines
+    by batch, lead 11-11)."""
+    from sqlalchemy import text
+
     n = 10
     items = [_item("AU", "01", i, 0, "1") for i in range(n)]
-    crud.apply_batch_updates(db_session, TABLE, _batch(items))
+    crud.apply_batch_updates(db_session, TABLE, _batch(items, transaction_id="au-tx"))
 
-    logs = db_session.query(models.AuditLog).filter(
-        models.AuditLog.table_name == TABLE,
-        models.AuditLog.column_name == "ROW_UPDATE").all()
-    assert len(logs) == n
-
-
-# --------------------------------------------------------------------------
-# 4. The bulk upsert FALLBACK
-#
-# 🔴 EVERY TEST IN THIS SECTION RUNS ON THE FALLBACK, AND THE NAMES NOW SAY SO.
-# `_pg_multirow_upsert` returns False on `dialect.name != "postgresql"`, and
-# this suite's engine is in-memory SQLite, so the accepted branch is
-# unreachable from here - measured with a counting spy over this file plus
-# `test_bulk_chunking_budget.py` and `test_business_key_conflict_retry.py`:
-# `entered=28 accepted=0 declined=28` across 42 passing tests. Two of these
-# tests used to be called "the fast path", which meant a later change could
-# break the accepted branch outright while 42 green tests reported it covered.
-#
-# The fallback is worth testing - it is what SQLite, psycopg3 and every
-# declined shape actually take. It is simply not what these names used to
-# claim. The accepted branch is covered by `test_pg_multirow_upsert.py`, which
-# skips unless an isolated PostgreSQL is declared.
-# --------------------------------------------------------------------------
-
-def test_bulk_upsert_falls_back_when_a_mapping_holds_a_sql_expression(db_session):
-    """`_is_executemany_safe` refuses a `ClauseElement` - a parameter set cannot
-    carry one. The refusal must degrade to the old VALUES path, not to an error:
-    an outside caller is allowed to hand one in."""
-    rows = [{"table_name": TABLE, "row_id": f"EX_{i}", "column_name": "bn",
-             "source_name": "probe.csv", "value": str(i), "updated_by": "p3",
-             "ingested_at": func.now()}
-            for i in range(5)]
-    crud.bulk_upsert_cell_sources(db_session, rows)
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id.like("EX_%")).all()
-    assert len(stored) == 5
-    assert all(s.ingested_at is not None for s in stored)
-
-
-def test_a_ragged_mapping_list_is_filled_not_refused(db_session):
-    """Different key sets across mappings.
-
-    🔴 THIS USED TO ASSERT 「a ragged list is REFUSED」, AND THAT WAS HALF TRUE (총괄
-    1495534c9). `.values(ragged_list)` raises `CompileError` only when the FIRST mapping has
-    the key another lacks; when the first is the one lacking it, the whole chunk is sent
-    without that key - NULL, without a word. A merge's layers lacked `origin_row_id` beside a
-    write's, and both faces reached production. The seat now gives every mapping the same
-    keys, a missing one None: no error, and the value a mapping did carry stays.
-    """
-    rows = [
-        {"table_name": TABLE, "row_id": "RG_1", "column_name": "bn",
-         "source_name": "probe.csv", "value": "a", "updated_by": "p3"},
-        {"table_name": TABLE, "row_id": "RG_2", "column_name": "bn",
-         "source_name": "probe.csv", "value": "b"},
-    ]
-    for ordered in (rows, rows[::-1]):
-        crud.bulk_upsert_cell_sources(db_session, ordered)
-        db_session.flush()
-        stored = dict(db_session.query(models.CellSource.row_id, models.CellSource.updated_by)
-                      .filter(models.CellSource.row_id.like("RG_%")).all())
-        assert stored == {"RG_1": "p3", "RG_2": None}, stored
-        db_session.rollback()
-
-
-def test_bulk_upsert_fallback_still_updates_on_conflict(db_session):
-    """The FALLBACK keeps ON CONFLICT DO UPDATE semantics: a second write of the
-    same (table, row, column, source) replaces the value rather than raising.
-
-    The accepted branch's own conflict target is a string `_pg_multirow_upsert`
-    assembles by hand and is therefore the one that can be wrong; it is
-    asserted in `test_pg_multirow_upsert.py::
-    test_on_conflict_do_update_replaces_the_value_on_the_accepted_branch`.
-    """
-    from datetime import datetime
-    def rows(v):
-        return [{"table_name": TABLE, "row_id": "CF_1", "column_name": "bn",
-                 "source_name": "probe.csv", "value": v, "updated_by": "p3",
-                 "ingested_at": datetime.now()}]
-
-    crud.bulk_upsert_cell_sources(db_session, rows("first"))
-    db_session.flush()
-    crud.bulk_upsert_cell_sources(db_session, rows("second"))
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id == "CF_1").all()
-    assert len(stored) == 1
-    assert stored[0].value == "second"
-
-
-@pytest.mark.parametrize("n", [0, 1, crud.BULK_CHUNK_SIZE - 1,
-                               crud.BULK_CHUNK_SIZE, crud.BULK_CHUNK_SIZE + 1])
-def test_fallback_chunk_boundaries_write_every_mapping(db_session, n):
-    """Off-by-one guard on the chunk loop, at and around the boundary, for the
-    send this suite can reach.
-
-    ⚠️ It used to be called `test_fast_path_chunk_boundaries_...`. It never ran
-    the fast path; the equivalent on the accepted branch (which also asserts
-    the STATEMENT count, because `row_sql_cache` is keyed by chunk length) is
-    `test_pg_multirow_upsert.py::
-    test_chunk_boundaries_write_every_mapping_on_the_accepted_branch`.
-    """
-    from datetime import datetime
-    now = datetime.now()
-    mappings = [{"table_name": TABLE, "row_id": f"CB_{i}", "column_name": "bn",
-                 "source_name": "probe.csv", "value": str(i),
-                 "updated_by": "p3", "ingested_at": now}
-                for i in range(n)]
-    crud.bulk_upsert_cell_sources(db_session, mappings)
-    db_session.flush()
-
-    stored = db_session.query(models.CellSource).filter(
-        models.CellSource.table_name == TABLE,
-        models.CellSource.row_id.like("CB_%")).count()
-    assert stored == n
+    audited = db_session.query(lines.AuditBatch).filter_by(table_name=TABLE, transaction_id="au-tx").all()
+    assert len(audited) == 1, [(a.work_kind, a.written_by) for a in audited]
+    said = db_session.execute(text('SELECT count(DISTINCT row_id), count(*) FROM "%s" WHERE batch = :tx'
+                                   % lines.lines_relation(TABLE)), {"tx": "au-tx"}).one()
+    assert tuple(said) == (n, n), "one line a row of the write"
 
 
 # ------------------------------------------------- S-83 ③: the row write is ONE statement
@@ -601,7 +514,7 @@ def _statements_for(db, table, items, tx):
 
     def before(conn, cursor, statement, params, context, executemany):
         verb = statement.strip().split()[0].upper()
-        key = f"{verb} executemany" if executemany else verb
+        key = (verb, _relation(statement))
         counts[key] = counts.get(key, 0) + 1
 
     engine = db.get_bind()
@@ -646,19 +559,15 @@ def test_editing_many_rows_sends_one_update_statement_not_one_per_row(db_session
     # measured, not assumed: the only single INSERT is the collapsed outbox event (S-82),
     # which is one per request by construction. Pinned here so a later change cannot take
     # the INSERT off its batched path the way the UPDATE was off its.
-    assert inserting.get("INSERT executemany", 0) >= 1, (
-        f"new rows must be inserted by one statement: {inserting}")
-    assert inserting.get("INSERT", 0) <= 1, (
-        f"the only unbatched INSERT is the collapsed event: {inserting}")
-    assert sum(inserting.values()) < rows, (
-        f"inserting must not scale with the row count either: {inserting}")
-
-    assert counts.get("UPDATE", 0) == 0, (
-        f"one UPDATE per row is back: {counts}")
-    assert counts.get("UPDATE executemany", 0) == 1, (
-        f"the {rows} edited rows must be written by ONE statement: {counts}")
-    assert sum(counts.values()) < rows, (
-        f"the whole request must not scale with the row count: {counts}")
+    # by relation (the overhaul's record - lead 11-12): t__lines' INSERT is a row at a time on sqlite (the driver
+    # keeping the parameter order) and pinned on PostgreSQL (test_a_new_rows_lines_go_in_a_statement_a_page_pg)
+    line_rel = lines.lines_relation(TABLE)
+    assert inserting.get(("INSERT", TABLE)) == 1, f"new rows must be claimed by one statement: {inserting}"
+    assert counts.get(("UPDATE", TABLE)) == 1, f"the {rows} edited rows must be written by ONE statement: {counts}"
+    assert counts.get(("UPDATE", line_rel)) == 1, f"the earlier lines' heads by ONE statement: {counts}"
+    for said in (inserting, counts):
+        grows = {k: v for k, v in said.items() if k[0] != "PRAGMA" and k != ("INSERT", line_rel) and v >= rows}
+        assert not grows, f"a statement a row is back: {grows}"
 
 
 def test_the_batch_instant_comes_from_the_database_rather_than_this_process(db_session):

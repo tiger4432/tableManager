@@ -23,7 +23,7 @@ if SERVER_DIR not in sys.path:
 
 from chain import rule_run, rule_shape                             # noqa: E402
 from database.database import Base                                 # noqa: E402
-from database import crud, models, schemas                         # noqa: E402
+from database import crud, lines, models, schemas                  # noqa: E402
 from ledger import explorer, trace_router                          # noqa: E402
 from ledger_api import ledger_subgraph                             # noqa: E402
 
@@ -274,8 +274,9 @@ def test_the_rows_carry_the_run_rows_stamp_so_deleting_the_run_empties_them(db):
     run = _save_run(db, "R1", [_lot("P1"), _lot("P2")], [_lot("N1")])
     _chain(db, run)
     count = len(_factors(db, "R1"))
-    stamps = {r[0] for r in db.query(models.CellSource.origin_row_id)
-              .filter_by(table_name="contrast_factor")}
+    factors = [r.row_id for r in db.query(models.DYNAMIC_TABLES["contrast_factor"])]
+    stamps = {layer.get("origin_row_id") for cell in lines.layers(db, "contrast_factor", factors).values()
+              for layer in cell.values()}
     stats = cell_layer.withdraw_by_origin(db, [run], apply=True)
     db.commit()
     model = models.DYNAMIC_TABLES["contrast_factor"]

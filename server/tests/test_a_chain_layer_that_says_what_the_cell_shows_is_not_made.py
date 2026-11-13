@@ -20,6 +20,7 @@ if SERVER_DIR not in sys.path:
 import event_constants                                              # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.database import Base                                  # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 T, FILE = "sv_tgt", "sv_file.csv"
@@ -34,6 +35,7 @@ def fixture_db():
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    line_tables.build(engine, T)                   # a cell's layers are its lines' (A 11-11)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
         yield session
@@ -56,8 +58,10 @@ def _layers(db):
     """{layer: value} of the cell (K, v), and the value it shows."""
     db.expire_all()
     row = db.query(models.DYNAMIC_TABLES[T]).filter_by(business_key_val="K").one()
-    return row.v, {s.source_name: s.value for s in db.query(models.CellSource).filter_by(
-        table_name=T, row_id=row.row_id, column_name="v")}
+    from database import lines
+
+    return row.v, {name: layer["value"] for name, layer in
+                   lines.layers(db, T, [row.row_id], columns=["v"]).get((row.row_id, "v"), {}).items()}
 
 
 def test_a_chain_write_of_the_shown_value_makes_no_layer_and_a_different_one_does(db):

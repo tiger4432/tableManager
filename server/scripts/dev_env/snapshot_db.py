@@ -1,6 +1,6 @@
 """Build / refresh the isolated snapshot database (default: assy_qa).
 
-Not a clone. `bonding_map` alone is ~1.76M rows and `cell_sources` ~12.5M, so a
+Not a clone. `bonding_map` alone is ~1.76M rows and its history many times that, so a
 full copy is neither fast nor needed. What verification actually needs is copied:
 
   * every map registered in `wafer_map_metadata`, and the rows of its target
@@ -10,8 +10,8 @@ full copy is neither fast nor needed. What verification actually needs is copied
     but not in the target is logged as "not in target (skipped)", so a source
     that has not been dropped yet costs a log line, not a failure.
   * every small table in full
-  * the layering tables (cell_sources / cell_overwrites) and audit_logs
-    restricted to the rows actually copied
+  * each copied table's lines (<table>__lines) and cell_overwrites, restricted to
+    the rows actually copied
   * the graph store, so /graph/* serves something real
 
 SAFETY - the source connection is opened READ ONLY at the PostgreSQL session
@@ -55,14 +55,14 @@ CHUNK = 1000  # rows per round trip (10M-row discipline: never load a table whol
 #                      production history on first start.
 EMPTY_TABLES = {"database_outbox"}
 
-# Row-scoped side tables: copied only for (table_name, row_id) pairs that made it
-# into the snapshot, so they can never be larger than the data they describe.
-# The value is a global row budget for the whole table (not per chunk).
+# Row-scoped side tables: copied only for rows that made it into the snapshot, so
+# they can never be larger than the data they describe. The value is a global row
+# budget for the whole kind (not per chunk).
 ROW_SCOPED = {
-    "cell_sources": 400_000,     # layering source rows: ~1 per (row, column)
     "cell_overwrites": 100_000,  # only cells a human actually pinned
-    "audit_logs": 50_000,        # history, not state - newest N is enough
 }
+#: every copied table's lines (<table>__lines), together: ~1 per (row, column, write)
+LINES_BUDGET = 400_000
 
 
 def log(msg):
@@ -125,10 +125,11 @@ def open_source_readonly(url):
 
 
 # ------------------------------------------------------------------- inventory
-def list_tables(conn):
-    return [r[0] for r in conn.execute(text(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema='public' ORDER BY table_name"))]
+def list_tables(conn, schema="public"):
+    """Base tables only: a view (an operator view table, the ledger's views) holds no rows of its own."""
+    from database.lines import base_tables
+
+    return base_tables(conn, lines=True, schema=schema)      # its line tables too: the copy scopes them, run() asks
 
 
 def columns_of(conn, table):
@@ -274,6 +275,7 @@ def run(args):
     ensure_target_database(args.target)
     build_target_schema(args.target)
     dst_engine = create_engine(args.target)
+    from database.lines import LINES_SUFFIX, is_line_table     # after the target is pinned (above)
     dst = dst_engine.connect()
 
     src_tables = set(list_tables(src))
@@ -313,7 +315,7 @@ def run(args):
         if t in EMPTY_TABLES:
             report[t] = ("empty-by-design", 0)
             continue
-        if t in ROW_SCOPED:
+        if t in ROW_SCOPED or is_line_table(t):
             continue                # handled after, needs the copied row set
 
         cols = [c for c in columns_of(src, t) if c in set(columns_of(dst, t))]
@@ -351,18 +353,20 @@ def run(args):
     # Owners are visited smallest-first with a per-owner cap of
     # remaining_budget / remaining_owners (max-min fair share). Straight
     # first-come spending starves everything alphabetically late: a first cut of
-    # this script gave core_defect_map 351k of the 400k cell_sources budget and
+    # this script gave core_defect_map 351k of the 400k layer budget and
     # left eds_fail_map, dt_map and every map table after it with zero, so their
     # layering UI had nothing to show.
     owner_sizes = {o: dst.execute(text(f'SELECT COUNT(*) FROM "{o}"')).scalar()
                    for o in copied_row_tables}
     owners_by_size = sorted(copied_row_tables, key=lambda o: owner_sizes[o])
 
-    for t, budget in ROW_SCOPED.items():
-        if t not in shared:
-            continue
-        cols = [c for c in columns_of(src, t) if c in set(columns_of(dst, t))]
-        jcols = json_columns_of(src, t)
+    # (report name, budget, owner -> (table, where, extra params, newest first)) - one loop for every kind
+    scoped = [(t, budget, lambda owner, t=t: (t, "table_name = :tn AND row_id = ANY(:rids)", {"tn": owner},
+                                              "id DESC"))
+              for t, budget in ROW_SCOPED.items() if t in shared]
+    scoped.append(("<table>" + LINES_SUFFIX, LINES_BUDGET,
+                   lambda owner: (owner + LINES_SUFFIX, "row_id = ANY(:rids)", {}, "line_id DESC")))
+    for name, budget, side_of in scoped:
         total = 0
         remaining = budget
         starved = []
@@ -370,16 +374,19 @@ def run(args):
             left_owners = len(owners_by_size) - idx
             share = max(1, remaining // left_owners)
             got_owner = 0
+            t, where, params, newest = side_of(owner)
+            if t not in shared:
+                continue
+            cols = [c for c in columns_of(src, t) if c in set(columns_of(dst, t))]
+            jcols = json_columns_of(src, t)
             ids = [r[0] for r in dst.execute(text(f'SELECT row_id FROM "{owner}"'))]
             for i in range(0, len(ids), CHUNK):
                 if got_owner >= share:
                     break
                 got = copy_rows(
-                    src, dst, t, cols,
-                    "table_name = :tn AND row_id = ANY(:rids)",
-                    {"tn": owner, "rids": ids[i:i + CHUNK]},
+                    src, dst, t, cols, where, {**params, "rids": ids[i:i + CHUNK]},
                     limit=share - got_owner,
-                    order_by="id DESC",
+                    order_by=newest,
                     json_cols=jcols,
                 )
                 got_owner += got
@@ -391,7 +398,7 @@ def run(args):
         note = f"fair share across {len(owners_by_size)} copied table(s)"
         if starved:
             note += f" [capped: {', '.join(starved)}]"
-        report[t] = (note, total)
+        report[name] = (note, total)
 
     # ⚰️ The graph materializer's cursor was reset to 0 here, so a fresh isolated
     # env would not replay a source outbox it does not have. Worker, tables and

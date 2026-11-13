@@ -491,6 +491,9 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
             logger.info("[Pool] %s", getattr(importlib.import_module(module), name)())
         except Exception as exc:                                # noqa: BLE001 - the process serves all the same
             logger.error("[Pool] %s.%s did not prepare: %s: %s", module, name, type(exc).__name__, told(exc))
+    from utils.logger import booted
+
+    booted()
     connection.send("ready")
     while True:
         try:

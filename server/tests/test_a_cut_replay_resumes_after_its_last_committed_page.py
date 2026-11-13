@@ -24,6 +24,7 @@ from chain import replay
 from database import crud, models, schemas
 from database.context import outbox_mode, request_run_id
 from database.models import DatabaseOutbox
+from tests.support import line_tables
 from utils.payload_helper import get_payload_dict
 
 SRC, DST = "rsm_src", "rsm_dst"
@@ -41,6 +42,8 @@ def db(db_session, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    for name in TABLES:                    # the overhaul's line tables: the sweep reads t__lines (owner 11-11)
+        line_tables.build(db_session.get_bind(), name)
     monkeypatch.setattr(ciw, "_RULES_DOCUMENT", {})
     monkeypatch.setattr(ciw, "loaded_chain_rules", lambda: [dict(r) for r in RULES])
     monkeypatch.setattr(replay, "load_rules", lambda: [dict(r) for r in RULES])
@@ -50,6 +53,9 @@ def db(db_session, monkeypatch):
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, MAPPER, lambda _db, payloads, rule=None: {})
     models.ensure_run_columns(db_session.get_bind())
     yield db_session
+    db_session.rollback()
+    for name in TABLES:
+        line_tables.drop(db_session.get_bind(), name)
 
 
 def _seed(db, keys, grp=None):

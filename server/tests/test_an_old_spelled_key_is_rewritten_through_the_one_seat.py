@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """총괄 6e2a93ef9: rows keyed in the old spelling (e243d6abf ③) are found by the census and
-rewritten by `rebuild_blank_business_keys --apply` through `crud.put_business_key` - the key and,
-on a table that declares one, its business_key column - with an audit line. A row whose rebuilt key
+rewritten by `rebuild_blank_business_keys --apply` through the write's key step (write_lines 5½) - the key
+and, on a table that declares one, its business_key column - with an audit row. A row whose rebuilt key
 another row holds is skipped and named until the owner answers. After the rewrite the same payload
 lands on its row: one row, no merge."""
 import os
@@ -21,6 +21,7 @@ import event_constants                                              # noqa: E402
 import rebuild_blank_business_keys as rekey                         # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
+from tests.support import line_tables                               # noqa: E402
 
 pytestmark = pytest.mark.pg
 T_ONLY, T_KEY = "zz_rekey_only", "zz_rekey_key"
@@ -55,7 +56,9 @@ def fixture_db(pg_engine):
         with pg_engine.begin() as conn:
             for name in TABLES:
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
-                for side in ("cell_sources", "cell_overwrites", "database_outbox", "audit_logs"):
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s__lines"' % (PG_TEST_SCHEMA, name)))
+                for side in ("cell_sources", "cell_overwrites", "database_outbox", "audit_logs", "audit_batches",
+                             "line_columns"):
                     conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t'
                                       % (PG_TEST_SCHEMA, side)), {"t": name})
 
@@ -64,6 +67,8 @@ def fixture_db(pg_engine):
     for name in TABLES:
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    for name in TABLES:                         # the table as it runs: its line table built (A 11-11)
+        line_tables.build(pg_engine, name)
     maker = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)
     session = maker()
     try:
@@ -126,12 +131,11 @@ def test_an_old_spelled_row_is_rewritten_and_the_same_data_lands_on_it(db, table
 
     assert rekey.apply_rekeys(db["db"], table, plan["pending"], "tester") == 1
     assert _rows(db, table, "L1") == [(old_row[0], _key("L1", 1), _key("L1", 1))]   # both key cells
-    with db["engine"].connect() as conn:
-        audit = conn.execute(text('SELECT old_value, new_value, updated_by FROM "%s".audit_logs '
-                                  "WHERE table_name = :t AND source_name = :s"
-                                  % PG_TEST_SCHEMA), {"t": table, "s": rekey.REKEY_SOURCE}).all()
-    assert [tuple(map(str, a)) for a in audit] == [
-        ("L1_1.0_2026-10-03 12:00", _key("L1", 1), "tester")]
+    with db["engine"].connect() as conn:                            # who re-keyed, one audit row (audit_batches)
+        audit = conn.execute(text('SELECT written_by FROM "%s".audit_batches WHERE table_name = :t '
+                                  "AND transaction_id LIKE :s" % PG_TEST_SCHEMA),
+                             {"t": table, "s": rekey.REKEY_SOURCE + "%"}).all()
+    assert [a[0] for a in audit] == ["tester"]
 
     _write(db["db"], table, {"lot": "L1", "wafer": "1.0", "t": "2026-10-03 12:00", "v": "again"})
     assert len(_rows(db, table, "L1")) == 1                         # found, not a new row
@@ -169,23 +173,23 @@ def test_a_colliding_row_is_merged_into_the_holder_and_a_persons_value_stays(db,
     plan, merged = _apply(db, table)
     assert plan["collisions"] == [(shell, holder)] and merged == [shell]
     assert [r[0] for r in _rows(db, table, "L1")] == [holder]          # one row: the holder
+    from database import lines
+
     with db["engine"].connect() as conn:
         v = conn.execute(text('SELECT v FROM "%s"."%s" WHERE row_id = :r' % (PG_TEST_SCHEMA, table)),
                          {"r": holder}).scalar()
-        layers = conn.execute(text('SELECT source_name FROM "%s".cell_sources WHERE table_name = :t '
-                                   "AND row_id = :r AND column_name = 'v'" % PG_TEST_SCHEMA),
-                              {"t": table, "r": holder}).scalars().all()
-        merges = conn.execute(text('SELECT count(*) FROM "%s".audit_logs WHERE table_name = :t '
-                                   "AND source_name = 'collision_merge'" % PG_TEST_SCHEMA),
-                              {"t": table}).scalar()
+        merges = conn.execute(text('SELECT count(*) FROM "%s".audit_batches WHERE table_name = :t '
+                                   "AND work_kind = 'merge'" % PG_TEST_SCHEMA), {"t": table}).scalar()
+        overwrites = conn.execute(text('SELECT count(*) FROM "%s".cell_overwrites WHERE table_name = :t '
+                                       "AND row_id = :r" % PG_TEST_SCHEMA), {"t": table, "r": shell}).scalar()
+    said = lines.layers(db["db"], table, [holder, shell])                # the layers are the lines' (A 11-11)
+    layers = sorted(said.get((holder, "v"), {}))
     assert v == "person", (v, layers)                                 # the person's value stays
     assert "chain:a" in layers and any(                               # the shell's layer came over,
         layer.startswith("user (") for layer in layers), layers       # named by the merge body
     assert merges >= 1
-    with db["engine"].connect() as conn:                               # 총괄 a13fcf00c
-        assert [conn.execute(text('SELECT count(*) FROM "%s".%s WHERE table_name = :t AND row_id = :r'
-                                  % (PG_TEST_SCHEMA, side)), {"t": table, "r": shell}).scalar()
-                for side in ("cell_sources", "cell_overwrites")] == [0, 0]  # the shell's are gone
+    # 총괄 a13fcf00c: the shell's are gone - no standing layer, no overwrite mark
+    assert ([cell for cell in said if cell[0] == shell], overwrites) == ([], 0)
     again = _plan(db, table)
     assert (again["pending"], again["collisions"]) == ([], [])          # run again: nothing
 

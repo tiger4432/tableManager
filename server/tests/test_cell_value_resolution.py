@@ -48,6 +48,9 @@ def res_env(db_session):
     crud.TABLE_CONFIG.update(RES_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    from database import lines
+
+    lines.ensure_declared(db_session.get_bind(), list(RES_TABLES))     # its lines, as the schema sync builds them
     yield db_session
 
 
@@ -89,21 +92,46 @@ def _row(db, part_no):
     return db.query(m).filter(m.business_key_val == part_no).first()
 
 
-def _backdate(db, source_name, when):
-    """Pin a stored layer's `ingested_at` so the test's axis is the timestamp and
-    not the clock resolution of two writes microseconds apart."""
-    db.query(models.CellSource).filter(
-        models.CellSource.table_name == "cvres_test_map",
-        models.CellSource.source_name == source_name,
-    ).update({"ingested_at": when}, synchronize_session=False)
+def _set_at(db, source_name, when):
+    """A layer's time is its line's `at` - pinned here so the test's axis is the timestamp and not the clock
+    resolution of two writes microseconds apart."""
+    from database import lines
+
+    lt = lines.built_lines(db, "cvres_test_map")[0]
+    db.execute(lt.update().where(lt.c.source_name == source_name).values(at=when))
     db.commit()
 
 
+def _backdate(db, source_name, when):
+    _set_at(db, source_name, when)
+
+
 def _layers(db, row_id, col):
-    return {s.source_name: s.value for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == "cvres_test_map",
-        models.CellSource.row_id == row_id,
-        models.CellSource.column_name == col).all()}
+    from database import lines
+
+    return {name: entry["value"] for name, entry in
+            lines.layers(db, "cvres_test_map", [row_id], {col}).get((row_id, col), {}).items()}
+
+
+#: three lines alike but in time - dated older, dated newer, undated: a term that tells two of them apart is a time term
+_TIMES = [{"ranks_as": "f.csv", "copy_of": None, "owner_rule": None, "source_name": "f.csv", "at": at, "line_id": n}
+          for n, at in ((1, 1.0), (2, 2.0), (3, None))]
+
+
+def _without_recency(monkeypatch):
+    """THE MUTATION: the layer order with its time terms (2a dated, 2b newest, 2c the later line of one instant)
+    taken out - the order the resolution had before recency: ranks, then the name decides. Picked by what a term
+    answers on `_TIMES`, not its place - a term put before them (1a, dfd5dccff) moved the places and the mutation
+    took 1d out with 2a and 2b, leaving 2c to pick the newer line."""
+    keep = crud.rank_terms
+
+    def timeless(table_name=None):
+        terms = keep(table_name)
+        kept = [t for t in terms if len({t(ln, False) for ln in _TIMES}) == 1]
+        assert len(terms) - len(kept) == 3, "CANARY: the order has three time terms"
+        return kept
+
+    monkeypatch.setattr(crud, "rank_terms", timeless)
 
 
 def _audit(db, row_id, col):
@@ -228,11 +256,12 @@ def test_injecting_the_old_resolution_brings_the_stale_value_back(res_env, monke
     stores the correction and displays the stale value - which is precisely the
     production symptom. If this test ever goes green with the new resolver in
     place, the test above proves nothing."""
-    monkeypatch.setattr(crud, "compute_priority_value", _legacy_compute_priority_value)
+    _without_recency(monkeypatch)
     row = _deliver_twice(res_env, older, newer)
     res_env.refresh(row)
     assert _layers(res_env, row.row_id, "pitch") == {older: "1", newer: "7"}
-    assert row.pitch == "1", \
+    # without recency the name decides - the correction is lost wherever the older file sorts first
+    assert row.pitch == ("1" if older < newer else "7"), \
         "the injected defect must be observed discarding the correction"
 
 
@@ -240,20 +269,18 @@ def test_the_corrected_redelivery_is_no_longer_silent(res_env):
     """The value moved, so `has_changed` is true, so the write path emits history.
     Under the defect it emitted nothing at all - no column write, no audit row, no
     outbox event - which is why the loss was invisible."""
+    from database import lines
+
     row = _deliver_twice(res_env, "aaa_old.csv", "zzz_new.csv")
-    logs = _audit(res_env, row.row_id, "ROW_UPDATE")
-    assert any("pitch" in (lg.new_value or "") and "7" in (lg.new_value or "")
-               for lg in logs), \
-        "the correction must leave a history entry, not change the display in silence"
+    lt = lines.built_lines(res_env, "cvres_test_map")[0]
+    said = res_env.execute(lt.select().where(lt.c.row_id == row.row_id, lt.c.batch == "d2")).mappings().all()
+    assert any(line[lines.value_column("pitch")] == "7" for line in said), \
+        "the correction must leave a history line, not change the display in silence"
 
 
 def _undate(db, source_name):
-    """Blank a stored layer's `ingested_at`, the way a row predating the column would."""
-    db.query(models.CellSource).filter(
-        models.CellSource.table_name == "cvres_test_map",
-        models.CellSource.source_name == source_name,
-    ).update({"ingested_at": None}, synchronize_session=False)
-    db.commit()
+    """Blank a layer's time, the way a layer predating the column would."""
+    _set_at(db, source_name, None)
 
 
 def test_an_undated_layer_does_not_outrank_a_dated_delivery_on_the_write_path(res_env):
@@ -297,7 +324,7 @@ def _make_stale_cell(db, monkeypatch, older="aaa_old.csv", newer="zzz_new.csv"):
     author imagined. Running the real write path under the injected legacy resolver
     produces the real shape.
     """
-    monkeypatch.setattr(crud, "compute_priority_value", _legacy_compute_priority_value)
+    _without_recency(monkeypatch)
     row = _deliver_twice(db, older, newer)
     monkeypatch.undo()
     db.refresh(row)
@@ -494,15 +521,17 @@ def _all_layers(db):
     relabel that ADDS a layer, and an assertion scoped to one cell of one row would
     not see a layer appearing anywhere else.
     """
-    return sorted(
-        (s.row_id, s.column_name, s.source_name, str(s.value), str(s.updated_by))
-        for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == "cvres_test_map").all())
+    from database import lines
+
+    rows = [r for (r,) in db.query(models.DYNAMIC_TABLES["cvres_test_map"].row_id)]
+    return sorted((row_id, column, name, str(entry["value"]), str(entry["updated_by"]))
+                  for (row_id, column), named in lines.layers(db, "cvres_test_map", rows).items()
+                  for name, entry in named.items())
 
 
 def _make_stale_rows(db, monkeypatch, parts):
     """`_make_stale_cell` for N rows, so a run spans several pages and commits."""
-    monkeypatch.setattr(crud, "compute_priority_value", _legacy_compute_priority_value)
+    _without_recency(monkeypatch)
     _seed(db, [{"part_no": p, "pitch": "1"} for p in parts],
           source_name="aaa_old.csv", tx_id="m1")
     _backdate(db, "aaa_old.csv", OLD_TS)

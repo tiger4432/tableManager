@@ -547,24 +547,13 @@ def _human_resolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     machine source (a backfill, a previous auto-confirm) is not evidence that a
     person decided anything, and promoting from it would launder a machine guess
     into a rule. `source_name == 'user'` is the one layer that means "a human
-    typed this" (crud.SOURCE_PRIORITY comment).
+    typed this" (crud.SOURCE_PRIORITY comment) - its standing word on the cell, read from the table's lines
+    (`lines.layers`, cell-source overhaul: cell_sources retires).
     """
-    from database import models
+    from database import lines, models
 
-    out = set()
-    row_ids = [r for r in row_ids if r]
-    for i in range(0, len(row_ids), SCAN_CHUNK):
-        chunk = row_ids[i:i + SCAN_CHUNK]
-        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name)
-                .filter(models.CellSource.table_name == derived_table,
-                        models.CellSource.row_id.in_(chunk),
-                        models.CellSource.column_name.in_(list(target_fields)),
-                        # Same seam as `chain_replay._protected_by_user`: the partial
-                        # index's predicate is this constant, not a second quotation.
-                        models.CellSource.source_name == models.HUMAN_SOURCE_NAME)
-                .all())
-        out.update(rows)
-    return out
+    said = lines.layers(db, derived_table, [r for r in row_ids if r], list(target_fields))
+    return {cell for cell, by in said.items() if models.HUMAN_SOURCE_NAME in by}
 
 
 def analyze_promotions(db, rule: dict, min_support: int = 3, limit: int = None,

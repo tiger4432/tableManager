@@ -21,7 +21,7 @@ import map_alignment                                           # noqa: E402
 import map_overlay                                             # noqa: E402
 from chain import ingestion_worker, join_into                  # noqa: E402
 from chain.enrichment import analysis, mapper                  # noqa: E402
-from database import crud, schemas                             # noqa: E402
+from database import crud                                      # noqa: E402
 from maps import frame_confirmation                            # noqa: E402
 
 T, R = "zz_one_spelling", "zz_one_spelling_right"
@@ -37,17 +37,10 @@ def config(monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, R, {"column_types": {"code": "string"}})
 
 
-class _Row:
-    business_key_val = None
-
-
 def _seats(column, value):
     """Every seat's spelling of `value` as a key of `column` - the seat's own call, its answer as text."""
     group = ingestion_worker.group_key({chain_bindings.GROUP_BY_KEY: [column]},
                                        {"table_name": T, "data": {column: value}})
-    row = _Row()
-    crud._update_row_business_key(row, column, schemas.GeneralUpdateItem(row_id="r", updates={column: value}),
-                                  None, T)
     return {
         "key_part": crud.clean_str_value(crud.key_part(T, column, value)),
         "canonical_bind_value": map_overlay.canonical_bind_value(T, column, value),
@@ -59,7 +52,6 @@ def _seats(column, value):
             {"source_table": T, "decision_key": [column]}, {column: value})[0][0],
         "compose_unit_key": frame_confirmation.compose_unit_key(
             {"name": "r", "decision_key": [column], "derived_table": T}, {column: value}),
-        "_update_row_business_key": row.business_key_val,
     }
 
 

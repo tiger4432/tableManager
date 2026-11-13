@@ -2,8 +2,8 @@
 """총괄 35b76ba92 — 표 하나를 통째로 비운다 (소유자 10-02 「100만 행인데 어케 지움」), 소유자 10-23 부터
 «Delete every row of a table» 의 full reset (was scripts/empty_table.py).
 
-On PostgreSQL, on the hold-copy world: the dry run says what goes; the apply takes the rows, the
-table's cell layers and overwrites in one transaction with one summary audit line, withdraws the
+On PostgreSQL, on the hold-copy world: the dry run says what goes; the apply takes the rows and
+overwrites in one transaction with one summary audit line - the table's lines stay (history) - withdraws the
 ledger atoms of every source reading the table through `rescope`, and leaves no outbox event. It
 refuses a count that moved and a view; the op takes confirm_rows with a full reset and only then.
 """
@@ -20,14 +20,22 @@ if SERVER_DIR not in sys.path:
 from admin import retroactive                                        # noqa: E402
 from chain import replay                                             # noqa: E402
 from database import crud, models, schemas                           # noqa: E402
+from database.lines import layers, lines_relation                    # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
+from support import line_tables                                      # noqa: E402
 
 pytestmark = pytest.mark.pg
 
 
 @pytest.fixture(name="world")
 def fixture_world(pg_engine, monkeypatch, tmp_path):
-    yield from hw.build(pg_engine, monkeypatch, tmp_path)
+    for world in hw.build(pg_engine, monkeypatch, tmp_path):
+        line_tables.build(pg_engine, hw.OFFICIAL)          # the official table keeps lines, as ensure_declared makes it
+        try:
+            yield world
+        finally:
+            world["db"].rollback()                        # its open read would hold the drop's lock
+            line_tables.drop(pg_engine, hw.OFFICIAL)
 
 
 def _seeded(world):
@@ -47,6 +55,13 @@ def _seeded(world):
 
 def _count(world, sql, **params):
     return world["db"].execute(text(sql), params).scalar()
+
+
+def _log_layers(world):
+    """How many standing layers the log's rows carry (lines.layers - one a row, column and source)."""
+    db = world["db"]
+    ids = [r for (r,) in db.execute(text('SELECT row_id FROM "%s"' % hw.LOG))]
+    return sum(len(said) for said in layers(db, hw.LOG, ids).values())
 
 
 def _reset(world, **kw):
@@ -91,22 +106,22 @@ def test_the_dry_run_says_what_goes_and_writes_nothing(world):
 
 def test_apply_takes_rows_layers_overwrites_and_atoms_and_wakes_nothing(world):
     _seeded(world)
-    log_layers = _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG)
+    log_layers = _log_layers(world)
     outbox = _count(world, "SELECT coalesce(max(id), 0) FROM database_outbox")
     history = "SELECT count(*) FROM audit_logs WHERE table_name = :t AND source_name = :s"
     lines = _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE)
+    held = _count(world, 'SELECT count(*) FROM "%s"' % lines_relation(hw.OFFICIAL))
     result = _reset(world, confirm_rows=2, apply=True, by="tester")
 
     assert result["rows_deleted"] == 2
     assert result["ledger_withdrawn"] == {hw.SOURCE: 2}
+    assert held > 0 and _count(world, 'SELECT count(*) FROM "%s"' % lines_relation(hw.OFFICIAL)) == held
     for sql in ('SELECT count(*) FROM "%s"' % hw.OFFICIAL,
-                "SELECT count(*) FROM cell_sources WHERE table_name = '%s'" % hw.OFFICIAL,
                 "SELECT count(*) FROM cell_overwrites WHERE table_name = '%s'" % hw.OFFICIAL,
                 "SELECT count(*) FROM database_outbox WHERE id > %d" % outbox):
         assert _count(world, sql) == 0, sql
     assert hw.said(world) == []
-    assert _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG) \
-        == log_layers                                                 # the other table untouched
+    assert _log_layers(world) == log_layers                          # the other table untouched
     assert _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE) == lines + 1
 
 

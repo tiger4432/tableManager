@@ -53,29 +53,6 @@ def test_a_name_no_owner_built_has_no_owner(name):
     assert crud.layer_owner(name) is None
 
 
-def test_both_write_doors_stamp_the_owner_cells_off_the_name():
-    """A layer row says its owner in `owner_rule` / `owner_key` - the bulk upsert and an ORM insert alike, both off the
-    one parser; a layer no rule owns says none."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    models.CellSource.__table__.create(engine)
-    db = sessionmaker(bind=engine)()
-    owned = crud.owned_layer_name("r (1)", "k|2")
-    crud.bulk_upsert_cell_sources(db, [
-        {"table_name": "t", "row_id": "a", "column_name": "c", "source_name": owned, "value": 1},
-        {"table_name": "t", "row_id": "a", "column_name": "d", "source_name": "file_a", "value": 2}])
-    db.add(models.CellSource(table_name="t", row_id="b", column_name="c", source_name=owned, value=3))
-    db.add(models.CellSource(table_name="t", row_id="b", column_name="d", source_name="user", value=4))
-    db.commit()
-    got = {(row.row_id, row.column_name): (row.owner_rule, row.owner_key) for row in db.query(models.CellSource)}
-    assert got == {("a", "c"): ("r (1)", "k|2"), ("a", "d"): (None, None),
-                   ("b", "c"): ("r (1)", "k|2"), ("b", "d"): (None, None)}
-
-
 A, B = crud.owned_layer_name("rule_a", "k"), crud.owned_layer_name("rule_b", "k")
 
 
@@ -93,45 +70,3 @@ def test_two_rules_on_one_cell_rank_by_priority_then_declared_order(monkeypatch,
     times = {A: datetime(2026, 11, 8, 3), B: datetime(2026, 11, 8, 2), crud.CHAIN_SOURCE: datetime(2026, 11, 8, 1)}            # A newest, the unowned layer oldest
     sources = {name: {"value": name} for name in layers}
     assert crud.compute_priority_value(sources, ingested_at_by_source={n: times[n] for n in layers}) == (shown, shown)
-
-
-def test_a_database_from_before_owners_is_refused_at_the_write_until_the_boot_adds_the_columns():
-    """A box pulled onto this code has cell_sources without owner_rule / owner_key: a layer write says so (never fails
-    inside the ORM), the boot adds them, then the write passes - and the rows already there keep their values."""
-    from sqlalchemy import create_engine, text
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
-        conn.execute(text("INSERT INTO cell_sources (source_name, value) VALUES ('user', 'x')"))
-    with pytest.raises(RuntimeError, match="the boot adds them"):
-        models.require_owner_columns(engine)
-    models.ensure_owner_columns(engine)
-    models.require_owner_columns(engine)
-    with engine.connect() as conn:
-        assert conn.execute(text("SELECT source_name, value, owner_rule, owner_key FROM cell_sources")).all() == [
-            ("user", "x", None, None)]
-
-
-def test_a_session_bound_to_a_connection_is_asked_through_that_connection():
-    """Lead 11-09 (release 11-09's PG red, test_a_time_the_database_refuses_is_not_entered): a session bound to one
-    Connection - a held zone, the dev bench - asks with its bind: read through that Connection, remembered by its
-    Engine."""
-    from sqlalchemy import create_engine, text
-
-    from database import models
-
-    engine = create_engine("sqlite://")
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE cell_sources (id INTEGER PRIMARY KEY, source_name VARCHAR, value VARCHAR)"))
-    with engine.connect() as conn:
-        with pytest.raises(RuntimeError, match="the boot adds them"):
-            models.require_owner_columns(conn)
-    models.ensure_owner_columns(engine)
-    models._OWNER_COLUMNS.discard(engine)            # the boot remembered it - forget, so the next read is the
-    assert engine not in models._OWNER_COLUMNS       # Connection's own
-    with engine.connect() as conn:
-        models.require_owner_columns(conn)
-    assert engine in models._OWNER_COLUMNS

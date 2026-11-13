@@ -47,18 +47,17 @@ THE USER LAYER IS THE WHOLE SAFETY PROPERTY
       injection, not asserted.
 
 R3 - RE-MATERIALISE THE RESOLUTION OVER LAYERS THAT ARE ALREADY STORED
-    R1 and R2 both change WHAT IS STORED. R3 changes nothing stored: it re-runs
-    `crud.compute_priority_value` over the layers a cell already has and repairs
-    the materialised display column when the answer moved. It exists because
+    R1 and R2 both change WHAT IS STORED. R3 changes no line: it merges rows again
+    through write_lines' door (`_merges_again` - the one «what shows» every write
+    stamps, won_by with it) and writes each cell it moved a history line. It exists because
     that answer DID move - `compute_priority_value` used to resolve a tie by dict
     insertion order, which handed every tie to the incumbent, so a corrected
     re-delivery was stored and silently discarded (measured 2026-08-11: 200 of
     200 tied cells on `assy_qa` displayed the older value). Fixing the resolver
     repairs only future writes; the already-materialised wrong values need this
-    pass. It shares `_load_cell_state` and `_resolve_cell` with R2 - R2 is
-    exactly R3 with one layer excluded - and it refuses to touch a cell with
-    fewer than two layers, because such a cell has no tie and a cell with zero
-    layers would resolve to a blank.
+    pass. It reads the layers by `_load_cell_state` as R2 does and asks only the rows
+    holding a cell of two layers or more (or a removed formula's column); such a row is
+    merged whole - the row is the unit (lead 11-11).
 
 HOW A WITHDRAWAL BECOMES VISIBLE (not silent)
     Every cell R2 changes gets an `AuditLog` entry with the WITHDRAWN source in
@@ -89,7 +88,7 @@ import event_constants
 #    그 한 줄이 네 모듈짜리 고리의 마지막 이음매였다. 연산이 둘보다 «아래»로 내려갔다.
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
-from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, key_columns, resolve_target, withdraw_source
+from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, key_columns, resolve_target, withdraw_source
 from error_said import told
 
 # ⚰️ `WRITE_CHUNK = 1000` stood here - how many proposals this module wrote at once.
@@ -778,16 +777,22 @@ def _gone_maps(db, rule, run_id):
     """`(columns, [key tuple])` - the maps or jobs the rule's layers sit on in its target that this run's batches never
     named, by the target's own values; or `(None, why)` when it cannot be told."""
     import json
-    from sqlalchemy import or_, tuple_
+    from sqlalchemy import select, tuple_
     import mapper_sdk
     from chain import rule_shape
-    from database import crud, models
+    from chain.cell_layer import _claimed_cells, claimed_lines
+    from database import crud, lines, models
 
     table = rule.get("target_table")
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
         return None, "the target %s has no model in this process" % table
     came_as, keys = mapper_sdk.removal_columns(rule, table)
+    if not lines.has_lines(db, table):
+        if lines.keeps_lines(table, crud.TABLE_CONFIG.get(table)):     # declared, its line table not built
+            return None, "%s: line table not built - the sweep cannot tell" % table
+        logger.info("[ReplaySweep] %s: no lines table - nothing to sweep", table)    # sys_* keep none (lead 11-11 ㄱ)
+        return came_as, []
     named = [spelled for (spelled,) in db.query(models.ReplayNamedMap.scope).filter(
         models.ReplayNamedMap.run_id == run_id, models.ReplayNamedMap.rule == rule.get("name"),
         models.ReplayNamedMap.scope != TALLY)]
@@ -806,10 +811,13 @@ def _gone_maps(db, rule, run_id):
             target = tuple_(*columns)
         for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
             covered.update(r for (r,) in db.query(model.row_id).filter(target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
-    S = models.CellSource
-    owned = {r for (r,) in db.query(S.row_id).filter(
-        S.table_name == table, S.updated_by == rule_shape.declaration_of(rule),
-        or_(S.source_name == crud.CHAIN_SOURCE, S.source_name.like(crud.CHAIN_SOURCE + " (%"))).distinct()}
+    # the rule's chain lines that still say a column - a line whose columns are all withdrawn owns nothing
+    lt, bits = claimed_lines(db, table)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    owned = {line["row_id"] for line in db.execute(select(lt.c.row_id, *said).where(*_claimed_filter(
+        lt, bits, crud.CHAIN_SOURCE, written_by=[rule_shape.declaration_of(rule)]),
+        lt.c.row_id.in_(select(model.__table__.c.row_id))).distinct()).mappings()
+        if _claimed_cells(line, bits)}
     gone_rows = sorted(owned - covered)
     found = set()
     key_columns = [getattr(model, column) for column in keys]
@@ -1200,55 +1208,46 @@ def unwritten_scope(rule_name, table_name, columns=None):
 def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
-    Two aggregate queries, no row materialisation, no per-cell recompute - so this
-    is the half of `withdraw_source` that can sit on a request path. The first
-    counts the source's claims among the table's layers - the source is the lookup
-    index's last column (`idx_sources_by_source` is retired, S-118; `withdraw_source`
-    step 1); the second is driven from `cell_overwrites` and is therefore
-    bounded by the number of manual pins, not by `cell_sources`.
+    Two reads of the lines the source claims on rows t holds, grouped by a line's head/withdrawn bits - no row
+    materialisation, no per-cell recompute. A line whose row is gone is left out by the join on t: the run never
+    reaches it, since it pages t's own rows (`resolve_target`'s model) and asks their lines by id. Each group's cells are `_claimed_cells`' answer, the one the run's read gives, times the
+    group's lines: a line may say several columns, in any chunk. The pin count joins `cell_overwrites`: a pin naming
+    this source on a cell its lines claim.
 
-    Returns ``{cells_claimed, pinned}``. ``cells_claimed - pinned`` is an UPPER
-    BOUND on `withdraw_source`'s `cells_withdrawn`, not an equality, and the two
-    gaps are worth naming because a surface that reported it as exact would
-    overstate the operation:
+    Rows are not counted here. Which rows the withdrawal leaves with nothing that keeps them is `cell_layer.shells`'
+    judgement over what is left, and the run counts them (`rows_deleted`, its dry run too) - lead ㄷ, 11-14.
 
-      * a `cell_sources` row whose dynamic row no longer exists is counted here and
-        skipped there (`withdraw_source` looks the row up and `continue`s on None),
-      * and `cells_withdrawn` is itself larger than the number of cells whose
-        DISPLAYED value changes, because the revealed source may carry the same
-        value (`value_unchanged`).
-
-    Closing either gap requires the per-cell recompute that is the run itself.
+    Returns ``{cells_claimed, pinned}`` - the run's `cells_matched` and `pinned_skipped`, so ``cells_claimed - pinned``
+    is its `cells_withdrawn` (the gate test holds them equal). That is still more than the cells whose DISPLAYED value
+    changes, because the revealed source may carry the same value (`value_unchanged`); closing that gap is the
+    per-cell recompute that is the run itself.
     """
-    from sqlalchemy import and_, case, func
+    from sqlalchemy import func, select
 
+    from chain.cell_layer import _claimed_cells, claimed_lines, refuse_without_lines
     from database import models
 
-    claimed = db.query(func.count()).select_from(models.CellSource).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by)).scalar() or 0
+    refuse_without_lines(db, table_name)
+    lt, bits = claimed_lines(db, table_name)
+    claims = _claimed_filter(lt, bits, source_name, columns, written_by)
+    rows = resolve_target(table_name, columns)[0].__table__                # the rows the run pages
+    held = lt.join(rows, rows.c.row_id == lt.c.row_id)
+    said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+    n = func.count().label("n")
+    claimed = sum(g["n"] * len(_claimed_cells(g, bits, columns))
+                  for g in db.execute(select(*said, n).select_from(held).where(*claims).group_by(*said)).mappings())
 
-    # Cells this source claims AND a human pinned TO this source. Joined rather
-    # than counted separately: a pin naming this source on a cell it does not
-    # claim changes nothing, and counting it would understate the result.
-    pinned = db.query(func.count()).select_from(models.CellSource).join(
-        models.CellOverwrite,
-        and_(models.CellOverwrite.table_name == models.CellSource.table_name,
-             models.CellOverwrite.row_id == models.CellSource.row_id,
-             models.CellOverwrite.column_name == models.CellSource.column_name),
-    ).filter(
-        *_claimed_filter(table_name, source_name, columns, written_by),
-        models.CellOverwrite.manual_priority_source == models.CellSource.source_name,
-    ).scalar() or 0
+    # Cells this source claims AND a human pinned TO this source - the pin's column among the line's claimed cells:
+    # a pin naming this source on a cell it does not claim changes nothing, and counting it would overstate.
+    co = models.CellOverwrite
+    pinned = sum(g["n"] for g in db.execute(
+        select(co.column_name, *said, n).select_from(held)
+        .join(co, and_(co.table_name == table_name, co.row_id == lt.c.row_id,
+                       co.manual_priority_source == lt.c.source_name))
+        .where(*claims).group_by(co.column_name, *said)).mappings()
+        if g["column_name"] in _claimed_cells(g, bits, columns))
 
-    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
-    # a pinned cell, or a value no layer carries, keeps one.
-    cs = models.CellSource
-    whole = (db.query(cs.row_id).filter(cs.table_name == table_name).group_by(cs.row_id)
-             .having(func.min(case((and_(*_claimed_filter(table_name, source_name, columns, written_by)), 1),
-                                   else_=0)) == 1).subquery())
-    emptied = db.query(func.count()).select_from(whole).scalar() or 0
-
-    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
+    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
 
 
 
@@ -1257,147 +1256,14 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
 
-def _write_resolved(db, table_name, row, col, decision, tx_id):
-    """R3's write of a cell whose stored layers answer another value: the column and one history line
-    (`R3_AUDIT_SOURCE`, `resolved:<winner>`). The layer fold writes the cells it moves the same way."""
+def _write_resolved(db, table_name, row_id, col, decision, tx_id, business_key=None):
+    """R3's history line of a cell its merge moved (`R3_AUDIT_SOURCE`, `resolved:<winner>`, old -> new) - the value
+    itself is written by write_lines (the allowed exception: a cell's old -> new, lead 11-11)."""
     from database import crud
 
-    setattr(row, col, decision["new_value"])
-    crud.create_audit_log(db, table_name, row.row_id, col, decision["old_value"], decision["new_value"],
+    crud.create_audit_log(db, table_name, row_id, col, decision["old_value"], decision["new_value"],
                           R3_AUDIT_SOURCE, f"resolved:{decision['top_source']}", transaction_id=tx_id,
-                          business_key=getattr(row, "business_key_val", None))
-
-
-#: Cells each of the fold's lists names, for the dry run (총괄 4dd303f01 「앞 다섯」).
-FOLD_SAMPLE = 5
-
-
-def fold_file_layers(db, table_name: str, apply: bool = False,
-                     chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None, pace: str = None,
-                     log=logger.info, checkpoint=None) -> dict:
-    """The layer fold over what one table has already stacked (총괄 225b2c658 · 8ec008914 · 4dd303f01) -
-    the write path stops the stacking, this removes what stacked before it. The name is the first
-    fold's: old run records and the CLI name it.
-
-    Per cell, `crud.stacked_layers`: file layers that repeat one go; the chain's plain layer stamped
-    with a source row becomes that row's (`chain_ingestion (<row>)`), or goes when that row's layer is
-    there; one with no source row stays (총괄 10-11 «다»), and so does a key column's. A cell of two layers and more holding a chain row layer,
-    whose layers now answer another value (a row layer ranks as the chain's), gets R3's write - the
-    value and one history line. One commit per page; a stop lands between pages and a re-run finds
-    only what is left.
-    """
-    from sqlalchemy import literal, update
-
-    from database import crud, models
-
-    from chain import keyset_scan
-
-    model, col_types = resolve_target(table_name)
-    keys = key_columns(table_name)
-    pages_per_cycle, rest_seconds = resolve_pace(pace)
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
-             "layers_before": 0, "layers_after": 0, "deepest_before": 0, "deepest_after": 0,
-             "chain_renamed": 0, "chain_deleted": 0, "chain_unstamped": 0, "chain_differs": 0,
-             "chain_copies": 0, "shown_changed": 0,
-             "first": {"chain_differs": [], "chain_copies": [], "shown_changed": []}, "stopped": False}
-    cells = models.CellSource.__table__.c
-    # 🔴 ONE STATEMENT PER PAGE AND COLUMN, the row's layer spelled from its own origin_row_id - one UPDATE per
-    #    layer took 1,196 s for 53,520 on the box's dt_log copy (the dry run, 83 s). The two halves around the
-    #    origin are `merged_layer_name`'s, so the name has one spelling.
-    before, after_tag = crud.merged_layer_name(crud.CHAIN_SOURCE, "\x00").split("\x00")
-
-    def rename(column, row_ids):
-        db.execute(update(models.CellSource.__table__)
-                   .where(cells.table_name == table_name, cells.column_name == column,
-                          cells.source_name == crud.CHAIN_SOURCE, cells.row_id.in_(row_ids))
-                   .values(source_name=literal(before) + cells.origin_row_id + literal(after_tag)))
-
-    def first(key, entry):
-        if len(stats["first"][key]) < FOLD_SAMPLE:
-            stats["first"][key].append(entry)
-
-    tx_id = f"{R3_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
-    with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):   # the label R3's writes carry
-        size = keyset_scan.PageSize(chunk_size)
-        for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
-                                           limit=limit, size=size):
-            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
-                stats["stopped"] = True
-                log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
-                break
-            stats["pages"] += 1
-            stats["rows_scanned"] += len(page)
-            cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
-            gone, renames, asked = [], [], []
-            for (row_id, col), layers in cell_sources.items():
-                if col not in col_types:
-                    continue
-                pin = pins.get((row_id, col))
-                fold = crud.stacked_layers(layers, col_types[col], table_name, pin, key=col in keys)
-                drop = fold["file"] + fold["chain"]
-                after = {name: entry for name, entry in layers.items() if name not in drop}
-                for was, now in fold["renamed"].items():
-                    after[now] = after.pop(was)
-                stats["layers_before"] += len(layers)
-                stats["layers_after"] += len(after)
-                stats["deepest_before"] = max(stats["deepest_before"], len(layers))
-                stats["deepest_after"] = max(stats["deepest_after"], len(after))
-                stats["cells_folded"] += bool(fold["file"])
-                stats["layers_deleted"] += len(fold["file"])
-                stats["chain_deleted"] += len(fold["chain"])
-                stats["chain_renamed"] += len(fold["renamed"])
-                plain = layers.get(crud.CHAIN_SOURCE)
-                stats["chain_unstamped"] += bool(col not in keys and plain is not None
-                                                 and not plain.get("origin_row_id"))
-                if fold["differs"]:
-                    stats["chain_differs"] += 1
-                    first("chain_differs", {"row_id": row_id, "column": col})
-                if fold["copies"]:
-                    stats["chain_copies"] += fold["copies"]
-                    first("chain_copies", {"row_id": row_id, "column": col})
-                gone.extend((table_name, row_id, col, name) for name in drop)
-                renames.extend((col, row_id) for _was in fold["renamed"])
-                if len(layers) > 1 and any(name != crud.CHAIN_SOURCE and crud.layer_ranks_as(name)
-                                           == crud.CHAIN_SOURCE for name in after):
-                    asked.append((row_id, col, after, pin))
-            rows = {}
-            if asked:
-                rows = {row.row_id: row for row in db.query(model).filter(
-                    model.row_id.in_(sorted({row_id for row_id, *_rest in asked}))).all()}
-            moved = []
-            for row_id, col, after, pin in asked:
-                row = rows.get(row_id)
-                if row is None:
-                    continue
-                decision = _resolve_cell(table_name, col_types, row, col, after, pin)
-                if decision["changed"]:
-                    stats["shown_changed"] += 1
-                    first("shown_changed", {"row_id": row_id, "column": col, "old_value": decision["old_value"],
-                                            "new_value": decision["new_value"], "top_source": decision["top_source"]})
-                    moved.append((row, col, decision))
-            if apply and (gone or renames or moved):
-                crud.bulk_delete_cell_sources(db, gone)
-                by_column = {}
-                for col, row_id in renames:
-                    by_column.setdefault(col, []).append(row_id)
-                for col, row_ids in sorted(by_column.items()):
-                    rename(col, row_ids)
-                for row, col, decision in moved:
-                    _write_resolved(db, table_name, row, col, decision, tx_id)
-                db.commit()
-            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
-                size.rest(rest_seconds)
-    if not apply:
-        db.rollback()
-    log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
-        f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
-        f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
-        f"{stats['deepest_after']}; chain plain layers off the keys {stats['chain_renamed']} renamed to their row's, "
-        f"{stats['chain_deleted']} whose row layer is there deleted, {stats['chain_differs']} kept differing "
-        f"({stats['chain_unstamped']} without a source row); {stats['chain_copies']} chain merge copies; "
-        f"{stats['shown_changed']} shown value(s) move")
-    return stats
+                          business_key=business_key)
 
 
 #: Who deleted, in the history of each row `fold_duplicate_rows` takes.
@@ -1413,14 +1279,25 @@ FOLD_ROWS_DIFFERING_KEYS = 5
 FOLD_KEEP_MOST_LAYERS = "most_layers"
 
 
-def _layer_count(model, table_name):
-    """How many cell layers the row holds - `keep` most_layers ranks by it."""
-    from sqlalchemy import func, select
+def _layer_count(db, model, table_name):
+    """How many cells the row's head lines still claim (head, not withdrawn - a line says many cells) - `keep`
+    most_layers ranks by it. `cell_layer._claimed_cells`' answer, spelled in SQL (it sits in the ranking's ORDER BY)
+    with `lines._mask` a column, as `lines.winners_sql` reads a cell."""
+    from sqlalchemy import and_, case, func, literal, select
 
-    from database import models
+    from chain.cell_layer import claimed_lines
+    from database import lines
 
-    cs = models.CellSource
-    return select(func.count()).where(cs.table_name == table_name, cs.row_id == model.row_id).scalar_subquery()
+    if not lines.has_lines(db, table_name):
+        return literal(0)
+    lt, bits = claimed_lines(db, table_name)
+
+    def has(family, bit):
+        return lt.c["%s_%d" % (family, bit // lines.BITS_PER_CHUNK)].op("&")(lines._mask(bit))
+    cells = sum((case((and_(has("head", bit) != 0, has("withdrawn", bit) == 0), 1), else_=0)
+                 for bit in bits.values()), literal(0))
+    return select(func.coalesce(func.sum(cells), 0)).where(
+        lt.c.row_id == model.row_id, or_(*[c != 0 for c in lt.c if c.name.startswith("head_")])).scalar_subquery()
 
 
 def _blank_key(model, keys):
@@ -1562,7 +1439,7 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     compared = [column for column in config.get("column_types") or {} if column in model.__table__.columns
                 and column not in keys and column != mark and column not in identity]
     ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged, compared=compared,
-                                by=_layer_count(model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
+                                by=_layer_count(db, model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
     said_as = order or "layers"
     woken = _excluding_by(table_name, mark) if mark else []
     found = _key_index(db, table_name, keys)
@@ -1771,13 +1648,18 @@ FULL_RESET_SOURCE = "full_reset"
 def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = False, by: str = EVERY_ROW_DELETER,
                setup=None, rules=None, log=logger.info) -> dict:
     """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
-    총괄 35b76ba92): the rows, the table's cell layers and pins in ONE transaction with one summary history line, then
+    총괄 35b76ba92): the rows and pins in ONE transaction with one summary history line - the table's lines stay, its
+    history with no head (a271f5726, lead ruling ㄴ 11-11 - a row made again on an old id starts from nothing):
+    `layers` counts the cells no one sees after it - then
     every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
     grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
     person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
     and refuses a table that moved since."""
+    from sqlalchemy import func, select, update
+
+    from chain.cell_layer import _claimed_cells, claimed_lines
     from chain.ingestion_worker import loaded_chain_rules, watches_table
-    from database import crud, models
+    from database import crud, lines, models
     from ledger import backfill, followup, schema
     from ledger.setup import load_setup
 
@@ -1789,9 +1671,17 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' is not a declared table (table_config)" % table_name)
     setup = load_setup() if setup is None else setup
     rules = loaded_chain_rules() if rules is None else rules
-    layers = dict(db.execute(text(
-        "SELECT source_name, count(*) FROM cell_sources WHERE table_name = :t GROUP BY source_name"),
-        {"t": table_name}).fetchall())
+    layers = {}            # {source: the cells its head lines on t's rows still claim} - count_withdrawable's count
+    lined = lines.has_lines(db, table_name)
+    if lined:
+        lt, bits = claimed_lines(db, table_name)
+        said = [c for c in lt.c if c.name.startswith(("head_", "withdrawn_"))]
+        rows = models.DYNAMIC_TABLES[table_name].__table__
+        for g in db.execute(select(lt.c.source_name, *said, func.count().label("n"))
+                            .where(lt.c.row_id.in_(select(rows.c.row_id)),
+                                   or_(*[c != 0 for c in said if c.name.startswith("head_")]))
+                            .group_by(lt.c.source_name, *said)).mappings():
+            layers[g["source_name"]] = layers.get(g["source_name"], 0) + g["n"] * len(_claimed_cells(g, bits))
     found = {
         "mode": "apply" if apply else "dry-run", "table": table_name,
         "rows": db.execute(text('SELECT count(*) FROM "%s"' % table_name)).scalar(),
@@ -1810,9 +1700,11 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         raise ReplayRefused("'%s' has %d row(s) now, not %s - read the preview again and give its count"
                             % (table_name, found["rows"], confirm_rows))
     tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
+    if lined:              # the leaving rows' lines stay as history with no head - no event (lead 11-11)
+        heads = [c for c in said if c.name.startswith("head_")]
+        db.execute(update(lt).where(lt.c.row_id.in_(select(rows.c.row_id)), or_(*[c != 0 for c in heads]))
+                   .values({c.name: 0 for c in heads}))
     found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
-    found["layers_deleted"] = db.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
-                                         {"t": table_name}).rowcount
     found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
                                              {"t": table_name}).rowcount
     crud.create_audit_log(db, table_name, "*", "*", found["rows"], 0, FULL_RESET_SOURCE, by, transaction_id=tx)
@@ -1822,8 +1714,8 @@ def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = Fals
         source: backfill.rescope(db.get_bind(), setup, source, None, (), apply=True, whole_source=True,
                                  world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
         for source in found["ledger_atoms"]}
-    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['layers_deleted']} layer(s), "
-        f"{found['overwrites_deleted']} pin(s) deleted in {tx}; ledger atoms withdrawn {found['ledger_withdrawn']}")
+    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['overwrites_deleted']} pin(s) deleted "
+        f"in {tx}, its lines kept as history with no head; ledger atoms withdrawn {found['ledger_withdrawn']}")
     return found
 
 
@@ -1911,27 +1803,11 @@ def _mark_folded(db, table_name, mark, page, woken) -> int:
     return len(page)
 
 
-def _insert_by_arrays(db, table, mappings):
-    """The rows of `mappings` (every column but the key) into `table` in one statement."""
-    from sqlalchemy import text
-    from database import crud
-
-    if not mappings:
-        return
-    columns = [column for column in table.columns if not column.primary_key]
-    params, casts = crud.array_params(db, columns, [[one.get(column.name) for column in columns] for one in mappings])
-    db.execute(text('INSERT INTO "%s" (%s) SELECT * FROM unnest(%s)' % (
-        table.name, ", ".join('"%s"' % column.name for column in columns), ", ".join(casts))), params)
-
-
 #: The writer of the history line a notation backfill leaves on each cell it folds.
 NOTATION_BACKFILL_SOURCE = "notation_backfill"
 
 #: Rows a page of `fold_written_notation` reads, judges and writes in one commit (총괄 10-11, speed: 4M rows).
 NOTATION_FOLD_PAGE = 20000
-#: The dialects a page of it is folded by value on (`_fold_by_values` writes with PostgreSQL arrays);
-#: on any other every row takes the row path.
-FOLD_BY_VALUE_DIALECTS = ("postgresql",)
 
 
 def fold_written_notation(db, table_name: str, apply: bool = False,
@@ -1942,42 +1818,31 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     table does not hold is named in `row_ids_not_found`.
 
     Notation stage three (총괄 2dc2c1baf), widened to the whole write fold (총괄 c6a8c069c ㉡):
-    what a column stored before today's fold is folded IN PLACE by the two steps the write funnel
-    runs - a `write` column's notation fold (`notation_norm.fold_for_write`), then, on every text
-    column, the cast (`crud.cast_value_by_type`, which stores a number in `clean_str_value`'s
-    spelling). Every layer's value, the shown value and the row's business key.
+    what a column stored before today's fold is folded by the two steps the write funnel runs - a
+    `write` column's notation fold (`notation_norm.fold_for_write`), then, on every text column, the
+    cast (`crud.cast_value_by_type`, which stores a number in `clean_str_value`'s spelling).
 
-    A cell whose layers moved shows what the folded layers now decide - `cell_layer._resolve_cell`
-    over `_load_cell_state`, the one layer -> shown pair R2 and R3 use; a cell whose layers did not
-    move has its shown value folded.
+    On lines (cell-source overhaul, design «쓰기» 53): each head line whose value folds gets a new line of
+    the same source, hand, input row and owner that KEEPS ITS «WHEN» (`write_lines` item `at`) - the head
+    moves to it, the rank does not, the old line stays as history, and the batch keeps when the fold was
+    done. A shown value no line said is folded by a line of the backfill's own. The shown values are
+    merged again by the write; nothing is written to t by hand.
 
     🔴 A KEY MOVES ONLY WHEN THE FOLD MOVED ONE OF ITS PARTS, and only when the row's unfolded
-    parts still spell its stored key. Otherwise the row is skipped and named (`not_rebuilt`):
+    parts still spell its stored key. Otherwise the row is skipped whole and named (`not_rebuilt`):
     measured on the box 10-01, 135,472 rows in 11 tables whose cells no longer spell their stored
-    key (a time part read back as a datetime, an older separator, probe rows), and rebuilding the
-    key from those cells would have changed their identity.
-
-    ⛔ NOT THROUGH THE WRITE DOOR: re-sending a stored layer moves its `ingested_at` ahead of a
-    newer layer of its class and changes the shown VALUE, not its spelling (measured, 0d9a69a63).
-    Here only a layer's `value` is updated.
-    A row whose folded key another row holds is MERGED into that row (owner 10-06 「예」) through
-    `crud.merge_into_key_holders`, as the write door and the key fix do - after its own cells and
-    layers are folded, so the holder takes folded values; three or more meet in row_id order. A
-    merge cannot be undone; the dry run counts and names them. A value a second fold would move again is counted by the dry
-    run and stops the run before the page holding it is written (47aba5d44 ③). One history line
-    per shown cell that changes; the rows' outbox events carry the change to the ledger. One
-    commit per page.
-
-    🔴 ON POSTGRESQL A PAGE IS FOLDED BY VALUE (총괄 10-11, 소유자 「노테이션 소급 엄청 빨리」): each
-    distinct spelling of the page is folded once and what moves is written set-based
-    (`_fold_by_values` · `_write_by_values`); a row whose key part could move is judged by the row
-    path (`plan_rows`, the one every row takes on another dialect) and written with the page - only
-    a row that merges, and the row it merges into, keep the ORM write. Same end state, measured A = B.
+    key. A key in an old number spelling with no part moved is re-keyed too (owner 10-20).
+    The key moves and merges are write_lines' step 5½ - one plan for the page, so rows meeting in
+    row_id order end in the first; two rows holding one stored key are merged into the first after the
+    page's fold (`write_lines.merge_rows`). A merge cannot be undone; the dry run - a read, writing
+    nothing - counts and names them. A value a second fold would move again is counted by the dry run
+    and stops the run before the page holding it is written (47aba5d44 ③). One commit per page.
     """
-    from sqlalchemy import func
+    from sqlalchemy import func, select
 
     import notation_norm
-    from database import crud, models
+    from database import crud, lines, models
+    from database.write_lines import key_owners, merge_rows, write_lines
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name)
@@ -2000,7 +1865,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
              "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_merged": 0,
              "same_key_groups": 0, "split_key_groups": 0,
              "merged": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
-             "moves_again": 0, "again": [], "time_left": {},
+             "moves_again": 0, "again": [], "time_left": {}, "pinned_left": 0,
              "stopped": False, "stopped_on_moves_again": False}
     selection = None
     if row_ids is not None:
@@ -2017,12 +1882,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     aliases = notation_norm.aliases_by_column(db)
     claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
-    # a column whose year is when its value came in folds by each layer's time, not by spelling (lead 11-10)
-    by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS and not any(
-        notation_norm.reads_arrival(notation_norm.write_spec(table_name, column)["rules"]) for column in written)
+    memo = {}                           # (column, value, arrived) -> its fold: a page holds few spellings
 
     def fold_value(column, value, arrived=None):
         """(stored, verdict, [column, value, stored, again] or None) - THE fold of one stored value."""
+        hit = memo.get((column, value, arrived))
+        if hit is not None:
+            return hit
         stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases, arrived)
         again = None
         if stored != value:
@@ -2034,6 +1900,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         if column in text_columns:
             stored = crud.cast_value_by_type(stored, col_types.get(column, "string"), column,
                                              table_name)
+        if len(memo) < 100000:
+            memo[(column, value, arrived)] = (stored, verdict, again)
         return stored, verdict, again
 
     def fold(column, value, again, arrived=None):
@@ -2047,67 +1915,81 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     def twins_of(rows):
         """{row_id: the key's first row} - rows whose stored key a row with a smaller row_id stores too: a
         same-spelling duplicate (owner 10-20 - two «1» rows, and the table could not take its uq_bk_ index)."""
-        keys = sorted({row.business_key_val for row in rows if row.business_key_val})
-        if not keys:
-            return {}
-        firsts = dict(db.query(model.business_key_val, func.min(model.row_id))
-                      .filter(model.business_key_val.in_(keys))
-                      .group_by(model.business_key_val).having(func.count() > 1).all())
+        keys = {row.business_key_val for row in rows if row.business_key_val}
+        firsts = {key: row["row_id"] for key, row in key_owners(db, now_table, keys).items()} if keys else {}
         return {row.row_id: firsts[row.business_key_val] for row in rows
                 if row.business_key_val in firsts and firsts[row.business_key_val] != row.row_id}
 
     same_groups, split_groups = set(), set()
+    keeps_lines = lines.has_lines(db, table_name)
+    now_table = lines.current_table(db, table_name, config)
 
-    def plan_rows(page, again, fold, twins=None):
-        """The row path over `page` (rows of the model): each row's cells, layers, key and merge."""
-        twins = twins_of(page) if twins is None else twins
+    def plan_rows(page, again):
+        """Each row of `page`: its shown cells that fold (`cells`), its head lines that fold (`lines`, one a line
+        id), the folded shown values no line said (`bare`), its key and its merge."""
+        twins = twins_of(page)
         plans, unknown = {}, set()
+        ids = [row.row_id for row in page]
+        heads = lines.layers(db, table_name, ids, folded)
+        won_by = {}                     # row -> {column: the line its shown value is}
+        if heads:
+            won_by = lines.won_by_of(db, table_name, ids)
+            # a cell with lines that t was never stamped as (copied where t showed another spelling - the copy
+            # stores what today's write would): its winner is asked of the merge, as the write will merge it
+            loose = sorted({r for (r, c) in heads if c not in won_by.get(r, {})})
+            for r, cols in (lines.merge(db, table_name, config, loose) if loose else {}).items():
+                won_by.setdefault(r, {}).update({c: line_id for c, (_v, line_id) in cols.items() if line_id})
+        pinned = set()                  # a pin over a cell no line said keeps t's value (the merge's rule)
+        if keeps_lines:
+            ov = models.CellOverwrite.__table__
+            pinned = {(r, c) for r, c in db.execute(select(ov.c.row_id, ov.c.column_name).where(
+                ov.c.table_name == table_name, ov.c.row_id.in_(ids), ov.c.column_name.in_(list(folded)),
+                ov.c.manual_priority_source.isnot(None)))}
         for row in page:
-            cells = {}
+            won = won_by.get(row.row_id) or {}
+            cells, said, bare = {}, {}, {}
             for column in folded:
                 old = getattr(row, column, None)
-                # a shown value holds no time it came in - its layers below have one
-                new, verdict = fold(column, old, again, notation_norm.ARRIVAL_UNKNOWN)
-                if verdict == notation_norm.NO_ARRIVAL:
-                    unknown.add((row.row_id, column))
+                layer = heads.get((row.row_id, column)) or {}
+                new = None
+                for source, head in sorted(layer.items()):
+                    value = fold(column, head["value"], again, head["ingested_at"])[0]
+                    if value != head["value"]:
+                        # its source and «when» stay (its rank), and its author: a spelling is no new value
+                        line = said.setdefault(head["line_id"], {
+                            "row_id": row.row_id, "values": {}, "source_name": source,
+                            "written_by": head["updated_by"], "acted_by": NOTATION_BACKFILL_SOURCE,
+                            "input_row": head["origin_row_id"],
+                            "owner_rule": head["owner_rule"], "owner_key": head["owner_key"],
+                            "at": head["ingested_at"], "respelled": True})
+                        line["values"][column] = value
+                    if head["line_id"] == won.get(column):
+                        new = value                # the winning line, re-spelled: what the cell will show
+                if not layer and (row.row_id, column) not in pinned:
+                    # a cell no line said (a table cut at the landing): t's value, folded, becomes a line of its
+                    # own - a shown value holds no time it came in
+                    new, verdict = fold(column, old, again, notation_norm.ARRIVAL_UNKNOWN)
+                    if verdict == notation_norm.NO_ARRIVAL:
+                        unknown.add((row.row_id, column))
+                    if new != old:
+                        bare[column] = new
+                elif new is None:              # no line wins (a pin with no line under it): t keeps its value
+                    if not layer and fold_value(column, old, notation_norm.ARRIVAL_UNKNOWN)[0] != old:
+                        stats["pinned_left"] += 1  # named, not folded: a line under no pin would be made up (lead)
+                    new = old
                 if new != old:
                     cells[column] = (old, new)
-            plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
-        if not plans:
-            return plans
-        moved, layered = {}, set()
-        for layer_id, row_id, column, source, value, arrived in (
-                db.query(models.CellSource.id, models.CellSource.row_id,
-                         models.CellSource.column_name, models.CellSource.source_name,
-                         models.CellSource.value, models.CellSource.ingested_at)
-                .filter(models.CellSource.table_name == table_name,
-                        models.CellSource.row_id.in_(list(plans)),
-                        models.CellSource.column_name.in_(folded)).all()):
-            layered.add((row_id, column))
-            new = fold(column, value, again, arrived)[0]
-            if new != value:
-                plans[row_id]["layers"].append({"id": layer_id, "value": new})
-                moved.setdefault((row_id, column), {})[source] = new
-        if moved:
-            sources, pins = _load_cell_state(db, table_name, sorted({r for r, _ in moved}))
-            for (row_id, column), now in moved.items():
-                layers = {source: dict(layer, value=now.get(source, layer["value"]))
-                          for source, layer in sources.get((row_id, column), {}).items()}
-                row, cells = plans[row_id]["row"], plans[row_id]["cells"]
-                old = getattr(row, column, None)
-                new = _resolve_cell(table_name, col_types, row, column, layers,
-                                    pins.get((row_id, column)))["new_value"]
-                if new != old:
-                    cells[column] = (old, new)
-                else:
-                    cells.pop(column, None)
-        left = len(unknown - layered)       # a year-less shown value with no layer to take a year from
-        if left:
-            stats["time_left"][notation_norm.NO_ARRIVAL] = stats["time_left"].get(notation_norm.NO_ARRIVAL, 0) + left
+            written = {c for line in said.values() for c in line["values"]} | set(bare)
+            plans[row.row_id] = {"row": row, "cells": cells, "lines": list(said.values()), "bare": bare,
+                                 "key": None, "remerge": sorted(set(cells) - written)}
+        if unknown:
+            stats["time_left"][notation_norm.NO_ARRIVAL] = (stats["time_left"].get(notation_norm.NO_ARRIVAL, 0)
+                                                            + len(unknown))
         for plan in plans.values():
             row, cells = plan["row"], plan["cells"]
             if not any(column in cells for column in parts_of_key):
                 plan["key"] = numbered and respelled_key(table_name, row, parts_of_key) or None
+                plan["respelled"] = bool(plan["key"])
                 continue
             before, after = (
                 None if crud.every_key_part_blank(parts)        # a blank part among filled ones is a part
@@ -2124,10 +2006,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 plan["key"] = after
         wanted = {plan["key"] for plan in plans.values() if plan["key"]}
         # the key's first row holds it - one answer when the key is held twice
-        holders = dict(db.query(model.business_key_val, func.min(model.row_id))
-                       .filter(model.business_key_val.in_(list(wanted)))
-                       .group_by(model.business_key_val).all()) \
-            if wanted else {}
+        holders = {key: row["row_id"] for key, row in key_owners(db, now_table, wanted).items()} if wanted else {}
         for row_id, plan in list(plans.items()):
             key = plan["key"]
             if "not_rebuilt" in plan:
@@ -2140,7 +2019,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             elif key and (key in claimed or holders.get(key, row_id) != row_id):
                 into = (holders[key] if holders.get(key, row_id) != row_id
                         else claimed[key])
-                plan["key"], plan["into"] = None, into
+                plan["into"] = into
                 stats["rows_merged"] += 1
                 split_groups.add(key)
                 if len(stats["merged"]) < max_report:
@@ -2149,8 +2028,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                             "folded_key": key, "into": into})
             elif key:
                 claimed[key] = row_id
+                stats["keys_changed"] += 1
             elif row_id in twins:
-                plan["into"] = twins[row_id]
+                plan["twin"] = twins[row_id]
                 stats["rows_merged"] += 1
                 same_groups.add(plan["row"].business_key_val)
                 if len(stats["merged"]) < max_report:
@@ -2159,16 +2039,11 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                                             "folded_key": plan["row"].business_key_val, "into": twins[row_id]})
         return plans
 
-    def quiet(column, value, _again, arrived=None):
-        """The row path's fold on a page folded by value - that page already counted every value."""
-        return fold_value(column, value, arrived)[:2]
-
     total = (len(held) if selection is not None else db.query(func.count(model.row_id)).scalar()) or 0
     total = min(total, limit) if limit is not None else total
-    columns = [getattr(model, column.key) for column in physical if column.key != "row_id"] if by_value else None
     step, size = keyset_scan.step_of(checkpoint), keyset_scan.PageSize(chunk_size)
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
-        for page in keyset_scan.iter_pages(db, model, columns=columns, condition=selection, chunk_size=chunk_size,
+        for page in keyset_scan.iter_pages(db, model, condition=selection, chunk_size=chunk_size,
                                            limit=limit, size=size):
             step("read", stats["pages"] + 1, None, len(page))
             if checkpoint is not None and checkpoint(stats["rows_scanned"], total):
@@ -2177,82 +2052,39 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 break
             stats["pages"] += 1
             stats["rows_scanned"] += len(page)
-            if by_value:
-                values = _fold_by_values(db, table_name, page, folded, parts_of_key, col_types, fold_value)
-                for verdict, n in values["time_left"].items():
-                    stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + n
-                again = values["again"]
-                if numbered:
-                    values["hard"].update(row_id for row_id, row in values["rows"].items()
-                                          if respelled_key(table_name, row, parts_of_key))
-                twins = twins_of(list(values["rows"].values()))
-                values["hard"].update(twins)
-                plans = plan_rows([values["rows"][row_id] for row_id in sorted(values["hard"])], [], quiet,
-                                  twins)
-                # A row that merges, and the row it merges into, keep the ORM write: the shell is
-                # deleted at the flush and the holder changed again by the merge, one event each.
-                # Every other planned row - its key moved onto nothing or did not move - is
-                # written by value with the page (총괄 10-11 · RUN.md 「키 칸도 한꺼번에」).
-                meet = {plan["into"] for plan in plans.values() if plan.get("into")}
-                orm = {row.row_id: row for row in db.query(model).filter(model.row_id.in_(sorted(
-                    row_id for row_id, plan in plans.items() if plan.get("into") or row_id in meet)))} \
-                    if meet else {}
-                for row_id, plan in list(plans.items()):
-                    if row_id in orm:
-                        plan["row"] = orm[row_id]
-                        continue
-                    del plans[row_id]
-                    values["cells"].update(((row_id, column), cell) for column, cell in plan["cells"].items())
-                    values["layers"].update((layer["id"], layer["value"]) for layer in plan["layers"])
-                    if plan["key"]:
-                        values["keys"][row_id] = plan["key"]
-            else:
-                values, again = None, []
-                plans = plan_rows(page, again, fold)
-                again = [(entry, 1) for entry in again]
+            again = []
+            plans = plan_rows(page, again)
             step("fold", stats["pages"], None, len(page))
-            for entry, n in again:
-                stats["moves_again"] += n
-                stats["again"].extend([entry] * min(n, max(0, max_report - len(stats["again"]))))
+            stats["moves_again"] += len(again)
+            stats["again"].extend(again[:max(0, max_report - len(stats["again"]))])
             if again and apply:
                 stats["stopped"] = stats["stopped_on_moves_again"] = True
                 log(f"[notation] '{table_name}' stopped before page {stats['pages']}: "
-                    f"{sum(n for _entry, n in again)} value(s) change again on a second fold - fix "
+                    f"{len(again)} value(s) change again on a second fold - fix "
                     f"the declaration or the alias rows first")
                 break
-            changed = [plan for plan in plans.values()
-                       if plan["cells"] or plan["layers"] or plan["key"]]
-            stats["cells_folded"] += sum(len(plan["cells"]) for plan in changed)
-            stats["layers_folded"] += sum(len(plan["layers"]) for plan in changed)
-            stats["keys_changed"] += sum(1 for plan in changed if plan["key"])
-            if values:
-                stats["cells_folded"] += len(values["cells"])
-                stats["layers_folded"] += len(values["layers"])
-                stats["keys_changed"] += len(values["keys"])
-            # a re-spelled key may move no cell: a page that only re-keys or merges is written too (owner 10-20)
-            merging = any(plan.get("into") for plan in plans.values())
-            if apply and (changed or merging or values and (values["cells"] or values["layers"] or values["keys"])):
-                if values:
-                    _write_by_values(db, table_name, model, values, tx_id)
-                for plan in changed:
-                    row = plan["row"]
-                    if plan["key"]:
-                        row.business_key_val = plan["key"]
-                    for column, (old, new) in plan["cells"].items():
-                        setattr(row, column, new)
-                        crud.create_audit_log(
-                            db, table_name, row.row_id, column, old, new,
-                            NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
-                            transaction_id=tx_id, business_key=row.business_key_val)
-                layers = [layer for plan in changed for layer in plan["layers"]]
-                if layers:
-                    db.bulk_update_mappings(models.CellSource, layers)
-                crud.merge_into_key_holders(
-                    db, table_name,
-                    sorted((row_id, plan["into"]) for row_id, plan in plans.items()
-                           if plan.get("into")),
-                    source_name=NOTATION_BACKFILL_SOURCE,
-                    updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
+            stats["cells_folded"] += sum(len(plan["cells"]) for plan in plans.values())
+            stats["layers_folded"] += sum(len(line["values"]) for plan in plans.values() for line in plan["lines"])
+            items = [line for plan in plans.values() for line in plan["lines"]]
+            items += [{"row_id": row_id, "values": plan["bare"], "source_name": NOTATION_BACKFILL_SOURCE,
+                       "written_by": NOTATION_BACKFILL_SOURCE, "respelled": True}
+                      for row_id, plan in plans.items() if plan["bare"]]
+            # a re-spelled key moves no cell: its row is re-keyed by the write all the same (owner 10-20); a cell
+            # whose winning line already holds the folded spelling moves by a merge of its row - a mark asks it
+            items += [{"row_id": row_id, "line_kind": "mark", "columns": [], "scope": plan.get("remerge") or [],
+                       "rekey": bool(plan.get("respelled")),
+                       "source_name": NOTATION_BACKFILL_SOURCE, "written_by": NOTATION_BACKFILL_SOURCE}
+                      for row_id, plan in plans.items() if plan.get("respelled") or plan.get("remerge")]
+            twins = sorted((row_id, plan["twin"]) for row_id, plan in plans.items() if plan.get("twin"))
+            if apply and (items or twins):
+                gone = write_lines(db, table_name, items, kind="notation", transaction_id=tx_id)["merged"] \
+                    if items else {}
+                # a twin's first row the write merged away: its twins meet the row it went into (QA 11-11)
+                twins = [(row_id, gone.get(first, first)) for row_id, first in twins
+                         if row_id not in gone and gone.get(first, first) != row_id]
+                if twins:
+                    merge_rows(db, table_name, twins, source_name=NOTATION_BACKFILL_SOURCE,
+                               written_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
             step("write", stats["pages"], None, len(page))
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
@@ -2264,7 +2096,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         f"(their cells no longer spell their stored key), {stats['rows_merged']} row(s) "
         f"{'merged' if apply else 'to merge'} into the row holding their folded key "
         f"({stats['same_key_groups']} key(s) held twice as stored, {stats['split_key_groups']} met by spelling), "
-        f"{stats['moves_again']} value(s) change again")
+        f"{stats['moves_again']} value(s) change again, {stats['pinned_left']} pinned cell(s) left as they are")
     return stats
 
 
@@ -2299,187 +2131,6 @@ def respelled_key(table_name, row, parts_of_key):
     return key
 
 
-def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_value) -> dict:
-    """One page of `fold_written_notation` folded by value (총괄 10-11). Each distinct shown value and
-    each distinct stored layer text of a folded column is folded once (`fold_value`) and counted as
-    often as it stands - so `time_left` and the moves-again count are the row path's, page-wide.
-    A row whose key part could move (its shown value or a layer of it moves) is `hard`: the row path
-    judges it whole and its answer joins this page's (`keys`: row id -> moved key, the caller's). For
-    every other row: a cell with a layer that moves shows what its layers decide -
-    one stored text among them is that text folded and cast as `_resolve_cell` casts it, more than
-    one is `_resolve_cell` over `_load_cell_state`; a cell with none has its shown value folded.
-    -> {hard: row ids, cells: {(row_id, column): (old, new)}, layers: {layer id: new value},
-        keys: {}, rows: {row_id: page row}, again: [(entry, n)], time_left: {verdict: n}}"""
-    import json
-    from collections import Counter
-
-    from sqlalchemy import String, Text, any_, bindparam, cast, func, select
-    from sqlalchemy.dialects.postgresql import ARRAY
-
-    import notation_norm
-    from database import crud, models
-
-    cs = models.CellSource
-    said = cast(cs.value, Text)                     # a layer's stored JSON text - one key per spelling
-    rows = {row.row_id: row for row in page}
-    out = {"hard": set(), "cells": {}, "layers": {}, "keys": {}, "rows": rows, "again": [], "time_left": Counter()}
-    memo = {}
-
-    def judge(column, key, value, n):
-        hit = memo.get((column, key))
-        if hit is None:
-            hit = memo[(column, key)] = fold_value(column, value)
-        stored, verdict, again = hit
-        if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
-            out["time_left"][verdict] += n
-        if again:
-            out["again"].append((again, n))
-        return stored
-
-    shown = {}                                      # column -> {(type, shown value): folded}
-    for column in folded:
-        for (kind, value), n in Counter((type(v), v) for v in (getattr(row, column) for row in page)).items():
-            stored = judge(column, (kind, value), value, n)
-            if stored != value:
-                shown.setdefault(column, {})[(kind, value)] = stored
-    layered = {}                                    # column -> {stored text: folded value}
-    ids = bindparam("ids", list(rows), type_=ARRAY(String))
-    # a read of the page's layers names the page's row_id range - what the index reads in order; by its id list
-    # alone the plan turned to a whole read of cell_sources from about 10,000 ids at 13M layers (box, 총괄
-    # 5ad030347). The list stays: a deleted row's layers in the range are not the page's
-    in_page = (cs.table_name == table_name, cs.row_id >= page[0].row_id, cs.row_id <= page[-1].row_id)
-    for column, text, n in db.execute(select(cs.column_name, said, func.count())
-                                      .where(*in_page, cs.column_name.in_(folded), cs.row_id == any_(ids))
-                                      .group_by(cs.column_name, said)):
-        value = None if text is None else json.loads(text)
-        # a layer saying what a shown value says shares its fold; a JSON object goes by its text
-        stored = judge(column, text if isinstance(value, (dict, list)) else (type(value), value), value, n)
-        if stored != value:
-            layered.setdefault(column, {})[text] = stored
-
-    def moving(column, among):
-        """The rows of `among` with a layer of `column` whose text moves."""
-        return select(cs.row_id).where(
-            *in_page, cs.column_name == column, cs.row_id == any_(among),
-            said == any_(bindparam("moves", list(layered[column]), type_=ARRAY(Text))))
-
-    for column in key_parts:
-        moves = shown.get(column, {})
-        out["hard"].update(row_id for row_id, row in rows.items()
-                           if (type(getattr(row, column)), getattr(row, column)) in moves)
-        if column in layered:
-            out["hard"].update(row_id for (row_id,) in db.execute(moving(column, ids)))
-    easy = [row_id for row_id in rows if row_id not in out["hard"]]
-    among = bindparam("easy", easy, type_=ARRAY(String))
-
-    def show(row_id, column, new):
-        old = getattr(rows[row_id], column)
-        if new != old:
-            out["cells"][(row_id, column)] = (old, new)
-
-    for column in folded:
-        decided = set()
-        if column in layered and easy:
-            moves, cells = layered[column], {}
-            for layer_id, row_id, source, text in db.execute(
-                    select(cs.id, cs.row_id, cs.source_name, said)
-                    .where(*in_page, cs.column_name == column, cs.row_id.in_(moving(column, among)))):
-                cells.setdefault(row_id, []).append((source, text))
-                if text in moves:
-                    out["layers"][layer_id] = moves[text]
-            disagree = []
-            for row_id, layers in cells.items():
-                texts = {text for _source, text in layers}
-                if len(texts) > 1:
-                    disagree.append(row_id)
-                    continue
-                new = moves[texts.pop()]            # one text, and it moves: whichever layer wins
-                show(row_id, column, None if new is None else
-                     crud.cast_value_by_type(new, col_types.get(column, "string"), column))
-            if disagree:
-                sources, pins = _load_cell_state(db, table_name, disagree, columns=[column])
-                for row_id in disagree:
-                    now = {source: moves[text] for source, text in cells[row_id] if text in moves}
-                    layers = {source: dict(layer, value=now.get(source, layer["value"]))
-                              for source, layer in sources.get((row_id, column), {}).items()}
-                    show(row_id, column, _resolve_cell(table_name, col_types, rows[row_id], column, layers,
-                                                       pins.get((row_id, column)))["new_value"])
-            decided = set(cells)
-        moves = shown.get(column)
-        if moves:
-            for row_id in easy:
-                value = getattr(rows[row_id], column)
-                if row_id not in decided and (type(value), value) in moves:
-                    out["cells"][(row_id, column)] = (value, moves[(type(value), value)])
-    return out
-
-
-class _RowAsWritten:
-    """A page row read with its folded cells - what the flush hook reads off the ORM row it stages."""
-
-    def __init__(self, table, row, cells):
-        self.__table__, self._row, self._cells = table, row, cells
-
-    def __getattr__(self, name):
-        # by the row's names, not its attributes - a column named `t` or `count` is a Row method (총괄 10-14 e)
-        if name in self._cells:
-            return self._cells[name]
-        if name in self._row._mapping:
-            return self._row._mapping[name]
-        raise AttributeError(name)
-
-
-def _write_by_values(db, table_name, model, values, tx_id):
-    """A page folded by value (`_fold_by_values`), written as the row path writes it: the layers'
-    values and the shown values by arrays, one history line per shown cell (`crud.create_audit_log`),
-    and each changed row's event as the flush hook stages it (`database.row_event` · collapsed when
-    the context says so). The caller commits."""
-    import event_constants
-    from database import crud, database, models
-    from database.context import request_outbox_mode
-
-    if values["layers"]:
-        crud.update_by_arrays(db, models.CellSource.__table__, ["value"],
-                          [[layer_id, new] for layer_id, new in values["layers"].items()], None, key="id")
-    # a row whose key alone moved (an old number spelling, owner 10-20) is written too
-    by_row = {row_id: {} for row_id in values["keys"]}
-    for (row_id, column), cell in values["cells"].items():
-        by_row.setdefault(row_id, {})[column] = cell
-    shown, history, written = {}, [], {}
-    for row_id, cells in by_row.items():
-        # a moved key is written with the row's cells, and its history lines carry it - as the row
-        # path sets `business_key_val` before `create_audit_log`
-        now = written[row_id] = {column: new for column, (_old, new) in cells.items()}
-        if row_id in values["keys"]:
-            now["business_key_val"] = values["keys"][row_id]
-        shown.setdefault(frozenset(now), []).append([row_id] + [now[column] for column in sorted(now)])
-        key = now.get("business_key_val", values["rows"][row_id].business_key_val)
-        for column, (old, new) in cells.items():
-            line = crud.create_audit_log(
-                db, table_name, row_id, column, old, new, NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
-                transaction_id=tx_id, business_key=key, add_to_cache=False)
-            if line is not None:
-                history.append(line)
-    for names, rows in shown.items():
-        crud.update_by_arrays(db, model.__table__, sorted(names), rows, None)
-    _insert_by_arrays(db, models.AuditLog.__table__, history)
-    if not by_row:
-        return
-    # what each row's cells were - the event's old values, as the flush hook stages an edit's (총괄 355ee9840 4)
-    was = {row_id: {column: database.json_value(old) for column, (old, _new) in cells.items()}
-           for row_id, cells in by_row.items()}
-    if request_outbox_mode.get() == event_constants.OUTBOX_MODE_COLLAPSED:
-        database.stage_collapsed_event(db, "EDIT", table_name, list(by_row),
-                                       {column for now in written.values() for column in now},
-                                       old=[was[row_id] for row_id in by_row])
-        return
-    db.execute(models.DatabaseOutbox.__table__.insert(), [
-        database.row_event("EDIT", table_name, _RowAsWritten(model.__table__, values["rows"][row_id], now),
-                           old=was[row_id])
-        for row_id, now in written.items()])
-    database._notify_outbox_once(db)
-
-
 def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
@@ -2492,9 +2143,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
         10-28 ㄱ). No other cell passes the gate below.
 
     WHY THIS EXISTS AND WHY R1/R2 CANNOT DO IT
-        The winning value is MATERIALISED: `apply_row_update_internal` ends with
-        `setattr(row, col, new_val)` and every read serves that column, not the
-        layers. So fixing `crud.compute_priority_value` fixes only the cells written
+        The winning value is MATERIALISED: a write stores the merged value in t's
+        column and every read serves that column, not the layers. So fixing `crud.compute_priority_value` fixes only the cells written
         AFTER the fix. Every cell that resolved wrongly in the past keeps displaying
         the wrong value until something re-delivers it - and nothing will, because
         the re-delivery is exactly what the defect discarded. R1 re-runs a MAPPER
@@ -2528,12 +2178,20 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     `max_report`, and `truncated["changes"]` says whether the list ran out of budget.
     The AuditLog rows are the unbounded record.
     """
-    from database import crud
+    import contextlib
+
+    from sqlalchemy import select
+
+    import session_contract
+    from database import crud, lines
+    from database.write_lines import write_lines
 
     from chain import keyset_scan
 
     model, col_types = resolve_target(table_name, columns)
     wanted_cols = set(columns) if columns else None
+    declared = (crud.TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    keeps = lines.has_lines(db, table_name)
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "rows_scanned": 0, "pages": 0, "cells_examined": 0,
@@ -2565,7 +2223,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     # ⚠️ THE LABEL AND THE LAYER ARE DIFFERENT FIELDS FROM DIFFERENT SOURCES, and
     # conflating them would be a far worse defect than the one this fixes.
     #   * the LAYER is `cell_sources.source_name`, written from
-    #     `update_item.source_name` (crud.py, `apply_row_update_internal`),
+    #     `update_item.source_name` (the write's item, `crud.update_item_as_line`),
     #   * the LABEL is the outbox payload's `source_name`, read from the
     #     `request_source` context var and NOWHERE ELSE - `_outbox_envelope` is
     #     its only reader in the whole server tree.
@@ -2611,7 +2269,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 for row_id in page_ids:
                     cell_sources.setdefault((row_id, column), {})
 
-            page_changed = False
+            gated = []
             for cell, srcs in cell_sources.items():
                 row_id, col = cell
                 if wanted_cols is not None and col not in wanted_cols:
@@ -2625,19 +2283,41 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 # would blank the column.
                 if len(srcs) < 2 and col not in (formula_removed or ()):
                     continue
-
+                gated.append((cell, srcs, row))
                 stats["cells_examined"] += 1
-                pin = pins.get(cell)
-                if pin is not None:
+                if pins.get(cell) is not None:
                     stats["pinned_examined"] += 1
-                decision = _resolve_cell(table_name, col_types, row, col, srcs, pin)
-                if not decision["changed"]:
-                    continue
+            # «what shows» is the one merge: the rows asked about are merged again through write_lines' own door
+            # (`_merges_again` - a mark of no column; `blank` the removed formula's columns, owner 11-11 ㄱ), so the
+            # merge, a declared formula, won_by, the claim's row lock and the batch audit go the way every write's go
+            # (lead 11-11 ㄱ). The row is the unit (lead 11-11): every cell of it the merge moves is a change here.
+            # its scope: the cells it examined, row by row (lead 11-12 - the merge re-decides those alone, as main did)
+            asked = {}
+            for (r, col), _srcs, _row in gated:
+                asked.setdefault(r, set()).add(col)
+            items = [{"row_id": r, "line_kind": "mark", "columns": [], "blank": list(formula_removed or ()),
+                      "scope": sorted(cols), "written_by": R3_AUDIT_SOURCE} for r, cols in sorted(asked.items())]
+            changed = {}
+            if items:
+                with contextlib.nullcontext() if apply else session_contract.held(db):
+                    changed = write_lines(db, table_name, items, kind="recompute", transaction_id=tx_id)["changed"]
+            won = {}
+            if changed and keeps:
+                won = lines.won_by_of(db, table_name, sorted(changed))
+
+            for row_id, col in sorted((r, c) for r, change in changed.items() for c in declared
+                                      if crud.values_differ((change.get("old") or {}).get(c),
+                                                            (change.get("new") or {}).get(c), declared[c])):
+                change, row = changed[row_id], by_id.get(row_id)
+                srcs, pin = cell_sources.get((row_id, col), {}), pins.get((row_id, col))
+                line_id = won.get(row_id, {}).get(col)
+                decision = {"old_value": (change.get("old") or {}).get(col),
+                            "new_value": (change.get("new") or {}).get(col), "line_id": line_id,
+                            "top_source": next((n for n, d in srcs.items() if d.get("line_id") == line_id), None)}
 
                 # WHY the change happened, so the report separates "this repair did it"
                 # from "this cell was already out of step with its own layers". A tie is
-                # the defect's signature: two or more layers sharing the winning rank,
-                # which is where the old code fell through to dict order.
+                # the defect's signature: two or more layers sharing the winning rank.
                 top_rank = crud.get_source_priority(decision["top_source"], table_name)
                 tied = sum(1 for s in srcs if crud.get_source_priority(s, table_name) == top_rank)
                 reason = "tiebreak" if tied > 1 else "stale_materialisation"
@@ -2648,8 +2328,8 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                 else:
                     stats["changed_by_stale_materialisation"] += 1
                 # A PINNED cell that still moves is worth its own counter and it is not a
-                # contradiction: the pin decides WHICH LAYER wins (`compute_priority_value`
-                # short-circuits on it), it does not freeze the materialised column. So this
+                # contradiction: the pin decides WHICH LAYER wins (`lines.merge` takes only
+                # the pinned source), it does not freeze the materialised column. So this
                 # counts cells where the display had drifted away from the layer a human
                 # explicitly chose - the pin is being honoured here, not overridden. It was
                 # previously called `pinned_unchanged` while being incremented on exactly the
@@ -2673,11 +2353,13 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                         True, None, "report budget (max_report) reached")
 
                 if apply:
-                    _write_resolved(db, table_name, row, col, decision, tx_id)
-                    page_changed = True
+                    _write_resolved(db, table_name, row_id, col, decision, tx_id,
+                                    getattr(row, "business_key_val", None))
 
-            if apply and page_changed:
+            if apply and items:                # a merge that moved only won_by is written too
                 db.commit()
+            elif not apply and items:
+                db.rollback()                  # the preview's page, unwritten - its row locks let go
 
     if not apply:
         db.rollback()

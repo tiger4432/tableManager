@@ -6,7 +6,6 @@ resent says nothing new and changes nothing (the seat's `source_unchanged`).
 """
 import os
 import sys
-from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -17,13 +16,12 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import event_constants                                              # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 from database.database import Base                                  # noqa: E402
 
 T = "sf_tgt"
 TABLES = {T: {"business_key": "k", "composite_key_source": ["k"],
               "column_types": {"k": "string", "v": "string"}, "display_columns": ["k", "v"]}}
-T0 = datetime(2026, 11, 8, 9, 0, 0)
 
 
 def _ext(share_root, name):
@@ -35,8 +33,6 @@ A1, A2, B1 = _ext("c:\\share_a", "f1.csv"), _ext("c:\\share_a", "f2.csv"), _ext(
 
 @pytest.fixture(name="db")
 def fixture_db(monkeypatch):
-    clock = iter(T0 + timedelta(minutes=n) for n in range(1000))
-    monkeypatch.setattr(crud, "layer_instant", lambda: next(clock))
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
@@ -64,8 +60,9 @@ def _cell(db):
     """(the value the cell shows, {layer: value}, the layer newest by ingested_at)."""
     db.expire_all()
     row = db.query(models.DYNAMIC_TABLES[T]).filter_by(business_key_val="K").one()
-    layers = db.query(models.CellSource).filter_by(table_name=T, row_id=row.row_id, column_name="v").all()
-    return row.v, {s.source_name: s.value for s in layers}, max(layers, key=lambda s: s.ingested_at).source_name
+    layers = lines.layers(db, T, [row.row_id], columns=["v"])[(row.row_id, "v")]
+    return (row.v, {source: layer["value"] for source, layer in layers.items()},
+            max(layers, key=lambda source: layers[source]["ingested_at"]))
 
 
 def test_a_shares_newer_file_repeating_its_value_moves_its_layer_to_the_front(db):

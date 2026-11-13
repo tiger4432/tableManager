@@ -1,0 +1,212 @@
+# -*- coding: utf-8 -*-
+"""The one write's lock gate (docs/design/CELL_SOURCE_OVERHAUL.md «쓰기» rules, A 11-10): two connections writing one
+entity - an existing one, and a new key both name - the second waits for the first, then goes on without an error on
+the same row_id; head lines = sources, no orphan line. And a time without a zone is the declared zone's instant
+whatever the session's zone (design «쓰기» 2). PostgreSQL (sqlite has no row locks)."""
+import faulthandler
+import threading
+import time
+
+import pytest
+import expression
+from sqlalchemy import select, text
+from sqlalchemy.orm import sessionmaker
+
+from database import crud, lines, models
+from database.write_lines import write_lines
+from test_write_lines_writes_a_line_a_change_and_its_current_line import keep_lines
+
+pytestmark = pytest.mark.pg
+
+TABLE = "wl_gate"
+CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string", "d": "datetime"}}
+
+
+@pytest.fixture(name="sessions")
+def fixture_sessions(pg_engine, monkeypatch):
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
+    lines.LineColumn.__table__.create(pg_engine, checkfirst=True)
+    lines.AuditBatch.__table__.create(pg_engine, checkfirst=True)
+    models.DatabaseOutbox.__table__.create(pg_engine, checkfirst=True)
+    faulthandler.dump_traceback_later(90, exit=True)      # a hung lock gate says where, then stops
+    make = sessionmaker(bind=pg_engine, autoflush=False)
+    setup = make()
+    keep_lines(setup, TABLE, CFG)
+    setup.commit()
+    try:
+        yield make
+    finally:
+        setup.rollback()
+        lines.drop_line_table(setup, TABLE)
+        setup.execute(text('DROP TABLE IF EXISTS "%s"' % TABLE))           # t - keep_lines made it
+        setup.execute(lines.LineColumn.__table__.delete().where(lines.LineColumn.table_name == TABLE))
+        setup.execute(lines.AuditBatch.__table__.delete().where(lines.AuditBatch.table_name == TABLE))
+        setup.commit()
+        setup.close()
+        faulthandler.cancel_dump_traceback_later()
+
+
+def _second_waits(make, first_items, second_items):
+    """The first session writes and holds; the second writes in a thread - it must still be waiting after a while, and
+    finish once the first commits. -> (the second's answer, seconds it waited)."""
+    first, second = make(), make()
+    got = {}
+
+    def run():
+        start = time.monotonic()
+        try:
+            got["answer"] = write_lines(second, TABLE, second_items, kind="funnel", transaction_id="tx-second")
+            second.commit()
+        except Exception as exc:                  # noqa: BLE001 - the test says what the second writer met
+            got["error"] = exc
+            second.rollback()
+        got["waited"] = time.monotonic() - start
+
+    try:                                          # a red first writer must not hold its locks into the teardown
+        write_lines(first, TABLE, first_items, kind="funnel", transaction_id="tx-first")
+        thread = threading.Thread(target=run)
+        thread.start()
+        time.sleep(1.0)
+        still = thread.is_alive()
+        first.commit()
+        thread.join(30)
+    finally:
+        first.rollback()
+        first.close()
+        second.close()
+    assert still, "the second writer did not wait for the first's lock"
+    assert "error" not in got, got.get("error")
+    return got["answer"], got["waited"]
+
+
+def _state(make):
+    s = make()
+    shape = lines.shape(s, TABLE, CFG)
+    ln, now = shape["lines"], shape["table"]
+    rows = s.execute(select(ln.c.row_id, ln.c.source_name, ln.c.head_0, ln.c.line_kind)).all()
+    alive = {r[0] for r in s.execute(select(now.c.row_id))}
+    s.close()
+    return rows, alive
+
+
+def test_two_writers_of_one_row_end_on_it_one_after_the_other(sessions):
+    make = sessions
+    s = make()
+    out = write_lines(s, TABLE, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "0"}, "source_name": "f0"}],
+                      kind="funnel", transaction_id="tx-0")
+    s.commit()
+    s.close()
+    [row_id] = out["changed"]
+    answer, waited = _second_waits(make, [{"row_id": row_id, "values": {"a": "1"}, "source_name": "f1"}],
+                                   [{"row_id": row_id, "values": {"a": "2"}, "source_name": "f2"}])
+    rows, alive = _state(make)
+    assert waited >= 0.9 and list(answer["changed"]) == [row_id]
+    assert answer["changed"][row_id]["old"]["a"] == "1", "the second read the row before the first let it go"
+    assert sorted(src for r, src, head, kind in rows if head) == ["f0", "f1", "f2"], rows
+    assert {r for r, *_ in rows} <= alive, "no orphan line"
+
+
+def test_two_writers_by_the_key_of_a_committed_row_one_after_the_other(sessions):
+    make = sessions
+    s = make()
+    out = write_lines(s, TABLE, [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "0"}, "source_name": "f0"}],
+                      kind="funnel", transaction_id="tx-0")
+    s.commit()
+    s.close()
+    [row_id] = out["changed"]
+    answer, waited = _second_waits(make, [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "1"}, "source_name": "f1"}],
+                                   [{"key": {"k": "K3"}, "values": {"k": "K3", "a": "2"}, "source_name": "f2"}])
+    assert waited >= 0.9 and list(answer["changed"]) == [row_id]
+    assert answer["changed"][row_id]["old"]["a"] == "1", "the second read the row before the first let it go"
+
+
+def test_two_writers_of_one_new_key_end_on_one_row(sessions):
+    make = sessions
+    item = {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "f1"}
+    answer, waited = _second_waits(make, [item], [dict(item, source_name="f2", values={"k": "K2", "a": "y"})])  # x folds
+    rows, alive = _state(make)
+    assert waited >= 0.9 and len(alive) == 1, alive
+    assert {r for r, *_ in rows} == alive and len(rows) == 2, rows
+    assert list(answer["changed"]) == list(alive)
+
+
+def test_a_time_without_a_zone_is_the_declared_zones_instant_whatever_the_session_says(sessions):
+    # no live model for the table: crud.cast_value_by_type then passes the zoneless text on, and the line text
+    # (crud.line_text, on value_key) reads it in the declared zone - before line text the session's zone won (11-10)
+    make = sessions
+    s = make()
+    said = []
+    for spelling in ("2026-03-05 09:00:00", "2026-03-05T09:00:00+09:00", "2026-03-05 09:00"):
+        s.execute(text("SET LOCAL TimeZone = 'UTC'"))
+        out = write_lines(s, TABLE, [{"key": {"k": "K4"}, "values": {"k": "K4", "d": spelling}, "source_name": "f1"}],
+                          kind="funnel", transaction_id="tx-z")
+        s.commit()
+        said.append((out["lines"], out["left_out"]))
+    shape = lines.shape(s, TABLE, CFG)
+    stored = s.execute(select(shape["lines"].c[lines.value_column("d")]).where(shape["lines"].c.business_key_val == "K4")).scalars().all()
+    now = s.execute(select(shape["table"].c.d).where(shape["table"].c.business_key_val == "K4")).scalar()
+    s.close()
+    instant = expression._wall("2026-03-05 09:00:00", expression.time_zone())
+    assert said == [(1, 0), (0, 1), (0, 1)], said
+    assert stored == [instant.isoformat()] and now == instant, (stored, now)
+
+
+def test_a_table_without_its_key_index_still_takes_new_keys_the_old_way(pg_engine, monkeypatch):
+    """Lead 11-11 ㄴ: collection never stops at the landing - a table whose business key has no valid unique index
+    (ensure refused it: the scheduler has not built it, duplicates, a broken index) takes a new key as today's funnel
+    did (held keys read under lock, the rest inserted), with no lines; an existing key is that row's edit. The
+    indexed table's ON CONFLICT is the tests above."""
+    from sqlalchemy import Index, MetaData, Table
+
+    name, cfg = "wl_noindex", {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
+    monkeypatch.setitem(crud.TABLE_CONFIG, name, cfg)
+    models.DatabaseOutbox.__table__.create(pg_engine, checkfirst=True)
+    t = Table(name, MetaData(), *lines._data_columns(cfg, models.sql_type_of, row_id_key=True))
+    Index("ix_%s_bk" % name, t.c.business_key_val)                      # the plain index today's tables carry
+    t.create(pg_engine)
+    s = sessionmaker(bind=pg_engine)()
+    try:
+        assert not lines.key_index_standing(s.connection(), name) and not lines.has_lines(s, name)
+        first = write_lines(s, name, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1"},
+                                      {"key": {"k": "K2"}, "values": {"k": "K2", "a": "y"}, "source_name": "f1"}],
+                            kind="funnel", transaction_id="tx-1")
+        s.commit()
+        again = write_lines(s, name, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "z"}, "source_name": "f1"}],
+                            kind="funnel", transaction_id="tx-2")
+        s.commit()
+        rows = sorted(tuple(r) for r in s.execute(select(t.c.business_key_val, t.c.a)))
+        assert sorted(c["work"] for c in first["changed"].values()) == ["new", "new"] and first["lines"] == 0
+        assert [c["work"] for c in again["changed"].values()] == ["edit"] and rows == [("K1", "z"), ("K2", "y")], rows
+    finally:
+        s.rollback()
+        s.execute(text('DROP TABLE IF EXISTS "%s"' % name))
+        s.commit()
+        s.close()
+
+
+def test_at_one_instant_step_two_asks_the_later_line_on_postgresql(sessions, monkeypatch):
+    """A 11-11, rank 2c where `at` reads back with its zone: a.csv x then b.csv y at one instant - a chain's x is no
+    repeat of what the cell shows (y) and is written; and the same with b.csv's line in the chain's own batch (not
+    numbered yet, ranked after every stored line)."""
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(crud, "batch_write_instant", lambda db: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    s = sessions()
+
+    def write(tx, *items):
+        return write_lines(s, TABLE, list(items), kind="funnel", transaction_id=tx)
+
+    try:
+        [r1] = write("t1", {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "a.csv"})["changed"]
+        [r2] = write("t2", {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "a.csv"})["changed"]
+        write("t3", {"row_id": r1, "values": {"a": "y"}, "source_name": "b.csv"})
+        write("t4", {"row_id": r1, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE})
+        write("t5", {"row_id": r2, "values": {"a": "y"}, "source_name": "b.csv"},
+              {"row_id": r2, "values": {"a": "x"}, "source_name": crud.CHAIN_SOURCE})
+        s.commit()
+        said = lines.layers(s, TABLE, [r1, r2])
+        assert {r: sorted(said[(r, "a")]) for r in (r1, r2)} == {
+            r: ["a.csv", "b.csv", crud.CHAIN_SOURCE] for r in (r1, r2)}, said
+    finally:
+        s.rollback()
+        s.close()

@@ -25,12 +25,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from database import models                                            # noqa: E402
 
 
-def test_the_index_indexes_only_the_human_layer():
-    name, ddl = models.human_claims_index_ddl()
+def _declared():
+    (index,) = [arg for arg in models.CellSource.__table_args__ if getattr(arg, "name", None) ==
+                models.HUMAN_CLAIMS_INDEX]
+    return index
 
-    assert name == models.HUMAN_CLAIMS_INDEX
-    assert "WHERE source_name = '%s'" % models.HUMAN_SOURCE_NAME in ddl, ddl
-    assert "CONCURRENTLY" in ddl and "IF NOT EXISTS" in ddl, ddl
+
+def test_the_index_indexes_only_the_human_layer():
+    where = _declared().dialect_options["postgresql"]["where"]
+    assert str(where) == "source_name = '%s'" % models.HUMAN_SOURCE_NAME, where
 
 
 def test_the_columns_are_the_order_both_readers_filter_in():
@@ -39,9 +42,7 @@ def test_the_columns_are_the_order_both_readers_filter_in():
     this order makes the scan an Index Only Scan for each of them. Any other order turns at
     least one of them back into a heap fetch per match, which is when a planner starts
     weighing a sequential scan again."""
-    _, ddl = models.human_claims_index_ddl()
-
-    assert '("table_name", "row_id", "column_name")' in ddl, ddl
+    assert [c.name for c in _declared().columns] == ["table_name", "row_id", "column_name"]
 
 
 def test_the_model_declares_the_partial_index_and_not_the_full_one():
@@ -88,52 +89,3 @@ def test_every_reader_names_the_constant_rather_than_quoting_the_value():
         # spelling of it - only a filter is.
         assert not re.search(r'CellSource[.]source_name\s*==\s*[\x22\x27]', body), (
             module_name, function_name)
-
-
-def test_the_migration_gate_names_the_same_two_indexes():
-    """⛔ A THIRD SPELLING WOULD MAKE THE GATE CHECK THE WRONG INDEX. The replacement
-    section drops the old index only once the new one exists, so if either name here
-    drifted from the model the gate would be looking at something that is not the
-    replacement - and would then either refuse forever or drop with nothing standing in."""
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
-                                                    "migrations")))
-    import drop_redundant_layering_indexes as migration
-
-    entries = [e for e in migration.REPLACED if e[0] == models.RETIRED_CLAIMS_INDEX]
-    assert len(entries) == 1, migration.REPLACED
-    _, table, replacement = entries[0]
-    assert table == "cell_sources"
-    assert replacement == models.HUMAN_CLAIMS_INDEX
-
-
-def test_the_boot_sequence_calls_the_ensure():
-    """🔴 착지는 배선이 아니다 — the same check the decision-key index needed, for the
-    same reason: an ensure wired only into config reload leaves a restarted deployment
-    without the index, and the reader then scans without anything saying so."""
-    from chain import ingestion_worker as worker
-
-    from runtime import maintenance_line
-
-    body = inspect.getsource(maintenance_line._start_work)
-    assert "_ensure_human_claims_index_sync" in body, body[:400]
-    assert hasattr(worker, "_ensure_human_claims_index_sync")
-
-
-def test_the_ensure_runs_against_a_database_that_refuses():
-    """What is proved here is that the ensure gets as far as asking the engine and does
-    not raise out of the boot sequence - not what the engine says. A boot that dies on an
-    index build is a worse outage than a missing index."""
-    from chain import ingestion_worker as worker
-
-    class _Refuses:
-        def connect(self):
-            raise RuntimeError("no database here")
-
-    class _Session:
-        def get_bind(self):
-            return _Refuses()
-
-        def close(self):
-            pass
-
-    worker._ensure_human_claims_index_sync(lambda: _Session())

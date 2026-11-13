@@ -99,9 +99,9 @@ def main():
 def _report(conn, cfg, only_table):
     q = lambda s: [tuple(r) for r in conn.execute(text(s))]
 
-    tables = [r[0] for r in q(
-        "SELECT table_name FROM information_schema.columns "
-        "WHERE column_name='business_key_val' AND table_schema='public' ORDER BY 1")]
+    from migrations.add_business_key_unique_index import tables_with_business_key
+
+    tables = tables_with_business_key(conn)        # the start's own picker - line tables left out (lead 11-12)
     if only_table:
         tables = [t for t in tables if t == only_table]
 

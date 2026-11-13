@@ -70,9 +70,12 @@ def test_it_refuses_rather_than_quietly_minting_a_replacement():
 
 
 def test_the_create_branch_uses_the_guard():
-    """The seat, so the guard cannot be left beside an unguarded literal."""
+    """The seat, so the guard cannot be left beside an unguarded literal - the write's row claim (`write_lines._claim`;
+    the old door's create branch retired with the lines, 11-11)."""
     import inspect
 
-    body = inspect.getsource(crud._get_or_create_row)
+    from database import write_lines
+
+    body = inspect.getsource(write_lines._claim)
     assert "_engine_minted_row_id(" in body
     assert "update_item.row_id or str(uuid6.uuid7())" not in body

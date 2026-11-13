@@ -154,7 +154,7 @@ def test_a_supplied_business_key_does_not_rescue_the_row(db):
     """The production shape, and the reason this is data corruption rather than waste.
 
     MEASURED BEFORE THE GUARD: the item carried `business_key_val='U3'`, and the stored
-    row still had `business_key_val` NULL - `_update_row_business_key` reads
+    row still had `business_key_val` NULL - the old key write reads
     `updates[key_col]`, and the key column was the one being dropped. So the next push of
     the SAME key created ANOTHER identity-less row, without limit.
     """
@@ -496,32 +496,6 @@ def test_replace_report_still_rides_in_its_own_positional_slot(db):
 
     assert report["filters"] == {"payload": "P"}
     assert "deleted" in report and "mode" in report
-
-
-def test_a_replayed_attempt_reports_only_the_transaction_that_committed(monkeypatch):
-    """KILLS: removing `drop_report.clear()` from the retry loop.
-
-    A rolled-back attempt wrote nothing, so its drops describe a transaction that never
-    happened. Leaving them in the dict makes a recovered race look like data loss.
-    """
-    from test_business_key_conflict_retry import FakeDB, FakeBatch, _pg_error
-
-    seen = {}
-
-    def fake_once(db, table_name, batch, replace_report=None, drop_report=None, deleted_edits=None):
-        if not seen:
-            seen["first"] = True
-            drop_report["dropped_cells"] = 999
-            drop_report["by_column"] = {"ghost": 999}
-            raise _pg_error("uq_bk_dt_log")
-        drop_report["dropped_cells"] = 1
-        return ([], [], [], [])
-
-    monkeypatch.setattr(crud, "_apply_batch_updates_once", fake_once)
-    report = {}
-    crud.apply_batch_updates(FakeDB(), "dt_log", FakeBatch(), None, report)
-
-    assert report == {"dropped_cells": 1}, "the abandoned attempt's drops were reported"
 
 
 # ------------------------------------------- 판정 207: reported, and not counted

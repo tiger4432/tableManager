@@ -16,11 +16,13 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pacing                                                       # noqa: E402
+from database import lines                                          # noqa: E402
 from chain import ingestion_worker as worker                        # noqa: E402
 from runtime import loops, stall_watch                              # noqa: E402
 
 AT = datetime.datetime(2026, 11, 9, 6, 12, 3)
 TABLES = [("cell_sources", 1200, 45, AT, 31, 180000000), ("public.dt_log", 900, 0, None, 0, 12)]
+SCHEMAS = ["public", "w_alt"]
 
 
 def _engine(monkeypatch, tables, asked):
@@ -38,6 +40,7 @@ def _engine(monkeypatch, tables, asked):
             return type("R", (), {"fetchall": lambda self: tables})()
 
     monkeypatch.setattr(stall_watch, "_kept", lambda: type("E", (), {"connect": lambda self: Conn()})())
+    monkeypatch.setattr(lines, "every_schema_tables", lambda conn: (SCHEMAS, ["cell_sources", "dt_log"]))
 
 
 def _lines(caplog):
@@ -51,7 +54,7 @@ def test_a_lap_names_each_table_its_vacuum_and_returns_the_rest(monkeypatch, cap
     monkeypatch.setattr(loops, "vacuums_running", lambda conn: [("cell_sources", "scanning heap", 1200, 50000)])
     caplog.set_level(logging.INFO, logger=worker.logger.name)
     assert worker._report_layer_table_health() == 300.0
-    assert asked == [{"n": 2}]
+    assert asked == [{"n": 2, "schemas": SCHEMAS, "names": ["cell_sources", "dt_log"]}]
     assert _lines(caplog) == [
         "[LayerHealth] cell_sources: live 1200 · dead 45 · last autovacuum 2026-11-09 06:12:03 · autovacuums 31 · "
         "xid age 180000000 · vacuum scanning heap 1200/50000",

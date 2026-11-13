@@ -17,7 +17,9 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from database import crud, models
+from conftest import retire_dynamic_model
+from database import crud, lines, models
+from tests.support import line_tables
 
 # Session ids are namespaced so a test can never be confused with real traffic.
 S1 = "effort_test_sess_1"
@@ -34,15 +36,28 @@ def _effort(db, *, session, key=0, mouse=0, nav=0, nav_preserved=0, tx=None, day
     ))
 
 
+EFFORT_TABLE = "effort_test_tbl"
+EFFORT_ENTRY = {"business_key": "k", "composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
+
+
+@pytest.fixture(autouse=True)
+def effort_lines(db_session, monkeypatch):
+    """The cell-source overhaul: the denominator's transactions are a person's lines (`crud.human_lines`)."""
+    models.init_dynamic_models({EFFORT_TABLE: EFFORT_ENTRY})
+    monkeypatch.setitem(crud.TABLE_CONFIG, EFFORT_TABLE, EFFORT_ENTRY)
+    bits = line_tables.build(db_session.get_bind(), EFFORT_TABLE)
+    yield bits
+    line_tables.drop(db_session.get_bind(), EFFORT_TABLE)
+    retire_dynamic_model(EFFORT_TABLE)
+
+
 def _user_tx(db, tx, *, days_ago=1, source=None):
-    """An audit row so the tx exists in the measured_ratio denominator."""
-    db.add(models.AuditLog(
-        table_name="effort_test_tbl", row_id="r1", column_name="a",
-        old_value="before", new_value="after",
-        source_name=source or crud.USER_SOURCE, updated_by="tester",
-        transaction_id=tx,
-        timestamp=datetime.now(timezone.utc) - timedelta(days=days_ago),
-    ))
+    """A person's line in transaction `tx` and its audit row (the person its actor), so the tx exists in the
+    measured_ratio denominator."""
+    at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    line_tables.line(db.connection(), EFFORT_TABLE, line_tables.bits_of(EFFORT_TABLE), "r1",
+                     source=source or crud.USER_SOURCE, batch=tx, written_by="tester", at=at, values={"a": "after"})
+    line_tables.audit_batch(db.connection(), tx, EFFORT_TABLE, written_by="tester", at=at)
 
 
 DEFAULT_W = {"key": 1, "mouse": 3, "nav": 5, "nav_preserved": 0}
@@ -413,6 +428,9 @@ def test_effort_is_optional_and_its_absence_writes_no_row(client, db_session):
 
 
 def test_a_measured_correction_stores_its_raw_counts_against_the_audit_tx(client, db_session):
+    # another writer's audit batch beside the person's - the actor filter below is what leaves it out
+    line_tables.audit_batch(db_session.connection(), "effort-other-tx", "raw_table_1", written_by="parser_x")
+    db_session.commit()
     res = _put(client, {"session_id": S1, "key": 7, "mouse": 2, "nav": 1})
     assert res.status_code == 200
     assert res.json()["effort_recorded"] is True, \
@@ -422,10 +440,11 @@ def test_a_measured_correction_stores_its_raw_counts_against_the_audit_tx(client
     row = db_session.query(models.InteractionEffortLog).one()
     assert (row.key_count, row.mouse_count, row.nav_count) == (7, 2, 1)
     assert row.session_id == S1
-    # The key is the SAME tx id the audit trail already uses - no new correlation concept.
-    audit_txs = {a.transaction_id for a in db_session.query(models.AuditLog)
-                 .filter(models.AuditLog.source_name == crud.USER_SOURCE).all()}
-    assert row.transaction_id in audit_txs
+    # The key is the SAME tx id the audit trail already uses - no new correlation concept. The audit trail is
+    # audit_batches (cell-source overhaul); the person's batch is the one its actor is the person
+    ab = lines.AuditBatch
+    audit_txs = {a.transaction_id for a in db_session.query(ab).filter(ab.written_by == "tester").all()}
+    assert audit_txs == {row.transaction_id}
 
 
 @pytest.mark.parametrize("bad_effort, why", [
@@ -528,12 +547,14 @@ def test_a_broken_counter_never_costs_the_user_their_correction(client, db_sessi
     the real consequence was that a client-side counter bug refused every save the
     operator attempted. The correction is the product; the measurement is not.
     """
-    before = db_session.query(models.AuditLog).count()
+    from database import lines
+
+    before = db_session.query(lines.AuditBatch).count()
     res = _put(client, {"session_id": S1, "key": -3, "mouse": 0, "nav": 0},
                value="EFF_ALWAYS_LANDS")
     assert res.status_code == 200
     assert res.json()["change_count"] == 1
-    assert db_session.query(models.AuditLog).count() > before, \
+    assert db_session.query(lines.AuditBatch).count() > before, \
         "the correction must be applied even when the effort payload is refused"
     assert db_session.query(models.InteractionEffortLog).count() == 0, \
         "...and the refused counts must still not be stored"

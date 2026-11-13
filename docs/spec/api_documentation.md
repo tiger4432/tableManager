@@ -475,8 +475,7 @@ All three routes are behind the shared admin token (`X-Admin-Token`). `POST .../
   - **`count_kind` is part of the answer**, one of:
     - `exact` — a cheap query answered the whole question.
     - `sample` — a bounded scan; `scanned` and `truncated` say so, and `detail` states in words that the number is about the sample, not the table.
-    - `upper_bound` — a cheap query answered a superset; `extra.why_upper_bound` names the missing half in words.
-  - Three of the four counts cannot be exact on a request path, and none of them claims to be. An exact R1 count is the operation itself, not a preview of it.
+  - 21 operations register a count; `file_reread` refuses it (the re-read doors start that one). Of the other 20, 13 are always `exact`, 3 are always `sample` (`chain_replay`, `enrichment_backfill`, `enrichment_confirm`), and 4 are `exact` unless the scan budget cuts them, then `sample` (`resolve`, `set_aside`, `fold_written_notation`, `ledger_rescope`). Counted 2026-11-11 with `git grep -c '"count": _' -- server/admin/retroactive.py` (21) and `git grep -n 'COUNT_SAMPLE if\|: COUNT_SAMPLE,' -- server/admin/retroactive.py` (7 lines, one per operation that can answer `sample`). An exact R1 count is the operation itself, not a preview of it.
   - **`scan_limit` is `null` for operations that walk no rows.** Echoing the requested budget there would tell a reader a sample was taken when none was.
   - `blocked_reason` (e.g. `auto_confirm_off`) is non-null when the run would be refused, so a client disables the button instead of letting the operator discover the refusal by pressing it.
   - The route is read-only by construction: it rolls back on the way out regardless of which operation ran.

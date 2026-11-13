@@ -3,7 +3,7 @@
 SQL of {"join": "-"}. The retroactive «Fold stored values into the declared spelling» does the same job - measured on
 twin tables, one seed: the same shown values, layers and history lines. This keeps the spellings that script was for:
 a run of whitespace . _ - (an ideographic space too) becomes one '-', case kept, a blank left blank, every layer
-folded with the shown value and one history line per moved cell."""
+folded with the shown value - one line per folded layer, its source's (on lines since A 11-11)."""
 import json
 import os
 import sys
@@ -17,7 +17,7 @@ import event_constants                                              # noqa: E402
 import notation_norm as nn                                          # noqa: E402
 from chain import replay                                            # noqa: E402
 from conftest import PG_TEST_SCHEMA                                 # noqa: E402
-from database import crud, models, schemas                          # noqa: E402
+from database import crud, lines, models, schemas                   # noqa: E402
 
 pytestmark = pytest.mark.pg
 
@@ -39,8 +39,20 @@ def _write(db, rows, source):
     db.commit()
 
 
+def _layers(db):
+    ids = [r for (r,) in db.execute(text('SELECT row_id FROM "%s"' % TABLE))]
+    return [head["value"] for layer in lines.layers(db, TABLE, ids, ["comp_id"]).values() for head in layer.values()]
+
+
+def _write_lines(db):
+    return db.execute(text("SELECT count(*) FROM \"%s\" WHERE line_kind = 'write'"
+                           % lines.lines_relation(TABLE))).scalar()
+
+
 def test_the_notation_op_folds_what_the_retired_script_folded(pg_engine, tmp_path, monkeypatch):
     from sqlalchemy.orm import sessionmaker
+
+    import migrations.add_business_key_unique_index as bk
     from database import config_watcher
     from database.context import channel, retroactive_run
 
@@ -55,10 +67,14 @@ def test_the_notation_op_folds_what_the_retired_script_folded(pg_engine, tmp_pat
     scratch.create_all(pg_engine)
     db = sessionmaker(bind=pg_engine)()
     try:
+        # the table as ops keeps it: its key's unique index, then its lines
+        db.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" (business_key_val)'
+                        % (bk.unique_index_name(TABLE), TABLE)))
+        lines.ensure_line_table(db, TABLE, DECL)
+        db.commit()
         _write(db, SEED, "f01.csv")
-        _write(db, {"K1": "AB 12"}, "f02.csv")                                     # a second layer on one cell
-        count = "SELECT count(*) FROM cell_sources WHERE table_name = :t AND column_name = 'comp_id'"
-        seeded = db.execute(text(count), {"t": TABLE}).scalar()
+        _write(db, {"K1": "AB_12"}, "f02.csv")      # a second layer on one cell (the same value would fold into f01's)
+        seeded, seeded_lines = len(_layers(db)), _write_lines(db)
         rules.write_text(json.dumps({"columns": {TABLE: {"comp_id": {"write": True, "rules": {"join": "-"}}}}}),
                          encoding="utf-8")
         config_watcher.forget_held()
@@ -66,17 +82,20 @@ def test_the_notation_op_folds_what_the_retired_script_folded(pg_engine, tmp_pat
             said = replay.fold_written_notation(db, TABLE, apply=True, log=lambda m: None)
         db.commit()
         shown = dict(db.execute(text('SELECT business_key_val, comp_id FROM "%s"' % TABLE)).fetchall())
-        layers = db.execute(text("SELECT value #>> '{}' FROM cell_sources WHERE table_name = :t "
-                                 "AND column_name = 'comp_id'"), {"t": TABLE}).scalars().all()
-        moved = db.execute(text("SELECT count(*) FROM audit_logs WHERE table_name = :t AND column_name = 'comp_id' "
-                                "AND updated_by <> 'seed'"), {"t": TABLE}).scalar()
+        layers = _layers(db)
         assert shown == FOLDED
         assert seeded and len(layers) == seeded and set(layers) == {"AB-12", "ab-12"}   # every layer, none lost
-        assert said["cells_folded"] == moved == 8
+        # 8 cells; K1's two layers - one line each, the old spellings' lines kept as history
+        assert (said["cells_folded"], said["layers_folded"], _write_lines(db) - seeded_lines) == (8, 9, 9)
     finally:
+        db.rollback()
+        lines.drop_line_table(db, TABLE)
+        db.execute(lines.LineColumn.__table__.delete().where(lines.LineColumn.table_name == TABLE))
+        db.execute(lines.AuditBatch.__table__.delete().where(lines.AuditBatch.table_name == TABLE))
+        db.commit()
         db.close()
         with pg_engine.begin() as conn:
-            for table in ("cell_sources", "audit_logs", "database_outbox"):
+            for table in ("cell_overwrites", "database_outbox"):
                 conn.execute(text("DELETE FROM %s WHERE table_name = :t" % table), {"t": TABLE})
         scratch.drop_all(pg_engine)
         crud.TABLE_CONFIG.pop(TABLE, None)

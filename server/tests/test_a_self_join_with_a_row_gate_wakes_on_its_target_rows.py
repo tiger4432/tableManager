@@ -45,6 +45,8 @@ def fixture_db(tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    from tests.support import line_tables
+    line_tables.build(engine, T)                   # the chain's rows are its lines (A 11-11)
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     monkeypatch.setattr("database.database.SessionLocal", lambda: _NoClose(session))
     path = tmp_path / "chain_rules.json"
@@ -85,9 +87,14 @@ def _dates(db):
 
 
 def _chain_writes(db):
-    """The chain's row lines in the audit log (one per row it wrote)."""
-    return db.query(models.AuditLog).filter(models.AuditLog.table_name == T,
-                                            models.AuditLog.source_name.like("chain_ingestion%")).count()
+    """The chain's lines (one per row it wrote)."""
+    from sqlalchemy import func, select
+
+    from database import lines
+
+    ln = lines.shape(db, T, crud.TABLE_CONFIG[T])["lines"]
+    return db.execute(select(func.count()).where(ln.c.source_name.like("chain_ingestion%"),
+                                                  ln.c.line_kind == "write")).scalar()
 
 
 def test_the_companion_stands_ungated_and_the_gateless_self_join_stands_none(db):

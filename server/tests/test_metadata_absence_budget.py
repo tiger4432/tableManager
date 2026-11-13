@@ -1,12 +1,12 @@
 """[P2] "Not in the prefetch cache" must mean "has no metadata", not "unknown".
 
 `apply_batch_updates` prefetches the `cell_sources`/`cell_overwrites` rows of the
-rows the batch resolves up front, in the columns it writes (총괄 10-24 - every column, before). `_load_metadata_row_cell`
+rows the batch resolves up front, in the columns it writes (총괄 10-24 - every column, before). the old cell reader
 then treated a missing cache key as "I do not know" and issued two SELECTs per
 cell - so writing a column that has never been written before cost two round
 trips per row to be told, every time, that there is nothing there.
 
-🔴 THE GUARD IS MEMBERSHIP IN THE CELLS READ (`LayersRead`), NOT "the row exists".
+🔴 THE GUARD IS MEMBERSHIP IN THE CELLS READ (the old door's read-cell set), NOT "the row exists".
 The equivalence is only bought for the (row, column) cells that prefetch actually
 covered. A row can be resolved
 mid-batch and never have been prefetched, and answering "empty" for it would
@@ -23,7 +23,7 @@ unchanged - they now hold for a better reason.
 
 The guard is still load-bearing, on a narrower case: the COLLISION-MERGE conflict
 row. Editing a key source column re-derives a row's identity mid-batch, and if the
-new key already belongs to another row, `apply_row_update_internal` finds that row
+new key already belongs to another row, the old write door finds that row
 with its own query (crud.py, `conflict_row`) and merges onto it. That row's key was
 never in the payload, so it is genuinely outside the prefetched set.
 `test_composite_key_prefetch_budget.py::test_collision_merge_still_reads_the_
@@ -89,7 +89,7 @@ def composite_db():
 
     That is what makes a row reachable without ever having been prefetched: the
     key does not exist when `target_ids`/`target_bks` are collected, only after
-    `apply_row_update_internal` joins the source columns.
+    the old write door joins the source columns.
 
     Table name prefixed `p2meta_test_` so it cannot collide with a real table in
     the user's gitignored config.

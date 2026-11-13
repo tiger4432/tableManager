@@ -189,7 +189,7 @@ REASON_NO_DECISION_KEY = "no_decision_key"
 # The row carries no `business_key_val`. Reachable only since blank-key rows
 # entered the write path: the business key is usually COMPOSED from the decision
 # key, so the rows most likely to be missing it are exactly these. The writer
-# addresses by `row_id` first (`_get_or_create_row`), so this fires only when
+# addresses by `row_id` first (`write_lines._claim`), so this fires only when
 # neither identifier is present - and then the alternative is an INSERT of a
 # phantom row, not a write to the intended one.
 REASON_NO_ROW_IDENTITY = "no_row_identity"
@@ -575,26 +575,16 @@ def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     """Which (row_id, column) target cells have NO provenance at all - but `own`'s (the asking rule's declaration,
     owner 11-06 step 2 ㄴ D-1: its answer is asked again, not kept because it was there)?
 
-    Batched on `idx_sources_lookup` (table_name, row_id, column_name) in
-    CHUNK_SIZE chunks - one query per chunk, never per row. Returns the set of
-    (row_id, column) pairs that are safe to write absent-only.
+    A cell's provenance is its sources' standing words, read from the table's lines (`lines.layers`, cell-source
+    overhaul: cell_sources retires). Returns the set of (row_id, column) pairs that are safe to write absent-only.
     """
-    from database import models
+    from database import lines
 
     row_ids = [r for r in row_ids if r]
     if not row_ids or not target_fields:
         return set()
-    taken = set()
-    for i in range(0, len(row_ids), CHUNK_SIZE):
-        chunk = row_ids[i:i + CHUNK_SIZE]
-        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.updated_by)
-                .filter(models.CellSource.table_name == derived_table,
-                        models.CellSource.row_id.in_(chunk),
-                        models.CellSource.column_name.in_(list(target_fields)))
-                .all())
-        for row_id, column, by in rows:
-            if by not in own:
-                taken.add((row_id, column))
+    said = lines.layers(db, derived_table, row_ids, list(target_fields))
+    taken = {cell for cell, by in said.items() if any(head["updated_by"] not in own for head in by.values())}
     return {(r, c) for r in row_ids for c in target_fields if (r, c) not in taken}
 
 
@@ -766,7 +756,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
         business_key_val = entry.get("business_key_val")
         # Addressability is checked ONCE per row, before any probing, because a
         # row the writer cannot land on is not worth a query. `row_id` alone is
-        # enough (`crud._get_or_create_row` prefers it), and neither present
+        # enough (`write_lines._claim` prefers it), and neither present
         # would make the write CREATE a row rather than fill one.
         if not row_id and not crud.clean_str_value(business_key_val):
             st["refused"][REASON_NO_ROW_IDENTITY] = \

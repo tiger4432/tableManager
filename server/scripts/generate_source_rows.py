@@ -373,8 +373,8 @@ def row_items(plan: Plan, rows):
 
     🔴 `business_key_val` IS SUPPLIED PER ROW AND THAT IS NOT OPTIONAL. `dt_log` declares
     a composite key over columns this source does not name, so a payload without an explicit
-    key leaves every row's identity blank - and `crud._update_row_business_key` records what
-    happens then: blank-keyed rows in one batch collide WITH EACH OTHER, the IntegrityError
+    key leaves every row's identity blank - and then blank-keyed rows in one batch collide
+    WITH EACH OTHER, the IntegrityError
     recovery cannot resolve rows that were never committed, and the batch is REFUSED after
     the retries. The generated business key is the source's own key column, so the two
     spellings agree by construction rather than by luck.

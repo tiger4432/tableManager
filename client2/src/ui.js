@@ -37,6 +37,13 @@ export function updateSelectedCellUI() {
     return;
   }
 
+  // a row a history jump selected, no cell (navigatorFinalScroll): the row by its key, no column and no value
+  if (state.selectedCell.colId == null) {
+    elements.selectedCellInfo.innerHTML = `
+    <div><strong>Row:</strong> <span data-wrap-ok style="color:var(--color-secondary)">${escapeHtml(state.selectedCell.rowKey || state.selectedCell.rowId)}</span></div>`;
+    return;
+  }
+
   const isSystem = ['created_at', 'updated_at', 'row_id'].includes(state.selectedCell.colId);
   // [Virtual join] The same read-only slot, filled with the one thing the write refusal
   // cannot say: WHICH table to go and fix. No new element — this line already existed for

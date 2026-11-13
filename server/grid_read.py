@@ -312,19 +312,21 @@ def apply_search_filter(query, table_model, table_name, q, cols,
 
 
 def transaction_rows(db, table_model, table_name, transaction_id):
-    """The rows transaction `transaction_id` touched, as a filter: the rows its history lines name, and the rows its
-    receipts name in `row_ids` (`crud.receipt_log` - a formula's batch leaves no line a row, lead 10-28)."""
+    """The rows transaction `transaction_id` changed, as a filter: the rows of its lines (cell-source overhaul - the
+    (batch) index) and the rows its receipts name (`crud.receipt_row_ids` - a formula's write keeps a receipt and no
+    line a row, owner 11-12 ㄴ); none in a relation without lines."""
     import sqlalchemy as sa
 
-    from admin.audit_cache import in_group
-    from ledger.runtime_v2 import RECEIPT_COLUMN
+    from admin import audit_history
+    from database import lines
 
     refuse_row_address(table_name)
-    in_tx = (models.AuditLog.table_name == table_name, in_group(models.AuditLog.transaction_id, transaction_id))
-    named = [row_id for (value,) in db.query(models.AuditLog.new_value).filter(
-                 *in_tx, models.AuditLog.column_name == RECEIPT_COLUMN)
-             for row_id in ((value or {}).get("row_ids") or () if isinstance(value, dict) else ())]
-    lined = table_model.row_id.in_(db.query(models.AuditLog.row_id).filter(*in_tx))
+    if not lines.has_lines(db, table_name):
+        return sa.false()
+    from database import crud
+
+    lined = table_model.row_id.in_(audit_history.group_line_rows(table_name, transaction_id))
+    named = list(crud.receipt_row_ids(db, table_name, transaction_id))
     return sa.or_(lined, table_model.row_id.in_(named)) if named else lined
 
 
@@ -488,11 +490,10 @@ from utils.wire_format import wire_text  # noqa: E402
 
 
 def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols: list, include_sources: bool = True) -> list:
-    """
-    기본 데이터 테이블의 row 객체들에 cell_overwrites 및 cell_sources 정보를 병합하여 
-    API 응답 포맷인 { value, is_overwrite, sources, updated_by } 딕셔너리로 합성합니다.
-    include_sources=False이면 cell_sources 조회를 생략하여 대량 조회 성능을 최적화합니다.
-    """
+    """The rows as the page reads them - `{value, is_overwrite, sources, updated_by, manual_priority_source,
+    priority_source}` a cell: the line t.won_by names (`audit_history.winners`) - its source the winner, its
+    writer `updated_by` (None when no line won it: before the landing, nobody is known - lead 11-11) -, the pins from
+    cell_overwrites, and with `include_sources` each source's head line (`lines.layers`)."""
     if not rows:
         return []
 
@@ -553,7 +554,6 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
         models.CellOverwrite.row_id,
         models.CellOverwrite.column_name,
         models.CellOverwrite.is_overwrite,
-        models.CellOverwrite.updated_by,
         models.CellOverwrite.manual_priority_source
     ).filter(
         models.CellOverwrite.table_name == table_name,
@@ -561,40 +561,16 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     ).all()
     
     overwrites_map = {}
-    for row_id, column_name, is_ow, updated_by, manual_priority_source in overwrites:
-        overwrites_map[(row_id, column_name)] = (is_ow, updated_by, manual_priority_source)
+    for row_id, column_name, is_ow, manual_priority_source in overwrites:
+        overwrites_map[(row_id, column_name)] = (is_ow, manual_priority_source)
         
-    # 2. cell_sources 일괄 로딩 (include_sources가 True일 때만 실행)
-    sources_map = {}
-    ingested_map = {}
-    if include_sources:
-        # [ORDER BY source_name] Same reason as the crud SELECTs: this list feeds
-        # `compute_priority_value`, so its order is stated rather than inherited from
-        # the heap. `source_name` is UNIQUE per cell (`idx_sources_lookup_source`).
-        #
-        # [tiebreak] `ingested_at` is selected because recency breaks a tie between
-        # equally-ranked sources. Without it this READ path would resolve ties
-        # alphabetically while the WRITE path resolved them by recency, so the
-        # `priority_source` badge could name a different layer than the materialised
-        # `value` actually came from.
-        sources = db.query(
-            models.CellSource.row_id,
-            models.CellSource.column_name,
-            models.CellSource.source_name,
-            models.CellSource.value,
-            models.CellSource.ingested_at
-        ).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id.in_(row_ids)
-        ).order_by(models.CellSource.source_name.asc()).all()
+    # 2. the winners (t.won_by) and, for the sources, each source's head line (cell-source overhaul)
+    from admin import audit_history
 
-        for row_id, column_name, source_name, value, ingested_at in sources:
-            key = (row_id, column_name)
-            if key not in sources_map:
-                sources_map[key] = {}
-                ingested_map[key] = {}
-            sources_map[key][source_name] = value
-            ingested_map[key][source_name] = ingested_at
+    won = audit_history.winners(db, table_name, row_ids)
+    from database import lines
+
+    heads = lines.layers(db, table_name, row_ids) if include_sources else {}
 
     data_list = []
     for row in rows:
@@ -609,33 +585,13 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             key = (r_id, col)
             
             ow_info = overwrites_map.get(key)
-            col_srcs = sources_map.get(key, {})
-            
+            col_srcs = {name: wire_text(one["value"]) for name, one in heads.get(key, {}).items()}
+
             is_ow = ow_info[0] if ow_info else False
-            updated_by = ow_info[1] if ow_info else "system"
-            manual_pin = ow_info[2] if ow_info else None
-            
-            # [성능 최적화] include_sources=False 일 때는 소스 쿼리를 건너뛰었으므로 Overwrite 테이블 정보로 즉시 유도
-            if not include_sources:
-                # a pin answers first - a cell pinned to a file's layer shows that layer, whoever pinned it (owner
-                # 11-08 ㄱ: the overwrite row a pin writes names the person who pinned, and read as «user» it painted
-                # the cell «Written by person»)
-                # the layers the overwrite row shows; the ranking stays compute_priority_value's
-                shown = {}
-                if manual_pin is not None:
-                    shown[manual_pin] = {}
-                elif updated_by == "collision_merge":
-                    shown["collision_merge"] = {}
-                elif is_ow or updated_by == "user":
-                    shown["user"] = {}
-                _, priority_source = crud.compute_priority_value(shown, manual_pin, table_name, cell=(table_name, col, row))
-            else:
-                # `col_srcs` is `{source: value}` because that dict IS the client-facing
-                # cell contract and cannot carry a timestamp; the timestamps travel
-                # beside it. The response shape is unchanged.
-                _, priority_source = crud.compute_priority_value(
-                    col_srcs, manual_pin, table_name,
-                    ingested_at_by_source=ingested_map.get(key), cell=(table_name, col, row))
+            manual_pin = ow_info[1] if ow_info else None
+            line = won.get(key) or {}
+            priority_source = line.get("source")
+            updated_by = line.get("written_by")      # None: no line won it - written before the landing, unknown
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
@@ -686,39 +642,42 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     return data_list
 
 def cell_layers(db, table_name: str, rows: dict, cells: list) -> dict:
-    """{(row_id, column): {"sources", "manual_priority_source", "priority_source", "value"}} - each of `cells` (of
-    `rows`, {row_id: row}) as the sources panel reads it: every layer with its time and writer, the pin, and the
-    winner `crud.compute_priority_value` picks."""
-    from database import crud, models
+    """{(row_id, column): {"sources", "manual_priority_source", "priority_source", "won", "value"}} - each of `cells`
+    (of `rows`, {row_id: row}) as the sources panel reads it: each source's head line with its time and writer, the
+    pin, and the line its current line names (`audit_history.winners`) - its source, and in "won" its writer and time
+    ({"written_by", "at"}, None when no line won it)."""
+    from admin import audit_history
 
     if not cells:
         return {}
     row_ids = sorted({row_id for row_id, _ in cells})
     columns = sorted({column for _, column in cells})
-    layers = {}
-    # [ORDER BY source_name] this feeds `compute_priority_value`; a SELECT that feeds a decision states its order
-    for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name, models.CellSource.row_id.in_(row_ids),
-            models.CellSource.column_name.in_(columns)).order_by(models.CellSource.source_name.asc()):
-        layers.setdefault((s.row_id, s.column_name), {})[s.source_name] = {
-            "value": s.value, "timestamp": s.ingested_at.isoformat() if s.ingested_at else None,
-            "updated_by": s.updated_by}
+    from database import lines
+
+    heads = lines.layers(db, table_name, row_ids, columns)
+    won = audit_history.winners(db, table_name, row_ids)
     pins = {(ow.row_id, ow.column_name): ow.manual_priority_source for ow in db.query(models.CellOverwrite).filter(
         models.CellOverwrite.table_name == table_name, models.CellOverwrite.row_id.in_(row_ids),
         models.CellOverwrite.column_name.in_(columns))}
     out = {}
     for row_id, column in cells:
-        sources, pin, row = layers.get((row_id, column), {}), pins.get((row_id, column)), rows[row_id]
-        _, winner = crud.compute_priority_value(sources, pin, table_name, cell=(table_name, column, row))
-        out[(row_id, column)] = {"sources": sources, "manual_priority_source": pin, "priority_source": winner,
-                                 "value": getattr(row, column)}
+        sources = {name: {"value": wire_text(one["value"]), "updated_by": one["updated_by"],
+                          "timestamp": one["ingested_at"].isoformat() if one["ingested_at"] else None}
+                   for name, one in heads.get((row_id, column), {}).items()}
+        line = won.get((row_id, column))
+        out[(row_id, column)] = {"sources": sources, "manual_priority_source": pins.get((row_id, column)),
+                                 "priority_source": line["source"] if line else None,
+                                 "won": {"written_by": line["written_by"],
+                                         "at": line["at"].isoformat() if line["at"] else None} if line else None,
+                                 "value": getattr(rows[row_id], column)}
     return out
 
 
 def read_as_page(db, table_name: str, rows: list, user_cols: list, include_sources: bool, writers: bool = True):
     """(merged rows, looks): `rows` as the page reads them - the page read and every batch_row_upsert item, so a
     screen that did not make the write colours a cell as a read would (lead 11-08, 클라B's L2). `writers` False: the
-    cells' writers the layers would name are left to the page's `grid_look.WRITERS` read (owner 11-10 ㄱ)."""
+    page read - its cells' writers named inline from the winners it read, `updating` False (owner 11-13 ㄱ: the page
+    keeps its writers; 11-10's «writers after» priced cell_sources at 8 s, winners are 0.071 s a 1,000-row page)."""
     import grid_look
 
     merged = fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=include_sources)

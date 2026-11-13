@@ -52,8 +52,8 @@
 
 🔴 옛 철자 키도 이 문으로 (총괄 e243d6abf ③ · 6e2a93ef9). 키 조각을 칸이 저장하는 철자로
    짓게 된 뒤, 그 전에 페이로드 철자로 지은 키는 «다시 지은 키 ≠ 저장 키»라 여기서 걸린다.
-   미리보기가 어느 조각 때문인지 세고, `--apply` 는 `crud.put_business_key` 로 business_key_val
-   과 (선언됐으면) 업무키 칸을 같이 고치고 행마다 감사 줄을 남긴다. ③ 은 합친다.
+   미리보기가 어느 조각 때문인지 세고, `--apply` 는 쓰기(`write_lines`)의 키 다시 짓기(5½)로
+   business_key_val 과 (선언됐으면) 업무키 칸을 같이 고치고 감사 표(audit_batches)에 한 줄 남긴다. ③ 은 합친다.
 
 Usage
 -----
@@ -149,34 +149,36 @@ def _moved_parts(table: str, old, new, sources: list, sep: str) -> str:
     return " + ".join(sorted(set(moved))) or "none"
 
 
-#: Who the audit line names when `--by` names nobody, and the layer-less source it is written under.
+#: Who the audit row names when `--by` names nobody, and the layer-less source it is written under.
 REKEY_BY = "operator"
 REKEY_SOURCE = "rebuild_business_keys"
 
 
 def apply_rekeys(db, table: str, pending: list, by: str = REKEY_BY) -> int:
-    """Write each (row_id, rebuilt key) through `crud.put_business_key` - `business_key_val` and,
-    on a table that declares one, its business_key column (총괄 6e2a93ef9) - with an audit line
-    each, CHUNK rows a commit. Returns how many rows were written."""
-    model = models.DYNAMIC_TABLES[table]
+    """Re-key each row of (row_id, rebuilt key) by the write's own key step (`write_lines` 5½, a mark with no column
+    carrying `rekey` - the notation backfill's way): `business_key_val` and, on a table that declares one, its
+    business_key column (총괄 6e2a93ef9), one audit row a chunk (audit_batches), CHUNK rows a commit. The key is the
+    write's rebuild (`crud.rebuilt_business_key`), the one `plan_rekeys` previews. Returns how many rows were
+    re-keyed."""
+    import uuid
+
+    from database.write_lines import write_lines
+
     written = 0
     for i in range(0, len(pending), CHUNK):
         chunk = dict(pending[i:i + CHUNK])
-        for row in db.query(model).filter(model.row_id.in_(list(chunk))):
-            old = row.business_key_val
-            column, old_column = crud.put_business_key(table, row, chunk[row.row_id])
-            crud.create_audit_log(db, table, row.row_id, column or "business_key_val",
-                                  old_column if column else old, chunk[row.row_id],
-                                  REKEY_SOURCE, by, business_key=chunk[row.row_id])
-            written += 1
+        items = [{"row_id": row_id, "line_kind": "mark", "columns": [], "rekey": True, "source_name": REKEY_SOURCE,
+                  "written_by": by} for row_id in chunk]
+        write_lines(db, table, items, kind="mark", transaction_id="%s_%s" % (REKEY_SOURCE, uuid.uuid4().hex[:8]))
         db.commit()
+        written += len(chunk)
         print(f"  .. {written}/{len(pending)}")
     return written
 
 
 def merge_rekeys(db, table: str, collisions: list, by: str = REKEY_BY) -> list:
     """Each (row, holder) - a row whose rebuilt key the holder already carries - merged into the
-    holder through the ONE merge body, `crud._merge_into_key_holder` (소유자 10-03 「ㄴ」, 총괄
+    holder through the ONE merge body, `write_lines.merge_rows` (소유자 10-03 「ㄴ」, 총괄
     ab1b9a98c). Nothing is written here, so no cell counts as a person's (`human_columns` empty):
     both rows' overwrite marks keep a person's value. Run after `apply_rekeys`, so a holder that
     was itself rekeyed already carries the key. Returns the merged rows' ids. Not undone."""

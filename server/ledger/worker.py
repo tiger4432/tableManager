@@ -603,6 +603,9 @@ async def start_ledger_worker(db_session_factory):
     except Exception as exc:
         logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
                      "whose declaration did not change may still refuse to run: %s", told(exc), exc_info=exc)
+    from utils.logger import booted
+
+    booted()                                      # the boot is done; before the loops start
     # The partitions' build waits on the database's older transactions - beside the loops, on a thread. Their storage
     # is the scheduler's storage line's (`maintenance_line.apply_table_storage`).
     async def index_line():

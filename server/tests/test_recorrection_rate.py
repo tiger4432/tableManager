@@ -13,22 +13,42 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from database import crud, models
+from conftest import retire_dynamic_model
+from database import crud, lines, models
+from tests.support import line_tables
 
 # Table names are namespaced so they can never collide with a real table in the
 # user's (gitignored) table_config.json - a collision there has broken this
 # suite before by pre-empting the shared in-memory SQLite schema.
 T = "recorr_test_tbl"
+OTHER = "recorr_test_other"
+COLUMNS = ("a", "b", "z", "filled")
+_BITS = {}
 
 
-def _log(db, *, row, col, tx, source=crud.USER_SOURCE, days_ago=1,
-         old="before", new="after", table=T):
-    db.add(models.AuditLog(
-        table_name=table, row_id=row, column_name=col,
-        old_value=old, new_value=new,
-        source_name=source, updated_by="tester", transaction_id=tx,
-        timestamp=datetime.now(timezone.utc) - timedelta(days=days_ago),
-    ))
+@pytest.fixture(autouse=True)
+def line_tables_of_both(db_session, monkeypatch):
+    """The cell-source overhaul: a person's writes are lines (`crud.human_lines`) - both tables keep them."""
+    engine = db_session.get_bind()
+    for name in (T, OTHER):
+        entry = {"business_key": "k", "composite_key_source": ["k"],
+                 "column_types": dict({"k": "string"}, **{c: "string" for c in COLUMNS})}
+        models.init_dynamic_models({name: entry})
+        monkeypatch.setitem(crud.TABLE_CONFIG, name, entry)
+        _BITS[name] = line_tables.build(engine, name)
+    yield
+    for name in (T, OTHER):
+        line_tables.drop(engine, name)
+        retire_dynamic_model(name)
+
+
+def _log(db, *, row, col, tx, source=crud.USER_SOURCE, days_ago=1, new="after", table=T, by="tester", acted_by=None):
+    """One line `source` wrote in transaction `tx` - the cell `col` said `new` (None: emptied) - and the write's audit
+    row, its actor `acted_by` (the author `by` when not given), as `write_lines` leaves them."""
+    at = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    line_tables.line(db.connection(), table, _BITS[table], row, source=source, batch=tx, written_by=by, at=at,
+                     values={col: new})
+    line_tables.audit_batch(db.connection(), tx, table, written_by=acted_by or by, at=at)
 
 
 def _stats(db, window_days=7):
@@ -190,28 +210,10 @@ def test_single_cell_denominator_is_reported(db_session):
 
 # ── 6. Identical / empty rewrites (TRAP 3) ───────────────────────────────────
 
-def test_row_creation_placeholders_are_not_counted_as_written_cells(db_session):
-    """Creating a row logs EVERY declared column, including ones left blank.
-
-    `apply_row_update_internal` short-circuits its has_changed guard when is_new
-    is true (crud.py), so a new row emits null->null audit rows for columns the
-    person never filled in. Those are blank cells, not writes: 4,290 such rows
-    exist on the live DB and they would pad the denominator with cells nobody
-    touched.
-    """
-    _log(db_session, row="r1", col="filled", tx="tx-create", old=None, new="typed")
-    _log(db_session, row="r1", col="blank_a", tx="tx-create", old=None, new=None)
-    _log(db_session, row="r1", col="blank_b", tx="tx-create", old=None, new=None)
-
-    s = _stats(db_session)
-    assert s["measured_cells"] == 1, "only the cell the person actually filled counts"
-    assert s["recorrected_cells"] == 0
-
-
 def test_clearing_a_cell_still_counts_as_a_write(db_session):
     """Guard against over-filtering: value -> empty is a real human edit."""
-    _log(db_session, row="r1", col="a", tx="tx-1", old="something", new=None)
-    _log(db_session, row="r1", col="a", tx="tx-2", old=None, new="redone")
+    _log(db_session, row="r1", col="a", tx="tx-1", new=None)
+    _log(db_session, row="r1", col="a", tx="tx-2", new="redone")
 
     s = _stats(db_session)
     assert s["measured_cells"] == 1
@@ -223,7 +225,7 @@ def test_clearing_a_cell_still_counts_as_a_write(db_session):
 def test_same_column_on_different_rows_and_tables_are_different_cells(db_session):
     _log(db_session, row="r1", col="a", tx="tx-1")
     _log(db_session, row="r2", col="a", tx="tx-2")
-    _log(db_session, row="r1", col="a", tx="tx-3", table="recorr_test_other")
+    _log(db_session, row="r1", col="a", tx="tx-3", table=OTHER)
 
     s = _stats(db_session)
     assert s["measured_cells"] == 3
@@ -313,6 +315,70 @@ def test_a_real_recorrection_timeout_is_still_identified_as_one(
     main.FIGURES.forget()
 
     reason = client.get("/dashboard/summary").json()["recorrection"]["unavailable_reason"]
-    assert "시간 초과" in reason and "idx_audit_user_recorrection" in reason, \
+    assert "시간 초과" in reason and lines.index_name("<table>", "p") in reason, \
         "the timeout case must still point at the index that fixes it"
     main.FIGURES.forget()
+
+
+# ── 9. Whose line (lead 11-10 ㄴ) ─────────────────────────────────────────────
+
+def test_a_merge_copy_of_a_persons_line_is_a_persons(db_session):
+    """`crud.layer_writer` is the one judgment: a collision merge keeps a person's line as «user (…)»."""
+    _log(db_session, row="r1", col="a", tx="tx-1")
+    _log(db_session, row="r1", col="a", tx="tx-2", source="user (old_exist_K9)")
+    s = _stats(db_session)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (1, 1)
+
+
+@pytest.mark.parametrize("name", ["user", "user (old_exist_K9)", "users.csv", "user(", "xuser", "chain:r1", ""])
+def test_the_sql_says_of_each_name_what_layer_writer_says(db_session, name):
+    import sqlalchemy as sa
+
+    one = sa.select(sa.literal(name).label("source_name")).subquery()
+    picked = db_session.execute(sa.select(sa.func.count()).select_from(one).where(crud.human_source_clause())).scalar()
+    assert bool(picked) == (crud.layer_writer(name) == crud.USER_SOURCE), name
+
+
+# ── 10. Who acted (lead 11-11: a line's written_by is its value's author, its audit row the write's actor) ────────
+
+def test_a_line_a_retroactive_op_re_spelled_is_no_new_act(db_session):
+    """The notation backfill re-spells a person's line: the person stays its author, the op is the write's actor -
+    one act of the person's, no re-correction."""
+    from chain.replay import NOTATION_BACKFILL_SOURCE
+
+    _log(db_session, row="r1", col="a", tx="tx-1")
+    _log(db_session, row="r1", col="a", tx="nb-1", acted_by=NOTATION_BACKFILL_SOURCE)
+    s = _stats(db_session)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (1, 0)
+
+
+def test_another_person_correcting_a_persons_value_is_a_re_correction(db_session):
+    """Person B fixes the cell person A wrote: the new line's author is its actor, B - counted."""
+    _log(db_session, row="r1", col="a", tx="tx-1", by="kim")
+    _log(db_session, row="r1", col="a", tx="tx-2", by="lee")
+    s = _stats(db_session)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (1, 1)
+
+
+def test_write_lines_names_the_actor_on_the_audit_row_and_the_author_on_the_line(db_session):
+    """`acted_by` reaches the audit row; the line keeps `written_by` - through the write seat, not a hand-made seed."""
+    import sqlalchemy as sa
+
+    from chain.replay import NOTATION_BACKFILL_SOURCE
+    from database import lines
+    from database.write_lines import write_lines
+
+    db = db_session
+    write_lines(db, T, [{"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": crud.USER_SOURCE,
+                         "written_by": "kim"}], kind="funnel", transaction_id="tx-a")
+    [row_id] = [r for (r,) in db.execute(sa.text('SELECT row_id FROM "%s"' % T))]
+    write_lines(db, T, [{"row_id": row_id, "values": {"a": "X"}, "source_name": crud.USER_SOURCE, "written_by": "kim",
+                         "acted_by": NOTATION_BACKFILL_SOURCE}], kind="notation", transaction_id="nb-a")
+    db.commit()
+    ab = lines.AuditBatch
+    assert dict(db.execute(sa.select(ab.transaction_id, ab.written_by).where(ab.table_name == T)).all()) == {
+        "tx-a": "kim", "nb-a": NOTATION_BACKFILL_SOURCE}
+    said = db.execute(sa.text('SELECT batch, written_by FROM "%s" ORDER BY line_id' % lines.lines_relation(T))).all()
+    assert [tuple(r) for r in said] == [("tx-a", "kim"), ("nb-a", "kim")], "the line keeps its value's author"
+    s = crud.get_recorrection_stats(db)
+    assert (s["measured_cells"], s["recorrected_cells"]) == (2, 0)

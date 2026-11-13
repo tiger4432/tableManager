@@ -54,8 +54,8 @@ class AuditLog(Base):
     # that was already located, which an index cannot help. 10.3 MB on assy_qa, 0 scans.
     #
     # ⚠️ Same caveat as `idx_sources_lookup` above: `create_all` does not drop, so this
-    # only stops NEW databases from growing it. Existing ones are cleaned by
-    # `server/migrations/drop_redundant_layering_indexes.py --apply`. Rollback:
+    # only stops NEW databases from growing it. Existing ones keep it -
+    # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. Rollback:
     #   CREATE INDEX CONCURRENTLY ix_audit_logs_business_key
     #       ON public.audit_logs USING btree (business_key);
     business_key = Column(String, nullable=True)
@@ -681,56 +681,6 @@ def ensure_run_columns(engine, add=True):
 #: The databases `ensure_run_columns` found or made the columns on, in this process.
 _RUN_COLUMNS = weakref.WeakSet()
 
-#: The chain layer's owner (owner 11-06 step 2) - `CellSource.owner_rule` · `owner_key`.
-OWNER_COLUMNS = ("owner_rule", "owner_key")
-
-
-def _owner_columns_missing(bind) -> list:
-    """The owner columns `cell_sources` lacks - [] at once for a database this process has seen them on. `bind` an
-    Engine or a Connection - a session bound to one (lead 11-09) - read through itself, remembered by its Engine."""
-    engine = bind.engine
-    if engine in _OWNER_COLUMNS:
-        return []
-    from sqlalchemy import inspect
-
-    have = {c["name"] for c in inspect(bind).get_columns("cell_sources")}
-    missing = [name for name in OWNER_COLUMNS if name not in have]
-    if not missing:
-        _OWNER_COLUMNS.add(engine)
-    return missing
-
-
-def ensure_owner_columns(engine):
-    """`cell_sources`' owner columns on a database without them - ADD COLUMN, nullable, no default: metadata only on
-    PostgreSQL 11+, no rewrite whatever the table's size. Added at BOOT only (`sync_dynamic_tables_schema`, lead 11-06:
-    no DDL on a write path), through `db_safety.short_ddl` (lead 11-09 ⓐ) - never had, its lock error raises."""
-    import db_safety
-
-    missing = _owner_columns_missing(engine)
-    if missing:
-        postgres = engine.dialect.name == "postgresql"
-
-        def add(conn):
-            for name in missing:
-                conn.execute(text("ALTER TABLE cell_sources ADD COLUMN %s%s VARCHAR"
-                                  % ("IF NOT EXISTS " if postgres else "", name)))
-        db_safety.short_ddl(engine, "cell_sources", add, "owner columns")
-        logger.info("[Layers] cell_sources: %s added", " and ".join(missing))
-    _OWNER_COLUMNS.add(engine)
-
-
-def require_owner_columns(engine):
-    """The layer write's question: the owner columns are there, or a refusal that says why and what to do - never a
-    write that fails inside the ORM."""
-    if _owner_columns_missing(engine):
-        raise RuntimeError("cell_sources has no owner_rule / owner_key yet - the boot adds them (sync_dynamic_tables_"
-                           "schema); restart the API or the chain worker, and see its log for «[Layers] cell_sources»")
-
-
-#: The databases `ensure_owner_columns` found or made the columns on, in this process.
-_OWNER_COLUMNS = weakref.WeakSet()
-
-
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
                        "reader", "source", "reason", "failed_at", "took_seconds", "transaction_id")
@@ -841,8 +791,11 @@ SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint, Databa
 
 
 def schema_synced_tables() -> dict:
-    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables and the system ones above."""
-    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES}}
+    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables, the system ones above and
+    line_sources (database.lines - imported at the end of this module; copy_of, lead 11-12 ㄴ)."""
+    from database import lines
+
+    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES + (lines.LineSource,)}}
 
 
 class CellOverwrite(Base):
@@ -894,27 +847,13 @@ HUMAN_CLAIMS_INDEX = "idx_sources_human_claims"
 RETIRED_CLAIMS_INDEX = "idx_sources_by_source"
 
 
-def human_claims_index_ddl():
-    """`(name, CREATE statement)` for the human-claims index - the one spelling.
-
-    CONCURRENTLY, because this runs at boot on a live box; `IF NOT EXISTS` because it runs
-    at every boot. The columns and the predicate are read off the same two constants the
-    model declaration uses, so a change there cannot leave the ensure building the old
-    shape under the new name.
-    """
-    return HUMAN_CLAIMS_INDEX, (
-        f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{HUMAN_CLAIMS_INDEX}" '
-        f'ON "cell_sources" ("table_name", "row_id", "column_name") '
-        f"WHERE source_name = '{HUMAN_SOURCE_NAME}'")
-
-
 class CellSource(Base):
     __tablename__ = "cell_sources"
 
     # [D3] no index=True on a PK column - see AuditLog.id
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     # 🔴 NO `index=True` ON `table_name` · `column_name` (총괄 10-09). Their indexes are RETIRED -
-    #    `migrations/drop_redundant_layering_indexes.py` RETIRE_UNUSED drops them - and a flag left
+    #    the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped - and a flag left
     #    here declared them still, so the boot's own build would have made them again.
     table_name = Column(String, nullable=False)
     row_id = Column(String, nullable=False)
@@ -968,8 +907,8 @@ class CellSource(Base):
     origin_row_id = Column(String, nullable=True)
     # owner 11-06 step 2: the (rule, key) that owns a chain layer - what settling, picking and the tests read; its
     # name (`crud.owned_layer_name`) says the same. NULL = a layer no owner has adopted yet (a person's, a file's, or a
-    # chain layer written before). Deferred: a process reading cell_sources before `ensure_owner_columns` added them
-    # never selects them.
+    # chain layer written before). Deferred: a database without them (the boot added them until the old layer
+    # table retired - lead 11-11) is never asked for them by a read.
     owner_rule = deferred(Column(String, nullable=True))
     owner_key = deferred(Column(String, nullable=True))
 
@@ -987,10 +926,8 @@ class CellSource(Base):
         # ⚠️ REMOVING IT HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never drops an
         # index, and never adds one to a table that already exists, so this edit only
         # stops a BRAND NEW database from growing it. Existing databases - production
-        # included - are cleaned by
-        # `server/migrations/drop_redundant_layering_indexes.py --apply`, which
-        # re-proves the prefix relationship against the live catalogue before it drops
-        # anything. Rollback, if it is ever needed:
+        # included - keep it -
+        # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. Rollback, if it is ever needed:
         #   CREATE INDEX CONCURRENTLY idx_sources_lookup
         #       ON public.cell_sources USING btree (table_name, row_id, column_name);
         Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True,
@@ -1034,10 +971,9 @@ class CellSource(Base):
         # A withdraw is rare and batched, so seconds there buys a btree off every ingest.
         #
         # ⚠️ REMOVING THE OLD ONE HERE DOES NOT REMOVE IT ANYWHERE. `create_all` never
-        # drops an index. An existing database keeps it until a person runs
-        # `server/migrations/drop_redundant_layering_indexes.py --apply`, whose REPLACED
-        # section refuses to drop it until this index exists and is valid. The boot ensure
-        # creates this one and NAMES the old one with its size and the command.
+        # drops an index. An existing database keeps it -
+        # the old layer table's index cleaner retired 11-12 with that table; its indexes go when the table is dropped. `create_all` builds this one on a new
+        # database; nothing builds it at boot any more (the old layer table retires - lead 11-11).
         Index(HUMAN_CLAIMS_INDEX, "table_name", "row_id", "column_name",
               postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME),
               info={"purpose": "the cells a person typed", "serves": "enrichment analysis, human claims"}),
@@ -1672,9 +1608,8 @@ def init_dynamic_models(config_dict: dict, engine=None):
         # [F6] `idx_<table>_bk` ("business_key_val, row_id") is GONE. Measured
         # 2026-08-14: zero scans on all 18 registered tables on BOTH dev copies,
         # because the single-column `ix_<table>_business_key_val` beside it wins every
-        # identity lookup (`crud.get_row_by_business_key`, `_get_or_create_row`,
-        # `_find_business_key_conflict` all filter `business_key_val == ?` and select
-        # the row, not just its id, so the `row_id` suffix buys no index-only scan).
+        # identity lookup (the row claim filters `business_key_val` and selects the row,
+        # not just its id, so the `row_id` suffix buys no index-only scan).
         # The drop for existing databases is structurally gated - see
         # `retire_unread_framework_indexes.py`, which refuses unless another index
         # leading with `business_key_val` survives on that table.
@@ -1753,12 +1688,6 @@ def sync_dynamic_tables_schema(engine):
 
     import db_safety
 
-    try:
-        ensure_owner_columns(engine)        # cell_sources' owner columns (owner 11-06 step 2) - boot, not the writes
-    except Exception as err:                                     # noqa: BLE001 - said; the write path refuses
-        logger.error("[Layers] cell_sources: the owner columns were not added - layer writes refuse until a boot "
-                     "adds them: %s", told(err), exc_info=err)
-
     inspector = inspect(engine)
     dialect = engine.dialect
 
@@ -1795,6 +1724,16 @@ def sync_dynamic_tables_schema(engine):
         # pretending nothing is a view.
         logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", told(err), exc_info=err)
 
+    # 🔴 t's ADD AND t__lines' ADD IN ONE TRANSACTION (lead 11-11): a declared column of a table whose lines are
+    #    built is added below by ensure_declared (alter_columns - both tables, one short_ddl), not here, so a refused
+    #    add leaves neither table with it
+    from sqlalchemy.orm import Session
+
+    from database import crud, lines
+
+    with Session(engine) as db:
+        lined = set(lines._catalogue(db, [t for t in DYNAMIC_TABLES if lines.keeps_lines(t, crud.TABLE_CONFIG.get(t))]))
+
     for table_name, model_class in schema_synced_tables().items():
         if not inspector.has_table(table_name):
             continue
@@ -1824,6 +1763,8 @@ def sync_dynamic_tables_schema(engine):
         for column in table_obj.columns:
             col_name = column.name
             if col_name.lower() not in db_cols:
+                if table_name in lined and col_name in (crud.TABLE_CONFIG[table_name].get("column_types") or {}):
+                    continue                                    # with its line column, in ensure_declared below
                 col_ddl = str(CreateColumn(column).compile(dialect=dialect)).strip()
                 alter_query = f'ALTER TABLE "{table_name}" ADD COLUMN {col_ddl}'
                 print(f"[Schema Sync] Altering table '{table_name}': {alter_query}")
@@ -1863,6 +1804,12 @@ def sync_dynamic_tables_schema(engine):
                     logger.error(
                         "[Schema Sync] could not add column '%s' to '%s': %s",
                         col_name, table_name, told(err))
+
+    # the declared tables' lines (t__lines + won_by) after their columns - the same door, so a new column reaches
+    # t__lines too (C 11-11). Any refused: every one, raised at once (lead 11-11 ㄴ)
+    refused = lines.ensure_declared(engine)
+    if refused:
+        raise lines.LineTablesRefused(refused)
 
 
 # [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
@@ -3139,7 +3086,8 @@ def refresh_dynamic_models(engine=None):
 
     호출처: 웹서버 reload_local_process_cache(/admin/reload-configs),
             워커 SYSTEM_RELOAD 핸들러(run_watcher 폴러, chain_ingestion_worker 루프).
-    기존 테이블 ALTER는 수행하지 않는다(부팅 경로 sync_dynamic_tables_schema 전용).
+    줄 표는 짓지 않는다(lead 11-11 ㄴ): 짓는 자리는 시작(런처 `build_before_start` · 각 부팅 동기화)과
+    config_watcher 의 리로드뿐 - SYSTEM_RELOAD 를 받은 워처 · 워커가 같이 지어 서로 겨루지 않게.
 
     반환: 새로 CREATE된 테이블명 리스트 (engine 미지정 또는 config 로드 실패 시 []).
     """
@@ -3165,3 +3113,24 @@ def refresh_dynamic_models(engine=None):
         # the chain worker builds nothing) - built at its start and at a Reload, not in every process that reloads
         return created
     return []
+
+
+def build_before_start(engine, say) -> bool:
+    """The launcher's and devenv up's one build before any child starts (lead 11-11 ㄷ', owner «다 지어야 가동»): every
+    declared table and its line table, so the children's own syncs find them built and issue no line-table DDL - no
+    two processes race to build one. -> False when a table is refused; each refusal said in one `say` line."""
+    from database import lines
+
+    try:
+        refresh_dynamic_models(engine)
+        sync_dynamic_tables_schema(engine)
+    except lines.LineTablesRefused as refused:
+        for line in str(refused).splitlines():
+            say(line)
+        return False
+    return True
+
+
+# the overhaul's system tables (line_columns, audit_batches, line_sources) live in database.lines - imported here so
+# every Base.metadata.create_all (boot, the test fixtures) builds them
+from . import lines as _lines  # noqa: E402,F401

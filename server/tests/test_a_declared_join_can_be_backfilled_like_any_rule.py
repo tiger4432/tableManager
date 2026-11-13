@@ -204,14 +204,18 @@ def test_one_run_writes_a_label_per_page_and_the_history_folds_them_to_one(db):
     still reports which one it was. What died is the page being part of the NAME."""
     import re
 
+    from sqlalchemy import column, select, table
+
     from admin.audit_cache import group_of
+    from database import lines
+    from database.lines import AuditBatch
 
     _seed(db)
     # The seed's own write carries a generated id, so the subject is the DELTA. Counting
     # the total made this read two labels for a run that wrote one.
     def _labels():
-        return {a.transaction_id for a in db.query(models.AuditLog).filter(
-            models.AuditLog.table_name == LEFT).all()}
+        return {a.transaction_id for a in db.query(AuditBatch).filter(
+            AuditBatch.table_name == LEFT).all()}
 
     before = _labels()
 
@@ -230,8 +234,8 @@ def test_one_run_writes_a_label_per_page_and_the_history_folds_them_to_one(db):
 
     # the grid's 「this transaction's rows」 asked with the run's line gives every page's rows
     import main
-    written = {a.row_id for a in db.query(models.AuditLog).filter(
-        models.AuditLog.table_name == LEFT, models.AuditLog.transaction_id.in_(labels))}
+    lt = table(lines.lines_relation(LEFT), column("row_id"), column("batch"))
+    written = set(db.execute(select(lt.c.row_id).where(lt.c.batch.in_(labels)).distinct()).scalars())
     query, _ = main.narrowed_table_query(db, LEFT, models.DYNAMIC_TABLES[LEFT], transaction_id=run)
     assert len(written) > 1 and {r.row_id for r in query} == written
 

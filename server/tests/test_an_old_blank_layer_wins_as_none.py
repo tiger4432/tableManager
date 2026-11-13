@@ -6,9 +6,7 @@ cell shows None, not "" (총괄 11-05 (a)+(b)) - the value a cell shows from its
   door that puts a stored value on the row        the cell
   a file writing the same cell (the "" ranks)     None
   another layer deleted                           None
-  the "" layer pinned                             None
   a key merge moving the row's ""                 nothing moved - the holder keeps its value, as for None
-  a layer withdrawn (`_resolve_cell`, control)    None - it folded already
 """
 from datetime import datetime, timezone
 
@@ -17,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from conftest import retire_dynamic_model
-from database import crud, models, schemas
+from database import crud, lines, models, schemas
 from database.database import Base
 
 TABLE = "zz_old_blank"
@@ -35,6 +33,9 @@ def fixture_db():
     crud.TABLE_CONFIG.update(CONFIG)
     Base.metadata.create_all(bind=engine)
     models.sync_dynamic_tables_schema(engine)
+    from tests.support import line_tables
+
+    line_tables.build(engine, TABLE)                                   # the product's shape: a table keeps lines
     session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
     try:
         yield session
@@ -53,13 +54,17 @@ def _write(db, updates, source, row_id=None):
 
 
 def _old_blank(db, job="J1", shown=None):
-    """A row whose «n» holds a person's "" layer stored before the fold, beside a file's «f» - planted as it sits on
-    the box. `shown`: what the row itself holds («f» until a door re-answers the cell)."""
+    """A row whose «n» holds a person's "" layer stored before the fold, beside a file's «f» - planted as the copy
+    carries it: a line saying the cell, its text through crud.line_text. `shown`: what the row itself holds («f»
+    until a door re-answers the cell)."""
+    from tests.support import line_tables
+
     model = models.DYNAMIC_TABLES[TABLE]
     _write(db, {"job": job, "n": "f"}, "file_a.csv")
     row = db.query(model).filter_by(job=job).one()
-    db.add(models.CellSource(table_name=TABLE, row_id=row.row_id, column_name="n", source_name=crud.USER_SOURCE,
-                             value="", updated_by="probe", ingested_at=datetime(2026, 7, 17, tzinfo=timezone.utc)))
+    line_tables.line(db.connection(), TABLE, line_tables.bits_of(TABLE), row.row_id, source=crud.USER_SOURCE,
+                     at=datetime(2026, 7, 17, tzinfo=timezone.utc), values={"n": ""})
+    lines.note_sources(db, {crud.USER_SOURCE})                        # the copy registers its sources
     if shown is not None:
         db.query(model).filter_by(row_id=row.row_id).update({"n": shown})
     db.commit()
@@ -85,13 +90,6 @@ def test_another_layer_deleted(db):
     assert _shown(db, row_id) is None
 
 
-def test_the_blank_layer_pinned(db):
-    row_id = _old_blank(db)
-    crud.set_cell_manual_priority_batch(db, TABLE, [{"row_id": row_id, "column_name": "n"}], crud.USER_SOURCE)
-    db.commit()
-    assert _shown(db, row_id) is None
-
-
 @pytest.mark.parametrize("held", ["", None])
 def test_a_key_merge_moves_a_blank_as_it_moves_none(db, held):
     """A merged row's blank («""» held before the fold, or None) moves nothing - the holder keeps its value."""
@@ -106,10 +104,18 @@ def test_a_key_merge_moves_a_blank_as_it_moves_none(db, held):
     assert _shown(db, holder) == "h"
 
 
-def test_a_layer_withdrawn_folded_already(db):
-    from chain import cell_layer
-
-    row_id = _old_blank(db)
-    row = db.query(models.DYNAMIC_TABLES[TABLE]).filter_by(row_id=row_id).one()
-    decision = cell_layer._resolve_cell(TABLE, COLUMNS, row, "n", {crud.USER_SOURCE: {"value": ""}}, None)
-    assert decision["new_value"] is None
+def test_a_key_merge_copy_ranks_behind_the_holders_own_once_its_person_withdraws(db):
+    """A merged row's copy stays a layer and ranks behind the holder's own (lead 11-12 ㄴ): the holder kept its
+    person's value over the merged row's file layer; once the person withdraws, the holder's own file layer shows -
+    not the newer copy of the merged row's."""
+    model = models.DYNAMIC_TABLES[TABLE]
+    _write(db, {"job": "J0", "n": "h"}, "file_c.csv")
+    holder = db.query(model).filter_by(job="J0").one().row_id
+    _write(db, {"job": "J0", "n": "hp"}, crud.USER_SOURCE, row_id=holder)
+    _write(db, {"job": "J5", "n": "f"}, "file_a.csv")
+    merged = db.query(model).filter_by(job="J5").one().row_id
+    _write(db, {"job": "J0"}, "chain:m", row_id=merged)                   # J5 re-keyed onto J0: merged into it
+    assert [row.row_id for row in db.query(model)] == [holder] and _shown(db, holder) == "hp"
+    crud.delete_cell_source_batch(db, TABLE, [{"row_id": holder, "column_name": "n"}], crud.USER_SOURCE)
+    db.commit()
+    assert _shown(db, holder) == "h"

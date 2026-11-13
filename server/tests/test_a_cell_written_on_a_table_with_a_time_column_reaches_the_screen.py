@@ -10,6 +10,7 @@ import json
 import pytest
 
 from database import crud, models, schemas
+from tests.support import line_tables
 
 TABLE = "time_cell_probe"
 ENTRY = {"business_key": "k", "composite_key_source": ["k"],
@@ -38,6 +39,8 @@ def grid(pg_engine, monkeypatch):
     for name in (TABLE, SRC):
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
+    for name in (TABLE, SRC):                   # the table as it runs: its line table built - a pin stands on a line
+        line_tables.build(pg_engine, name)
     session = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
     heard = []
 
@@ -55,6 +58,10 @@ def grid(pg_engine, monkeypatch):
         with pg_engine.begin() as conn:
             for name in (TABLE, SRC):
                 conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s__lines"' % (PG_TEST_SCHEMA, name)))
+                for side in ("cell_overwrites", "line_columns"):
+                    conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t' % (PG_TEST_SCHEMA, side)),
+                                 {"t": name})
 
 
 def _write(client, **cells):

@@ -263,3 +263,285 @@ def count_row_history(query, cap: int = None):
     rows = query.with_entities(sa.literal(1)).limit(cap + 1).all()
     n = len(rows)
     return (cap, True) if n > cap else (n, False)
+
+
+# ---------------------------------------------------------------------------
+# Lines (cell-source overhaul, docs/design/CELL_SOURCE_OVERHAUL.md «읽기 — D 분야»)
+# ---------------------------------------------------------------------------
+
+#: The kinds a history shows: a write, a withdrawal, a row deleted. A «mark» line (a pin, a rank re-merge) says no
+#: column and stays out of the history pages - the audit navigation reaches it.
+HISTORY_KINDS = ("write", "withdraw", "deleted", "created")
+LINE_BITS = 64
+
+
+def entry_id(line_id, column):
+    """One history entry's id - a line and the column it said. The broadcast builds its lines with this too, so one
+    record is the same id on both (client2 compares them with ===)."""
+    return "%d:%s" % (int(line_id), column)
+
+
+def line_bits(db, table_name) -> dict:
+    """{column: bit} of `table_name`'s live columns (`lines.bit_map`), in bit order - a line says its columns so."""
+    from database import lines
+
+    return dict(sorted(lines.bit_map(db, table_name).items(), key=lambda kv: kv[1]))
+
+
+def line_table(table_name, bits):
+    """t__lines as Core: its value cells are text whatever the column's type (C b9f242763) - read one with
+    `line_cell`."""
+    from database import lines
+
+    chunks = max(bits.values(), default=0) // LINE_BITS + 1
+    return sa.Table(lines.lines_relation(table_name), sa.MetaData(),
+                    sa.Column("line_id", sa.Integer), sa.Column("line_kind", sa.String),
+                    sa.Column("source_name", sa.String), sa.Column("at", sa.DateTime(timezone=True)),
+                    sa.Column("written_by", sa.String), sa.Column("batch", sa.String),
+                    sa.Column("row_id", sa.String), sa.Column("business_key_val", sa.String),
+                    *[sa.Column("%s_%d" % (kind, n), sa.BigInteger) for n in range(chunks)
+                      for kind in ("written", "head", "withdrawn")],
+                    *[sa.Column(lines.value_column(name), sa.Text) for name in bits])
+
+
+def line_cell(types, row, name):
+    """A line's value of `name` as its table holds it - `types` is `lines.value_types` (t's physical types, the
+    write's own, C 1986aa74b), read once a request - through `crud.line_value`, the one read-side cast."""
+    from database import crud, lines
+
+    return crud.line_value(getattr(row, lines.value_column(name)), types.get(name, "string"))
+
+
+def bit_said(row, bit, kind="written"):
+    chunk, place = divmod(bit, LINE_BITS)
+    return bool((int(getattr(row, "%s_%d" % (kind, chunk)) or 0) >> place) & 1)
+
+
+def line_page(db, table_name, row_id, limit, cursor=None, column=None):
+    """One page of `row_id`'s lines, newest first by (at, line_id) - the (row_id, at) index - with `column`, the lines
+    that said it and the row's deletion. -> (rows, bits, truncated, next_cursor); a page counts lines, not entries.
+    A table whose lines are not built (`lines.has_lines`) has none; a bad cursor is refused first, whatever the table."""
+    from database import lines
+
+    after = decode_cursor(cursor) if cursor else None
+    if not lines.has_lines(db, table_name):
+        return [], {}, False, None
+    bits = line_bits(db, table_name)
+    t = line_table(table_name, bits)
+    query = sa.select(t).where(t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS))
+    if column is not None:
+        if column not in bits:
+            return [], bits, False, None
+        chunk, place = divmod(bits[column], LINE_BITS)
+        mask = 1 << place
+        mask = mask - (1 << LINE_BITS) if mask >= 1 << (LINE_BITS - 1) else mask      # a signed bigint
+        query = query.where(sa.or_(t.c["written_%d" % chunk].op("&")(mask) != 0, t.c.line_kind == "deleted"))
+    if after:
+        query = query.where(sa.tuple_(t.c.at, t.c.line_id) < sa.tuple_(*after))
+    rows = db.execute(query.order_by(t.c.at.desc(), t.c.line_id.desc()).limit(limit + 1)).fetchall()
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    return rows, bits, truncated, (encode_cursor(rows[-1].at, rows[-1].line_id) if truncated and rows else None)
+
+
+def line_entries(table_name, row, bits, types, column=None, business_key=None, row_deleted=False):
+    """A line as today's history entries (schemas.AuditLogResponse fields): one per column it said - withdrawn: no
+    value -, or the row-deletion entry (crud.ROW_DELETION_COLUMN, «row deleted», system), or the row-creation entry
+    (crud.ROW_CREATION_COLUMN, «row created», system)."""
+    from database import crud
+
+    base = {"table_name": table_name, "row_id": row.row_id, "updated_by": row.written_by,
+            "transaction_id": row.batch, "business_key": row.business_key_val or business_key,
+            "timestamp": row.at, "is_row_deleted": row_deleted}
+    if row.line_kind == "deleted":
+        return [dict(base, id=entry_id(row.line_id, crud.ROW_DELETION_COLUMN), column_name=crud.ROW_DELETION_COLUMN,
+                     new_value="row deleted", source_name="system")]
+    if row.line_kind == "created":                 # the grid's «add row» - the row's history begins here (A 11-11)
+        return [dict(base, id=entry_id(row.line_id, crud.ROW_CREATION_COLUMN), column_name=crud.ROW_CREATION_COLUMN,
+                     new_value="row created", source_name="system")]
+    return [dict(base, id=entry_id(row.line_id, name), column_name=name, source_name=row.source_name,
+                 new_value=None if bit_said(row, bit, "withdrawn") else line_cell(types, row, name))
+            for name, bit in bits.items() if (column is None or name == column) and bit_said(row, bit)]
+
+
+def count_row_lines(db, table_name, row_id, cap: int = None):
+    """How many history lines a row has, as `(count, is_floor)` - `count_row_history`'s bound, over the lines."""
+    cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return 0, False
+    t = line_table(table_name, {})
+    n = len(db.execute(sa.select(sa.literal(1)).select_from(t).where(
+        t.c.row_id == row_id, t.c.line_kind.in_(HISTORY_KINDS)).limit(cap + 1)).fetchall())
+    return (cap, True) if n > cap else (n, False)
+
+
+def line_keys(db, table_name, row_ids) -> dict:
+    """{row_id: its business key} - the newest line of each row that names one: a deleted row's key, its history's."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return {}
+    t = line_table(table_name, {})
+    ids, out = list(dict.fromkeys(str(r) for r in row_ids or () if r)), {}
+    for i in range(0, len(ids), 1000):
+        for row_id, key in db.execute(sa.select(t.c.row_id, t.c.business_key_val).where(
+                t.c.row_id.in_(ids[i:i + 1000]), t.c.business_key_val.isnot(None))
+                .order_by(t.c.at.asc(), t.c.line_id.asc())).fetchall():
+            out[row_id] = str(key)
+    return out
+
+
+def deleted_line_rows(db, table_name, row_ids) -> set:
+    """The rows among `row_ids` with a «deleted» line - gone, not unreadable."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return set()
+    t = line_table(table_name, {})
+    ids, found = list(dict.fromkeys(str(r) for r in row_ids or () if r)), set()
+    for i in range(0, len(ids), 1000):
+        found.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
+            t.c.row_id.in_(ids[i:i + 1000]), t.c.line_kind == "deleted").distinct()).fetchall())
+    return found
+
+
+def _unlined_receipts(db, t, table_name, group) -> list:
+    """[(row_id, receipt entry)] - the rows the group's receipts name in `table_name` and no line of the group does (a
+    formula's write keeps its receipt and no line, owner 11-12 ㄴ), as named."""
+    from admin.audit_cache import in_group
+    from database import crud
+
+    named = crud.receipt_row_ids(db, table_name, group)
+    ids, lined = list(named), set()
+    for i in range(0, len(ids), 1000):
+        lined.update(r for (r,) in db.execute(sa.select(t.c.row_id).where(
+            in_group(t.c.batch, group), t.c.row_id.in_(ids[i:i + 1000]))))
+    return [(row_id, r) for row_id, r in named.items() if row_id not in lined]
+
+
+def changed_rows(db, table_name, group, cap: int = None):
+    """How many rows history group `group` changed in `table_name`, as `(count, is_floor)` - its lines' distinct rows
+    and its receipt-only rows, counted (owner 11-10 «바뀐 행수») up to ROW_TOTAL_PROBE_CAP, `count_row_lines`' bound:
+    past it the answer is the floor («1,000+») - a whole-group count of a migration's 7.9 M lines was 11 s an open
+    (D 11-12 after_r1); the transaction route and the recent list both ask it here."""
+    from admin.audit_cache import in_group
+
+    cap = ROW_TOTAL_PROBE_CAP if cap is None else cap
+    t = line_table(table_name, {})
+    lined = len(db.execute(sa.select(t.c.row_id).where(in_group(t.c.batch, group)).distinct()
+                           .limit(cap + 1)).fetchall())
+    n = lined if lined > cap else lined + len(_unlined_receipts(db, t, table_name, group))
+    return (cap, True) if n > cap else (n, False)
+
+
+def group_line_rows(table_name, group):
+    """The rows history group `group` wrote lines of in `table_name`, as a statement of row_ids (the grid's
+    transaction filter)."""
+    from admin.audit_cache import in_group
+
+    t = line_table(table_name, {})
+    return sa.select(t.c.row_id).where(in_group(t.c.batch, group))
+
+
+#: lines read a step when a page is picked - a page's rows are found among them, so a step's work is bound to the page,
+#: never to the group (a migration group is 7.9 M lines - D 11-12)
+GROUP_STEP_LINES = 1000
+
+
+def group_rows(db, table_name, group, limit, after=None):
+    """A page of the rows history group `group` changed in `table_name`, each with its first line of the group - who
+    wrote it and when (GET /audit_logs/transaction/{tx_id}; a row, no column, no value: owner 11-10 «바뀐 행 네비») -:
+    the lined rows first written first (C 11-10), then the receipt-only rows as named. `after` is where the page
+    before ended - ("lines", line_id) or ("receipts", how many were given). -> (entries, where this page ended or None
+    at the group's end)
+
+    Two steps, no group-wide statement (D 11-12, lead ㄴ): the group's next lines by line_id, then those lines' rows'
+    first line of the group - a row is given at its first line, so a page never repeats an earlier one's row."""
+    from admin.audit_cache import in_group
+
+    t = line_table(table_name, {})
+    part, pos = after or ("lines", 0)
+    picked = []
+    while part == "lines" and len(picked) < limit:
+        step = db.execute(sa.select(t.c.line_id, t.c.row_id).where(in_group(t.c.batch, group), t.c.line_id > pos)
+                          .order_by(t.c.line_id).limit(GROUP_STEP_LINES)).fetchall()
+        rows = list(dict.fromkeys(row_id for _line, row_id in step))
+        first = dict(db.execute(sa.select(t.c.row_id, sa.func.min(t.c.line_id)).where(
+            t.c.row_id.in_(rows), in_group(t.c.batch, group)).group_by(t.c.row_id)).fetchall()) if rows else {}
+        for line_id, row_id in step:
+            pos = line_id
+            if first[row_id] == line_id:
+                picked.append((row_id, line_id))
+                if len(picked) == limit:
+                    break
+        if len(step) < GROUP_STEP_LINES and pos == (step[-1][0] if step else pos):
+            part, pos = "receipts", 0
+    said = {row.line_id: row for row in db.execute(sa.select(
+        t.c.line_id, t.c.source_name, t.c.written_by, t.c.at, t.c.batch, t.c.business_key_val).where(
+        t.c.line_id.in_([line_id for _row, line_id in picked]))).fetchall()} if picked else {}
+    out = [{"id": str(line_id), "table_name": table_name, "row_id": row_id,
+            "source_name": said[line_id].source_name, "updated_by": said[line_id].written_by,
+            "timestamp": said[line_id].at, "transaction_id": said[line_id].batch,
+            "business_key": said[line_id].business_key_val} for row_id, line_id in picked]
+    if part == "lines":
+        return out, ("lines", pos)
+    named = _unlined_receipts(db, t, table_name, group)
+    page = named[pos:pos + max(limit - len(out), 0)]
+    if page:
+        now = sa.Table(table_name, sa.MetaData(), sa.Column("row_id", sa.String), sa.Column("business_key_val",
+                                                                                            sa.String))
+        keys = dict(db.execute(sa.select(now.c.row_id, now.c.business_key_val).where(
+            now.c.row_id.in_([row_id for row_id, _r in page]))).fetchall())
+        out += [dict(r, id="%s:%s" % (r["id"], row_id), table_name=table_name, row_id=row_id,  # one entry, one id (D)
+                     business_key=keys.get(row_id)) for row_id, r in page]
+    pos += len(page)
+    return out, (("receipts", pos) if pos < len(named) else None)
+
+
+def encode_group_cursor(table_name, after) -> str:
+    """Where a transaction page ended - its table and `group_rows`' («lines», line_id) or («receipts», given) - as an
+    opaque token."""
+    raw = json.dumps([table_name, after[0], int(after[1])])
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def decode_group_cursor(token: str):
+    """`(table, (part, position))` from a transaction page's token, or raise CursorError."""
+    try:
+        table_name, part, pos = json.loads(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, ValueError, TypeError) as e:
+        raise CursorError(f"transaction cursor is not readable ({e})")
+    if not isinstance(table_name, str) or part not in ("lines", "receipts") or not isinstance(pos, int) or pos < 0:
+        raise CursorError("transaction cursor names no page")
+    return table_name, (part, pos)
+
+
+def winners(db, table_name, row_ids) -> dict:
+    """{(row_id, column): {"source", "written_by", "at"}} of the line its current line names - `won_by` of t
+    (the merge at write time, pins included), each line by its id - the formula's layer name where won_by says
+    `lines.FORMULA_WON`: what a grid cell's colour and writer ask, no
+    ranking read again. cell_overwrites.updated_by is who set a pin, not who wrote (C ㄱ 11-10). A table whose lines
+    are not built (`lines.has_lines` - a shipped table, a view, a table ensure refused) has no won_by: none."""
+    from database import lines
+
+    if not lines.has_lines(db, table_name):
+        return {}
+    won = {(row_id, column): line_id for row_id, cells in lines.won_by_of(db, table_name, row_ids).items()
+           for column, line_id in cells.items()}
+    t = line_table(table_name, {})
+    named = sorted(set(won.values()))
+    line = {}
+    for i in range(0, len(named), 1000):
+        for line_id, source, written_by, at in db.execute(sa.select(
+                t.c.line_id, t.c.source_name, t.c.written_by, t.c.at).where(t.c.line_id.in_(named[i:i + 1000]))):
+            line[line_id] = {"source": source, "written_by": written_by, "at": at}
+    out = {cell: line[line_id] for cell, line_id in won.items() if line_id in line}
+    if lines.FORMULA_WON in won.values():          # the column's formula shows - it holds no line (A 11-11)
+        from chain import formula
+
+        names = {c: said[0] for (t, c), said in formula.columns().items() if t == table_name}
+        out.update({cell: {"source": names[cell[1]], "written_by": None, "at": None} for cell, line_id in won.items()
+                    if line_id == lines.FORMULA_WON and cell[1] in names})
+    return out

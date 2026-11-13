@@ -36,7 +36,7 @@ pytestmark = pytest.mark.pg
 
 from conftest import PG_TEST_SCHEMA, _resolve_pg_test_url
 from tests.support.isolated_pg import scratch_connect_args
-from database import crud, models, schemas
+from database import crud, schemas
 
 
 TABLE = "pgqa_bk_table"
@@ -106,20 +106,6 @@ def forced_fallback():
         crud._pg_multirow_upsert = real
 
 
-def _source_rows(db, prefix):
-    return db.execute(text(
-        "SELECT row_id, value::text, updated_by, ingested_at "
-        "FROM cell_sources WHERE row_id LIKE :p ORDER BY row_id"),
-        {"p": prefix + "%"}).fetchall()
-
-
-def _mapping(i, value="v", ingested_at=None, row_prefix="R"):
-    return {"table_name": TABLE, "row_id": f"{row_prefix}{i}",
-            "column_name": "note", "source_name": "probe.csv",
-            "value": value, "updated_by": "watcher",
-            "ingested_at": ingested_at or datetime.now()}
-
-
 def _overwrite(i, row_prefix="R", **over):
     row = {"table_name": TABLE, "row_id": f"{row_prefix}{i}",
            "column_name": "note", "is_overwrite": True,
@@ -133,8 +119,25 @@ def _overwrite(i, row_prefix="R", **over):
 # 0. The meta-test
 # ===========================================================================
 
+def _overwrite_rows(db, prefix):
+    return db.execute(text(
+        "SELECT row_id, is_overwrite, updated_by FROM cell_overwrites "
+        "WHERE row_id LIKE :p ORDER BY row_id"), {"p": prefix + "%"}).fetchall()
+
+
+def _recording_inserts(db, statements):
+    from sqlalchemy import event
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().lower().startswith("insert into cell_overwrites"):
+            statements.append((statement, parameters, executemany))
+    event.listen(db.get_bind(), "before_cursor_execute", record)
+    return lambda: event.remove(db.get_bind(), "before_cursor_execute", record)
+
+
 def test_the_accepted_branch_is_the_branch_under_test(pg_session):
-    """[behaviour 1] The helper ACCEPTS here, and one chunk is one statement.
+    """[behaviour 1] The helper ACCEPTS here, and one chunk is one statement - on its door that is left,
+    `cell_overwrites` (the layer door that also took it retired with the lines, 11-11).
 
     Without this assertion the whole file is a second copy of the fallback
     tests. It also pins the send SHAPE, because "one multi-row VALUES per
@@ -143,21 +146,13 @@ def test_the_accepted_branch_is_the_branch_under_test(pg_session):
     a batch.
     """
     statements = []
-
-    from sqlalchemy import event
-
-    def record(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().lower().startswith("insert into cell_sources"):
-            statements.append((statement, parameters, executemany))
-
-    event.listen(pg_session.get_bind(), "before_cursor_execute", record)
+    stop = _recording_inserts(pg_session, statements)
     try:
         with upsert_decisions() as answers:
-            crud.bulk_upsert_cell_sources(
-                pg_session, [_mapping(i) for i in range(3)])
+            crud.bulk_upsert_cell_overwrites(pg_session, [_overwrite(i, row_prefix="AB_") for i in range(3)])
         pg_session.commit()
     finally:
-        event.remove(pg_session.get_bind(), "before_cursor_execute", record)
+        stop()
 
     assert answers == [True], (
         "the accepted branch was not taken - every assertion in this file is "
@@ -167,13 +162,11 @@ def test_the_accepted_branch_is_the_branch_under_test(pg_session):
     assert not executemany, (
         "this is the defect the path was repaired for: `executemany` is a "
         "Python loop over `cursor.execute`, i.e. one round trip per row")
-    # 3 rows x (the mapping's 7 columns + the owner columns every layer row names, step 2 83de1715e), one flat
-    # tuple - not 3 parameter sets.
-    per_row = len(_mapping(0)) + len(models.OWNER_COLUMNS)
-    assert isinstance(params, tuple) and len(params) == 3 * per_row == 27
+    per_row = len(_overwrite(0))                                    # 3 rows, one flat tuple - not 3 parameter sets
+    assert isinstance(params, tuple) and len(params) == 3 * per_row == 21
     assert sql.count("(" + ",".join(["%s"] * per_row) + ")") == 3
-    assert "ON CONFLICT (table_name, row_id, column_name, source_name)" in sql
-    assert "DO UPDATE SET value = EXCLUDED.value" in sql
+    assert "ON CONFLICT (table_name, row_id, column_name)" in sql
+    assert "DO UPDATE SET is_overwrite = EXCLUDED.is_overwrite" in sql
 
 
 # ===========================================================================
@@ -260,69 +253,6 @@ def test_a_none_on_a_defaulted_column_does_not_destroy_a_stored_value(pg_session
 
 
 # ===========================================================================
-# 2. Value fidelity through the raw send
-# ===========================================================================
-
-@pytest.mark.parametrize("value", [
-    "a string", "", 0, 1, -3, 3.5, True, False, None,
-    {"nested": {"dict": [1, 2, None]}}, [1, "two", None], "null", "0",
-    "'); DROP TABLE cell_sources; --", "%s", "%(x)s", "%%", "),(",
-    "back\\slash \"quote\" 'single'", "유니코드 값",
-])
-def test_json_value_lands_byte_identically_on_both_send_paths(pg_session, value):
-    """[behaviour 2] The bind processors, which are the ONLY reason this works.
-
-    `cell_sources.value` is a `JSON` column: without its dialect bind
-    processor a bare Python string is not valid json and the statement fails
-    outright. The docstring calls this "the ONLY reason the values land
-    identically" - so it is compared against the fallback rather than against
-    an expectation written by hand, and `value::text` is compared so the
-    stored JSON is examined, not a round-tripped Python object.
-
-    The injection-shaped members of this list are here because the raw send
-    builds SQL TEXT: `%s`, `),(` and a quoted statement terminator must reach
-    the parameter tuple and never the statement.
-
-    ⚠️ The first arm asserts it was ACCEPTED. Comparing two paths is worthless
-    if a future decline quietly makes both of them the fallback - the
-    comparison would then pass for every value and mean nothing. `value` has
-    no column default, so the `None` case is accepted here rather than
-    declined; that is asserted, not assumed.
-    """
-    with upsert_decisions() as answers:
-        crud.bulk_upsert_cell_sources(
-            pg_session, [_mapping(1, value=value, row_prefix="FD_")])
-        pg_session.commit()
-    assert answers == [True], (
-        f"the fast arm declined for {value!r}, so this test would be "
-        f"comparing the fallback against itself")
-    fast = _source_rows(pg_session, "FD_")
-
-    pg_session.execute(text("DELETE FROM cell_sources WHERE row_id LIKE 'FD_%'"))
-    pg_session.commit()
-
-    with forced_fallback():
-        crud.bulk_upsert_cell_sources(
-            pg_session, [_mapping(1, value=value, row_prefix="FD_")])
-        pg_session.commit()
-    fallback = _source_rows(pg_session, "FD_")
-
-    assert len(fast) == 1 and len(fallback) == 1
-    assert fast[0][1] == fallback[0][1], (
-        f"stored json differs between send paths for {value!r}: "
-        f"{fast[0][1]!r} vs {fallback[0][1]!r}")
-    # `None` and `''` have been confused on this path before, so the stored
-    # json TYPE is pinned too - `null` and `""` are the same length in text.
-    stored_type = pg_session.execute(text(
-        "SELECT json_typeof(value) FROM cell_sources "
-        "WHERE row_id = 'FD_1'")).scalar()
-    expected_type = {str: "string", bool: "boolean", int: "number",
-                     float: "number", dict: "object", list: "array",
-                     type(None): "null"}[type(value)]
-    assert stored_type == expected_type
-
-
-# ===========================================================================
 # 3. The declines
 # ===========================================================================
 
@@ -334,16 +264,17 @@ def test_an_unknown_mapping_key_declines_instead_of_guessing(pg_session):
     `table.c` and dies on `AttributeError: 'NoneType' object has no attribute
     'type'` - measured.
     """
-    mapping = _mapping(1, row_prefix="UK_")
+    mapping = _overwrite(1, row_prefix="UK_")
     mapping["not_a_column"] = "x"
 
     with upsert_decisions() as answers:
-        crud.bulk_upsert_cell_sources(pg_session, [mapping])
+        crud.bulk_upsert_cell_overwrites(pg_session, [mapping])
         pg_session.commit()
 
     assert answers == [False], "an unknown key must be DECLINED, not guessed at"
-    assert len(_source_rows(pg_session, "UK_")) == 1, \
+    assert len(_overwrite_rows(pg_session, "UK_")) == 1, \
         "declining must fall back to a working write, not drop the row"
+
 
 
 def test_a_python_default_the_mappings_omit_declines(pg_session):
@@ -374,52 +305,24 @@ def test_a_python_default_the_mappings_omit_declines(pg_session):
 @pytest.mark.parametrize("n", [0, 1, crud.BULK_CHUNK_SIZE - 1,
                                crud.BULK_CHUNK_SIZE, crud.BULK_CHUNK_SIZE + 1])
 def test_chunk_boundaries_write_every_mapping_on_the_accepted_branch(pg_session, n):
-    """[behaviour 5] The boundaries `test_bulk_chunking_budget` pins for the
-    fallback, asserted for the path production actually takes.
+    """[behaviour 5] The chunk loop's boundaries, asserted for the path production actually takes.
 
     The statement count is asserted as well as the row count: `row_sql_cache`
     is keyed by chunk LENGTH, so an off-by-one in the cut shows up as a wrong
     number of statements before it shows up as a wrong number of rows.
     """
-    from sqlalchemy import event
     statements = []
-
-    def record(conn, cursor, statement, parameters, context, executemany):
-        if statement.lstrip().lower().startswith("insert into cell_sources"):
-            statements.append(statement)
-
-    event.listen(pg_session.get_bind(), "before_cursor_execute", record)
+    stop = _recording_inserts(pg_session, statements)
     try:
-        crud.bulk_upsert_cell_sources(
-            pg_session, [_mapping(i, row_prefix="CB_") for i in range(n)])
+        crud.bulk_upsert_cell_overwrites(pg_session, [_overwrite(i, row_prefix="CB_") for i in range(n)])
         pg_session.commit()
     finally:
-        event.remove(pg_session.get_bind(), "before_cursor_execute", record)
+        stop()
 
-    assert len(_source_rows(pg_session, "CB_")) == n
+    assert len(_overwrite_rows(pg_session, "CB_")) == n
     expected = -(-n // crud.BULK_CHUNK_SIZE)  # ceil
     assert len(statements) == expected, \
         f"{n} mappings must be cut into {expected} statement(s)"
-
-
-def test_on_conflict_do_update_replaces_the_value_on_the_accepted_branch(pg_session):
-    """[behaviour 1] The conflict semantics, on the path that has them in raw SQL.
-
-    The fallback's `ON CONFLICT` clause is built by SQLAlchemy; this one is a
-    string this function assembles, so it is the one that can be wrong.
-    """
-    with upsert_decisions() as answers:
-        crud.bulk_upsert_cell_sources(
-            pg_session, [_mapping(1, value="first", row_prefix="CF_")])
-        pg_session.commit()
-        crud.bulk_upsert_cell_sources(
-            pg_session, [_mapping(1, value="second", row_prefix="CF_")])
-        pg_session.commit()
-
-    assert answers == [True, True]
-    rows = _source_rows(pg_session, "CF_")
-    assert len(rows) == 1, "the conflict target did not match - a second row landed"
-    assert rows[0][1] == '"second"'
 
 
 def test_cell_overwrites_updates_all_four_columns_on_conflict(pg_session):
@@ -504,8 +407,7 @@ def test_a_failing_chunk_leaves_the_whole_batch_unwritten(pg_session):
     `db.commit()` injected into the chunk loop left it green. Found by that
     mutation; the padding is what makes the docstring true.
     """
-    # `cell_overwrites.updated_by` is the NOT NULL column on these two tables
-    # (`cell_sources.updated_by` is nullable), so the poison goes there.
+    # `cell_overwrites.updated_by` is NOT NULL (models.CellOverwrite), so the poison goes there.
     n = crud.BULK_CHUNK_SIZE + 5
     ids = [f"AB_{i:06d}" for i in range(n)]
     mappings = [_overwrite("", row_prefix=rid) for rid in ids[:-1]]
@@ -580,7 +482,7 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     after the prefetch has proved the key absent and before the rows' flush
     (which goes first since 총괄 5c0a86cec - a competitor committing later
     would wait on this attempt's own uncommitted key),
-    which is precisely the window `ProbedIdentity` cannot cover because there
+    which is precisely the window the old prefetch proof cannot cover because there
     is no cross-process lock (`grep -rn "pg_advisory" server/` = 0).
 
     WHAT RECOVERY MEANS HERE, asserted rather than implied: one row for the
@@ -591,6 +493,9 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     of them; `conftest.pg_engine` builds one on the scratch table only, inside
     the scratch schema, and drops it with the schema.
     """
+    from tests.support import line_tables
+
+    line_tables.build(pg_session.get_bind(), TABLE)          # the product's shape: a table keeps lines (owner 11-11)
     url, _ = _resolve_pg_test_url()
     # this table's own UNIQUE index on its key - the schema may hold another table's uq_bk_ (a test before this one
     # ran the scheduler's key-index line over every declared table), and the first of two came back unordered (11-12)
@@ -635,11 +540,8 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
         crud._apply_batch_updates_once = real_once
 
     assert fired == [True], "the race never happened - this asserted nothing"
-    assert len(attempts) == 2, (
-        f"expected one lost race and one replay, got {len(attempts)} attempt(s)")
-    assert any("BK Conflict Recovered" in r.message for r in caplog.records), (
-        "the recovery must be NAMED in the log; a race nobody logs is a race "
-        "nobody ever measures")
+    # one try: the claim (ON CONFLICT, read back under the lock) finds the winner's row - no replay (lead 11-11 ㄹ, D3)
+    assert len(attempts) == 1, f"expected one try, got {len(attempts)} attempt(s)"
 
     rows = pg_session.execute(text(
         f'SELECT business_key_val, row_id, qty, note FROM "{TABLE}" '
@@ -651,78 +553,51 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     collided = [r for r in rows if r[0] == "PN-2"][0]
     assert collided[1] == winner_row_id, (
         "the batch inserted its OWN row instead of merging onto the row the "
-        "winner committed - the replay did not re-read identity")
+        "winner committed - the claim did not read identity back")
     assert (collided[2], collided[3]) == (2.0, "mine"), (
-        "the replay's values did not land on the merged row")
+        "the batch's values did not land on the merged row")
     assert len(results) == 5
 
 
-def test_a_persistent_business_key_conflict_is_refused_not_replayed(pg_session, caplog):
-    """The other half of the design, against a real index.
+def test_a_key_a_competitor_holds_is_written_onto_its_row(pg_session):
+    """Two writers of one key end on one row (lead 11-11 ㄹ, D3; rewritten 11-12 from «a persistent conflict is
+    refused» - the replay it bounded is retired). The competitor commits PN-9 after this batch's instant and before
+    its claim; the claim's ON CONFLICT reads its row back: one try, no IntegrityError, the competitor's row_id, my qty
+    as my source's line, its note - a cell this batch did not speak - as it was."""
+    from database import lines
+    from tests.support import line_tables
 
-    A competitor that wins EVERY attempt is not a lost race, it is a genuine
-    duplicate identity. The batch must be refused after the declared bound
-    rather than spun forever - and the exception must still classify as a
-    business-key violation, because `main.py` maps that to a 409 and anything
-    else to a 500.
-
-    HOW A CONFLICT IS MADE TO PERSIST. A competitor that merely inserts once is
-    recovered from on attempt 2 - that is the test above. To keep losing, the
-    competitor has to be gone when the replay's prefetch looks (so identity is
-    still resolved as absent) and back before the commit. So it withdraws at
-    the top of every attempt and re-commits inside every `batch_write_instant`
-    (after the prefetch, before the rows' flush).
-    """
+    line_tables.build(pg_session.get_bind(), TABLE)          # the product's shape: a table keeps lines (owner 11-11)
     url, _ = _resolve_pg_test_url()
-    seen = []
     real_instant = crud.batch_write_instant
     real_once = crud._apply_batch_updates_once
-
-    def withdrawing_once(*a, **kw):
-        _competitor_withdraws(url, "PN-9")
-        return real_once(*a, **kw)
+    fired, attempts = [], []
 
     def racing_instant(db, *a, **kw):
-        seen.append(len(seen))
-        _competing_writer(url, "PN-9", f"THEIRS-{len(seen)}",
-                          withdraw_first=True)
+        if not fired:
+            fired.append(True)
+            _competing_writer(url, "PN-9", "THEIRS")
         return real_instant(db, *a, **kw)
+
+    def counting_once(*a, **kw):
+        attempts.append(1)
+        return real_once(*a, **kw)
 
     item = schemas.GeneralUpdateItem(
         business_key_val="PN-9", updates={"part_no": "PN-9", "qty": 1},
         source_name="probe.csv", updated_by="watcher")
 
     crud.batch_write_instant = racing_instant
-    crud._apply_batch_updates_once = withdrawing_once
+    crud._apply_batch_updates_once = counting_once
     try:
-        with caplog.at_level(logging.ERROR, logger="Server"):
-            with pytest.raises(IntegrityError) as caught:
-                crud.apply_batch_updates(
-                    pg_session, TABLE,
-                    schemas.GeneralUpdateBatch(updates=[item]))
+        crud.apply_batch_updates(pg_session, TABLE, schemas.GeneralUpdateBatch(updates=[item]))
     finally:
         crud.batch_write_instant = real_instant
         crud._apply_batch_updates_once = real_once
 
-    assert len(seen) == crud.BK_CONFLICT_MAX_RETRIES + 1
-    assert crud._is_business_key_unique_violation(caught.value), (
-        "the re-raised error no longer classifies as a business-key "
-        "violation, so the endpoint would answer 500 instead of 409")
-    assert caught.value.orig.diag.constraint_name == f"uq_bk_{TABLE}"
-    # The refusal is an operator line (S-247): its search prefix is `line()`'s and its
-    # next-action clause is `widen_the_key` - the OPPOSITE repair of `fold_the_data`,
-    # because two rows the table's own identity cannot tell apart is a declaration
-    # defect, not a data one. Both are asked of `operator_line` rather than copied, so
-    # the sentence has one author and this test cannot go green on a lookalike.
-    import operator_line
-    prefix = operator_line.line("BKConflict", TABLE, "", "").split(" ", 1)[0]
-    refusals = [r.message for r in caplog.records if r.message.startswith(prefix)]
-    assert refusals, f"no {prefix} operator line was logged"
-    assert refusals[-1].endswith(_invariant_tail(operator_line.widen_the_key)), (
-        refusals[-1])
-
-    pg_session.rollback()
-    # The session must be USABLE after the refusal - the caller's `finally`
-    # and the next request both depend on it.
-    assert pg_session.execute(text(
-        f'SELECT count(*) FROM "{TABLE}"')).scalar() == 1
+    assert (fired, len(attempts)) == ([True], 1)
+    assert [tuple(r) for r in pg_session.execute(text(
+        f'SELECT row_id, qty, note FROM "{TABLE}" WHERE business_key_val = \'PN-9\'')).fetchall()] == [
+        ("THEIRS", 1.0, "theirs")]
+    said = lines.layers(pg_session, TABLE, ["THEIRS"], ["qty"])[("THEIRS", "qty")]
+    assert said["probe.csv"]["value"] == 1, said

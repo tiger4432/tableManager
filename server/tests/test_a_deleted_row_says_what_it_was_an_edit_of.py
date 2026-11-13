@@ -3,10 +3,12 @@
 of an edit_by table carries `edits_of` - the rows' own tables, read before they went - and none of a table without one.
 
   senders  PUT data/updates (a shell merged by key) · PUT <row>/<col>/priority · PUT cells/priority/batch (a pin that
-           moves a key part merges its row away) · the chain worker's group (a shell merged by key) · PUT data/updates
+           moves a key part merges its row away) · DELETE <row>/<col>/sources/<source> · POST cells/sources/delete/
+           batch (a source taken off that moves a key part) · the chain worker's group (a shell merged by key) · PUT data/updates
            replace_map (a row its scope no longer claims - purge_map_rows - and a row it adopts from outside)
   tables   edit_probe (access edit_by target) -> edits_of the deleted rows' own targets · plain_probe -> no edits_of
   rows     A (M1|a, T1) · B (M1|b, T2) · C (M2|c, T3): a shell is A merged into B - its target T1, not B's T2
+           written as lines: A's «k» said «b» by lots.csv first, then «a» by seed.csv - the layer a pin picks
 """
 import json
 import uuid
@@ -15,7 +17,8 @@ import pytest
 import uuid6
 
 from conftest import retire_dynamic_model
-from database import crud, models
+from database import crud, lines, models
+from test_write_lines_writes_a_line_a_change_and_its_current_line import ticking_clock
 
 EDIT, PLAIN = "edit_probe", "plain_probe"
 COLUMNS = {"m": "string", "k": "string", "target": "string", "v": "string"}
@@ -23,7 +26,8 @@ ENTRY = {"business_key": "bk", "composite_key_source": ["m", "k"], "map_key_colu
 ENTRIES = {EDIT: {**ENTRY, "access": {"edit_by": "target"}}, PLAIN: ENTRY}
 ROWS = {"A": ("M1", "a", "T1"), "B": ("M1", "b", "T2"), "C": ("M2", "c", "T3")}
 #: sender -> the deleted rows' targets the message names
-SENDERS = {"updates": ["T1"], "pin": ["T1"], "pin_batch": ["T1"], "chain": ["T1"], "replace_map": ["T2", "T3"]}
+SENDERS = {"updates": ["T1"], "pin": ["T1"], "pin_batch": ["T1"], "source_off": ["T1"], "source_off_batch": ["T1"],
+           "chain": ["T1"], "replace_map": ["T2", "T3"]}
 
 
 @pytest.fixture(name="board")
@@ -35,16 +39,32 @@ def fixture_board(db_session, client, monkeypatch, request):
         monkeypatch.setattr(crud, name, {})
     models.init_dynamic_models({table: ENTRIES[table]})
     monkeypatch.setitem(crud.TABLE_CONFIG, table, ENTRIES[table])
+    from sqlalchemy import Index
+
+    from database.write_lines import write_lines
+
     bind = db_session.get_bind()
     models.DYNAMIC_TABLES[table].__table__.create(bind=bind)
     model = models.DYNAMIC_TABLES[table]
+    Index("uq_%s_bk" % table, model.__table__.c.business_key_val, unique=True).create(bind=bind)
+    lines.ensure_line_table(db_session, table, ENTRIES[table])
+    ticking_clock(monkeypatch)                                        # one write a second: seed.csv is the newer
     ids = {name: str(uuid6.uuid7()) for name in ROWS}
-    db_session.add_all([model(row_id=ids[name], m=m, k=k, target=target,
-                              business_key_val=crud.compose_business_key(table, [m, k], ["m", "k"]))
-                        for name, (m, k, target) in ROWS.items()])
-    db_session.add(models.CellSource(table_name=table, row_id=ids["A"], column_name="k", source_name="lots.csv",
-                                     value="b"))
+
+    def say(source, name, values, **named):
+        write_lines(db_session, table, [{"values": values, "source_name": source, "written_by": "loader", **named}],
+                    kind="funnel", transaction_id=str(uuid6.uuid7()))
+
+    m, k, target = ROWS["A"]
+    say("lots.csv", "A", {"m": m, "k": "b", "target": target}, row_id=ids["A"],
+        key={"m": m, "k": "b"})                                       # lots.csv said «b» first
+    say("seed.csv", "A", {"k": k}, row_id=ids["A"])                   # then «a» - A is M1|a
+    for name in ("B", "C"):
+        m, k, target = ROWS[name]
+        say("seed.csv", name, {"m": m, "k": k, "target": target}, row_id=ids[name], key={"m": m, "k": k})
     db_session.commit()
+    assert {r.row_id: r.business_key_val for r in db_session.query(model)} == {
+        ids[name]: crud.compose_business_key(table, [m, k], ["m", "k"]) for name, (m, k, _t) in ROWS.items()},         "canary: three rows on their keys"
     sent = []
 
     async def capture(message):
@@ -56,6 +76,8 @@ def fixture_board(db_session, client, monkeypatch, request):
         db_session.rollback()
         for gone in (models.CellSource, models.CellOverwrite, models.AuditLog):
             db_session.query(gone).filter(gone.table_name == table).delete()
+        db_session.commit()
+        lines.drop_line_table(db_session, table)
         db_session.commit()
         models.DYNAMIC_TABLES[table].__table__.drop(bind=bind)
         retire_dynamic_model(table)
@@ -75,6 +97,11 @@ async def _deletes(sender, table, client, db_session, ids, sent):
     elif sender == "pin_batch":
         answer = client.put("/tables/%s/cells/priority/batch" % table, json={
             "updates": [{"row_id": ids["A"], "column_name": "k"}], "source_name": "lots.csv", "updated_by": "kim"})
+    elif sender == "source_off":                                        # seed.csv off: lots.csv's «b» shows
+        answer = client.delete("/tables/%s/%s/k/sources/seed.csv" % (table, ids["A"]))
+    elif sender == "source_off_batch":
+        answer = client.post("/tables/%s/cells/sources/delete/batch" % table, json={
+            "cells": [{"row_id": ids["A"], "column_name": "k"}], "source_name": "seed.csv"})
     elif sender == "replace_map":
         answer = client.put("/tables/%s/data/updates" % table, json={"replace_map": True, "updates": [
             {"updates": {"m": "M1", "k": "a", "target": "T1"}, "source_name": "user", "updated_by": "kim"},

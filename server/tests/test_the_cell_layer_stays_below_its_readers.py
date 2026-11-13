@@ -84,7 +84,7 @@ def test_replay_reads_the_operation_rather_than_carrying_a_second_one():
     from chain import replay
 
     for name in ("withdraw_source", "ReplayRefused", "PROTECTED_SOURCES",
-                 "_claimed_filter", "_load_cell_state", "_resolve_cell"):
+                 "_claimed_filter", "_load_cell_state"):
         assert getattr(replay, name) is getattr(cell_layer, name), name
 
 

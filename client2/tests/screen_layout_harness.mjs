@@ -103,6 +103,13 @@ const RULES_OF = (state) => [state === TIMED_OUT ? { rule: 'lot_slot_join', rows
   : state.state === 'running' ? { rule: 'dt_log_to_dt_map', rows_in: 500, rows_out: null, running_seconds: 72 }
   : { rule: 'dt_log_to_dt_map', rows_in: null, rows_out: null, running_seconds: null }];
 const LINES = [...STATES.map((s) => s.chain_state), TIMED_OUT];
+// A count the server makes behind its answer (C 6210a4f90): the grid's whole-count shape, counted 30 s before the read.
+const countedNow = (total) => ({ total, capped: false, counted_at: new Date(Date.now() - 30000).toISOString(), count_seconds: 0.1,
+  counting: false, failed: null });
+// A line counted only to the server's 200 and a Waiting card not yet counted (lead 11-13): the line as a scratch server of
+// 6210a4f90 sent it - events 200, rows 240, counted_to 200.
+const COUNTED = { on: false, line: { transaction_id: 'tx-counted-0000-0000', events: 200, rows: 240, counted_to: 200,
+  tables: ['dt_log'], waiting_seconds: 60, cancel: { key: 'tx:counted' } } };
 const QUEUE = {
   '/outbox/queue/rows': {
     generated_at: '2026-10-08 20:00:00', clock: 'server', rules_known: ['dt_log_to_dt_map'],
@@ -112,7 +119,8 @@ const QUEUE = {
       rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] })),
   },
   '/admin/chain/queue': {
-    waiting: LINES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
+    get waiting() { return countedNow(LINES.length); }, get retried_among_waiting() { return countedNow(0); },
+    oldest_waiting_seconds: 60, waiting_by_owner: [],
     loop_seen_via: 'this_process', generated_at: '2026-10-08T20:00:00+09:00', now_running: [],
     waiting_transactions: LINES.map((state, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
       waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: state, slot_pid: 4242, rules: RULES_OF(state) })),
@@ -315,6 +323,29 @@ const importsAnswer = (u) => {
     return { ...a, body: { ...b, selection: { ...b.selection, imported_from: 'lab' } } };
   }
   return null;
+};
+// A batch unfolded a page at a time (lead 11-12, D f0f4d51bb): while its states run, the recent list's first batch counts
+// its changed rows to the server's cap, and the transaction route answers 200 rows and a cursor, then the last 150.
+const TX_PAGED = { on: false };
+const txPagedAnswer = (u) => {
+  const json = (body) => ({ status: 200, type: 'application/json', body });
+  const recent = ANSWERS['/audit_logs/recent?limit_groups=100'];
+  if (u.pathname === '/audit_logs/recent' && recent) {
+    const b = bodyOf(recent);
+    const [first, ...rest] = b.groups;
+    const table = (first.logs && first.logs[0] && first.logs[0].table_name) || 'dt_log';
+    return { ...recent, body: { ...b, groups: [{ ...first,
+      changed: [{ table_name: table, changed_rows: 1000, changed_rows_truncated: true }] }, ...rest] } };
+  }
+  const tx = /^\/audit_logs\/transaction\/([^/]+)$/.exec(u.pathname);
+  if (!tx) return null;
+  const more = u.searchParams.get('cursor') === 'screens-page-2';
+  const rows = (from, n) => Array.from({ length: n }, (_, i) => ({ id: 900000 + from + i, transaction_id: decodeURIComponent(tx[1]),
+    table_name: 'dt_log', row_id: `row-${from + i}`, business_key: `DT-${String(from + i).padStart(5, '0')}`, column_name: 'dt_index',
+    old_value: from + i, new_value: from + i + 1, source_name: 'user', updated_by: 'screens', timestamp: '2026-11-12T09:00:00', is_row_deleted: false }));
+  return more
+    ? json({ logs: rows(200, 150), truncated: false, next_cursor: null, limit: 200, returned: 150, total_count: 1000, total_truncated: true })
+    : json({ logs: rows(0, 200), truncated: true, next_cursor: 'screens-page-2', limit: 200, returned: 200, total_count: 1000, total_truncated: true });
 };
 const HTML_HELD = '<table>' + '<tr><td>x</td></tr>'.repeat(110) + '</table>';
 const pasteHtmlAnswer = (u) => {
@@ -631,6 +662,7 @@ const answerOf = (u) => {
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
+  if (TX_PAGED.on) { const v = txPagedAnswer(u); if (v) return v; }
   if (WORLDS_OVERLAP.on && u.pathname === '/admin/ontology-explorer/worlds') return worldsOverlapAnswer();
   if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
@@ -641,6 +673,11 @@ const answerOf = (u) => {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
   if (REPLAYS.on) { const v = replaysAnswer(u); if (v) return v; }
+  if (COUNTED.on && u.pathname === '/admin/chain/queue') {
+    const q = QUEUE['/admin/chain/queue'];
+    return { status: 200, type: 'application/json', body: { ...q, waiting: { total: null, capped: false, counted_at: null,
+      count_seconds: null, counting: true, failed: null }, waiting_transactions: [COUNTED.line, ...q.waiting_transactions] } };
+  }
   if (HELD_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], now_running: HELD_RUN.items,
       ...(CUT_RUN.on ? { interrupted_runs: [CUT_RUN.entry] } : {}) } };
@@ -1327,6 +1364,18 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
+// A line counted only to 200 says «200+ events» beside Rows «240+», and Waiting not yet counted says so (lead 11-13).
+CELLS.push({ entry: 'admin.html', after: 'Chain queue, a counted line and a counting Waiting', rule: 'contents', at: 'chain-queue', expr: `(() => {
+  const mount = document.querySelector('#chain-queue-mount');
+  const line = mount && mount.querySelector('tr[data-line-id="tx-counted-0000-0000"]');
+  if (!line) return 'no line for the counted transaction';
+  const rows = line.querySelector('td[data-col="rows"]');
+  const said = rows ? [...rows.children].map((n) => n.textContent) : [];
+  if (JSON.stringify(said) !== JSON.stringify(['200+ events', '240+'])) return 'its Rows says ' + JSON.stringify(said);
+  const card = mount.querySelector('.chain-queue-number[data-key="waiting"] .chain-queue-number-value');
+  const waiting = card ? card.textContent : '';
+  return waiting === 'Counting events…' ? null : 'its Waiting says ' + JSON.stringify(waiting);
 })()` });
 // owner 11-09 «리프레시 위로»: each queue panel's Refresh above its numbers, list and failures.
 CELLS.push({ entry: 'admin.html', after: 'Overview', rule: 'contents', at: 'chain-queue-refresh', expr: `(() => {
@@ -3635,6 +3684,40 @@ const DRIVE = {
       i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); return true; })()`).then(() => sleep(200))],
     // A colour picked for a new rule (owner 11-09 «색깔 선택»): on dt_log, a table that is edited, its value cell dt_lot picked
     // (the paint draws its swatches for it) and the form's native picker given a value, as its dialog does (lead 11-10).
+    // A batch unfolded a page at a time (lead 11-12): the Global list read again, its first batch's cell «1,000+ rows»;
+    // unfolded, 200 rows and «more» at the end; then «more» read to the end and the batch folded again.
+    ['History, a batch unfolded with more', async (c, log) => {
+      TX_PAGED.on = true;
+      await evaluate(c, `(() => { const t = document.getElementById('tab-global'); if (t) t.click();
+        const r = document.getElementById('refresh-history-btn'); if (r) r.click(); return true; })()`);
+      await settle(c, log);
+      // the list read with its reads settled: the tab and Refresh are two asks, and the second redraws the list (a redraw
+      // folds an unfolded batch) - so the cell, and no «Updating», twice a second and a half apart
+      const read = `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        const count = document.getElementById('audit-filter-count');
+        return !!li && li.textContent.includes('1,000+ rows') && !!li.querySelector('.expand-indicator')
+          && !(count && count.textContent === 'Updating'); })()`;
+      await until(c, read);
+      await sleep(1500);
+      await settle(c, log);
+      await until(c, read);
+      await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        li.querySelector('.expand-indicator').click(); li.scrollIntoView({ block: 'start' }); return true; })()`);
+      await settle(c, log);
+      await until(c, `(() => { const box = document.querySelector('#timeline li.timeline-item .tx-details-container');
+        return !!box && box.querySelectorAll('.sub-timeline-item').length === 200 && !!box.querySelector('.timeline-more-btn'); })()`);
+    }],
+    ['History, more read to the end and the batch folded', async (c, log) => {
+      await evaluate(c, `(() => { const b = document.querySelector('#timeline li.timeline-item .tx-details-container .timeline-more-btn');
+        if (b) b.click(); return true; })()`);
+      await settle(c, log);
+      await until(c, `(() => { const box = document.querySelector('#timeline li.timeline-item .tx-details-container');
+        return !!box && box.querySelectorAll('.sub-timeline-item').length === 350 && !box.querySelector('.timeline-more-btn'); })()`);
+      await evaluate(c, `(() => { const li = document.querySelector('#timeline li.timeline-item');
+        li.querySelector('.expand-indicator').click(); return true; })()`);
+      TX_PAGED.on = false;
+      await settle(c, log);
+    }],
     ['Colours tab, a colour picked', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
         window.__coloursFrom = sel.value; sel.value = 'dt_log'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -4308,9 +4391,19 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .run-line__summary');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // A line counted only to 200 and a Waiting card still counting (lead 11-13): the queue read again with both.
+    ['Chain queue, a counted line and a counting Waiting', async (c) => {
+      HELD_RUN.on = false;
+      COUNTED.on = true;
+      await evaluate(c, "document.querySelector('#chain-queue-mount .chain-queue-refresh').click(); true");
+      await until(c, "!!document.querySelector('#chain-queue-mount tr[data-line-id=\"tx-counted-0000-0000\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount tr[data-line-id="tx-counted-0000-0000"]');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     // An html cell (lead 10-22): its size and «Paste HTML»; a paste with plain text only, then one with HTML.
     ['Chain, an html cell', async (c) => {
       HELD_RUN.on = false;    // on till here: the queue's own poll read it again before the held run's cell
+      COUNTED.on = false;
       PASTE_HTML.on = true;
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
@@ -4681,6 +4774,8 @@ const MUTANTS = [
   { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
       "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },
+  { name: 'a line counted only to 200 drawn as exact', entry: 'admin.html', rule: 'contents', at: 'chain-queue',
+    file: 'src/chain_queue_panel.js', edits: [['const stopped = isCount(t.counted_to);', 'const stopped = false;']] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',

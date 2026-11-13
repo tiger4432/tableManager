@@ -16,7 +16,9 @@ import types
 import pytest
 
 from chain import replay
-from database import crud, models, schemas
+from sqlalchemy import text
+
+from database import crud, lines, models, schemas
 
 REP_TABLES = {
     "crep_test_trigger": {
@@ -111,6 +113,7 @@ def rep_env(db_session):
     crud.TABLE_CONFIG.update(REP_TABLES)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
+    models.sync_dynamic_tables_schema(db_session.get_bind())   # t__lines, as the sibling fixtures build them
     _install_mapper_module()
     yield db_session
     sys.modules.pop(MAPPER_MODULE, None)
@@ -173,10 +176,15 @@ def _target(db, bk):
 
 
 def _sources(db, table, row_id, col):
-    return {s.source_name: s.value for s in db.query(models.CellSource).filter(
-        models.CellSource.table_name == table,
-        models.CellSource.row_id == row_id,
-        models.CellSource.column_name == col).all()}
+    """{source: value} of the cell's standing layers - its head lines that say it (lines.layers)."""
+    return {s: d["value"] for s, d in lines.layers(db, table, [row_id], [col]).get((row_id, col), {}).items()}
+
+
+def _lines(db, table, row_id):
+    """(line_kind, source_name, written_by) of the row's lines, oldest first."""
+    return [tuple(line) for line in db.execute(text(
+        'SELECT line_kind, source_name, written_by FROM "%s" WHERE row_id = :r ORDER BY line_id'
+        % lines.lines_relation(table)), {"r": row_id})]
 
 
 # ---------------------------------------------------------------------------
@@ -531,16 +539,19 @@ def test_r2_writes_an_audit_entry_naming_the_withdrawn_source(rep_env):
     row = _two_layer_cell(rep_env)
     replay.withdraw_source(rep_env, "crep_test_target", "pipeline_parser",
                                  columns=["note"], apply=True, log=lambda *_: None)
-    logs = rep_env.query(models.AuditLog).filter(
-        models.AuditLog.table_name == "crep_test_target",
-        models.AuditLog.row_id == row.row_id,
-        models.AuditLog.column_name == "note").all()
-    assert logs, "a withdrawal that changes a visible value must leave a trail"
-    entry = logs[-1]
-    assert entry.source_name == replay.R2_AUDIT_SOURCE
-    assert "pipeline_parser" in (entry.updated_by or "")
-    assert entry.old_value == "FROM_PARSER"
-    assert entry.new_value == "FROM_SCRIPT"
+    assert ("withdraw", "pipeline_parser", replay.R2_AUDIT_SOURCE) in _lines(rep_env, "crep_test_target", row.row_id), \
+        "a withdrawal that changes a visible value must leave a trail naming the withdrawn source"
+    batches = rep_env.query(lines.AuditBatch).filter(lines.AuditBatch.table_name == "crep_test_target",
+                                                     lines.AuditBatch.work_kind == "withdraw").all()
+    assert [b.written_by for b in batches] == [replay.R2_AUDIT_SOURCE]
+    said = lines.layers(rep_env, "crep_test_target", [row.row_id], ["note"])[(row.row_id, "note")]
+    assert "pipeline_parser" not in said and said["custom_script"]["value"] == "FROM_SCRIPT"
+    rep_env.refresh(row)
+    assert row.note == "FROM_SCRIPT"
+    assert rep_env.execute(text(
+        'SELECT %s FROM "%s" WHERE row_id = :r AND source_name = :s AND line_kind = :k'
+        % (lines.value_column("note"), lines.lines_relation("crep_test_target"))), {"r": row.row_id, "s": "pipeline_parser", "k": "write"}
+    ).scalar() == "FROM_PARSER", "what was shown before - the withdrawn source's own line"
 
 
 def test_r2_dry_run_changes_nothing(rep_env):
@@ -631,13 +642,11 @@ def _outbox_marker(db):
 
 
 def _all_layers(db, table="crep_test_target"):
-    """Every stored layer in the table. The WHOLE set, because the hazard is a
-    deletion that takes the wrong row - which an assertion scoped to one cell of
-    one row would not see."""
-    return sorted(
-        (s.row_id, s.column_name, s.source_name, str(s.value))
-        for s in db.query(models.CellSource).filter(
-            models.CellSource.table_name == table).all())
+    """Every standing layer in the table (lines.layers over all its rows). The WHOLE set, because the hazard is a
+    withdrawal that takes the wrong row - which an assertion scoped to one cell of one row would not see."""
+    ids = [r for (r,) in db.query(models.DYNAMIC_TABLES[table].row_id)]
+    return sorted((r, c, s, str(d["value"])) for (r, c), said in lines.layers(db, table, ids).items()
+                  for s, d in said.items())
 
 
 def _withdraw(db, source="pipeline_parser", **kw):
@@ -741,7 +750,7 @@ def test_withdraw_deletes_the_same_layers_whatever_the_outbox_label(rep_env,
     fixed_before, fixed_after, fixed_stats, _ = _run()
 
     # Reset the table so pass 2 starts from the same place.
-    rep_env.query(models.CellSource).delete()
+    rep_env.execute(text('DELETE FROM "%s"' % lines.lines_relation("crep_test_target")))
     rep_env.query(models.CellOverwrite).delete()
     rep_env.query(models.DYNAMIC_TABLES["crep_test_target"]).delete()
     rep_env.commit()

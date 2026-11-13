@@ -28,16 +28,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from database import crud, models                                # noqa: E402
 
-TABLE = "dt_map"
+TABLE = "purge_ob"
+CFG = {"composite_key_source": ["k"], "column_types": {"k": "string", "a": "string"}}
 
 
 def helper_code():
-    """`purge_map_rows`'s body with the docstring removed.
-
-    🔴 THE CODE, NOT THE PROSE. The docstring explains the defect and therefore NAMES
-    `.delete(synchronize_session=False)`; scoring the raw source makes these assertions
-    answer "what does it say" when they mean to ask "what does it do".
-    """
+    """`purge_map_rows`'s body with the docstring removed - the code, not the prose (the docstring names what it
+    explains)."""
     import ast
     import inspect
 
@@ -56,20 +53,37 @@ def outbox_deletes(db, table_name=TABLE):
             .order_by(models.DatabaseOutbox.id.asc()).all())
 
 
-class FakeModel:
-    """Stands in for the dynamic table model: the helper only filters on `row_id`."""
+@pytest.fixture(name="db_session")
+def fixture_db(db_session, monkeypatch):
+    """A declared table that keeps lines - the purge's rows are its rows (cell-source overhaul)."""
+    from database import lines, schemas
+    from database.database import Base
+
+    models.init_dynamic_models({TABLE: CFG})
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, CFG)
+    Base.metadata.create_all(bind=db_session.get_bind())
+    lines.ensure_line_table(db_session, TABLE, CFG)
+    crud.apply_batch_updates(db_session, TABLE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        business_key_val=k, updates={"k": k, "a": "x"}, source_name="f1.csv", updated_by="loader")
+        for k in ("K1", "K2", "K3")]))
+    return db_session
 
 
 @pytest.fixture
 def model():
-    return models.CellSource          # any mapped class with a `row_id` column
+    return models.DYNAMIC_TABLES[TABLE]
+
+
+def _ids(db):
+    m = models.DYNAMIC_TABLES[TABLE]
+    return [r.row_id for r in db.query(m).order_by(m.row_id)]
 
 
 # ----------------------------------------------------------- the deletion becomes visible
 
 def test_a_purge_stages_an_event_naming_the_rows(db_session, model):
     """🔴 THE POINT. Not "a table changed" - WHICH rows went."""
-    ids = [str(uuid.uuid4()) for _ in range(3)]
+    ids = _ids(db_session)
     crud.purge_map_rows(db_session, model, TABLE, ids)
     db_session.flush()
 
@@ -79,11 +93,14 @@ def test_a_purge_stages_an_event_naming_the_rows(db_session, model):
     assert set(ids) <= set(named)
 
 
-def test_the_event_is_staged_before_the_deletes_run(db_session, model):
-    """The transactional-outbox guarantee: the event must be in the SAME flush that removes
-    the rows, or a crash between them loses the notice while keeping the deletion."""
-    body = helper_code()
-    assert body.index("stage_collapsed_event") < body.index(".delete(")
+def test_the_event_and_the_deletes_are_one_transaction(db_session, model):
+    """The transactional-outbox guarantee: the event rides the transaction that removes the rows - rolled back, both
+    are gone; a crash between them cannot keep the deletion and lose the notice."""
+    ids = _ids(db_session)
+    db_session.commit()
+    crud.purge_map_rows(db_session, model, TABLE, ids)
+    db_session.rollback()
+    assert (_ids(db_session), outbox_deletes(db_session)) == (ids, [])
 
 
 def test_an_empty_purge_stages_nothing(db_session, model):
@@ -97,7 +114,7 @@ def test_an_empty_purge_stages_nothing(db_session, model):
 
 
 def test_it_returns_the_ids_it_acted_on(db_session, model):
-    ids = [str(uuid.uuid4())]
+    ids = _ids(db_session)[:1]
     assert crud.purge_map_rows(db_session, model, TABLE, ids) == ids
 
 
@@ -118,16 +135,15 @@ def test_neither_purge_site_spells_the_deletes_by_hand_any_more():
 
 
 def test_the_helper_still_clears_the_cell_metadata(db_session, model):
-    """The rows' sources and overwrites must go with them; leaving them would make the map
-    rows immortal in the two side tables."""
-    import inspect
-
-    body = helper_code()
-    layers = inspect.getsource(crud.delete_row_layers)
-    # 총괄 a13fcf00c: through the one function a row delete and a merge's shell also use
-    assert "delete_row_layers(db, table_name, row_ids)" in body
-    assert "models.CellSource" in layers and "models.CellOverwrite" in layers
-    assert body.count("synchronize_session=False") + layers.count("synchronize_session=False") == 3
+    """The rows' pins go with them; leaving them would make the map rows immortal in cell_overwrites. Through the one
+    function a row delete and a merge's shell also use (총괄 a13fcf00c)."""
+    [first, *_rest] = _ids(db_session)
+    db_session.add(models.CellOverwrite(table_name=TABLE, row_id=first, column_name="a", is_overwrite=True,
+                                        updated_by="kim"))
+    db_session.flush()
+    crud.purge_map_rows(db_session, model, TABLE, [first])
+    assert "delete_row_layers(db, table_name, row_ids)" in helper_code()
+    assert db_session.query(models.CellOverwrite).filter_by(table_name=TABLE, row_id=first).count() == 0
 
 
 # ------------------------------------------------------- what this does NOT claim to do

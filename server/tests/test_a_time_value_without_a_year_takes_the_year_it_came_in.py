@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 """A `time` format that reads no year («%m월 %d일») takes the year the value came in - `"year": "arrival"`
 (lead 11-10, owner «value 노테이션만 먹으면 쉽잖아»). The write folds with now's year, the backfill with each
-layer's `ingested_at`; a value in no declared format stays as it is; a year-less format without `year` is refused
+layer's head line's `at`; a value in no declared format stays as it is; a year-less format without `year` is refused
 by name instead of folding to 1900."""
 import os
 from datetime import datetime
 
 import pytest
+from sqlalchemy import text
 
 import notation_norm as nn
 from chain import ingestion_worker as worker
 from chain import replay
-from database import models
+from database import lines
 from test_a_written_column_is_stored_folded import (DECLARED, PLAIN, TABLES, _declare, _rows, _stored,  # noqa: F401
                                                     _write, env, fixture_watcher)
 from test_a_written_column_takes_the_declared_spelling import _refusals
@@ -74,16 +75,16 @@ def _stored_in(db, tmp_path, monkeypatch, rows_by_source, years):
     for source, rows in rows_by_source:
         _write(db, PLAIN, rows, source=source)
     for source, year in years.items():
-        db.query(models.CellSource).filter(models.CellSource.table_name == PLAIN,
-                                           models.CellSource.source_name == source).update(
-            {"ingested_at": datetime(year, 6, 1, 12, 0, 0)}, synchronize_session=False)
+        db.execute(text('UPDATE "%s" SET at = :at WHERE source_name = :s' % lines.lines_relation(PLAIN)),
+                   {"at": datetime(year, 6, 1, 12, 0, 0), "s": source})
     db.commit()
     _declare(tmp_path, monkeypatch, ARRIVAL)
 
 
 def _layers(db):
-    return sorted((s.source_name, s.value) for s in db.query(models.CellSource)
-                  .filter(models.CellSource.table_name == PLAIN, models.CellSource.column_name == "seen"))
+    db.expire_all()
+    heads = lines.layers(db, PLAIN, [r.row_id for r in _rows(db, PLAIN)], ["seen"])
+    return sorted((source, head["value"]) for layer in heads.values() for source, head in layer.items())
 
 
 def test_the_backfill_folds_each_layer_with_the_year_it_came_in(env, tmp_path, monkeypatch):
@@ -99,15 +100,14 @@ def test_the_backfill_folds_each_layer_with_the_year_it_came_in(env, tmp_path, m
         ("K-03", "2024-02-29 00:00:00"), ("K-04", "2월 29일"), ("K-05", "21")]
     assert _layers(env) == [("f24.csv", "2024-02-29 00:00:00"), ("f24.csv", "2024-03-05 00:00:00"),
                             ("f25.csv", "2025-03-05 00:00:00"), ("f25.csv", "21"), ("f25.csv", "2월 29일")]
-    # counted as the cell and as the layer: 21's two, and 2025's 2월 29일 layer - its cell had no year to say
-    assert stats["time_left"] == {"unmatched": 3}
+    # a line each (a cell showing a line is that line): 21's, and 2025's 2월 29일 layer - its cell had no year to say
+    assert stats["time_left"] == {"unmatched": 2}
     assert replay.fold_written_notation(env, PLAIN)["layers_folded"] == 0, "a second run moves nothing"
 
 
 def test_a_shown_value_with_no_layer_is_left_and_counted(env, tmp_path, monkeypatch):
     _stored_in(env, tmp_path, monkeypatch, [("f24.csv", [{"k": "K-01", "seen": "3월 5일"}])], {"f24.csv": 2024})
-    env.query(models.CellSource).filter(models.CellSource.table_name == PLAIN,
-                                        models.CellSource.column_name == "seen").delete(synchronize_session=False)
+    env.execute(text('DELETE FROM "%s"' % lines.lines_relation(PLAIN)))     # rows from before t kept lines
     env.commit()
     stats = replay.fold_written_notation(env, PLAIN, apply=True)
     assert ([r.seen for r in _rows(env, PLAIN)], stats["time_left"]) == (["3월 5일"], {"no_arrival": 1})

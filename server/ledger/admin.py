@@ -269,6 +269,15 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     refused = maintenance_line.storage_refusal(table, declaration)
     if refused:
         raise _table_config_refusal("storage_refused", *refused)
+    # the build's own judge, before the file is written (lead 11-11): a declaration whose lines would be refused
+    from database import lines
+    if lines.keeps_lines(table, declaration):
+        from database.database import engine
+        with engine.connect() as conn:
+            said = lines.build_refusal(conn, table)
+        if said:
+            raise _table_config_refusal("line_table_refused", f"tables.{table}",
+                                        str(lines.LineTablesRefused({table: said})))
 
     path = table_config_path()
     current_base = file_fingerprint(path)
@@ -1513,11 +1522,9 @@ def relations_view(db, query: str = None, limit: int = 200) -> dict:
     # 🔴 미선언이지만 «실재하는» 테이블 — 이름과 다음 행동을 함께.
     undeclared = []
     if needle:
-        rows = db.execute(text(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = current_schema() AND table_name LIKE :q "
-            "ORDER BY table_name LIMIT :limit"),
-            {"q": f"%{needle}%", "limit": limit}).fetchall()
+        from database.lines import base_tables     # a line table is no relation to declare (lead 11-12)
+
+        rows = [(n,) for n in base_tables(db.connection()) if needle in n][:limit]
         declared_set = set(declared)
         undeclared = [
             {"name": row[0],

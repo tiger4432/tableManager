@@ -9,6 +9,7 @@ import pytest
 from chain import ask_rule, rule_shape
 from database import crud, models
 from conftest import retire_dynamic_model
+from tests.support import line_tables
 
 TABLES = {
     "am_steps": {"composite_key_source": ["product", "step_seq"], "column_types": {
@@ -38,28 +39,27 @@ def world(db_session):
     m = models.DYNAMIC_TABLES
     for name, entry in TABLES.items():
         crud.TABLE_CONFIG[name] = entry
-        m[name].__table__.create(bind=db_session.get_bind())
+        line_tables.build(db_session.get_bind(), name)      # its lines - a layer is a line (A 11-11)
     for product in ("P1", "P2"):
         for n in (1, 2, 3):
             row = {"product": product, "step_seq": "%s%d" % (product, n), "process_kind": "etch"}
             db_session.add(m["am_map"](row_id="%s-%d" % (product, n), business_key_val=ask_rule._key_of("am_map", row),
                                        **row))
-            db_session.add(models.CellSource(table_name="am_map", row_id="%s-%d" % (product, n),
-                                             column_name="process_kind", source_name=crud.CHAIN_SOURCE,
-                                             value="etch", updated_by="step_kind"))
+            line_tables.line(db_session.connection(), "am_map", line_tables.bits_of("am_map"),
+                             "%s-%d" % (product, n), source=crud.CHAIN_SOURCE, written_by="step_kind",
+                             values={"process_kind": "etch"})
     db_session.commit()
     yield db_session
     db_session.rollback()
-    db_session.query(models.CellSource).filter(models.CellSource.table_name == "am_map").delete()
-    db_session.commit()
     for name in TABLES:
+        line_tables.drop(db_session.get_bind(), name)
         m[name].__table__.drop(bind=db_session.get_bind())
         retire_dynamic_model(name)
 
 
 def _person(db, row_id, value, at="2026-10-28 09:00"):
-    db.add(models.CellSource(table_name="am_map", row_id=row_id, column_name="process_kind",
-                             source_name=crud.USER_SOURCE, value=value, updated_by="kim"))
+    line_tables.line(db.connection(), "am_map", line_tables.bits_of("am_map"), row_id,
+                     source=crud.USER_SOURCE, written_by="kim", values={"process_kind": value})
     db.commit()
 
 

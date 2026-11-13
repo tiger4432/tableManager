@@ -123,7 +123,9 @@ def test_a_path_is_read_now_under_the_source_that_owns_its_folder(tmp_path):
         assert until(lambda: sorted(r[1:] for r in rows()) == [("d.csv", "ta", "SUCCESS"), ("notes.txt", "ta", "SUCCESS"),
                                                                ("r.csv", "tb", "SUCCESS")]), rows()
         with sqlite3.connect(str(db)) as c:
-            layers = {name for (name,) in c.execute("SELECT DISTINCT source_name FROM cell_sources")}
+            # a standing layer is a head line in ta__lines since the overhaul (cell_sources is cold); ta's few columns
+            # sit in chunk 0
+            layers = {name for (name,) in c.execute("SELECT DISTINCT source_name FROM ta__lines WHERE head_0 <> 0")}
             assert c.execute("SELECT lot FROM ta ORDER BY lot").fetchall() == [("DEEP",), ("NOTES",)]
         for path in (notes, deep):                                      # the source's layer, as the watcher names it
             assert [name for name in layers if name.startswith("external:workspace@ta@")

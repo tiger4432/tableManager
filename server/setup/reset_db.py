@@ -45,6 +45,9 @@ def reset_database():
     with engine.connect() as conn:
         print("  - Step 3: Dropping all existing tables...")
         try:
+            from database import lines
+
+            lines.drop_every_line_table(engine)      # the t__lines Base never sees - else orphans outlive their t
             Base.metadata.drop_all(bind=engine)
             conn.commit()
             print("    [OK] All tables dropped.")
