@@ -646,10 +646,11 @@ function setupEventListeners() {
       }
 
       const newSkip = (targetPage - 1) * pageLimit;
-      if (newSkip !== state.currentSkip || state.allDataLoaded) {
+      // an approximate page asks again even for its own number - the answer says where it stands
+      if (newSkip !== state.currentSkip || state.allDataLoaded || state.pageStand.approximate) {
         state.currentSkip = newSkip;
         state.allDataLoaded = false;
-        fetchData(false);
+        fetchData(false, null, 'jump');
       } else {
         elements.pageInput.value = targetPage;
       }

@@ -124,7 +124,7 @@ def test_the_two_passes_read_one_list():
     import inspect
 
     body = inspect.getsource(models.init_dynamic_models)
-    assert body.count("FRAMEWORK_COLUMNS") == 2
-    assert "created_at" not in body.split("FRAMEWORK_COLUMNS")[0][-400:], (
+    assert body.count("_not_data()") == 2
+    assert "created_at" not in body.split("_not_data()")[0][-400:], (
         "a hand-written copy of the list is back")
-    assert "row_id" in models.FRAMEWORK_COLUMNS
+    assert "row_id" in models._not_data()

@@ -1198,7 +1198,7 @@ class Report:
             nodes.setdefault(node_label(node), node["id"])
         more = (answer.get("truncated") or {}).get("seeds") or 0
         self._kinds = nodes
-        head = "%d %s node(s)%s" % (len(nodes), kind, " - %d more not listed" % more if more else "")
+        head = "%d %s node(s)%s" % (len(nodes), kind, " - more not listed" if more else "")
         logger.warning("[Report] causes: %s - %s", head, ", ".join(nodes) or "none")
         return {"context": "\n".join([head] + list(nodes)), "nodes": nodes}
 

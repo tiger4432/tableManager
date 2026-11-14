@@ -9,13 +9,17 @@ Usage
     python server/scripts/copy_layers_to_lines.py --apply [--workers 4] [--table <t> ...] [--page 1000]
     python server/scripts/copy_layers_to_lines.py --apply --rows copy_mismatch_<t>.csv   those rows' copy lines
                                          taken out and copied again (after their layers or t were fixed)
+    python server/scripts/copy_layers_to_lines.py --verify [--table <t> ...]   reads only: cells whose winning line
+                                         holds another value than t (a write no line records) -> copy_written_<t>.csv,
+                                         the shape --rows reads
     python server/scripts/copy_layers_to_lines.py --estimate [--workers 4] [--analyze] [--sample]   per table, layers
                                          from the database's statistics (nothing read) and hours; --analyze makes them
                                          first; --sample copies the biggest table for SAMPLE_SECONDS and rolls it back
                                          - this disk's rate (it loads the disk: run it off-hours)
 
 Per table: pages of `--page` rows, a commit each (`line_migration.copy_page`). Interrupted, run it again - each table
-resumes after its last committed page (`copied_through`); a table already copied says so and is skipped.
+resumes after its last committed page (`line_migration.copy_cursor`); a table already copied says so and is
+skipped.
 The gate rides every page: the copied lines merged again must give what t shows. A cell that does not is written to
 copy_mismatch_<t>.csv (table, row_id, column, t_value, lines_value) and the page lands (owner ㄴ): t still shows its
 value, and the cell turns to its lines' winner only when that column is written (c7319dfb6 - a merge re-decides only
@@ -44,6 +48,8 @@ SHOWN = 5
 #: a table's cells whose copied lines do not give what t shows: copy_mismatch_<t>.csv, in the directory it runs in
 RECORD = "copy_mismatch_%s.csv"
 RECORD_COLUMNS = ("table", "row_id", "column", "t_value", "lines_value")
+#: --verify's cells of a table whose winning line holds another value than t - written fresh each run, in RECORD_COLUMNS
+WRITTEN = "copy_written_%s.csv"
 #: seconds between a table's progress lines
 SAY_EVERY = 10.0
 #: layers a second --estimate counts hours at: the box's full re-migration 11-13 (f481bf4a0, one process, other work
@@ -126,7 +132,9 @@ def sample(engine, table: str, cfg: dict, seconds: float = SAMPLE_SECONDS, page:
             conn.execute(text('CREATE SCHEMA "%s"' % SAMPLE_SCHEMA))
             conn.execute(text('SET LOCAL search_path = "%s", "%s"' % (SAMPLE_SCHEMA, home)))
             conn.execute(text('CREATE TABLE "%s"."%s" (LIKE "%s"."%s" INCLUDING ALL)' % (SAMPLE_SCHEMA, table, home, table)))
-            for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource):
+            # copy_page writes its record too (copy_cursor): here, never the home table - before the window it is
+            # the old release's, without the record's cells
+            for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, models.FileIngestionCheckpoint):
                 model.__table__.to_metadata(MetaData(), schema=SAMPLE_SCHEMA).create(conn)
             db = Session(bind=conn)
             lines.ensure_line_table(db, table, cfg)
@@ -229,7 +237,9 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                     "record": path if mismatched else None}
         rows = total
         # an earlier run's committed pages: the line starts from them and the time left is over the rest (lead 11-13)
-        through = line_migration.copied_through(db, table, cfg, tx)
+        through, seeded = line_migration.copy_cursor(db, table, cfg, tx)
+        if seeded:                                    # a copy stopped before the record existed (ops 11-14)
+            say("%s: cursor seeded from copied lines at row %s" % (table, through))
         already = 0 if through is None else db.execute(select(func.count(func.distinct(cs.c.row_id))).where(
             cs.c.table_name == table, cs.c.row_id <= through)).scalar()
         started = said = time.perf_counter()
@@ -287,6 +297,35 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                     % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
 
 
+def verify_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
+    """t against the lines its won_by names, page after page, reads only (`line_migration.unrecorded_page`): a cell
+    whose winning line holds another value is a write no line records - the old release writing a row after the copy
+    moved it (lead 11-14). Those cells go to copy_written_<t>.csv, written fresh; --apply --rows <that file> copies
+    their rows again with the layers the old release left in cell_sources."""
+    path = os.path.abspath(WRITTEN % table)
+    if os.path.exists(path):
+        os.remove(path)
+    found, rows, compared, after = 0, set(), 0, None
+    with Session(bind=engine) as db:
+        while True:
+            cells, n, after = line_migration.unrecorded_page(db, table, cfg, after, page)
+            if cells:
+                record(path, table, cells)
+                found += len(cells)
+                rows.update(c[0] for c in cells)
+            compared += n
+            if after is None:
+                break
+        db.rollback()
+    if found:
+        say("%s: %d cell(s) on %d row(s) differ from their winning line (%d compared) - listed in %s; copy those rows "
+            "again: python server/scripts/copy_layers_to_lines.py --apply --rows %s" % (
+                table, found, len(rows), compared, path, path))
+    else:
+        say("%s: every cell matches its winning line (%d compared)" % (table, compared))
+    return {"table": table, "cells": found, "rows": len(rows), "compared": compared, "record": path if found else None}
+
+
 def check_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:
     """The copy run page by page and rolled back each page: how many cells' lines merge to other than what t shows,
     said after every page - so a stop at any time leaves a true sample. Nothing stays."""
@@ -340,6 +379,8 @@ def main(argv=None) -> int:
     parser.add_argument("--page", type=int, default=1000)
     parser.add_argument("--table", action="append", default=[])
     parser.add_argument("--rows", help="a copy_mismatch_<t>.csv: copy its rows again (with --apply)")
+    parser.add_argument("--verify", action="store_true",
+                        help="reads only: cells whose winning line holds another value than t -> copy_written_<t>.csv")
     args = parser.parse_args(argv)
     from database.database import engine
 
@@ -395,6 +436,16 @@ def main(argv=None) -> int:
         print("refused: the server is running - %s. Stop it first; the copy runs with nothing writing"
               % ", ".join("%s (pid %s)" % (name, pid) for pid, name in running))
         return 2
+    if args.verify:
+        with Session(bind=engine) as db:
+            built = sorted(lines._catalogue(db, list(tables)))
+            db.rollback()
+        done = [verify_table(engine, t, tables[t], args.page, say=lambda line: print(line, flush=True)) for t in built]
+        files = [r["record"] for r in done if r["record"]]
+        print("verified %d table(s) - %d cell(s) on %d row(s) to copy again%s" % (
+            len(done), sum(r["cells"] for r in done), sum(r["rows"] for r in done),
+            (" (" + ", ".join(files) + ")") if files else ""))
+        return 1 if files else 0
     todo = plan(engine, tables)
     for p in todo:
         print("%-32s %10d layer(s) on %9d row(s) · %s" % (

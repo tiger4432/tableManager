@@ -73,7 +73,7 @@ def _masks(bits: dict, chunks: int, columns) -> list:
 def _data(bits: dict) -> list:
     """The declared columns of the bit map - the framework columns (row_id · business_key_val · created_at ·
     updated_at) have slots too but are the line's own, not a value it says."""
-    framework = {name for name, _type in lines.FRAMEWORK}
+    framework = lines.NOT_DATA
     return [c for c in bits if c not in framework]
 
 
@@ -142,7 +142,7 @@ def write_lines(db, table: str, items, *, kind: str, transaction_id):
     keeps, shape = _table_shape(db, table, cfg)
     now, ln, bits, chunks = shape["table"], shape["lines"], shape["bits"], shape["chunks"]
     data = _data(bits) if keeps else [c.name for c in now.columns
-                                      if c.name not in {name for name, _type in lines.FRAMEWORK}]
+                                      if c.name not in lines.NOT_DATA]
     items = [dict(it, line_kind=it.get("line_kind") or WRITE) for it in items]
     n = len(items)                                 # step 2 may split an item (`of`); the answer is per given item
     for it in items:
@@ -825,7 +825,7 @@ def _merge_now(db, table, cfg, shape, row_ids, at, old, plain, keeps, blank=None
     key's unique index ON CONFLICT DO NOTHING. Returns ({row_id: {column: value}} as written, {row_id: key} of the new
     rows another writer's row of the same key took meanwhile - nothing written for them)."""
     now = shape["table"]
-    data = [c.name for c in now.columns if c.name not in {n for n, _t in lines.FRAMEWORK} and c.name != lines.WON_BY]
+    data = [c.name for c in now.columns if c.name not in lines.NOT_DATA and c.name != lines.WON_BY]
     if not row_ids:
         return {}, {}
     merged = {row_id: {c: (old.get(row_id) or {}).get(c) for c in data} for row_id in row_ids}
@@ -1154,7 +1154,7 @@ def _merge_into(db, table, cfg, shape, keeps, shell, holder, *, explicit, human,
         .mappings()}
     s_now, h_now = got[shell], got[holder]
     types = cfg.get("column_types") or {}
-    framework = {name for name, _type in lines.FRAMEWORK} | {lines.WON_BY, cfg.get("business_key")}
+    framework = lines.NOT_DATA | {lines.WON_BY, cfg.get("business_key")}
     data = [c.name for c in now.columns if c.name not in framework]
     ov = models.CellOverwrite.__table__
     marks = {(r, c): (flag, by, pin) for r, c, flag, by, pin in db.execute(

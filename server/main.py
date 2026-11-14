@@ -2068,6 +2068,31 @@ def key_page(query, keys, final_sort, boundary, limit, backward=False):
     return list(reversed(rows)) if backward else rows
 
 
+def jump_boundary(db, table_name, skip, descending):
+    """A page-number jump `skip` rows deep in row_id order, read by key (owner 11-13 ㄷ: «approximately there, the page
+    number need not be exact»): the row_id the table's row_id histogram (pg_stats, as of its last ANALYZE) puts at that
+    depth - the page after it lands within one histogram bucket (1 % of the rows at the default statistics target) of the
+    exact page. None - read by OFFSET, exactly - off PostgreSQL, with no statistics, or shallower than one bucket (an
+    OFFSET there is cheap)."""
+    from sqlalchemy import text
+
+    if db.get_bind().dialect.name != "postgresql":
+        return None
+    said = db.execute(text(
+        "SELECT c.reltuples, s.histogram_bounds::text::text[] FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "JOIN pg_stats s ON s.schemaname = n.nspname AND s.tablename = c.relname AND s.attname = 'row_id' "
+        "WHERE c.oid = to_regclass(quote_ident(:t))"), {"t": table_name}).first()
+    if said is None or not said[1] or len(said[1]) < 2 or not said[0] or said[0] <= 0:
+        return None
+    rows, bounds = said
+    buckets = len(bounds) - 1
+    at = min(int(skip * buckets // rows), buckets - 1)
+    if at < 1:
+        return None
+    return bounds[buckets - at] if descending else bounds[at]
+
+
 # ── [perf 2026-08-06] Response serialization for the grid/map read path ──────────
 #
 # Counts how many times this route has had to fall back to the slow encoder, keyed by
@@ -2581,8 +2606,15 @@ def grid_page(
     page_keys = total_order_keys(table_model, table_name)
     # the next / previous page by key when the screen names the row it went on from - a page-number jump stays OFFSET;
     # a relation without row_id, a jump to a row, or a row that is gone pages by OFFSET (`skip`)
-    by_key = (after or before) and not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
-    id_results = key_page(query, page_keys, final_sort, after or before, limit, backward=not after) if by_key else None
+    by_row_id = not target_row_id and page_keys[0] is getattr(table_model, "row_id", None)
+    # a page-number jump deep in row_id order with nothing narrowing it reads by key from the histogram's row_id at that
+    # depth - approximately that page (`jump_boundary`); sorted, narrowed or shallow it stays OFFSET, exactly
+    jumped = (jump_boundary(db, table_name, skip, order_desc)
+              if by_row_id and skip > 0 and not (after or before or q or filters or transaction_id or enrichment_queue
+                                                  or world) and len(page_keys) == len(final_sort) == 1 else None)
+    by_key = (after or before or jumped) and by_row_id
+    id_results = (key_page(query, page_keys, final_sort, after or before or jumped, limit,
+                           backward=not (after or jumped)) if by_key else None)
     if id_results is None:
         with stages.stage("keys"):          # the slow line's stages (lead 11-09) - [get_table_data] below as before
             keys_query = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit)
@@ -2682,6 +2714,8 @@ def grid_page(
         # the count's word beside it - capped past COUNT_CAP, when counted, or still counting (소유자 ㄱ)
         **({"count": counted} if counted is not None else {}),
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
+        # a page-number jump read by key from the row_id histogram - within one bucket of that page (`jump_boundary`)
+        **({"approximate": True} if jumped else {}),
         # the colour rules and the page's hand paint (sys_looks) - absent when the table has none
         **({"looks": looks} if looks else {}),
         # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all

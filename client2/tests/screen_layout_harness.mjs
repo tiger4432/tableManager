@@ -2892,6 +2892,10 @@ const GALLERY_PICK = (word, value) => `(() => { const l = [...document.querySele
   .find((p) => (p.querySelector('.gallery-pick__word') || {}).textContent === ${JSON.stringify(word)}); const s = l && l.querySelector('select');
   if (!s) return false; s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
 const GRID_LOADED = `/^Loaded/.test((document.querySelector('#performance-log') || {}).textContent || '')`;
+// Page 300 typed into the pager, the line under the grid cleared first so «Loaded» is this jump's.
+const PAGE_300 = `(() => { document.getElementById('performance-log').textContent = ''; const i = document.getElementById('page-input');
+  i.value = '300'; i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`;
+const PAGE_300_READ = `${GRID_LOADED} && document.getElementById('page-input').value === '300'`;
 const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(words)} && !x.disabled);
   if (b) b.click(); return Boolean(b); })()`);
 const choose = (c, sel, pick) => evaluate(c, `(() => { const s = document.querySelectorAll(${JSON.stringify(sel)})[${pick[0]}]; if (!s) return false;
@@ -3343,6 +3347,32 @@ const DRIVE = {
       .then(() => sleep(400))],
     ['history panel opened again', (c) => evaluate(c, "(() => { document.getElementById('sidebar-fold-btn').click(); return true; })()")
       .then(() => sleep(400))],
+    // Page 300 of dt_log typed (D 3b11ec645, lead 11-14), the box's answers captured: with «Sort latest» on (updated_at) the
+    // jump reads by OFFSET, exactly - no «~»; off (row_id alone) it reads by the row_id histogram and says approximate -
+    // «Page ~300 of 536». Then «Sort latest» on again, as the states after these read it.
+    ['Grid, a deep page with Sort latest on', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === 'dt_log') return false;
+        sel.value = 'dt_log'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await evaluate(c, PAGE_300);
+      await settle(c, log);
+      await until(c, `${PAGE_300_READ} && document.getElementById('sort-latest-toggle').checked && document.getElementById('page-approx').hidden`);
+    }],
+    ['Grid, an approximate page', async (c, log) => {
+      await evaluate(c, "document.getElementById('sort-latest-toggle').click(); true");
+      await settle(c, log);
+      await until(c, `${GRID_LOADED} && !document.getElementById('sort-latest-toggle').checked`);
+      await evaluate(c, PAGE_300);
+      await settle(c, log);
+      await until(c, `${PAGE_300_READ} && !document.getElementById('page-approx').hidden`);
+    }],
+    ['Grid, Sort latest on again', async (c, log) => {
+      await evaluate(c, "document.getElementById('sort-latest-toggle').click(); true");
+      await settle(c, log);
+      await until(c, `${GRID_LOADED} && document.getElementById('sort-latest-toggle').checked && document.getElementById('page-approx').hidden`);
+    }],
     // The page opened again with its declaration read refused: the header's label reads it once, at the start - first, and
     // the page opened again with it read, so the states after it (the Ledger column, the edits Replay chain shows) have it.
     ['declaration refused, page opened again', async (c, log) => {

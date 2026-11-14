@@ -1459,6 +1459,9 @@ class VirtualEvidenceLookup:
             for source, world, predicate in sorted({(leg.source, leg.world_name, leg.predicate) for leg in legs
                                                     if said_by.get((leg.world_name, leg.predicate), 0) > 1}))
         self._census_of = {}
+        #: census statement -> its rows: two legs that say the same SQL read it once a walk (lead 11-14 - box key-values
+        #: wafer read inspection_run twice); nothing kept past this lookup
+        self._census_rows = {}
         self._took = {}
         #: the walk's value filters (`walk_filter`), said in each read's WHERE (`_filtered`)
         self.filters = filters or {}
@@ -1902,11 +1905,11 @@ class VirtualEvidenceLookup:
                 if end_type != bare:
                     continue
                 keys = [leg.key(spec) for _key, spec in leg.columns_of(arm)]
-                rows = self._execute(
-                    f"SELECT {', '.join([*keys, 'count(*)', f'min({leg.at()})'])} FROM {leg.relation} w "
-                    f"WHERE {' AND '.join(leg.said())}"
-                    + (f" GROUP BY {', '.join(keys)}" if keys else ""), None)
-                for row in rows:
+                sql = (f"SELECT {', '.join([*keys, 'count(*)', f'min({leg.at()})'])} FROM {leg.relation} w "
+                       f"WHERE {' AND '.join(leg.said())}" + (f" GROUP BY {', '.join(keys)}" if keys else ""))
+                if sql not in self._census_rows:
+                    self._census_rows[sql] = self._execute(sql, None)
+                for row in self._census_rows[sql]:
                     values = iter(row)
                     named = {key: spec["constant"] if "constant" in spec else next(values)
                              for key, spec in sorted(specs.items())}
@@ -4628,10 +4631,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "depth": depth_cut, "nodes": node_cut, "edges": edge_cut,
             "claims": claim_cut,
             "reason": ", ".join(reasons) if reasons else None,
-            # 🔴 HOW MANY SUBJECTS THE DESCRIPTION NAMED AND THIS WALK DID NOT TAKE
-            # (S-148-a). A COUNT rather than a flag, as `interval_excluded` beside it is:
-            # 「how much was left out」 is what tells an operator whether to narrow the
-            # question. Present only when a description was asked for.
+            # 🔴 > 0 WHEN THE DESCRIPTION NAMED MORE SUBJECTS THAN THIS WALK TOOK (S-148-a) - a cut,
+            # not a count (lead 11-14): the stored lookup reads one past the cap and says 1. The
+            # screen says the cap (`limits.seeds`). Present only when a description was asked for.
             **({"seeds": seed_cut} if seed_type else {}),
             # how many far nodes the bundles left undrawn - asked only with `fanout_limit`, as `bundles` (총괄 9075f6605)
             **({} if fanout_limit is None else {"fan_out": fan_cut}),

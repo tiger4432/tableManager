@@ -1353,7 +1353,7 @@ export const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 119],   // -> 119: K14-K16 the scroll, Load All, a pivot group's rows and the key by row (lead 11-13); 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7); -> 89: K13 Next · Prev by key (lead e570dcda5); -> 90: R10 a busy grid pool's sentence (lead, after 6f34a1320); -> 104: N1-N6 a save's cells not written said and the page read again, the paste's line by change_count (lead 10-29); -> 111: V1-V7 a number column's value sent as it was given (lead 10-29); -> 113: V8-V9 a number column edited in a text box, its text as typed (owner 10-31)
+  ['grid_view_readonly_harness.mjs', 122],   // -> 122: K17-K19 an approximate page, «~» and Prev past «~1» (D 3b11ec645, lead 11-14); -> 119: K14-K16 the scroll, Load All, a pivot group's rows and the key by row (lead 11-13); 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3); -> 69: the offscreen badge O1-O3 (lead 10-09); -> 76: the stopped read R6-R9 and the jump's refusal J1-J3 (lead 87dfa71d7); -> 84: the grid's count K1-K8 (ㄱ-1, lead 10-13); -> 87: a failed count said, a batch refresh asks it again K10-K12 (lead 0fd18ae19); -> 88: K9 Load All from page 5 says 1 - N (lead ba39f4ef7); -> 89: K13 Next · Prev by key (lead e570dcda5); -> 90: R10 a busy grid pool's sentence (lead, after 6f34a1320); -> 104: N1-N6 a save's cells not written said and the page read again, the paste's line by change_count (lead 10-29); -> 111: V1-V7 a number column's value sent as it was given (lead 10-29); -> 113: V8-V9 a number column edited in a text box, its text as typed (owner 10-31)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
@@ -1579,7 +1579,7 @@ export const FLOORS = new Map([
   // an event nothing matches is audible, and the theme notification has one speller
   ['wire_event_names_harness.mjs', 6],
   // how many matched, and the difference between 0 and unmeasured
-  ['match_count_harness.mjs', 37],   // 20 -> 34: D1-D14 the count as of a time, 10,000+, the paging end, a live row (ㄱ-1, lead 10-13); -> 37: D15-D17 a failed count (lead 0fd18ae19)
+  ['match_count_harness.mjs', 42],   // -> 42: D18-D22 an approximate page's stand (D 3b11ec645, lead 11-14); 20 -> 34: D1-D14 the count as of a time, 10,000+, the paging end, a live row (ㄱ-1, lead 10-13); -> 37: D15-D17 a failed count (lead 0fd18ae19)
   // the banner that offers a re-run, and what it refuses to offer one for
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
   // 57 -> 58 (lead QA 0056ebc9d): the panel placeUnder moved to the body is one panel however often it is drawn (L1, M20).

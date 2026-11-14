@@ -469,8 +469,9 @@ export function updateViewModeUI() {
 //    직접 쓰면 «아직 안 센 표»(total = null)가 「1쪽뿐」이 되어 다음 버튼이 꺼집니다 --
 //    세는 동안 다음 쪽으로 못 갑니다. 「모른다」와 「1쪽뿐」은 다른 상태입니다.
 export function updatePaginationUI(count, shown) {
-  const view = pagingView(count, state.currentSkip, pageLimit, shown);
+  const view = pagingView(count, state.currentSkip, pageLimit, shown, state.pageStand);
 
+  if (elements.pageApprox) elements.pageApprox.hidden = !view.approximate;
   if (elements.pageInput) {
     elements.pageInput.value = view.currentPage;
     // 모르는 동안은 상한을 «걸지 않습니다». 1 로 두면 입력이 1쪽에 묶입니다.

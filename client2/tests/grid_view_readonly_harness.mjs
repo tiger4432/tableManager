@@ -785,6 +785,89 @@ async function suite(M) {
         M.keys.rowsKey([{ lot: 'L1' }], 'after'), M.keys.rowsKey([], 'after')];
       ok(JSON.stringify(keyed) === JSON.stringify([{ after: 'b' }, { before: 'a' }, null, null]),
         `K16 the key: after the last row, before the first, none without a row_id or a row [${JSON.stringify(keyed)}]`);
+      // A deep page-number jump lands approximately (D 3b11ec645): «~N» through Next/Prev, Prev past «~1» while rows stand
+      // above it, off where a read above finds none; a jump to page 1 is exact again (lead 11-14).
+      const walk = [];
+      const shownWalk = [];
+      globalThis.fetch = async (url) => {
+        const u = new URL(String(url), 'http://x');
+        if (!u.pathname.endsWith('/data')) return answer(COUNTED);
+        const skip = Number(u.searchParams.get('skip'));
+        const keyed = u.searchParams.get('after') || u.searchParams.get('before');
+        const n = walk.length;
+        walk.push([skip, u.searchParams.get('after'), u.searchParams.get('before')]);
+        const rows = n === 5 ? [] : pageOf(`t${n}`);   // the second read above «~1» finds the top
+        return answer({ data: rows, total: null, ...(!keyed && skip > 0 ? { approximate: true } : {}) });
+      };
+      const heldSet = realState.gridApi.setGridOption;
+      let drawnFirst = null;
+      realState.gridApi.setGridOption = (k, v) => { if (k === 'rowData') drawnFirst = v[0] && v[0].row_id; };
+      const pager = () => {
+        const mark = document.getElementById('page-approx');
+        shownWalk.push([mark.hidden === false ? '~' : '', String(document.getElementById('page-input').value),
+          document.getElementById('prev-page-btn').disabled, drawnFirst]);
+      };
+      realState.pageCache = new Map();
+      realState.viewMode = 'pagination';
+      realState.isLoadingMore = false;
+      await M.api.fetchData(true);
+      realState.currentSkip = 2000;   // «Page 3» typed: the jump
+      await M.api.fetchData(false, null, 'jump');
+      pager();
+      for (let i = 0; i < 4; i += 1) { await M.api.prevPage(); pager(); }
+      realState.currentSkip = 0;   // «Page 1» typed: a jump at the same number asks again while approximate (main.js)
+      await M.api.fetchData(false, null, 'jump');
+      pager();
+      realState.gridApi.setGridOption = heldSet;
+      ok(JSON.stringify(walk) === JSON.stringify([[0, null, null], [2000, null, null], [1000, null, 't1-first'], [0, null, 't2-first'],
+        [0, null, 't3-first'], [0, null, 't4-first'], [0, null, null]])
+        && JSON.stringify(shownWalk) === JSON.stringify([['~', '3', false, 't1-first'], ['~', '2', false, 't2-first'], ['~', '1', false, 't3-first'],
+          ['~', '1', false, 't4-first'], ['~', '1', true, 't4-first'], ['', '1', true, 't6-first']]),
+        `K17 a jump lands «~3»; Prev walks «~2», «~1», above «~1» while rows stand there, off where none; page 1 is exact [${JSON.stringify([walk, shownWalk])}]`);
+      // the pager's own drawing (grid.js, the module under test): «~» on an approximate stand, none on an exact one
+      const heldStand = realState.pageStand;
+      const marks = [{ approximate: true, top: false }, heldStand].map((stand) => {
+        realState.pageStand = stand;
+        M.grid.updatePaginationUI(null, 2);
+        return document.getElementById('page-approx').hidden;
+      });
+      realState.pageStand = heldStand;
+      ok(JSON.stringify(marks) === JSON.stringify([false, true]), `K18 the pager draws «~» on an approximate page, none on an exact one [${JSON.stringify(marks)}]`);
+      // A re-read of an approximate page (a save, a live update) stands on its first row: the row before it by key, the
+      // page after that - by skip the server jumps again and lands elsewhere (lead 11-14). A table of 10,000 rows in
+      // row_id order; each skip jump lands 137, then 412 rows past its page.
+      const idAt = (i) => `r${String(i).padStart(5, '0')}`;
+      const at = (id) => Number(String(id).slice(1));
+      const jumpsPast = [137, 412];
+      const anchored = [];
+      globalThis.fetch = async (url) => {
+        const u = new URL(String(url), 'http://x');
+        if (!u.pathname.endsWith('/data')) return answer(COUNTED);
+        const skip = Number(u.searchParams.get('skip'));
+        const limit = Number(u.searchParams.get('limit'));
+        const after = u.searchParams.get('after');
+        const before = u.searchParams.get('before');
+        anchored.push([skip, limit, after, before]);
+        const from = after ? at(after) + 1 : before ? at(before) - limit : skip > 0 ? skip + jumpsPast.shift() : 0;
+        const data = Array.from({ length: limit }, (_, k) => ({ ...rowData(), row_id: idAt(from + k) }));
+        return answer({ data, total: null, ...(!after && !before && skip > 0 ? { approximate: true } : {}) });
+      };
+      realState.gridApi.setGridOption = (k, v) => { if (k === 'rowData') drawnFirst = v[0] && v[0].row_id; };
+      realState.pageCache = new Map();
+      await M.api.fetchData(true);
+      realState.currentSkip = 3000;
+      await M.api.fetchData(false, null, 'jump');
+      await M.api.nextPage();
+      await M.api.nextPage();
+      const walkedFirst = drawnFirst;
+      realState.pageCache.clear();   // a save's re-read clears the cache and reads the page again
+      await M.api.fetchData(false);
+      const rereadFirst = drawnFirst;
+      const rereadMark = document.getElementById('page-approx').hidden;
+      realState.gridApi.setGridOption = heldSet;
+      ok(walkedFirst === 'r05137' && rereadFirst === walkedFirst && rereadMark === false
+        && JSON.stringify(anchored.slice(-2)) === JSON.stringify([[5000, 1, null, 'r05137'], [5000, 1000, 'r05136', null]]),
+        `K19 an approximate page read again keeps its first row - one row before it by key, then the page after it [${JSON.stringify([walkedFirst, rereadFirst, rereadMark, anchored.slice(-2)])}]`);
       // A count the server could not make (lead 0fd18ae19 6): its `failed` field, or a refused /data/count, is said -
       // not «Counting rows…» for ever - and not asked again by the screen (the server keeps the pace).
       let countReply = () => answer(COUNTED);
@@ -1152,6 +1235,14 @@ await suite(REAL);
 // -- mutants ---------------------------------------------------------------------------
 // Each names the FILE it edits; the rest of the bundle stays real.
 const DEFECTS = [
+  ['api.js: Prev stops at an approximate «~1» by the counter', 'api',
+    s => s.replace('  if (state.currentSkip < pageLimit && !above) return Promise.resolve();', '  if (state.currentSkip < pageLimit) return Promise.resolve();')],
+  ['api.js: a jump while approximate takes the cached page', 'api',
+    s => s.replace("!above && !(how === 'jump' && state.pageStand.approximate) && ", '!above && ')],
+  ['api.js: a re-read of an approximate page goes by skip', 'api',
+    s => s.replace('if (!anchor && how === null && state.pageStand.approximate && state.pageStand.first) {', 'if (false) {')],
+  ['grid.js: the «~» is never drawn', 'grid',
+    s => s.replace('  if (elements.pageApprox) elements.pageApprox.hidden = !view.approximate;\n', '')],
   ['api.js: the infinite view\'s next page goes by skip alone (OFFSET however deep)', 'api',
     s => s.replace("  if (state.viewMode === 'infinite') return side === 'after' ? state.readAfter : null;", "  if (state.viewMode === 'infinite') return null;")],
   ['grid.js: the scroll\'s next page is its own read again, by skip', 'grid',
@@ -1285,7 +1376,7 @@ const DEFECTS = [
   ['websocket.js: a batch refresh asks no count', 'ws',
     s => s.replace('    state.pageCache.clear();\n    askMatchCount();\n', '    state.pageCache.clear();\n')],
   ['api.js: Next and Prev ask by skip alone again (OFFSET however deep - the code before)', 'api',
-    s => s.replace('  if (key) url += `&${new URLSearchParams(key)}`;\n', '')],
+    s => s.replace("+ (k ? `&${new URLSearchParams(k)}` : '')", '')],
   ['rows_key.js: Next asks after the page\'s first row', 'keys',
     s => s.replace("  const row = side === 'after' ? rows[rows.length - 1] : rows[0];", '  const row = rows[0];')],
   ['api.js: the key is read after the page moved - the page it lands on, not the one shown', 'api',

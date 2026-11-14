@@ -15,7 +15,7 @@ import { rowsKey } from './rows_key.js';
 import { pageLooks, saidLooksChanged } from './grid_look.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI, sortQueryTail } from './grid.js';
-import { countOf, setMatchCount } from './match_count.js';
+import { countOf, setMatchCount, pageStand, EXACT } from './match_count.js';
 import { saysTruncated } from './truncation.js';
 import { countNav, ROUTES } from './effort_meter.js';
 
@@ -1596,6 +1596,7 @@ export function navigatorStep2(log, jump = null) {
       const found = cached.data.some(r => (r.row_id || r.id) === log.row_id);
       if (found) {
         state.currentSkip = skip;
+        state.pageStand = cached.stand || EXACT;
         state.looks = cached.looks || null;   // the page's looks, as the page read's cache hit (api.js fetchData)
         saidLooksChanged();
         state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
@@ -1673,8 +1674,10 @@ export async function navigatorStep3(log, jump = null) {
     state.gridApi.setGridOption('rowData', overlayStagedEdits(result.data));
     updateGridSortState();
 
-    // Update skip counter
+    // Update skip counter - the server counted it, so the page stands exactly
     state.currentSkip = result.calculated_skip !== null ? result.calculated_skip : 0;
+    if (pageStand(state.pageStand, null, result).fresh) state.pageCache.clear();
+    state.pageStand = EXACT;
     state.readAfter = rowsKey(result.data, 'after');   // the infinite view scrolls on from the page jumped to
 
     // Update Counts (Zero-lag counter concept)
@@ -1688,7 +1691,7 @@ export async function navigatorStep3(log, jump = null) {
     if (count.total === null) askMatchCount();
 
     // Save to Cache
-    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count, looks: state.looks });
+    state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count, looks: state.looks, stand: state.pageStand });
     // who wrote its cells, when the page came without them (D 11-10)
     if (result.looks && result.looks.updating) fillWriters(url, state.currentSkip, read);
 

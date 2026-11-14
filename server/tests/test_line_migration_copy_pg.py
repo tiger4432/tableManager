@@ -32,7 +32,7 @@ def db(pg_engine):
     session.rollback()
     lines.drop_line_table(session, NAME)
     session.execute(text(f'DROP TABLE IF EXISTS "{NAME}"'))
-    for table in ("cell_sources", "audit_batches", "line_columns"):
+    for table in ("cell_sources", "audit_batches", "line_columns", "file_ingestion_checkpoints"):
         session.execute(text(f"DELETE FROM {table} WHERE table_name = '{NAME}'"))
     session.commit()
     session.close()
@@ -71,3 +71,32 @@ def test_a_text_cell_copies_what_todays_write_would_store_on_pg(db, stored, line
     assert said == line
     won_by = lines.won_by_of(db, NAME, ["r2"]).get("r2", {})
     assert (won_by.get("lot") == line_id) if won else ("lot" not in won_by)
+
+
+def test_verify_lists_a_copied_row_the_old_release_wrote_and_rows_brings_it_to_0_on_pg(db, pg_engine, tmp_path,
+                                                                                         monkeypatch):
+    """--verify on PostgreSQL, where won_by is a bigint array (lead 11-14): after the copy nothing is listed; the old
+    release writing r2 the old way (a layer and t) lists that one cell, and --rows brings it to 0."""
+    import csv
+
+    from scripts import copy_layers_to_lines as script
+
+    monkeypatch.chdir(tmp_path)
+    script.copy_table(pg_engine, NAME, CFG, 1000, say=lambda line: None)
+    said = []
+    assert script.verify_table(pg_engine, NAME, CFG, 2, say=said.append)["cells"] == 0, said
+    assert said == [f"{NAME}: every cell matches its winning line (3 compared)"], said     # canary: each cell compared
+    db.execute(CellSource.__table__.insert().values(table_name=NAME, row_id="r2", column_name="lot",
+                                                    source_name="fileB", value="new2",
+                                                    ingested_at=datetime(2026, 11, 14, 15, tzinfo=timezone.utc),
+                                                    updated_by="old release"))
+    db.execute(text(f"UPDATE {NAME} SET lot = 'new2' WHERE row_id = 'r2'"))
+    db.commit()
+
+    out = script.verify_table(pg_engine, NAME, CFG, 2, say=said.append)
+    with open(out["record"], newline="", encoding="utf-8") as f:
+        listed = [tuple(r.values()) for r in csv.DictReader(f)]
+    assert listed == [(NAME, "r2", "lot", "new2", "x")], listed
+    assert script.recorded_rows(out["record"]) == {NAME: ["r2"]}
+    script.copy_table(pg_engine, NAME, CFG, 1000, say=lambda line: None, rows=["r2"])
+    assert script.verify_table(pg_engine, NAME, CFG, 2, say=said.append)["cells"] == 0, said[-1]

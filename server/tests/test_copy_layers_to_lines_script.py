@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from database import lines
-from database.models import CellOverwrite, CellSource, sql_type_of
+from database.models import CellOverwrite, CellSource, FileIngestionCheckpoint, sql_type_of
 from scripts import copy_layers_to_lines as script
 
 CFG = {"column_types": {"lot": "string"}}
@@ -19,7 +19,8 @@ T1 = datetime(2026, 11, 1, 9, tzinfo=timezone.utc)
 
 def build(t_lot_r2):
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource):
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
         model.__table__.create(engine)
     with Session(bind=engine) as db:
         Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(db.connection())
@@ -80,6 +81,155 @@ def test_a_resumed_copys_end_line_says_this_runs_cells_and_what_the_file_holds(t
     out = script.copy_table(engine, "t", CFG, 1, say=said.append)
     assert (out["mismatched"], out["held"]) == (1, 2), out
     assert "this run 1 · the file now holds 2 mismatched cell(s)" in said[-1], said[-1]
+
+
+def test_a_key_merge_between_two_runs_does_not_move_where_the_copy_resumes(monkeypatch):
+    """Lead 11-14 (a defect of resume itself): a table half copied, then a new-release key merge of a copied row (r1)
+    into a row past the cursor (r4) moves r1's copy lines onto r4 - the resume still copies every row after the
+    page it committed, r2 and r3 included, each under its own layer."""
+    from database import crud, line_migration, write_lines
+    from database.models import DatabaseOutbox
+
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource, DatabaseOutbox,
+                  FileIngestionCheckpoint):
+        model.__table__.create(engine)
+    rows = ("r1", "r2", "r3", "r4")
+    with Session(bind=engine) as db:
+        Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(db.connection())
+        for n, row_id in enumerate(rows):
+            db.execute(text("INSERT INTO t (row_id, business_key_val, lot) VALUES (:r, :k, :v)"),
+                       {"r": row_id, "k": "k%d" % n, "v": "v%d" % n})
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name="fileA", value="v%d" % n, ingested_at=T1,
+                                                            updated_by="seed"))
+        lines.ensure_line_table(db, "t", CFG)
+        db.commit()
+    monkeypatch.setitem(crud.TABLE_CONFIG, "t", CFG)
+    with Session(bind=engine) as db:                          # an earlier run: its first page (r1), then stopped
+        line_migration.copy_page(db, "t", CFG, None, 1, transaction_id="copy_lines:t")
+        db.commit()
+    assert copied_rows(engine) == ["r1"], "CANARY: one page copied before the merge"
+    with Session(bind=engine) as db:                          # the new release runs between the two runs
+        write_lines.merge_rows(db, "t", [("r1", "r4")], source_name="user", written_by="tester",
+                               transaction_id="merge-between-runs")
+        db.commit()
+    assert copied_rows(engine) == ["r4"], "CANARY: the merge moved r1's copy lines onto r4"
+
+    script.copy_table(engine, "t", CFG, 1, say=lambda line: None)
+    with Session(bind=engine) as db:
+        lt = lines.shape(db, "t", CFG)["lines"]
+        own = set(db.execute(select(lt.c.row_id).where(lt.c.batch == "copy_lines:t", lt.c.source_name == "fileA"))
+                  .scalars())
+        record = db.query(FileIngestionCheckpoint).filter_by(table_name="t", file_signature="copy_lines:t").one()
+        took = (record.cursor, record.status, record.pages, record.layers, record.processed_rows)
+    assert own == {"r2", "r3", "r4"}, own
+    assert took == ("r4", "DONE", 4, 4, 4) and record.seconds > 0, (took, record.seconds)   # owner: ops figures kept
+
+
+def test_a_copy_killed_half_way_then_written_by_the_old_release_resumes_on_the_rest(tmp_path, monkeypatch):
+    """Ops 11-14 (owner): ⑥ killed half way, the old release (11-11e - no line tables) ran and wrote, then the copy
+    resumes. A row the old release wrote AFTER its page was copied keeps t's value, its new old-shape layer is not
+    copied and no mismatch names it (RUN ⑨ «다시 올리면»); a row not copied yet comes over with that layer too."""
+    from database import line_migration
+
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
+        model.__table__.create(engine)
+    with Session(bind=engine) as db:
+        Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(db.connection())
+        for n, row_id in enumerate(("r1", "r2", "r3", "r4")):
+            db.execute(text("INSERT INTO t (row_id, business_key_val, lot) VALUES (:r, :k, :v)"),
+                       {"r": row_id, "k": "k%d" % n, "v": "v%d" % n})
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name="fileA", value="v%d" % n, ingested_at=T1,
+                                                            updated_by="seed"))
+        lines.ensure_line_table(db, "t", CFG)
+        db.commit()
+    with Session(bind=engine) as db:                          # ⑥ killed after its first two pages
+        after = None
+        for _ in range(2):
+            _n, after = line_migration.copy_page(db, "t", CFG, after, 1, transaction_id="copy_lines:t")
+            db.commit()
+    assert copied_rows(engine) == ["r1", "r2"], "CANARY: two pages copied before the kill"
+    with Session(bind=engine) as db:                          # 14b kept no record - ops's table has copy lines only
+        assert db.query(FileIngestionCheckpoint).delete() == 1, "CANARY: the two pages wrote the record"
+        db.commit()
+    later = datetime(2026, 11, 14, 15, tzinfo=timezone.utc)
+    with Session(bind=engine) as db:                          # the old release writes the old way: a layer and t
+        for row_id, value in (("r1", "new1"), ("r3", "new3")):
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name="fileB", value=value, ingested_at=later,
+                                                            updated_by="old release"))
+            db.execute(text("UPDATE t SET lot = :v WHERE row_id = :r"), {"v": value, "r": row_id})
+        db.commit()
+
+    said = []
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append)
+    assert said[0] == "t: cursor seeded from copied lines at row r2", said
+    with Session(bind=engine) as db:
+        record = db.query(FileIngestionCheckpoint).filter_by(table_name="t", file_signature="copy_lines:t").one()
+        assert (record.cursor, record.status, record.pages) == ("r4", "DONE", 2), (record.cursor, record.pages)
+        lt = lines.shape(db, "t", CFG)["lines"]
+        copied = {(r, s) for r, s in db.execute(select(lt.c.row_id, lt.c.source_name).where(
+            lt.c.batch == "copy_lines:t"))}
+        lot = dict(db.execute(text("SELECT row_id, lot FROM t")).all())
+    assert {("r3", "fileA"), ("r3", "fileB"), ("r4", "fileA")} <= copied, copied      # not copied yet: all of it
+    assert ("r1", "fileB") not in copied, copied              # copied before the old release wrote: its layer stays out
+    assert lot["r1"] == "new1" and lot["r3"] == "new3", lot   # t keeps what the old release wrote
+    assert out["mismatched"] == 0 and not out.get("held"), out   # and no mismatch names r1
+
+
+def test_verify_lists_a_copied_row_the_old_release_wrote_and_rows_brings_its_layer_over(tmp_path, monkeypatch):
+    """Lead 11-14 (owner «ㄱ»): after the copy the old release wrote r1 the old way (a layer and t). --verify lists r1's
+    cell - its winning line holds the copied value - in the shape --rows reads, and --rows makes r1's lines hold the
+    old release's layer. r2 (a person's older value winning over a newer file's) and r3 nobody wrote: never listed."""
+    import csv
+
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
+        model.__table__.create(engine)
+    t2 = datetime(2026, 11, 2, 9, tzinfo=timezone.utc)
+    layers = [("r1", "fileA", "v1", T1), ("r2", "user", "u", T1), ("r2", "fileA", "x", t2), ("r3", "fileA", "v3", T1)]
+    with Session(bind=engine) as db:
+        Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(db.connection())
+        db.execute(text("INSERT INTO t (row_id, business_key_val, lot) VALUES "
+                        "('r1', 'k1', 'v1'), ('r2', 'k2', 'u'), ('r3', 'k3', 'v3')"))
+        for row_id, source, value, at in layers:
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name=source, value=value, ingested_at=at,
+                                                            updated_by="seed"))
+        lines.ensure_line_table(db, "t", CFG)
+        db.commit()
+    script.copy_table(engine, "t", CFG, 1000, say=lambda line: None)
+    said = []
+    assert script.verify_table(engine, "t", CFG, 2, say=said.append)["cells"] == 0, said
+    assert said == ["t: every cell matches its winning line (3 compared)"], said     # canary: each row compared
+    with Session(bind=engine) as db:                          # the old release writes r1 the old way
+        db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="lot",
+                                                        source_name="fileB", value="new1",
+                                                        ingested_at=datetime(2026, 11, 14, 15, tzinfo=timezone.utc),
+                                                        updated_by="old release"))
+        db.execute(text("UPDATE t SET lot = 'new1' WHERE row_id = 'r1'"))
+        db.commit()
+
+    out = script.verify_table(engine, "t", CFG, 2, say=said.append)
+    with open(out["record"], newline="", encoding="utf-8") as f:
+        listed = [tuple(r.values()) for r in csv.DictReader(f)]
+    assert listed == [("t", "r1", "lot", "new1", "v1")], listed
+    assert said[-1].startswith("t: 1 cell(s) on 1 row(s) differ from their winning line (3 compared) - listed in "), said
+    assert script.recorded_rows(out["record"]) == {"t": ["r1"]}       # what --rows reads
+
+    script.copy_table(engine, "t", CFG, 1000, say=lambda line: None, rows=["r1"])
+    with Session(bind=engine) as db:
+        lt = lines.shape(db, "t", CFG)["lines"]
+        assert db.execute(select(lt.c[lines.value_column("lot")]).where(
+            lt.c.row_id == "r1", lt.c.source_name == "fileB")).scalar() == "new1"
+    assert script.verify_table(engine, "t", CFG, 2, say=said.append)["cells"] == 0, said[-1]
 
 
 def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():

@@ -211,8 +211,8 @@ def evidence_subgraph(
         None,
         description=("씨앗을 «열거하지 않고» 말한다 — 그 타입으로 «등록된 주어 전부»가 씨앗이다. "
                      "`negative[]` 와 같이 주면 그것이 「전체 ∖ 사례」이고, 집합 연산은 «없다» — "
-                     "인자 둘이다. 많으면 `limits.seeds` 까지만 걷고 `truncated.seeds` 가 "
-                     "«몇을 안 걸었는지» 말한다. ⛔ `id` 와 «같이» 줄 수 없다")),
+                     "인자 둘이다. 많으면 `limits.seeds` 까지만 걷고 `truncated.seeds` 가 0 보다 "
+                     "크다 (더 있었다 — 수가 아니다). ⛔ `id` 와 «같이» 줄 수 없다")),
     seed_limit: int = Query(
         ledger_subgraph.DEFAULT_SEED_LIMIT, ge=1, le=ledger_subgraph.MAX_SEED_LIMIT,
         description="서술된 씨앗의 상한. `node_limit` 과 같은 부류다"),

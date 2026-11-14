@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [14c] **운영 탐침 — 읽기만, 한 화면**
+>
+> ```
+> 돌릴 것   server 폴더에서   python scripts/ops_probe.py
+> 뜻       PG 버전 · RAM · 설정 여섯 · DB 크기 · 묶음 넷(lines · ledger · cell_sources/audit · other) · 큰 표 열
+>          · 남은 칸(선언에도 FRAMEWORK 에도 없는 칸, 종류별 표 수) · 순차 읽기 MB/s 와 «from disk N of M blocks»
+>          from disk 가 0 에 가까우면 그 MB/s 는 캐시 속도이지 디스크가 아니다
+>          (main 다음 릴리스부터) db 줄의 «collation · ctype» 과 «ix_auto indexes: N on M of K data tables»
+>          — 걷기의 키 집계가 인덱스를 타려면 이 정렬과 키 칸 인덱스가 있어야 한다. 그 두 줄을 총괄께
+> 긴 목록  python scripts/ops_probe.py --full probe.txt   (관계 전부 · 남은 칸 전부 · pg_stat_io · 표마다 ix_auto 인덱스)
+> 끄기     없음 — 읽기 전용 트랜잭션, 쓰지 않는다
+> ```
+
 > ## [착지 전 · 상설] **가지 밖 커밋 — 착지할 나무에 없는 레인 커밋을 착지 «전»에 센다** — 착지 병합을 짓는 사람 (소유자 11-14 «ㄱ»)
 >
 > ```
@@ -57,16 +70,24 @@
 >            git clone <운영 저장소 폴더> D:\assy_est
 >            cd D:\assy_est ; git fetch <받은 .bundle> release ; git checkout FETCH_HEAD
 >            set ASSY_DATA_ROOT=<운영 저장소 폴더>\server
->          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
->              (박스 11-14 03:2x: 새 트리 + 돌고 있는 박스 서버의 설정으로 돌려 끝 줄까지 나왔다)
->          건너뛰어도 된다: 창 안 ⑤ 가 같은 추정을 한다. 거기서 길면 ⑨ 로 되돌린다
->              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - ...
->              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다. 층 16,348/s (BOX_RATE, 박스의 전체 다시 옮기기)와
->              100 만 행에 VACUUM 0.2 분 (VACUUM_MIN_PER_MILLION_ROWS)으로 센다 — 이 디스크 속도가 아니다
+>          줄 표가 없는 DB (첫 시도) — (업무 시간 밖에) cd server ; python scripts/copy_layers_to_lines.py --estimate --sample --workers 4
+>              가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다. 건너뛰지 않는다 — 시간은 이 디스크로 잰 것만 믿는다
+>              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h)
+>                     - ... this disk's rate, from the sample      A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간
+>              «this disk's rate» 가 없는 끝 줄은 박스 속도(16,348 층/s)로 센 것이다 — 운영은 11-14 에 표 하나가
+>              4,423 층/s (4 개 동시, HDD)였다. 그 줄로 창을 열지 않는다
 >              «at least B h» 가 4 h 를 넘으면 창을 열지 않는다. 그 줄을 총괄께
->          refused: no statistics for cell_sources - run again with --analyze ...   -> --estimate --analyze 로 다시 (약 1 분)
->          (업무 시간 밖에) --estimate --sample --workers 4   가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다
->              끝 줄의 «this disk's rate, from the sample» 이 이 디스크로 센 시간이다
+>          refused: no statistics for cell_sources - run again with --analyze ...   -> --analyze 를 더해 다시 (약 1 분)
+>          줄 표가 이미 지어진 DB (두 번째 시도 — 앞선 ⑥ 이 반쯤 옮김) — --sample 은 «refused: <표 이름> is built here already - the sample is for a database before the window»
+>              창 안에서 ⑥ 을 띄워 그 디스크로 잰다: 가장 큰 «남은» 표의 진행 줄 «about X min left» 를 본다
+>              첫 진행 줄 전의 침묵은 그 표의 옛 층을 세는 시간이다 (박스 층 7 천만 개 35 초, HDD 는 더 길다)
+>              X 가 창의 남은 시간을 넘으면 Ctrl+C (끊어도 다음에 이어 간다) 하고 ⑨ 로 되돌린다
+>          bytea 남은 칸 — 14c 가 못 덮는 하나 (읽기만. 옛 릴리스 폴더에서 돈다, 서비스 켠 채)
+>            cd server ; python -c "import json,paths,sqlalchemy as s;c=json.load(open(paths.config_path('table_config.json'),encoding='utf-8'));t={k for k,v in c.items() if isinstance(v,dict) and 'column_types' in v};r=[x for x in s.create_engine(paths.resolve_database_url()[0]).connect().execute(s.text('SELECT table_name,column_name FROM information_schema.columns WHERE table_schema=:p AND data_type=:b'),{'p':'public','b':'bytea'}) if x[0] in t];[print(*x) for x in r];print('bytea leftover columns:',len(r),'in',len(t),'data tables')"
+>          답의 뜻  «bytea leftover columns: 0 in N data tables» (N > 0) = 간다
+>                  그 위에 «<표> <칸>» 줄이 하나라도 있다 = 창을 열지 않는다. 그 줄들을 총괄께
+>                  «in 0 data tables» = 설정을 못 읽어 아무것도 안 봤다 -> server 폴더에서 다시
+>              (박스 11-14: 0 in 69 data tables)
 >
 > 창 안 — 이 순서로
 > ① 런처 끄기  run_app 창을 닫는다. 서버 · 체인 워커 · 스케줄러가 다 내려가야 ③ 이 돈다
@@ -89,6 +110,18 @@
 >                       첫 줄  <표>: resuming - already copied N / M rows (an earlier run's pages)
 >                       박스 리허설: 58 % 에서 프로세스를 죽이고 다시 돌린 끝이 안 끊긴 판과 같았다(행 · 줄 · copy 감사 행 · 어긋남 98,804)
 >             시간      박스 리허설은 기계를 같이 쓴 판: 죽기 전 43 분 + 이어 하기 24 분 (속도로 읽지 않는다. 시간은 위 81 분 판)
+> ⑥½ ★ 확인   python scripts/copy_layers_to_lines.py --verify       읽기만. ⑥ 이 다 끝난 «뒤», ⑦ «전»
+>             무엇      옮긴 뒤 옛 릴리스가 쓴 칸을 찾는다 — 그 칸의 이긴 줄 값과 화면(t) 값이 다르다 (예: 앞서 ⑥ 을 끊고
+>                       옛 릴리스로 되돌린 동안 쓴 칸. 그 쓰기의 층은 cell_sources 에만 있다)
+>             답의 뜻   <표>: every cell matches its winning line (N compared)        그 표는 할 일 없음
+>                       <표>: K cell(s) on R row(s) differ from their winning line (N compared) - listed in <파일>; ...
+>                           -> 그 줄이 말하는 대로  python scripts/copy_layers_to_lines.py --apply --rows <파일>
+>                              (copy_written_<표>.csv, ⑥ 을 돌린 폴더. 그 행들의 줄을 다시 옮겨 옛 릴리스의 층까지 줄에 넣는다)
+>                           -> 그 뒤 --verify 를 다시 돌려 그 표가 «every cell matches» 면 끝
+>                       verified T table(s) - K cell(s) on R row(s) to copy again (...)    끝 줄. K 가 0 이 아니면 exit 1
+>             시간      t 전체와 그 이긴 줄을 읽는다. 운영 디스크 속도는 안 쟀다 — 큰 표는 ⑥ 의 그 표 시간만큼 걸린다고
+>                       잡는다 (첫 시도는 «창 전에» 의 --sample 이 이 디스크 속도를 준다)
+>             할 수 없을 때  안 돌리고 ⑦ 로 가도 값은 그대로 보인다. 다만 그 칸이 다음에 쓰일 때 옛 릴리스의 층 없이 다시 합쳐진다
 > ⑦ 런처 띄우기
 > ⑧ 확인
 >   시작 검사  [Indexes] line index '<표>__lines_<x>' ...   빠진 줄 표 인덱스를 짓는 줄 — 짓는 동안 시작이 기다린다. 다 있으면 조용하다
@@ -126,6 +159,8 @@
 >   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
 >   refused: lines not built for <표>                 ③ 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
 >   <표>: already copied (...) - skipped              그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   <표>: cursor seeded from copied lines at row N   앞서 끊긴 ⑥ 이 이어 하기 기록이 없던 릴리스(14b)였다. N 다음 행부터 간다.
+>                                                    표마다 한 번, 정상. 그 뒤로는 쪽마다 기록이 남는다
 >   <표>  N layer(s) on M row(s) · copied            미리보기 · ⑥ 의 표 줄. 이미 다 옮긴 표 — ⑥ 이 건너뛴다. 정상
 >   맨 위의 [Report] causes.values: the ledger declaration was not read + Traceback ... no ledger world '<이름>'
 >          체인 규칙 하나가 선언되지 않은 ledger world 를 이름에 든다(config 의 규칙 쪽 일). 이주와 무관 — 복사는 계속된다
@@ -136,6 +171,7 @@
 > ⑨ ★ 되돌리기 — 옛 릴리스를 같은 DB 위에 (소유자 11-13: 백업 없음). 줄 표 · won_by 칸은 DB 에 남는다
 >          런처를 끈다 -> git reset --hard <② 의 이전 커밋> -> 런처를 띄운다. 옛 층 표는 이주가 읽기만 했다
 >   뜬다          시작 줄 [Schema] no drift - ... (N unmapped column group(s), harmless) — 줄 표 · won_by 를 세고 지나간다. won_by 는 grid 열이 아니다
+>                 file_ingestion_checkpoints 의 이어 하기 칸 넷(cursor · pages · layers · seconds)도 N 에 한 묶음으로 든다 (박스, 11-11e 를 그 칸 넷 위에 띄움: N 0 -> 1, 다른 줄 없음)
 >   보이는 것      grid 는 착지 뒤 값을 그대로 보이지만, 착지 뒤 쓴 칸의 셀 소스 · 이력은 옛 층만 보인다
 >                 셀 소스 패널은 옛 파일 층을 «이긴 층» 으로 적는데 칸은 새 값이다. 칸이 맞고 패널이 옛 것이다
 >                 재계산(R3 resolve)은 아무것도 안 바꾼다 (박스, 세 행) · 같은 행의 다른 칸을 써도 그 칸은 그대로
