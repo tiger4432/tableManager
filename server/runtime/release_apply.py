@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # server/, run as a file
+
 FOLDER = "release"
 APPLIED = "applied"
 HEAD_REF = "refs/heads/release"
@@ -233,6 +235,8 @@ def start(root, argv, say):
 
 def main(root=None, say=print):
     """apply_release.bat: the same function, its lines on the console; exit 1 when a bundle was left."""
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()
     root = root or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = apply_releases(root, say)
     if out["applied"]:
