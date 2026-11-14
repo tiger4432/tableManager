@@ -431,7 +431,8 @@ def port_is_taken(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
 
 
 def describe_port_conflict(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
-    """One log-ready sentence about a port that is taken, or ``None`` if it is free."""
+    """What holds a taken port, why and what to do - one line each - or ``None`` if it is free. The one seat that
+    asks what holds the port; the launcher's refusal prints it as it is."""
     taken, how = port_is_taken(port, host, timeout=timeout)
     if not taken:
         return None
@@ -447,7 +448,12 @@ def describe_port_conflict(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC)
         owner = f"PID {pid}" + (f" ({name})" if name else "")
     else:
         owner = "another process (its PID could not be read)"
-    return f"TCP port {port} is already held by {owner} [{how}]"
+    return "\n".join([
+        f"TCP port {port} is already held by {owner} [{how}]",
+        "이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다.",
+        "이미 떠 있는 스택이라면 그대로 사용하십시오. 새로 띄울 필요가 없습니다.",
+        "정말로 재시작하려면 위 PID 를 먼저 종료하십시오:",
+        "    taskkill /PID <pid> /T /F"])
 
 
 def port_conflict(spec, timeout=PORT_PROBE_TIMEOUT_SEC):
