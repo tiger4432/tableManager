@@ -32,7 +32,7 @@ def db(pg_engine):
     session.rollback()
     lines.drop_line_table(session, NAME)
     session.execute(text(f'DROP TABLE IF EXISTS "{NAME}"'))
-    for table in ("cell_sources", "audit_batches", "line_columns"):
+    for table in ("cell_sources", "audit_batches", "line_columns", "file_ingestion_checkpoints"):
         session.execute(text(f"DELETE FROM {table} WHERE table_name = '{NAME}'"))
     session.commit()
     session.close()

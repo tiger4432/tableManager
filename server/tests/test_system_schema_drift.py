@@ -232,7 +232,9 @@ SYSTEM_TABLE_COLUMNS = {
                         'tries', 'why'),
     # transaction_id (both): migrations/add_file_ingestion_transaction_id.sql [총괄 10-20] - and the boot schema sync
     #   adds it without it (models.SCHEMA_SYNCED_SYSTEM_TABLES)
-    "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'transaction_id', 'updated_at'),
+    # cursor, layers, pages, seconds: the migration copy's resume record (line_migration.copy_cursor, lead 11-14) - the boot
+    #   schema sync (SCHEMA_SYNCED_SYSTEM_TABLES) adds them to a database made before; no by-hand migration
+    "file_ingestion_checkpoints": ('chunk_index', 'cursor', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'layers', 'note', 'pages', 'processed_rows', 'seconds', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'transaction_id', 'updated_at'),
     # failed_at, reader, reason, rows_changed, rows_new, rows_read, rows_refused, rows_unchanged, source, took_seconds:
     #   migrations/add_file_ingestion_log_results.sql [총괄 e390600d6, 2026-10-20] - and the boot schema sync adds them
     #   without it (models.SCHEMA_SYNCED_SYSTEM_TABLES), so a pulled server never reads a column its database lacks.
