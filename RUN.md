@@ -8,16 +8,18 @@
 >            git clone <운영 저장소 폴더> D:\assy_est
 >            cd D:\assy_est ; git fetch <받은 .bundle> release ; git checkout FETCH_HEAD
 >            set ASSY_DATA_ROOT=<운영 저장소 폴더>\server
->          cd server ; python scripts/copy_layers_to_lines.py --estimate --workers 4
->              (박스 11-14 03:2x: 새 트리 + 돌고 있는 박스 서버의 설정으로 돌려 끝 줄까지 나왔다)
->          건너뛰어도 된다: 창 안 ⑤ 가 같은 추정을 한다. 거기서 길면 ⑨ 로 되돌린다
->              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h) - ...
->              A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간이다. 층 16,348/s (BOX_RATE, 박스의 전체 다시 옮기기)와
->              100 만 행에 VACUUM 0.2 분 (VACUUM_MIN_PER_MILLION_ROWS)으로 센다 — 이 디스크 속도가 아니다
+>          줄 표가 없는 DB (첫 시도) — (업무 시간 밖에) cd server ; python scripts/copy_layers_to_lines.py --estimate --sample --workers 4
+>              가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다. 건너뛰지 않는다 — 시간은 이 디스크로 잰 것만 믿는다
+>              끝 줄: total about N layer(s): A h with 1 process, at least B h with 4 (the biggest table alone C h)
+>                     - ... this disk's rate, from the sample      A · B · C 는 복사와 표 끝 VACUUM 을 합친 시간
+>              «this disk's rate» 가 없는 끝 줄은 박스 속도(16,348 층/s)로 센 것이다 — 운영은 11-14 에 표 하나가
+>              4,423 층/s (4 개 동시, HDD)였다. 그 줄로 창을 열지 않는다
 >              «at least B h» 가 4 h 를 넘으면 창을 열지 않는다. 그 줄을 총괄께
->          refused: no statistics for cell_sources - run again with --analyze ...   -> --estimate --analyze 로 다시 (약 1 분)
->          (업무 시간 밖에) --estimate --sample --workers 4   가장 큰 표를 90 초 옮겨 보고 되돌린다. 디스크를 쓴다
->              끝 줄의 «this disk's rate, from the sample» 이 이 디스크로 센 시간이다
+>          refused: no statistics for cell_sources - run again with --analyze ...   -> --analyze 를 더해 다시 (약 1 분)
+>          줄 표가 이미 지어진 DB (두 번째 시도 — 앞선 ⑥ 이 반쯤 옮김) — --sample 은 «refused: <표 이름> is built here already - the sample is for a database before the window»
+>              창 안에서 ⑥ 을 띄워 그 디스크로 잰다: 가장 큰 «남은» 표의 진행 줄 «about X min left» 를 본다
+>              첫 진행 줄 전의 침묵은 그 표의 옛 층을 세는 시간이다 (박스 층 7 천만 개 35 초, HDD 는 더 길다)
+>              X 가 창의 남은 시간을 넘으면 Ctrl+C (끊어도 다음에 이어 간다) 하고 ⑨ 로 되돌린다
 >
 > 창 안 — 이 순서로
 > ① 런처 끄기  run_app 창을 닫는다. 서버 · 체인 워커 · 스케줄러가 다 내려가야 ③ 이 돈다
@@ -77,6 +79,8 @@
 >   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
 >   refused: lines not built for <표>                 ③ 을 안 했다. 런처를 한 번 띄웠다 끄고 다시
 >   <표>: already copied (...) - skipped              그 표는 이미 끝났다. 정상 — 두 번 옮기지 않는다
+>   <표>: cursor seeded from copied lines at row N   앞서 끊긴 ⑥ 이 이어 하기 기록이 없던 릴리스(14b)였다. N 다음 행부터 간다.
+>                                                    표마다 한 번, 정상. 그 뒤로는 쪽마다 기록이 남는다
 >   <표>  N layer(s) on M row(s) · copied            미리보기 · ⑥ 의 표 줄. 이미 다 옮긴 표 — ⑥ 이 건너뛴다. 정상
 >   맨 위의 [Report] causes.values: the ledger declaration was not read + Traceback ... no ledger world '<이름>'
 >          체인 규칙 하나가 선언되지 않은 ledger world 를 이름에 든다(config 의 규칙 쪽 일). 이주와 무관 — 복사는 계속된다

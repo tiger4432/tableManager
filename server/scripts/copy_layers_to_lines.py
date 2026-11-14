@@ -15,7 +15,8 @@ Usage
                                          - this disk's rate (it loads the disk: run it off-hours)
 
 Per table: pages of `--page` rows, a commit each (`line_migration.copy_page`). Interrupted, run it again - each table
-resumes after its last committed page (`copied_through`); a table already copied says so and is skipped.
+resumes after its last committed page (`line_migration.copy_cursor`); a table already copied says so and is
+skipped.
 The gate rides every page: the copied lines merged again must give what t shows. A cell that does not is written to
 copy_mismatch_<t>.csv (table, row_id, column, t_value, lines_value) and the page lands (owner ㄴ): t still shows its
 value, and the cell turns to its lines' winner only when that column is written (c7319dfb6 - a merge re-decides only
@@ -126,7 +127,9 @@ def sample(engine, table: str, cfg: dict, seconds: float = SAMPLE_SECONDS, page:
             conn.execute(text('CREATE SCHEMA "%s"' % SAMPLE_SCHEMA))
             conn.execute(text('SET LOCAL search_path = "%s", "%s"' % (SAMPLE_SCHEMA, home)))
             conn.execute(text('CREATE TABLE "%s"."%s" (LIKE "%s"."%s" INCLUDING ALL)' % (SAMPLE_SCHEMA, table, home, table)))
-            for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource):
+            # copy_page writes its record too (copy_cursor): here, never the home table - before the window it is
+            # the old release's, without the record's cells
+            for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, models.FileIngestionCheckpoint):
                 model.__table__.to_metadata(MetaData(), schema=SAMPLE_SCHEMA).create(conn)
             db = Session(bind=conn)
             lines.ensure_line_table(db, table, cfg)
@@ -229,7 +232,9 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                     "record": path if mismatched else None}
         rows = total
         # an earlier run's committed pages: the line starts from them and the time left is over the rest (lead 11-13)
-        through = line_migration.copied_through(db, table, cfg, tx)
+        through, seeded = line_migration.copy_cursor(db, table, cfg, tx)
+        if seeded:                                    # a copy stopped before the record existed (ops 11-14)
+            say("%s: cursor seeded from copied lines at row %s" % (table, through))
         already = 0 if through is None else db.execute(select(func.count(func.distinct(cs.c.row_id))).where(
             cs.c.table_name == table, cs.c.row_id <= through)).scalar()
         started = said = time.perf_counter()

@@ -8,7 +8,7 @@ from sqlalchemy import MetaData, Table, create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 from database import line_migration, lines
-from database.models import CellOverwrite, CellSource, sql_type_of
+from database.models import CellOverwrite, CellSource, FileIngestionCheckpoint, sql_type_of
 
 CFG = {"column_types": {"lot": "string", "qty": "number"}}
 T1, T2 = datetime(2026, 11, 1, 9, tzinfo=timezone.utc), datetime(2026, 11, 2, 9, tzinfo=timezone.utc)
@@ -17,7 +17,8 @@ T1, T2 = datetime(2026, 11, 1, 9, tzinfo=timezone.utc), datetime(2026, 11, 2, 9,
 @pytest.fixture()
 def db():
     engine = create_engine("sqlite://")
-    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource):
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
         model.__table__.create(engine)
     session = sessionmaker(bind=engine)()
     Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(session.connection())
@@ -90,7 +91,7 @@ def test_a_table_without_lines_is_refused(db):
 
 def test_an_interrupted_copy_resumes_after_its_last_committed_row(db):
     n, after = line_migration.copy_page(db, "t", CFG, None, 2, transaction_id="tx-copy")      # gone, r1
-    assert after == "r1" and line_migration.copied_through(db, "t", CFG, "tx-copy") == "r1"
+    assert after == "r1" and line_migration.copy_cursor(db, "t", CFG, "tx-copy") == ("r1", False)
     cells, pages = copy_all(db)                                     # a new run starts from None
     assert cells == 2                                               # r2, r3 only - r1 is not copied twice
     lt = lines.shape(db, "t", CFG)["lines"]
