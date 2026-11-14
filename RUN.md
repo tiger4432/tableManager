@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [상설] **업데이트 중 안내 페이지 — maintenance.bat** — 서버를 끈 동안만. 이주 · 재기동 없음
+>
+> ```
+> 언제     런처(run_app.bat)를 끈 «뒤» 켜고, 런처를 다시 켜기 «전»에 끔
+> 돌릴 것   설치 폴더의 maintenance.bat            (메모를 붙이려면  maintenance.bat "until 15:00")
+> 사용자    앱 주소 아무 경로나 열면 «Updating / Back soon» (+ 메모) 한 쪽. /health 도 503 = 꺼짐으로 읽힘
+>          포트 · 주소는 런처와 같은 자리에서 읽음(ASSY_API_PORT · ASSY_API_HOST) — 따로 맞출 것 없음
+> 창의 줄   «Notice page on port 8080 - close this window before starting the launcher» = 떠 있음
+>          «Port 8080 is in use (…) - stop the launcher first, then run maintenance.bat again» = 서버가 아직 떠 있음
+>          -> 런처 창을 닫고(또는 그 PID 를 끄고) 다시 실행. 기다리지 않고 바로 끝남
+> 끄기     그 창에서 Ctrl+C 또는 창을 닫음. 그 뒤 run_app.bat
+>          끄는 걸 잊고 런처를 켜면 런처가 «REFUSING TO START … TCP port 8080 is already held by PID … (python.exe)» 로
+>          멈춤 — 그 python.exe 가 이 창임(창 제목 «assyManager maintenance page»). 이 창을 닫고 런처를 다시 켬
+> ```
+
 > ## [갈아엎기 착지] **옛 층 표를 줄 표로 — 이주 · 확인 · 되돌리기, 순서대로 한 번** — 서버를 끈 채. ★ 표시는 운영자의 일이 바뀐 자리
 >
 > ```

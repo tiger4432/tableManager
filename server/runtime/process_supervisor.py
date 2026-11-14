@@ -324,6 +324,12 @@ def port_owner(port, log=None):
 DUAL_STACK_HOST = ""
 
 
+def api_bind():
+    """``(host, port)`` the API binds - ASSY_API_HOST (default: both families) and ASSY_API_PORT (default 8080). The one
+    reading: the launcher binds the API on it and the maintenance page (`runtime.maintenance_page`) takes its place."""
+    return os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST), os.environ.get("ASSY_API_PORT", "8080")
+
+
 def bind_targets(host):
     """``((family, address), ...)`` - the sockets a server told to listen on ``host``
     will REALLY open.
