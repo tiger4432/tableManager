@@ -68,6 +68,18 @@
 >                       첫 줄  <표>: resuming - already copied N / M rows (an earlier run's pages)
 >                       박스 리허설: 58 % 에서 프로세스를 죽이고 다시 돌린 끝이 안 끊긴 판과 같았다(행 · 줄 · copy 감사 행 · 어긋남 98,804)
 >             시간      박스 리허설은 기계를 같이 쓴 판: 죽기 전 43 분 + 이어 하기 24 분 (속도로 읽지 않는다. 시간은 위 81 분 판)
+> ⑥½ ★ 확인   python scripts/copy_layers_to_lines.py --verify       읽기만. ⑥ 이 다 끝난 «뒤», ⑦ «전»
+>             무엇      옮긴 뒤 옛 릴리스가 쓴 칸을 찾는다 — 그 칸의 이긴 줄 값과 화면(t) 값이 다르다 (예: 앞서 ⑥ 을 끊고
+>                       옛 릴리스로 되돌린 동안 쓴 칸. 그 쓰기의 층은 cell_sources 에만 있다)
+>             답의 뜻   <표>: every cell matches its winning line (N compared)        그 표는 할 일 없음
+>                       <표>: K cell(s) on R row(s) differ from their winning line (N compared) - listed in <파일>; ...
+>                           -> 그 줄이 말하는 대로  python scripts/copy_layers_to_lines.py --apply --rows <파일>
+>                              (copy_written_<표>.csv, ⑥ 을 돌린 폴더. 그 행들의 줄을 다시 옮겨 옛 릴리스의 층까지 줄에 넣는다)
+>                           -> 그 뒤 --verify 를 다시 돌려 그 표가 «every cell matches» 면 끝
+>                       verified T table(s) - K cell(s) on R row(s) to copy again (...)    끝 줄. K 가 0 이 아니면 exit 1
+>             시간      t 전체와 그 이긴 줄을 읽는다. 운영 디스크 속도는 안 쟀다 — 큰 표는 ⑥ 의 그 표 시간만큼 걸린다고
+>                       잡는다 (첫 시도는 «창 전에» 의 --sample 이 이 디스크 속도를 준다)
+>             할 수 없을 때  안 돌리고 ⑦ 로 가도 값은 그대로 보인다. 다만 그 칸이 다음에 쓰일 때 옛 릴리스의 층 없이 다시 합쳐진다
 > ⑦ 런처 띄우기
 > ⑧ 확인
 >   시작 검사  [Indexes] line index '<표>__lines_<x>' ...   빠진 줄 표 인덱스를 짓는 줄 — 짓는 동안 시작이 기다린다. 다 있으면 조용하다
