@@ -52,6 +52,7 @@
 | D | generate_source_rows: 엔티티 키 값 공간 (엔티티 키에 묶인 칸은 그 엔티티의 키 공간에서 값을 받아 표 사이가 이어짐) + 운영 크기 seed 를 위한 COPY 쓰기 (D 11-14 — 걷기 판은 seed_walk_ops a6fe3ba16 이 따로 채움) | ⏭ |
 | 체인 | 스케줄러 없는 판 · 개발 셋업에는 조인 lookup 인덱스가 안 선다 (색인 줄 `runtime/maintenance_line` 만 짓는다, 소유자 10-15). 체인 워커는 그것을 말하지 않는다 — lookup 이 인덱스 없이 도는 조인에 체인 워커 로그 한 줄. 11-14 D 걷기 판: 인덱스 없을 때 core_wafer_map 200 만 행 자기조인 1,000 행에 mapper 121 s, 선 뒤 1.4 s | ⏭ |
 | 체인 속도 | 수식 R1 1,000 행에 2.4 s (wake 0.9 · mapper 1.4, API 대역 위 notify 0) — CLAUDE.md 규격 IO ≤ 1.3 s/1k 의 약 두 배. 11-14 D 걷기 판 assy_walk_ops, formula core_wafer_map.core_slot_n 200 만 행 | ⏭ 체인 속도 라운드 |
+| 체인 조인 R1 | 조인 R1 이 트리거 «행»마다 그 키의 대상 행 전부를 다시 계산·쓴다 — R1 쪽 = 그룹 (ingestion_worker.py `A REPLAY PAGE IS ITS OWN GROUP`, 총괄 10-21 ㄴ 안 1) 이라 같은 키가 쪽마다 다시 돈다. **잰 것** 11-14 D 걷기 판 assy_walk_ops, core_wafer_into_bonding_log (on core_wafer_map 200 만 행 · seat 당 400 행): 쪽 128 트리거 -> 다른 seat 127 -> bonding 50,800 행, 178.9 s (3.5 s/1k 쓴 행, 규칙 계산 0.06 s/1k). **외삽 (잰 것 아님)** 쪽 1,000 (keyset_scan DEFAULT_CHUNK_SIZE) 이면 seat 당 약 360 번, 약 7 억 행, 첫 채움 값으로 약 29 일. 같은 값 다시 쓰기 비용은 안 쟀다. **실시간 (코드 판독)** 한 파일 = 한 그룹이라 2 만 행 (OUTBOX_GROUP_MAX_ROWS) 안에서는 키마다 한 번, 넘는 파일은 2 만 행 묶음마다 다시 — 몇 번인지는 파일 안 행 순서에 달림 | ⏭ D 안1 측정 (이벤트당 트리거 · 다른 키 · 쓴 행 · 다시 쓰기 대 첫 채움, 큰 파일 섞임 대 seat 순) 뒤 세 안 |
 | 클라2 | 배치 잣대 도구 + 메인 그리드 우측 탭 → 수집기 특성 → 맵 창 목업 | ⏭ 갈아엎기 몫 뒤 |
 | 총괄 | D 판 기계 차례 · 박스에서 맵 에디터 직접 써 보고 불편 목록 | ⏭ |
 
