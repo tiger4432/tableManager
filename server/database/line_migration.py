@@ -80,7 +80,7 @@ def copy_total(db, table: str) -> int:
     return db.execute(select(func.count()).select_from(cs).where(cs.c.table_name == table)).scalar() or 0
 
 
-def _cursor_record(db, table: str, transaction_id: str):
+def cursor_record(db, table: str, transaction_id: str):
     from .models import FileIngestionCheckpoint as Record
 
     return db.query(Record).filter(Record.table_name == table,
@@ -100,7 +100,7 @@ def copy_cursor(db, table: str, table_cfg: dict, transaction_id: str) -> tuple:
 
     from .models import FileIngestionCheckpoint as Record
 
-    record = _cursor_record(db, table, transaction_id)
+    record = cursor_record(db, table, transaction_id)
     if record is not None:
         return record.cursor, False
     lt = lines.shape(db, table, table_cfg)["lines"]
@@ -112,13 +112,13 @@ def copy_cursor(db, table: str, table_cfg: dict, transaction_id: str) -> tuple:
     return seed, True
 
 
-def _note_page(db, table, transaction_id, page, copied, seconds, done) -> None:
+def note_page(db, table, transaction_id, page, copied, seconds, done) -> None:
     """The page just copied on its table's record (`copy_cursor`), in the page's transaction."""
     from ingestion.checkpoint import STATUS_DONE, STATUS_IN_PROGRESS
 
     from .models import FileIngestionCheckpoint as Record
 
-    record = _cursor_record(db, table, transaction_id)
+    record = cursor_record(db, table, transaction_id)
     if record is None:
         record = Record(table_name=table, file_signature=transaction_id, transaction_id=transaction_id,
                         processed_rows=0, pages=0, layers=0, seconds=0.0)
@@ -133,12 +133,21 @@ def _note_page(db, table, transaction_id, page, copied, seconds, done) -> None:
     db.flush()
 
 
+def compare_kind(table_cfg: dict, kinds: dict, column: str) -> str:
+    """The type t and its lines compare by (lead 11-15): the column's declared type where the declaration names it -
+    the product does not guess past it, so a declared string keeps «53.0» and «53» apart - else its stored kind
+    (an undeclared float column: 11.0 and 11 are one number)."""
+    return (table_cfg.get("column_types") or {}).get(column) or kinds.get(column, "string")
+
+
 def unrecorded_page(db, table: str, table_cfg: dict, after, page_size: int) -> tuple:
     """([(row_id, column, t's value, its winning line's value)], cells compared, next row id or None) - of the next
-    `page_size` rows of t after row id `after`, each cell whose won_by line holds another value than t shows: a write
+    `page_size` rows of t after row id `after`, each cell whose winning line holds another value than t shows: a write
     that no line records (lead 11-14 - the old release 11-11e writing a row after the copy moved it; its layer is in
-    cell_sources, and `copy_page(rows=)` brings it over). A won_by naming no line is listed with None. The formula's
-    mark (FORMULA_WON) holds no line and is not compared. Reads only."""
+    cell_sources, and `copy_page(rows=)` brings it over). The winning line is the one won_by names, else the merge's
+    winner - a cell the copy left unnamed is compared too (lead 11-14: it was never looked at). Equal is
+    `crud.values_differ` on `compare_kind`, as copy_page names won_by. A won_by naming
+    no line is listed with None. The formula's mark (FORMULA_WON) holds no line and is not compared. Reads only."""
     from sqlalchemy import select
 
     from . import crud
@@ -155,16 +164,22 @@ def unrecorded_page(db, table: str, table_cfg: dict, after, page_size: int) -> t
     for at in range(0, len(ids), 1000):
         for line in db.execute(select(lt.c.line_id, *cells).where(lt.c.line_id.in_(ids[at:at + 1000]))).mappings():
             said[line["line_id"]] = line
+    merged = lines.merge(db, table, table_cfg, [r["row_id"] for r in rows], s=s) if rows else {}
     out, compared = [], 0
     for r in rows:
-        for column, line_id in sorted(won[r["row_id"]].items()):
-            if line_id == lines.FORMULA_WON or column not in t.c:
+        named = won[r["row_id"]]
+        unnamed = {c: v for c, (v, lid) in merged.get(r["row_id"], {}).items() if c not in named and lid is not None}
+        for column in sorted(set(named) | set(unnamed)):
+            if named.get(column) == lines.FORMULA_WON or column not in t.c:
                 continue
             compared += 1
-            kind = kinds.get(column, "string")
-            line = said.get(line_id)
-            value = None if line is None else crud.line_value(line[lines.value_column(column)], kind)
-            if line is None or crud.line_text(r[column], kind) != crud.line_text(value, kind):
+            if column in named:
+                line = said.get(named[column])
+                value = None if line is None else crud.line_value(line[lines.value_column(column)],
+                                                                  kinds.get(column, "string"))
+            else:
+                line, value = True, unnamed[column]
+            if line is None or crud.values_differ(r[column], value, compare_kind(table_cfg, kinds, column)):
                 out.append((r["row_id"], column, r[column], value))
     return out, compared, (rows[-1]["row_id"] if len(rows) == page_size else None)
 
@@ -286,7 +301,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         for row_id, cols in lines.merge(db, table, table_cfg, sorted(rows)).items():
             now = shown[row_id]._mapping
             won = {c: lid for c, (v, lid) in cols.items() if lid is not None and c in t.c
-                   and crud.line_text(now[c], kinds.get(c, "string")) == crud.line_text(v, kinds.get(c, "string"))}
+                   and not crud.values_differ(now[c], v, compare_kind(table_cfg, kinds, c))}
             if mismatched is not None:
                 mismatched.extend((row_id, c, now[c], v) for c, (v, lid) in sorted(cols.items())
                                   if lid is not None and c in t.c and c not in won)
@@ -298,7 +313,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
             for row_id, won_by in named:
                 db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: won_by}))
     if only is None and (page or next_after is None):
-        _note_page(db, table, transaction_id, page, copied, time.perf_counter() - began, next_after is None)
+        note_page(db, table, transaction_id, page, copied, time.perf_counter() - began, next_after is None)
     if next_after is None and only is None:
         db.execute(ab.insert().values(transaction_id=transaction_id, table_name=table, written_by=written_by,
                                       work_kind=COPY_WORK, at=func.now()))

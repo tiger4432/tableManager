@@ -1,6 +1,7 @@
 """The migration command (owner 11-11): a table copies to its end, a second run says «already copied»; a cell whose
 copied lines do not give what t shows is recorded in copy_mismatch_<t>.csv and its page lands (owner ㄴ, lead 11-12);
 --rows copies a record's rows again."""
+import csv
 import json
 from datetime import datetime, timezone
 
@@ -306,3 +307,129 @@ def test_a_records_rows_copied_again_after_t_is_fixed_match_and_r1_is_untouched(
     assert copied_rows(engine) == ["r1", "r2"] and copy_audits(engine) == 1     # one copy line a row, one audit row
     assert shown(engine, "r1")[1]["lot"] == r1_line and "lot" in shown(engine, "r2")[1]
     assert said[-1].startswith("t: 1 row(s) copied again - 1 copy line(s) taken out") and "every cell matches" in said[-1]
+
+
+#: a table made before 08-31: t's columns stored as text while the declaration says number and datetime (reh_14c)
+DECLARED = {"column_types": {"value": "number", "seen": "datetime", "moved": "datetime", "key2": "string",
+                             "meta": "string"}}
+
+
+def build_text_stored(engine):
+    """r1 «53.0» under a 53 layer, r2 a wall time under the same instant spelled with its zone - the spelling only;
+    r3 nine hours apart, r4 another key, r5 other JSON content - the three real differences reh_14c holds; r6 an
+    undeclared column stored as a float, 11.0 under an 11 layer - its stored kind decides, one number (lead 11-15)."""
+    import expression
+
+    same = expression._wall("2026-05-03 02:17:00", expression.time_zone()).isoformat()
+    stored = {"column_types": {**{c: "string" for c in DECLARED["column_types"]}, "bx": "number"}}
+    cells = [("r1", "value", "53.0", "53"), ("r2", "seen", "2026-05-03 02:17:00", same),
+             ("r3", "moved", "2026-08-22 00:00:00+09:00", "2026-08-22T00:00:00Z"),
+             ("r4", "key2", "SYN-DT-001_1", "SYN-DT-001_01"),
+             ("r5", "meta", '{"phys_chip_x": 1}', '{"phys_chip_x": 7.0}'), ("r6", "bx", 11.0, 11)]
+    with Session(bind=engine) as db:
+        Table("t", MetaData(), *lines._data_columns(stored, sql_type_of, row_id_key=True)).create(db.connection())
+        for i, (row_id, column, shown, layer) in enumerate(cells):
+            db.execute(text(f"INSERT INTO t (row_id, business_key_val, {column}) VALUES (:r, :k, :v)"),
+                       {"r": row_id, "k": "k%d" % i, "v": shown})
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name=column,
+                                                            source_name="fileA", value=layer, ingested_at=T1,
+                                                            updated_by="seed"))
+        lines.ensure_line_table(db, "t", DECLARED)
+        db.commit()
+    return {(r, c) for r, c, _s, _l in cells[2:5]}
+
+
+def test_t_and_its_lines_are_compared_by_the_declared_type_in_the_copy_and_in_verify(tmp_path, monkeypatch):
+    """Lead 11-14 (ㄷ): one equality, crud.values_differ on the DECLARED type, in both seats. 53.0 and 53, and a wall
+    time and its zoned spelling, are one value: the copy names their won_by and lists neither. A nine-hour shift,
+    another key and other JSON stay different - in the copy's list and in --verify's, which now compares the cells
+    the copy left unnamed (before: never looked at, «every cell matches»)."""
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
+        model.__table__.create(engine)
+    real = build_text_stored(engine)
+    out = script.copy_table(engine, "t", DECLARED, 1000, say=lambda line: None)
+    with open(out["record"], newline="", encoding="utf-8") as f:
+        listed = {(r["row_id"], r["column"]) for r in csv.DictReader(f)}
+    assert listed == real, listed
+    with Session(bind=engine) as db:
+        named = lines.won_by_of(db, "t", ["r1", "r2", "r3", "r6"])
+    assert "value" in named.get("r1", {}) and "seen" in named.get("r2", {}) and "moved" not in named.get("r3", {}), named
+    assert "bx" in named.get("r6", {}), named
+    said = []
+    checked = script.verify_table(engine, "t", DECLARED, 2, say=said.append)
+    with open(checked["record"], newline="", encoding="utf-8") as f:
+        assert {(r["row_id"], r["column"]) for r in csv.DictReader(f)} == real
+    assert said[-1].startswith("t: 3 cell(s) on 3 row(s) differ from their winning line (6 compared)"), said
+
+
+def test_rows_go_again_a_page_at_a_time_and_a_kill_between_pages_resumes_on_the_rest(tmp_path, monkeypatch):
+    """Lead 11-15 (ㄱ): --rows copies a file's rows a page a transaction, its own record moving per page - one IN list
+    of a million rows in one transaction is not shipped. Killed after the second page, the same rows again copy only
+    the rest; a run that reached the end starts over."""
+    import hashlib
+
+    from ingestion.checkpoint import STATUS_DONE
+
+    from database import line_migration
+
+    monkeypatch.chdir(tmp_path)
+    engine = build("b")
+    with Session(bind=engine) as db:
+        db.execute(text("INSERT INTO t (row_id, business_key_val, lot) VALUES ('r3', 'k3', 'c'), ('r4', 'k4', 'd')"))
+        for row_id, value in (("r3", "c"), ("r4", "d")):
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name="fileA", value=value, ingested_at=T1,
+                                                            updated_by="seed"))
+        db.commit()
+    script.copy_table(engine, "t", CFG, 1000, say=lambda line: None)
+    rows = ["r1", "r2", "r3", "r4"]
+    key = "copy_lines:t:rows:" + hashlib.sha1("\n".join(rows).encode("utf-8")).hexdigest()[:12]
+    pages, real = [], line_migration.copy_page
+
+    def killed_on_third(db, table, cfg, after, size, **kw):
+        pages.append(list(kw["rows"]))
+        if len(pages) == 3:
+            raise KeyboardInterrupt
+        return real(db, table, cfg, after, size, **kw)
+
+    monkeypatch.setattr(line_migration, "copy_page", killed_on_third)
+    with pytest.raises(KeyboardInterrupt):
+        script.copy_table(engine, "t", CFG, 1, say=lambda line: None, rows=rows)
+    assert pages == [["r1"], ["r2"], ["r3"]], pages                  # a page a transaction, not one IN list
+    with Session(bind=engine) as db:
+        held = line_migration.cursor_record(db, "t", key)
+        assert (held.cursor, held.pages, held.status != STATUS_DONE) == ("r2", 2, True)
+
+    pages.clear()
+    said = []
+    out = script.copy_table(engine, "t", CFG, 1, say=said.append, rows=rows)
+    assert pages == [["r3"], ["r4"]], pages                          # the rest only
+    assert said[0] == "t: again from row r2 - 2 of 4 row(s) left", said
+    assert out["again"] == 2 and copied_rows(engine) == ["r1", "r2", "r3", "r4"]
+    with Session(bind=engine) as db:
+        held = line_migration.cursor_record(db, "t", key)
+        assert (held.cursor, held.pages, held.status) == ("r4", 4, STATUS_DONE)
+
+    pages.clear()
+    script.copy_table(engine, "t", CFG, 3, say=lambda line: None, rows=rows)
+    assert pages == [["r1", "r2", "r3"], ["r4"]], pages              # done before: a new run from the first row
+
+
+def test_the_copy_and_rows_say_their_progress_in_one_line(tmp_path, monkeypatch):
+    """Lead 11-15: --rows says progress through ⑥'s own line (`script.progress`) - one wording, both paths."""
+    import re
+
+    shape = re.compile(r"^t: \d+ / \d+ rows, \d+ layer\(s\) copied, \d+ mismatched so far, about \d+ min left$")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(script, "SAY_EVERY", 0.0)
+    engine, said = build("b"), []
+    script.copy_table(engine, "t", CFG, 1, say=said.append)
+    copy_lines = [line for line in said if shape.match(line)]
+    said.clear()
+    script.copy_table(engine, "t", CFG, 1, say=said.append, rows=["r1", "r2"])
+    rows_lines = [line for line in said if shape.match(line)]
+    assert copy_lines and rows_lines, (copy_lines, said)
+    assert rows_lines[-1].startswith("t: 2 / 2 rows, "), rows_lines

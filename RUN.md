@@ -154,6 +154,9 @@
 >             그 칸은 지금 값을 그대로 보이다가 «그 칸이 쓰일 때만» 줄들이 이기는 값으로 바뀐다 (소유자 ㄴ)
 >             할 일: 파일을 총괄께. 고친 뒤 그 행만 다시  python scripts/copy_layers_to_lines.py --apply --rows <파일>
 >               -> «<표>: N row(s) copied again - ... - every cell matches» 면 끝. 아니면 새 파일(.again-<시각>.csv)
+>             14c 가 옮긴 표의 파일: 이 릴리스는 칸을 «선언 타입» 으로, 선언이 없는 칸은 저장 타입으로 견준다.
+>               선언이 datetime 인 칸의 시간 표기 차이는 같은 값이다 — 그 파일로 위 --rows 를 돌리면 이름 붙고 새 파일에 안 남는다
+>             한 칸 전체가 «N.0 / N» 이고 그 칸 선언이 string 이면: 선언대로 다른 글자다. 숫자 칸이면 선언을 number 로 바꾸고 -> --rows <파일>
 >
 > 답의 뜻 (⑥)
 >   refused: the server is running - <이름> (pid N)   서버 프로세스가 DB 에 붙어 있다. 런처를 끄고 다시
