@@ -300,3 +300,45 @@ def test_a_statement_past_its_limit_answers_what_the_walk_named_truncated(pg_eng
         session.close()
         with pg_engine.begin() as conn:
             conn.execute(lines.AuditBatch.__table__.delete())
+
+
+def test_a_batch_on_the_list_is_added_once_whichever_comes_first(panel):
+    """Lead 11-11: a write's notification (`add_changed`, after its commit) and the catch-up (`refresh_if_stale`)
+    both bring its batch; whichever comes first, the count is the batch's once - here the merge reads it between the
+    commit and the notification, the order that doubled it, then the notification comes twice; and the other order. Its groups are
+    its own: on PostgreSQL audit_logs outlives a test, and an earlier test's «ab-f» receipt names rows of this table."""
+    client, engine, bits = panel
+    _seed(engine, bits)
+    _load(engine)
+
+    def write(tx, minute, row_id, key):
+        with engine.begin() as conn:
+            line_tables.line(conn, TABLE, bits, row_id, at=T0 + timedelta(minutes=minute), batch=tx,
+                             values={"a": tx}, business_key=key)
+            return {"transaction_id": tx, "table_name": TABLE, "changed_rows": 1, "kind": "edit",
+                    "written_by": "kim", "batch_id": line_tables.audit_batch(
+                        conn, tx, TABLE, written_by="kim", kind="edit", at=T0 + timedelta(minutes=minute))}
+
+    def merge():
+        session = _session(engine)
+        try:
+            audit_cache.audit_cache.refresh_if_stale(session)
+        finally:
+            session.close()
+
+    def top():
+        return _said(client.get(URL).json()["groups"][0])
+
+    once = ("ab-once", 1, [], [(TABLE, 1, ["edit"], ["kim"])])
+    item = write("ab-once", 10, "r2", "K2")
+    merge()
+    assert top() == once, "canary: the merge read the batch"
+    audit_cache.audit_cache.add_changed([item])
+    audit_cache.audit_cache.add_changed([item])
+    assert top() == once, "a batch the list holds is not added again"
+
+    item = write("ab-twice", 11, "r3", "K3")
+    audit_cache.audit_cache.add_changed([item])
+    assert top() == ("ab-twice", 1, [], [(TABLE, 1, ["edit"], ["kim"])]), "the notification at once"
+    merge()
+    assert top() == ("ab-twice", 1, [], [(TABLE, 1, ["edit"], ["kim"])]), "the merge reads the group whole, no more"

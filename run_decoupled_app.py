@@ -11,13 +11,15 @@ sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 # Release bundles in release/ are applied before anything below is loaded; when HEAD moved, the launcher runs again from
 # the new code - this process only waits for it (owner 11-10, server/runtime/release_apply.py).
 if __name__ == "__main__":
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()
     from runtime import release_apply
     from utils.logger import get_process_logger as _release_logger
     _again = release_apply.start(_ROOT_DIR, sys.argv, _release_logger("Launcher", "launcher.log").info)
     if _again is not None:
         sys.exit(_again)
 
-from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host
+from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host, api_bind
 from runtime.launcher_args import parse_launcher_args  # noqa: E402
 from runtime.launcher_specs import child_specs  # noqa: E402  (S-255: the roster is a value)
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
@@ -96,13 +98,8 @@ def refuse_if_ports_are_taken(api_host, api_port):
               " 기동을 중단합니다: 필요한 포트를 이미 다른 프로세스가 쓰고 있습니다.",
               " REFUSING TO START - required ports are already in use.", ""]
     for _port, detail in conflicts:
-        banner.append(f"   {detail}")
+        banner += [f"   {line}" for line in detail.splitlines()]
     banner += [
-        "",
-        " 이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다.",
-        " 이미 떠 있는 스택이라면 그대로 사용하십시오. 새로 띄울 필요가 없습니다.",
-        " 정말로 재시작하려면 위 PID 를 먼저 종료하십시오:",
-        "     taskkill /PID <pid> /T /F",
         "",
         " (아무것도 기동하지 않았습니다. 기존 프로세스는 그대로 살아 있습니다.)",
         " Nothing was started. The processes that own these ports are untouched.",
@@ -231,7 +228,7 @@ def main():
     # Production default. Overridable so the whole launcher - supervision policy
     # included - can be exercised against the isolated dev stack on :8081 instead
     # of being verified by a reimplementation of itself.
-    api_port = os.environ.get("ASSY_API_PORT", "8080")
+    api_host, api_port = api_bind()
 
     # uvicorn defaults to 127.0.0.1, which made the launcher reachable only from the
     # server box - while SERVER_STARTUP_GUIDE documented --host 0.0.0.0 and the team
@@ -254,7 +251,6 @@ def main():
     # meaning it had yesterday - "127.0.0.1" is still a narrow IPv4-only bind, and
     # so is an explicit "0.0.0.0" - because narrowing the bind is the entire point
     # of the variable and an operator who typed an address meant that address.
-    api_host = os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)
     # ⚰️ [R-2026-08-14-H] `graph_port` 읽기가 여기 있었다 (GRAPH_SYNC_PORT, 기본 8090).
     # 이 런처는 더 이상 그 포트를 쓰는 자식을 띄우지 않는다.
     server_cmd = [python_exe, "-m", "uvicorn", "main:app",

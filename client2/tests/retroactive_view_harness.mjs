@@ -126,13 +126,13 @@ const COUNTS = {
     label: mark('label', 'chain_replay'), cli: mark('cli', 'chain_replay'),
     deletes: null, restartable: true, commit_granularity: mark('commit', 'chain_replay'),
   },
-  // upper_bound + the sentence that names the gap between the ceiling and the answer
-  upper_bound: {
+  // the withdraw count - exact since B 4dcdfe33a (the cells it withdraws, no ceiling)
+  withdraw: {
     affected: 31, affected_label: mark('affected-label', 'withdraw'),
-    count_kind: 'upper_bound', scanned: null, scan_limit: null, truncated: false,
+    count_kind: 'exact', scanned: null, scan_limit: null, truncated: false,
     detail: mark('detail', 'withdraw'),
     blocked_reason: null,
-    extra: { cells_claimed: 40, pinned: 9, why_upper_bound: mark('why', 'withdraw') },
+    extra: { cells_claimed: 40, pinned: 9 },
     op: 'withdraw', mode: 'dry-run', params: { table: 't', source: 's' },
     label: mark('label', 'withdraw'), cli: mark('cli', 'withdraw'),
     deletes: mark('deletes', 'withdraw'), restartable: true,
@@ -372,10 +372,8 @@ async function suite(source) {
   for (const extra of sampled.extras) {
     ok(Boolean(extra.label), 'count: every extra number carries the label the server gave it');
   }
-  ok(view.buildCountView(COUNTS.upper_bound).extras.length === 0,
+  ok(view.buildCountView(COUNTS.withdraw).extras.length === 0,
     'count: unlabelled extras are not invented into a label');
-  ok(view.buildCountView(COUNTS.upper_bound).why !== null,
-    'count: the sentence naming the gap between the ceiling and the answer is carried');
 
   const blocked = view.buildCountView(COUNTS.blocked);
   ok(blocked.blocked && blocked.blocked.text === 'auto_confirm_off',
@@ -390,7 +388,7 @@ async function suite(source) {
     'count: an unrecognised count kind draws neutral instead of a guess');
   ok(toneOf('exact') !== toneOf('something_new'),
     '🔴 F3: an unrecognised kind must not render identically to `exact`');
-  ok(toneOf('sample') !== toneOf('exact') && toneOf('upper_bound') !== toneOf('exact'),
+  ok(toneOf('sample') !== toneOf('exact'),
     'F3: an approximate kind never shares a colour with the exact one');
 
   // ── the acknowledgement ──────────────────────────────────────────────────────────
@@ -415,7 +413,7 @@ async function suite(source) {
   const withdrawRecord = {
     params: { table: 'bonding_log', source: 'old_rule' },
     count: {
-      ok: true, view: view.buildCountView(COUNTS.upper_bound),
+      ok: true, view: view.buildCountView(COUNTS.withdraw),
       paramsKey: view.paramsKey(params),
     },
     busy: null,
@@ -428,7 +426,7 @@ async function suite(source) {
   const scoreConfirm = (rows, label, payload) => {
     const { strings } = payload
       ? scanPayload({ inventory: INVENTORY, count: payload })
-      : scanPayload({ inventory: INVENTORY, count: COUNTS.upper_bound });
+      : scanPayload({ inventory: INVENTORY, count: COUNTS.withdraw });
     let questions = 0;
     rows.forEach((line, i) => {
       if (line.src === 'chrome') {
@@ -461,21 +459,19 @@ async function suite(source) {
   };
 
   scoreConfirm(lines, 'P4 confirm');
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.deletes),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.deletes),
     "confirm: what this operation deletes is stated, in the server's words");
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.commit_granularity),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.commit_granularity),
     "confirm: how it commits is stated, in the server's words");
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.detail),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.detail),
     'confirm: the sentence from the count the operator just took is carried into the dialog');
   // 🔴 F4: whatever the row is allowed to say about certainty, the dialog says at least as much.
-  // The row has four carriers; the dialog is plain text, so the two that were colour-only
+  // The row has two carriers; the dialog is plain text, so the two that were colour-only
   // (`count_kind` chip, `truncated` border) have to arrive as words and values.
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.count_kind),
+  ok(lines.some((l) => l.text === COUNTS.withdraw.count_kind),
     '🔴 F4: the exactness declaration reaches the last surface before the write');
-  ok(lines.some((l) => l.text === JSON.stringify(COUNTS.upper_bound.truncated)),
+  ok(lines.some((l) => l.text === JSON.stringify(COUNTS.withdraw.truncated)),
     '🔴 F4: whether the sample hit its budget reaches the dialog — a border colour cannot');
-  ok(lines.some((l) => l.text === COUNTS.upper_bound.extra.why_upper_bound),
-    '🔴 F4: the sentence naming the gap between the ceiling and the answer reaches the dialog');
   const sampledLines = view.buildConfirmLines(
     byOp.chain_replay,
     { params: { rule: 'inv' },
@@ -585,9 +581,30 @@ async function suite(source) {
 
     ok(same(rv.rows.map((r) => r.cancel), [true, true, false, false]),
       'G4: the X is drawn only where the declaration says the run can be cancelled');
-    ok(same(view.buildRunsView(payload, NOW, {}).rows.map((r) => r.cancel),
+    ok(same(view.buildRunsView(payload, NOW, { ledger_backfill: false, chain_replay: false }).rows.map((r) => r.cancel),
        [false, false, false, false]),
       'G4: an operation the declaration does not mark cancellable gets no X');
+    // A retired operation (lead 11-11): its rows stay in the run list after the server stops listing it - fold_file_layers'
+    // queued and running rows held the queue with no X. A queued run ends at once whatever its operation; a running one of
+    // an operation no longer listed is released by the server when its process is gone.
+    const retiredRuns = { runs: [
+      { run_id: 'q1', op: 'fold_file_layers', label: 'Fold file layers', params: {}, state: 'queued' },
+      { run_id: 'x1', op: 'fold_file_layers', label: 'Fold file layers', params: {}, state: 'running',
+        started_at: '2026-08-31T08:43:00+09:00' },
+      { run_id: 'q2', op: 'ledger_backfill', label: 'b', params: {}, state: 'queued' },
+      { run_id: 'x2', op: 'ledger_backfill', label: 'b', params: {}, state: 'running', started_at: '2026-08-31T08:43:00+09:00' },
+    ], ingestions: [] };
+    const listed = view.buildRunsView(retiredRuns, NOW, { ledger_backfill: false });
+    ok(same(listed.rows.map((r) => r.cancel), [true, true, true, false]),
+      'G4c: an X on a queued run of any operation and on a run of an operation no longer listed; a listed one that cannot stop, none',
+      listed.rows.map((r) => r.cancel));
+    ok(same(listed.rows.map((r) => r.retired && r.retired.text), ['(retired)', '(retired)', null, null]),
+      'G4d: a run of an operation the server no longer lists says «(retired)»; a listed one says nothing',
+      listed.rows.map((r) => r.retired));
+    const unread = view.buildRunsView(retiredRuns, NOW, null);
+    ok(same(unread.rows.map((r) => [r.cancel, r.retired]), [[true, null], [false, null], [true, null], [false, null]]),
+      'G4e: the list not read yet: no operation is called retired, a running one gets no X, a queued one does',
+      unread.rows.map((r) => [r.cancel, r.retired]));
 
     ok(rv.rows[1].stopping === true,
       'G5: a run whose cancel was requested says it is stopping');
@@ -1045,8 +1062,8 @@ const DEFECTS = [
     swap("const RUN_FINISHED = ['done', 'cancelled', 'failed'];",
       "const RUN_FINISHED = ['succeeded', 'stopped'];")],
   ['G9: a finished run keeps its x',
-    swap('      cancel: !finished && canCancel[run.op] === true,',
-      '      cancel: canCancel[run.op] === true,')],
+    swap("      cancel: !finished && (state === 'queued'",
+      "      cancel: (state === 'queued'")],
   ['G9: the count includes the rows that already finished',
     swap('    liveCount: rows.length,', '    liveCount: rows.length + recent.length,')],
   ['G9: an unrecognised state is treated as finished and disappears',
@@ -1102,6 +1119,9 @@ const DEFECTS = [
   ['F10: an undeclared parameter is still sent',
     swap('  const declared = operation ? list(operation.params).map((p) => p.key) : Object.keys(stored);',
       '  const declared = Object.keys(stored);')],
+  ['G4c: a run of a retired operation gets no X', swap("canCancel[run.op] === true || retiredOp(run.op)),", "canCancel[run.op] === true),")],
+  ['G4c: a queued run of an operation that cannot stop gets no X', swap("(state === 'queued' || canCancel", "(canCancel")],
+  ['G4e: the list not read yet calls every operation retired', swap("Boolean(cancellable) && !Object", "!Object")],
 ];
 
 const CONTROLS = [

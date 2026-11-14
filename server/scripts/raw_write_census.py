@@ -50,8 +50,12 @@ SKIP_PREFIXES = ("migrate_", "ops_")
 
 
 def tracked_scripts(root="server/scripts"):
-    listing = subprocess.run(["git", "ls-files", root],
-                             capture_output=True, text=True).stdout.split()
+    # utf-8: git writes it; read on a cp949 locale one byte of it killed the reader and the listing read "" - «0»
+    run = subprocess.run(["git", "ls-files", root], capture_output=True, encoding="utf-8", errors="replace")
+    listing = run.stdout.split()
+    if not listing:                                 # a gate that read nothing does not answer 0
+        raise SystemExit("raw_write_census: git ls-files %s listed nothing (exit %d: %s) - nothing was checked"
+                         % (root, run.returncode, (run.stderr or "").strip()))
     kept = []
     for path in listing:
         if not path.endswith(".py"):

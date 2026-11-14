@@ -1241,10 +1241,10 @@ export const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 368],   // 356 -> 358: the count's one address, retroCountRequest (owner 11-10 «노테이션 소급 ㄱ»)
+  ['retroactive_view_harness.mjs', 369],   // 366 -> 369: a retired operation's run keeps its × and says «(retired)» (G4c-G4e)
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
-  ['run_lines_harness.mjs', 24],
+  ['run_lines_harness.mjs', 26],   // 24 -> 26: «<name> (retired)» (G1)
   // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
   // Floor is the count it reports on the commit that introduces it.
   ['failure_summary_harness.mjs', 32],

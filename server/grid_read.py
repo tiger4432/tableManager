@@ -60,12 +60,12 @@ def total_order_keys(table_model, table_name):
     """The columns that give this relation a TOTAL order — `row_id`, else the catalogue's
     `business_key`, else its `composite_key_source` (S-186 · S-229).
 
-    🔴 PLURAL, BECAUSE FOUR OF THE SHIPPED VIEWS ARE KEYED BY A PAIR OR MORE. Measured in
-    `table_config.json.sample`: of eleven `kind: view` relations, FOUR declare neither
-    `row_id` nor `business_key` and DO declare `composite_key_source` — `bonding_core_lot`
-    (base_id, core_wafer), `bonding_core_die`, `lot_slot_move`, `bonding_die_from_core`.
-    Reading one column meant those four were refused under R7 and the operator saw an empty
-    grid for a relation the catalogue fully describes.
+    🔴 PLURAL, BECAUSE A VIEW CAN BE KEYED BY A PAIR OR MORE. Measured in
+    `table_config.json.sample` at S-186: of eleven `kind: view` relations then, FOUR declared neither
+    `row_id` nor `business_key` and DID declare `composite_key_source`. Reading one column meant those
+    four were refused under R7 and the operator saw an empty grid for a relation the catalogue fully
+    describes. The sample's views have since become tables or retired (lot_slot_move, owner 11-14);
+    on 11-14 its one such view is `ledger_atom_rows`.
 
     🔴 THE COMPOSITE IS NOT A NEW CELL. `composite_key_source` is what composes
     `business_key_val` for an ordinary table — the declaration ALREADY says 「these columns

@@ -4,13 +4,29 @@
 >
 > ```
 > 돌릴 명령  cd server && conda run -n assy_manager python scripts/off_tree_commits.py origin/<착지할 가지>
-> 답의 뜻    stderr «N branch(es) read» 는 0 보다 커야 한다 (0 이면 명령이 틀렸다). stdout 이 0 줄 = 통과, 착지한다
+> 답의 뜻    stderr «N branch(es) read» 와 stdout 0 줄 = 통과, 착지한다
+>          «read 0 branches - nothing was checked» (exit 2) = 아무것도 안 봄 -> --since <더 오래된 SHA> 로 넓혀 다시
 >          줄마다  레인 · SHA · server/client · 가지 · 제목 — 그 나무가 못 받은 커밋 (같은 patch 의 복사본 · main 이 가진 것은 빠짐)
 > 할 일      줄이 있으면 착지하지 않는다. 그 레인이 줄마다 답한다:
 >          필요   -> 착지할 가지로 cherry-pick 하고 다시 돌린다
 >          불필요 -> docs/process/off_tree_dismissed.txt 에 «patch-id 까닭 레인» 한 줄 (patch-id: git show <SHA> | git patch-id --stable)
 > 읽는 범위  로컬 · origin 가지 중 끝이 «그 나무가 main 에서 갈라진 곳» 뒤에 움직인 것. --since <SHA> 로 덮는다
 > 끄기      없음 (읽기 전용 · 쓰는 것은 dismissed 파일뿐)
+> ```
+
+> ## [상설] **업데이트 중 안내 페이지 — maintenance.bat** — 서버를 끈 동안만. 이주 · 재기동 없음
+>
+> ```
+> 언제     런처(run_app.bat)를 끈 «뒤» 켜고, 런처를 다시 켜기 «전»에 끔
+> 돌릴 것   설치 폴더의 maintenance.bat            (메모를 붙이려면  maintenance.bat "until 15:00")
+> 사용자    앱 주소 아무 경로나 열면 «Updating / Back soon» (+ 메모) 한 쪽. /health 도 503 = 꺼짐으로 읽힘
+>          포트 · 주소는 런처와 같은 자리에서 읽음(ASSY_API_PORT · ASSY_API_HOST) — 따로 맞출 것 없음
+> 창의 줄   «Notice page on port 8080 - close this window before starting the launcher» = 떠 있음
+>          «TCP port 8080 is already held by PID … (python.exe)» + 원인 · taskkill 줄 + «Nothing served.» = 서버가 아직 떠 있음
+>          -> 런처 창을 닫고(또는 그 PID 를 끄고) 다시 실행. 기다리지 않고 바로 끝남
+> 끄기     그 창에서 Ctrl+C 또는 창을 닫음. 그 뒤 run_app.bat
+>          끄는 걸 잊고 런처를 켜면 런처가 «TCP port 8080 is held by the maintenance page (PID …) - close its window» 로
+>          멈춤 (창 제목 «assyManager maintenance page»). 이 창을 닫고 런처를 다시 켬
 > ```
 
 > ## [11-14] **AI 규칙이 싣는 지난 교정이 «최근 5» 가 아니라 «지금 물음과 닮은 5»** — git pull · 런처 재기동(API · 체인 워커)
@@ -3106,7 +3122,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 이 고침 밖  키 칸이 datetime 인 옛 표 — 그 칸은 오늘처럼 온 글자 그대로 저장 · 키도 그 글자 (존 결함이 남음)
 > 찾기     cd server && python -c "from database import crud; from chain.cell_layer import key_columns; print([(t, c) for t in sorted(crud.TABLE_CONFIG) for c in sorted(key_columns(t)) if (crud.TABLE_CONFIG[t].get('column_types') or {}).get(c) == 'datetime'])"
 > 답의 뜻  []  -> 그런 표 없음
->          [(표, 칸), ...]  -> 그 칸의 존 결함은 남음 (이 박스: inspection_run.observed_at · lot_slot_move.event_time · step_inspection_run.observed_at)
+>          [(표, 칸), ...]  -> 그 칸의 존 결함은 남음 (이 박스: inspection_run.observed_at · step_inspection_run.observed_at)
 >          고치는 길: 어드민 Tables 에서 그 칸의 타입을 "string" 으로 저장 -> 재해석 큐의 retype 이 시각을 키 철자 그대로 글자로 바꿈
 > 끄는 법  되돌리기 커밋 하나
 > ```

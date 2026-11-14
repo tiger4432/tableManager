@@ -229,7 +229,8 @@ def groups(query, model, pivot):
 
 def order(groups, model, pivot, order_by, order_desc):
     """`groups` (`groups`' query) in order: a key column, one item's value, or a carried column's - a group without it
-    last either way - then the keys. An item's or a carried value is one LEFT JOIN to the group's rows (that item's),
+    where the grid's sort puts a blank, the database's own default (`main._order_by_clause`, S-131: on PostgreSQL the
+    largest - last ascending, first descending; lead 11-11) - then the keys. An item's or a carried value is one LEFT JOIN to the group's rows (that item's),
     not a read per group (B 11-05: 400k rows 405 s -> 1.5 s, box throwaway DB); a group of several values sorts by its
     smallest ascending, its largest descending (owner 11-11 «정렬도 안되네», lead). `grid_order.ENTERED`: each group at its place - its rows' first row_id
     (whole table, so a filter does not move it) or where it was dragged - and each row of the read carries the first
@@ -256,7 +257,7 @@ def order(groups, model, pivot, order_by, order_desc):
         cells = (cells if item is None else cells.where(getattr(held, pivot.column) == item)).subquery()
         cell = (func.max if order_desc else func.min)(cells.c.value)
         return (groups.outerjoin(cells, _same_keys(model, cells.c, pivot))
-                .order_by((cell.desc() if order_desc else cell.asc()).nulls_last(), *keys))
+                .order_by(cell.desc() if order_desc else cell.asc(), *keys))
     raise HTTPException(status_code=422, detail=("cannot sort a pivot by '%s' - sort by a key column (%s), a carried "
                                                  "column (%s) or an item column as %s<item>"
                                                  % (order_by, ", ".join(pivot.keys), ", ".join(pivot.carry) or "none",

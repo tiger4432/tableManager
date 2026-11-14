@@ -324,6 +324,12 @@ def port_owner(port, log=None):
 DUAL_STACK_HOST = ""
 
 
+def api_bind():
+    """``(host, port)`` the API binds - ASSY_API_HOST (default: both families) and ASSY_API_PORT (default 8080). The one
+    reading: the launcher binds the API on it and the maintenance page (`runtime.maintenance_page`) takes its place."""
+    return os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST), os.environ.get("ASSY_API_PORT", "8080")
+
+
 def bind_targets(host):
     """``((family, address), ...)`` - the sockets a server told to listen on ``host``
     will REALLY open.
@@ -425,16 +431,30 @@ def port_is_taken(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
 
 
 def describe_port_conflict(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC):
-    """One log-ready sentence about a port that is taken, or ``None`` if it is free."""
+    """What holds a taken port, why and what to do - one line each - or ``None`` if it is free. The one seat that
+    asks what holds the port; the launcher's refusal prints it as it is."""
     taken, how = port_is_taken(port, host, timeout=timeout)
     if not taken:
         return None
     pid, name = port_owner(port)
     if pid:
+        from runtime import maintenance_page          # left on, it holds the API's port (owner 11-14 안 1)
+        psutil = _psutil_or_warn(None)
+        try:
+            command = " ".join(psutil.Process(pid).cmdline()) if psutil else ""
+        except (psutil.Error, OSError):                     # gone, or not ours to read: «not the page»
+            command = ""
+        if maintenance_page.PROGRAM in command:
+            return f"TCP port {port} is held by the maintenance page (PID {pid}) - close its window"
         owner = f"PID {pid}" + (f" ({name})" if name else "")
     else:
         owner = "another process (its PID could not be read)"
-    return f"TCP port {port} is already held by {owner} [{how}]"
+    return "\n".join([
+        f"TCP port {port} is already held by {owner} [{how}]",
+        "이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다.",
+        "이미 떠 있는 스택이라면 그대로 사용하십시오. 새로 띄울 필요가 없습니다.",
+        "정말로 재시작하려면 위 PID 를 먼저 종료하십시오:",
+        "    taskkill /PID <pid> /T /F"])
 
 
 def port_conflict(spec, timeout=PORT_PROBE_TIMEOUT_SEC):
@@ -1035,17 +1055,12 @@ class Supervisor:
         if verdict == VERDICT_PORT_CONFLICT:
             self._log(f"CHILD PERMANENTLY FAILED - PORT CONFLICT: {child.spec.name}",
                       level="ERROR")
-            self._log(f"  {detail}", level="ERROR")
+            for line in str(detail).splitlines():         # who holds it, why, what to do: describe_port_conflict's
+                self._log(f"  {line}", level="ERROR")
             self._log("  This is NOT an environment outage: the database and the "
                       "network are irrelevant to", level="ERROR")
             self._log("  a port another process owns, and no number of retries "
                       "will free it.", level="ERROR")
-            self._log("  Almost always a second launcher started while the first "
-                      "was still running.", level="ERROR")
-            self._log("  [HOW TO FIX] 기존 스택이 이미 떠 있으면 그대로 쓰십시오. "
-                      "중복 기동이라면 위 PID 를 종료한 뒤", level="ERROR")
-            self._log("  (taskkill /PID <pid> /T /F) 런처를 다시 시작하십시오.",
-                      level="ERROR")
         else:
             self._log(f"CHILD PERMANENTLY FAILED: {child.spec.name}", level="ERROR")
             self._log(f"  {child.failure_reason}", level="ERROR")

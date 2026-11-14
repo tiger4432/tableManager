@@ -67,6 +67,16 @@ class ConsoleSafeHandler(logging.StreamHandler):
             self.handleError(record)
 
 
+def make_stdout_safe():
+    """print() in an entry the operator runs from a .bat (apply_release, maintenance, the launcher): a character the
+    console's code page lacks prints as «?» instead of raising - ConsoleSafeHandler's rule, the stream's own encoding
+    kept. At ops 11-14 a «…» in apply_release's refusal ended in a traceback on a cp949 console."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)      # absent when a host replaced the stream
+        if reconfigure:
+            reconfigure(errors="replace")
+
+
 def make_console_safe(handler):
     """Give an existing console handler `ConsoleSafeHandler`'s emit. Returns it.
 

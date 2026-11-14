@@ -234,9 +234,11 @@ class AuditLogCache:
         return bool(keys)
 
     def add_changed(self, items):
-        """A notification's `changed` ([{transaction_id, table_name, changed_rows, kind, written_by?}] - one write
-        statement's share each) on the list at once: its group to the top, the share added to its table. An
-        approximation until the next merge reads the group's batches again whole."""
+        """A notification's `changed` ([{transaction_id, table_name, changed_rows, kind, written_by?, batch_id?}] - one
+        write statement's share each) on the list at once: its group to the top, the share added to its table. An
+        approximation until the next merge reads the group's batches again whole. A batch the list already holds - a
+        merge read it between the write's commit and this call, or it was said before - is not added again (lead 11-11:
+        the count an operator reads)."""
         if not items:
             return
         with self._lock:
@@ -249,7 +251,10 @@ class AuditLogCache:
                              {"transaction_id": key, "tables": {}, "changed": {}})
                 name = item.get("table_name")
                 one = group["tables"].setdefault(name, _fresh_table())
-                _said(one, item.get("kind"), item.get("written_by"), now, one["id"])
+                batch_id = item.get("batch_id")
+                if batch_id is not None and batch_id in one["ids"]:
+                    continue
+                _said(one, item.get("kind"), item.get("written_by"), now, one["id"] if batch_id is None else batch_id)
                 if item.get("changed_rows") is not None:
                     group["changed"][name] = (group["changed"].get(name) or 0) + int(item["changed_rows"])
                 self._to_top(group, LIVE_GROUPS)
@@ -305,12 +310,13 @@ def _newest(tables: dict):
 
 
 def _fresh_table() -> dict:
-    return {"kinds": [], "written_by": [], "at": None, "id": 0, "records": 0}
+    return {"kinds": [], "written_by": [], "at": None, "id": 0, "records": 0, "ids": set()}
 
 
 def _said(one: dict, kind, who, at, batch_id):
     """One batch of a table into its facts - kinds and writers in the order first written, the newest time."""
     one["records"] += 1
+    one["ids"].add(batch_id)                    # the batches the list holds - `add_changed` adds one once
     for listed, word in ((one["kinds"], kind), (one["written_by"], who)):
         if word and word not in listed:
             listed.append(word)

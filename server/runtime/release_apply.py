@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # server/, run as a file
+
 FOLDER = "release"
 APPLIED = "applied"
 HEAD_REF = "refs/heads/release"
@@ -21,7 +23,9 @@ AGAIN = "ASSY_RELEASE_RELAUNCHED"
 
 
 def _git(root, *args):
-    run = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    # git writes utf-8; read on a cp949 locale a byte of it killed the reader and the output read "" - the «tracked
+    # files changed» guard let the release through (box 11-14, core.quotepath=false)
+    run = subprocess.run(["git", *args], cwd=root, capture_output=True, encoding="utf-8", errors="replace")
     return run.returncode, (run.stdout or "").strip(), (run.stderr or run.stdout or "").strip()
 
 
@@ -233,6 +237,8 @@ def start(root, argv, say):
 
 def main(root=None, say=print):
     """apply_release.bat: the same function, its lines on the console; exit 1 when a bundle was left."""
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()
     root = root or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     out = apply_releases(root, say)
     if out["applied"]:

@@ -277,11 +277,12 @@ def test_the_answer_says_each_audit_row_and_the_distinct_rows_it_wrote(db):
                  {"key": {"k": "K2"}, "values": {"k": "K2", "a": "x"}, "source_name": "f1", "written_by": "loader"},
                  {"key": {"k": "K0"}, "values": {"k": "K0", "a": "x"}, "source_name": "f1", "written_by": "loader"},
                  {"key": {"k": "K0"}, "values": {"a": "z"}, "source_name": "user", "written_by": "kim"}, tx="tx2")
-    assert out["left_out"] == 1 and out["audit"] == [
+    assert out["left_out"] == 1 and [{k: v for k, v in a.items() if k != "batch_id"} for a in out["audit"]] == [
         {"transaction_id": "tx2", "table_name": TABLE, "changed_rows": 1, "kind": "edit", "written_by": "kim"},
         {"transaction_id": "tx2", "table_name": TABLE, "changed_rows": 2, "kind": "new", "written_by": "loader"}]
     rows = db.execute(select(lines.AuditBatch.__table__).where(lines.AuditBatch.transaction_id == "tx2")).mappings()
-    assert sorted((a["work_kind"], a["written_by"]) for a in rows) == [(a["kind"], a["written_by"]) for a in out["audit"]]
+    assert sorted((a["id"], a["work_kind"], a["written_by"]) for a in rows) == sorted(
+        (a["batch_id"], a["kind"], a["written_by"]) for a in out["audit"]), "each item names its own batch"
 
 
 def test_a_write_the_database_gives_no_time_for_is_refused(db, monkeypatch):

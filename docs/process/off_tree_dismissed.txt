@@ -32,3 +32,10 @@ d23317958502f6933823eb577c31876e54f397cb f3e06b118 folded into the CELL_SOURCE_O
 99ddaf09e7030ee09742047ca64c01b153447dc3 same change as 5c49a5184 (8f54079ae, the main checkout copy came through another EOL path) lead
 54c8c8ba229b977baa256533b7fae854c018327a b3a11d779 the hook retirement on 61f3 - its rebase onto main is 54dc0f331's patch (4c97b6b6); this one's docs say main keeps the hook, untrue since 35685064e A
 ba1be540bc753dbdfb3e3fbc8c578a551fa4d398 081177ce1 copies as history (lead 11-12 ㄱ) - not chosen: main has dfd5dccff, copies rank behind the holder's own (lead 11-12 ㄴ) A
+c5327d1aa24ef105d55507f544e604e24ea685e5 c6fd85517 landed as 1ee040293 (its RUN.md block written again today) B
+91a7e13cb9480d0a777f00fe7df9ce5b731d7dfb f2ae6a115 landed in 1ee040293 (the RUN.md lines merged into that block) B
+4c97b6b602c751d885b7c0e80689b0636574d660 54dc0f331 the hook retirement on main - landed as 31a73d332, its design-doc hunk dropped (main rewrote CELL_SOURCE_OVERHAUL.md, 7ff4c3d1d), so the patch differs A
+dfcbe1bb780f54c117f3ad86e7c5190e7402d120 9de5cd848 rebased: landed as f05ba41a2 ClientB
+6cb9057ce3ac06bd5c77d760e5ba57d2ed11d442 086584eb4 rebased: landed as 5299c18f0 ClientB
+f2c26297e6468c4a09a76cb59de308e0c7dce4ed a546fb871 rebased: landed as 760dde562 ClientB
+90ac5cfaccfe5bdf5049c99256d5eb7b86a313ab 0fc692486 rebased: landed as a187272d9 ClientB

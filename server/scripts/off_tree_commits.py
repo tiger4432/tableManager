@@ -4,7 +4,7 @@ A commit is «in» the tree when the tree holds it or a commit with the same pat
 cherry-picked copy is not reported. Read: every local and origin branch whose tip moved after `since` (default: where
 the tree first left main); a commit main holds is not reported. A commit whose patch-id or SHA is in the dismissed file is left out - a lane writes «not
 needed» there once, with its reason. One line per commit: lane · sha · side · branches · subject. 0 lines = nothing
-off the tree; the landing step passes only then.
+off the tree; the landing step passes only then. 0 branches read is refused (exit 2): nothing was checked.
 
     conda run -n assy_manager python scripts/off_tree_commits.py <tree> [--main origin/main] [--since <sha>]
 """
@@ -83,6 +83,9 @@ def off_tree(tree, main, since=None, dismissed_path=DISMISSED, cwd=None):
 
 
 def main():
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # server/, run as a file
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()                                  # argparse's --help prints the docstring's «» before the line below
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("tree", help="the landing tree, e.g. origin/ovh-trial-1111")
     parser.add_argument("--main", default="origin/main")
@@ -91,6 +94,9 @@ def main():
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")             # a subject's « on a cp949 console cut the list short (D 11-14)
     rows, read = off_tree(args.tree, args.main, args.since, args.dismissed)
+    if not read:                                        # right after a rebase the default window holds nothing
+        print("[off-tree] read 0 branches - nothing was checked; widen with --since <an older commit>", file=sys.stderr)
+        return 2
     print("[off-tree] %d branch(es) read, %d commit(s) off %s" % (read, len(rows), args.tree), file=sys.stderr)
     for r in rows:
         print("\t".join((r["lane"], r["sha"], r["side"], r["branches"], r["subject"])))

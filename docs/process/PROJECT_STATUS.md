@@ -47,6 +47,11 @@
 | 클라B | 리포트 편집기 목업 | 🎨 https://claude.ai/artifact/M1PpzMpACb5QMAxwMW1poL |
 | 클라B | 탐색기 기본값 흐린 글(select «Default: X», flag 뺌) | 🔨 a546fb871 다음 묶음 |
 | 클라B | 같은 잣대로 어드민 탭 전부 셈 + 고칠 곳 목록 | ⏭ |
+| 클라B | screen_layout admin.html — main 에도 있는 실패 이름 41 개 (main c1d0e846d · pivot 0f5a5b3b2 두 실행이 같이 가진 것, 각 100 중 42 실패). 이름의 찾은 수(«words - 60»)를 ':' 뒤로 옮기고, 러너가 narrowed 실행에서 KNOWN_RED 의 ran 검사와 «remove» 줄을 FLOORS 처럼 끄면 KNOWN_RED 에 적는다. 1536x864 «Chain, every rule group open» 기다림은 흔들림이라 안 적는다 | ⏭ «~N» 뒤 |
+| 총괄 | 박스 선언과 데이터 어긋남 셋 (11-14 D 셈, 읽기만) — bonding_log: 원천 bonded_from · bw_dt_seat 이 묶는 base_id · bx · by · cx · cy · dt_x · dt_y · event_time 이 미선언이고 (값 든 행 375k), 선언된 키 칸 base_lot · base_slot · bonding_index · b_wx · b_wy 는 0 행. lot_event: event_group_key · lot · wafers 미선언. dt_transfer: 시간 칸 event_time 이 string | ⏭ |
+| D | generate_source_rows: 엔티티 키 값 공간 (엔티티 키에 묶인 칸은 그 엔티티의 키 공간에서 값을 받아 표 사이가 이어짐) + 운영 크기 seed 를 위한 COPY 쓰기 (D 11-14 — 걷기 판은 seed_walk_ops a6fe3ba16 이 따로 채움) | ⏭ |
+| 체인 | 스케줄러 없는 판 · 개발 셋업에는 조인 lookup 인덱스가 안 선다 (색인 줄 `runtime/maintenance_line` 만 짓는다, 소유자 10-15). 체인 워커는 그것을 말하지 않는다 — lookup 이 인덱스 없이 도는 조인에 체인 워커 로그 한 줄. 11-14 D 걷기 판: 인덱스 없을 때 core_wafer_map 200 만 행 자기조인 1,000 행에 mapper 121 s, 선 뒤 1.4 s | ⏭ |
+| 체인 속도 | 수식 R1 1,000 행에 2.4 s (wake 0.9 · mapper 1.4, API 대역 위 notify 0) — CLAUDE.md 규격 IO ≤ 1.3 s/1k 의 약 두 배. 11-14 D 걷기 판 assy_walk_ops, formula core_wafer_map.core_slot_n 200 만 행 | ⏭ 체인 속도 라운드 |
 | 클라2 | 배치 잣대 도구 + 메인 그리드 우측 탭 → 수집기 특성 → 맵 창 목업 | ⏭ 갈아엎기 몫 뒤 |
 | 총괄 | D 판 기계 차례 · 박스에서 맵 에디터 직접 써 보고 불편 목록 | ⏭ |
 

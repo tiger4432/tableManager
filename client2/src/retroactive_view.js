@@ -8,16 +8,16 @@
 //   checks each tag against the payload it was built from.
 //
 // THE ONE THING THIS SURFACE MUST NOT DO — PRESENT AN APPROXIMATE COUNT AS EXACT.
-//   Four of the five counts cannot be exact on a request path, and `server/retroactive.py` says
-//   so in three separate places rather than hiding it:
+//   A count whose scan ran out of budget is a sample, not the answer, and `server/retroactive.py`
+//   says which in the payload rather than hiding it:
 //
-//     `count_kind`      exact | sample | upper_bound     — the machine-readable declaration
-//     `affected_label`  e.g. "cells to withdraw (at most)"  — the qualifier, inside the label itself
+//     `count_kind`      exact | sample                   — the machine-readable declaration
+//     `affected_label`  e.g. "cells to withdraw"          — what the number counts
 //     `detail`          the whole sentence, with numbers
 //
 //   So the rule here is mechanical: **a number is never emitted without the server's own label
 //   for it.** `buildCountView` returns `affected: null` when `affected_label` is missing, because
-//   a bare integer on a screen is read as the answer, and for four of five it is not. The client
+//   a bare integer on a screen is read as the answer, and for a sample it is not. The client
 //   never decides that a count is approximate and never decides that it is not — it carries what
 //   the server declared, in the server's words.
 //
@@ -67,6 +67,8 @@ export const RETRO_CHROME = Object.freeze({
   RUN: 'run',
   // 인라인 확인의 물러나기. 표가 «하나»라야 두 자리가 서로 다른 말을 안 합니다.
   CANCEL: 'cancel',
+  // beside a run whose operation the server no longer lists (lead 11-11: fold_file_layers retired, its rows stayed)
+  RETIRED: '(retired)',
   RUNNING: 'requesting…',
   RUN_FAILED: 'run request failed',
   QUEUED: 'queued',
@@ -109,7 +111,7 @@ export const RETRO_CHROME_STRINGS = Object.freeze(Object.values(RETRO_CHROME));
 // most confident one, which is `미상` reading as a value. F9's `POPULATION_TONE` does not have
 // the collision (its safe value `effective` is `'ok'`); this table was modelled on it and had
 // broken the property it was copying.
-const KIND_TONE = { exact: 'ok', sample: 'warn', upper_bound: 'warn' };
+const KIND_TONE = { exact: 'ok', sample: 'warn' };
 
 // ---------------------------------------------------------------------------
 // THE PER-OPERATION RECORD, and the three pure functions that read it.
@@ -361,9 +363,8 @@ export function retroCountRequest(base, op, entries) {
 /** `GET /admin/retroactive/{op}/count` — one measurement, and what kind of number it is.
  *
  * 🔴 THE NUMBER TRAVELS WITH ITS LABEL OR IT DOES NOT TRAVEL. `affected` is emitted only when
- * `affected_label` is present, because the qualifier for four of the five counts lives IN that
- * label ("cells to withdraw (at most)"). Rendering the integer alone would strip the word that keeps the
- * screen honest, and `detail` — which always carries the number in a sentence — is still there.
+ * `affected_label` is present - the label says what the number counts. Rendering the integer alone would leave it
+ * unnamed, and `detail` — which always carries the number in a sentence — is still there.
  */
 export function buildCountView(payload) {
   const data = payload || {};
@@ -381,9 +382,6 @@ export function buildCountView(payload) {
       ? KIND_TONE[kind] : '',
     // THE sentence. Straight through, untouched.
     detail: text(data.detail),
-    // A second server sentence, on the two counts whose cheap query answered a superset. It names
-    // the gap between the ceiling and the answer, which `detail` states but does not explain.
-    why: text(data.extra && data.extra.why_upper_bound),
     extras: buildExtras(data.extra),
     // `truncated` means the scan budget ran out before the population did, i.e. the sample number
     // is a floor. The server does not (yet) put that in words on this route (its sibling dry-run
@@ -513,11 +511,13 @@ export function buildProgressCell(processed, total, minutes, words = '') {
  *    봐야 하나»가 생기고, 그건 「하나만 끊기」라는 이 화면의 목적과 반대입니다.
  *
  * @param payload  `{ runs, ingestions }` — 둘 다 없을 수 있고, 그때는 «빈 목록»입니다
- * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다
+ * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다 - `null`: 목록을 아직 못 읽음
  */
 export function buildRunsView(payload, now, cancellable, formParams) {
   const data = payload || {};
   const canCancel = cancellable || {};
+  // the server's list of operations no longer names this one (retired) - judged only once the list was read
+  const retiredOp = (op) => Boolean(cancellable) && !Object.prototype.hasOwnProperty.call(cancellable, op);
   const forms = formParams || {};
   const stateNames = data.state_names && typeof data.state_names === 'object' ? data.state_names : {};
   const rows = [];
@@ -551,6 +551,7 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       id: String(run.run_id || ''),
       kind: 'run',
       what: text(run.label) || text(run.op),
+      retired: retiredOp(run.op) ? chrome(RETRO_CHROME.RETIRED) : null,
       // 🔴 총괄 a274c90f0 — the FORM's params only. A run record also keeps what the form does not
       //    offer (`form=False`: ontology_root · fetch_rows · chunk_size), and those reached the title
       //    as a path and two bare numbers. The form's list is the inventory's, not a list here.
@@ -592,7 +593,10 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       summary: extras.length ? null : text(run.result_sentence),
       // its pages as the chain runs them, beside «done» (lead 11-09) - null on any other run
       chain: chainPagesLine(run.pages) ? chrome(chainPagesLine(run.pages)) : null,
-      cancel: !finished && canCancel[run.op] === true,
+      // A queued run ends at once whatever its operation (server request_cancel); a running one is asked - drawn where
+      // the declaration says it can stop, or where no declaration is left (a retired operation: the server releases
+      // its run when the process is gone, 10-11 - otherwise the row held the queue with no × at all).
+      cancel: !finished && (state === 'queued' || canCancel[run.op] === true || retiredOp(run.op)),
       // 요청했지만 아직 멈추지 않았다 — 줄은 «남아있습니다».
       stopping: state === 'cancelling' || state === 'cancel_requested',
       // 🔴 «기다리는 것»은 도는 것이 아닙니다. 큐에 앉은 실행은 서버를 안 무겁게 하는데,
@@ -771,14 +775,12 @@ export function buildConfirmLines(operation, record, params) {
   });
   if (countView) {
     pair(countView.affectedLabel, countView.affected);
-    // 🔴 EVERY CARRIER THE ROW HAS, THE DIALOG HAS. The row shows the qualifier four ways — the
-    // label text, the `count_kind` chip, the `truncated` border, the `why_upper_bound` sentence —
-    // and the dialog is plain text, so no colour can reach it. Three of the five `affected_label`s
-    // carry no qualifier of their own, which left the dialog's honesty resting on `detail` alone.
+    // 🔴 EVERY CARRIER THE ROW HAS, THE DIALOG HAS. The row shows what kind of number it is two ways
+    // — the `count_kind` chip and the `truncated` border — and the dialog is plain text, so no colour
+    // can reach it; the kind and the cut are said here in words.
     pair(countView.kindLabel, countView.kind);
     pair(countView.truncatedLabel, countView.truncatedValue);
     pair(null, countView.detail);
-    pair(null, countView.why);
     list(countView.extras).forEach((extra) => pair(extra.label, extra.count));
   }
   // The facts come from the count when one was taken and from the inventory otherwise. They are

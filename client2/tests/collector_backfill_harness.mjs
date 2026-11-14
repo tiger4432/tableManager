@@ -139,7 +139,7 @@ const DEFECTS = [
   ['M5 a null window is read as declared', swap("const declared = typeof c.window === 'string' ? c.window.trim() : '';",
     "const declared = String(c.window);")],
   ['M7 the cell reads the Overview list\'s rows, so a run that ended over ten minutes ago has none',
-    swap('{}, {}).runs[0];', '{}, {}).rows[0];')],
+    swap('null, {}).runs[0];', 'null, {}).rows[0];')],
   ['M6 the screen counts the next start itself (start + finished days)',
     swap("const nextStart = typeof latest.next_start === 'string' ? latest.next_start : '';",
       'const nextStart = latest.params && latest.params.start ? new Date(Date.parse(latest.params.start)'

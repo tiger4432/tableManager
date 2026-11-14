@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A write item's `at` keeps a line's «when» from the line it re-spells (design «쓰기» 53 - the notation fold and the
+"""A write item's `at` keeps a line's «when» from the line it re-spells (design «쓰기» - the notation fold and the
 file-layer fold): the new line heads the cell, its source's rank does not move, the old line stays as history, and
 the audit row says when the fold was done."""
 from datetime import timedelta
