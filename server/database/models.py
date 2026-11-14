@@ -1432,10 +1432,11 @@ def declared_key_columns(table_cfg: dict):
 #:
 #: One spelling: both the hot-swap pass and the fresh build read this list. They carried two
 #: hand-written copies of it before.
-FRAMEWORK_COLUMNS = (
-    "row_id", "created_at", "updated_at",
-    "is_graph_synced", "needs_graph_rollback", "graph_synced_at",
-)
+def _not_data():
+    """`lines.NOT_DATA` - the framework's and the retired columns (one list, lead 11-14 14c)."""
+    from .lines import NOT_DATA
+
+    return NOT_DATA
 
 
 def sql_type_of(type_str):
@@ -1483,7 +1484,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
             mapper = class_mapper(dynamic_class)
             
             for col_name, type_str in col_types.items():
-                if col_name in FRAMEWORK_COLUMNS:
+                if col_name in _not_data():
                     continue
                 sql_type = sql_type_of(type_str)
                 if col_name not in table_obj.columns:
@@ -1602,7 +1603,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
             # exists so a real table cannot redeclare a column the framework already
             # attached — but a view has no framework columns, so skipping here would
             # silently drop a column the view genuinely selects.
-            if col_name in FRAMEWORK_COLUMNS and not is_view:
+            if col_name in _not_data() and not is_view:
                 continue
             sql_type = sql_type_of(type_str)
             if is_view:
@@ -2400,7 +2401,7 @@ def table_index_name(table, columns, prefix="idx_"):
 
 def table_index_refusal(table, entry):
     """Why one table's "indexes" cannot be saved - (path, sentence) - or None. The columns it may
-    name are its `column_types` and the framework's own (`FRAMEWORK_COLUMNS`)."""
+    name are its `column_types` and the not-data columns (`lines.NOT_DATA`)."""
     indexes = (entry or {}).get("indexes")
     if indexes is None:
         return None
@@ -2409,7 +2410,7 @@ def table_index_refusal(table, entry):
         return path, 'indexes must be a list of {"columns": [...], "unique": false, "search": false, "purpose": "..."}'
     if indexes and (entry or {}).get("kind") == "view":
         return path, "%s is a view - a view cannot carry an index" % table
-    known = set((entry or {}).get("column_types") or {}) | set(FRAMEWORK_COLUMNS) | {"business_key_val"}
+    known = set((entry or {}).get("column_types") or {}) | _not_data()
     seen = set()
     for number, item in enumerate(indexes):
         columns = item.get("columns") if isinstance(item, dict) else None

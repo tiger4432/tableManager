@@ -69,6 +69,12 @@
 >              창 안에서 ⑥ 을 띄워 그 디스크로 잰다: 가장 큰 «남은» 표의 진행 줄 «about X min left» 를 본다
 >              첫 진행 줄 전의 침묵은 그 표의 옛 층을 세는 시간이다 (박스 층 7 천만 개 35 초, HDD 는 더 길다)
 >              X 가 창의 남은 시간을 넘으면 Ctrl+C (끊어도 다음에 이어 간다) 하고 ⑨ 로 되돌린다
+>          bytea 남은 칸 — 14c 가 못 덮는 하나 (읽기만. 옛 릴리스 폴더에서 돈다, 서비스 켠 채)
+>            cd server ; python -c "import json,paths,sqlalchemy as s;c=json.load(open(paths.config_path('table_config.json'),encoding='utf-8'));t={k for k,v in c.items() if isinstance(v,dict) and 'column_types' in v};r=[x for x in s.create_engine(paths.resolve_database_url()[0]).connect().execute(s.text('SELECT table_name,column_name FROM information_schema.columns WHERE table_schema=:p AND data_type=:b'),{'p':'public','b':'bytea'}) if x[0] in t];[print(*x) for x in r];print('bytea leftover columns:',len(r),'in',len(t),'data tables')"
+>          답의 뜻  «bytea leftover columns: 0 in N data tables» (N > 0) = 간다
+>                  그 위에 «<표> <칸>» 줄이 하나라도 있다 = 창을 열지 않는다. 그 줄들을 총괄께
+>                  «in 0 data tables» = 설정을 못 읽어 아무것도 안 봤다 -> server 폴더에서 다시
+>              (박스 11-14: 0 in 69 data tables)
 >
 > 창 안 — 이 순서로
 > ① 런처 끄기  run_app 창을 닫는다. 서버 · 체인 워커 · 스케줄러가 다 내려가야 ③ 이 돈다
