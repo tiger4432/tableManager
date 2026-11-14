@@ -147,7 +147,7 @@ def test_an_explicit_wildcard_still_means_exactly_what_it_meant_yesterday():
     assert ps.bind_targets("0.0.0.0") == ((socket.AF_INET, "0.0.0.0"),)
 
 
-def test_the_launcher_default_is_the_dual_stack_host():
+def test_the_launcher_default_is_the_dual_stack_host(monkeypatch):
     """The launcher must read its default from the one place that documents it,
     so the guard and the bind cannot drift apart."""
     # BY PATH, NOT BY IMPORT. The launcher lives at the REPOSITORY ROOT, which is on
@@ -161,8 +161,13 @@ def test_the_launcher_default_is_the_dual_stack_host():
         "run_decoupled_app.py")
     with open(launcher, encoding="utf-8") as fh:
         src = fh.read()
-    assert 'os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)' in src, \
-        "the launcher stopped defaulting to the shared dual-stack constant"
+    assert "api_host, api_port = api_bind()" in src, \
+        "the launcher reads its bind from the one seat (11-14: the maintenance page reads it too)"
+    from runtime import process_supervisor
+
+    monkeypatch.delenv("ASSY_API_HOST", raising=False)
+    assert process_supervisor.api_bind()[0] == process_supervisor.DUAL_STACK_HOST, \
+        "the seat stopped defaulting to the shared dual-stack constant"
 
 
 # ===========================================================================

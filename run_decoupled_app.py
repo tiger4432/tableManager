@@ -17,7 +17,7 @@ if __name__ == "__main__":
     if _again is not None:
         sys.exit(_again)
 
-from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host
+from runtime.process_supervisor import ChildSpec, Supervisor, preflight_port_check, psutil_status, DUAL_STACK_HOST, describe_bind_host, api_bind
 from runtime.launcher_args import parse_launcher_args  # noqa: E402
 from runtime.launcher_specs import child_specs  # noqa: E402  (S-255: the roster is a value)
 import paths  # noqa: E402  (single ASSY_DATA_ROOT override point)
@@ -231,7 +231,7 @@ def main():
     # Production default. Overridable so the whole launcher - supervision policy
     # included - can be exercised against the isolated dev stack on :8081 instead
     # of being verified by a reimplementation of itself.
-    api_port = os.environ.get("ASSY_API_PORT", "8080")
+    api_host, api_port = api_bind()
 
     # uvicorn defaults to 127.0.0.1, which made the launcher reachable only from the
     # server box - while SERVER_STARTUP_GUIDE documented --host 0.0.0.0 and the team
@@ -254,7 +254,6 @@ def main():
     # meaning it had yesterday - "127.0.0.1" is still a narrow IPv4-only bind, and
     # so is an explicit "0.0.0.0" - because narrowing the bind is the entire point
     # of the variable and an operator who typed an address meant that address.
-    api_host = os.environ.get("ASSY_API_HOST", DUAL_STACK_HOST)
     # ⚰️ [R-2026-08-14-H] `graph_port` 읽기가 여기 있었다 (GRAPH_SYNC_PORT, 기본 8090).
     # 이 런처는 더 이상 그 포트를 쓰는 자식을 띄우지 않는다.
     server_cmd = [python_exe, "-m", "uvicorn", "main:app",
