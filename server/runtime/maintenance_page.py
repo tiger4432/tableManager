@@ -118,4 +118,6 @@ def serve(note: str = "", say=_say) -> int:
 
 
 if __name__ == "__main__":
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()
     sys.exit(serve(" ".join(sys.argv[1:]).strip()))

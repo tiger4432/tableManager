@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(_ROOT_DIR, "server"))
 # Release bundles in release/ are applied before anything below is loaded; when HEAD moved, the launcher runs again from
 # the new code - this process only waits for it (owner 11-10, server/runtime/release_apply.py).
 if __name__ == "__main__":
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()
     from runtime import release_apply
     from utils.logger import get_process_logger as _release_logger
     _again = release_apply.start(_ROOT_DIR, sys.argv, _release_logger("Launcher", "launcher.log").info)
