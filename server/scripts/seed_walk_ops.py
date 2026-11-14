@@ -5,8 +5,11 @@ Shape (defaults = the lead's 11-14 counts; a map is 20x20, CLAUDE.md):
     wafers          lots x slots                      4,000 x 25 = 100,000
     wafer_process   wafers x steps, 2 recipes a step  100,000 x 100 = 10,000,000 rows, 200 recipes
     core_wafer_map  core wafers x side^2              5,000 x 400 = 2,000,000 rows (core_slot spelled «01»)
-    bonding_log     base wafers x side^2              5,000 x 400 = 2,000,000 rows - base die i of base wafer k is
-                                                      bonded from die i of core wafer k (core_slot a number: «1»)
+    bonding_log     packages x layers                 200,000 x 10 = 2,000,000 rows, keyed (base_id, bx, by, layer)
+A package is a base die (owner 11-14: «다층 본딩 패키지»): base wafers x side^2 = 500 x 400. Layer k («1».."10", text)
+holds a chip - die (x, y) of core wafer j of the k-th block of `bases` core wafers, j the package's base wafer - so a
+package's ten chips come from ten wafers in ten lots while a block is at least a lot long (bases >= slots). The row
+names its chip (core_lot, core_slot a number: «1», cx, cy), not the die below it: the chain fills that (owner 안 2).
 The core and base wafers are the first wafers of the lot list, so every core wafer has a process list.
 
 Row identity is the product's: row_id a uuid, business_key_val by `crud.compose_business_key` (the table's
@@ -14,7 +17,8 @@ declared parts and separator) - so the chain's self-joins and the walk find thes
 
 Run from server/ with ASSY_DATA_ROOT on a scenario root and DATABASE_URL on a throwaway database:
     python scripts/seed_walk_ops.py                     # the full shape
-    python scripts/seed_walk_ops.py --lots 2 --slots 5 --steps 4 --side 2 --bonded 3
+    python scripts/seed_walk_ops.py --lots 4 --slots 2 --steps 3 --side 2 --bases 2 --layers 3
+    python scripts/seed_walk_ops.py --tables bonding_log  # one table again, into an emptied table
 """
 from __future__ import annotations
 
@@ -58,14 +62,16 @@ def core_map_rows(listed, side: int):
                        "c_bn": "1", "event_time": START.isoformat()}
 
 
-def bonding_rows(bases, cores, side: int):
-    for k, ((_lot, _slot, base), (core_lot, core_slot, _wafer)) in enumerate(zip(bases, cores)):
-        at = START + datetime.timedelta(days=10, minutes=k)
+def bonding_rows(bases, cores, side: int, layers: int):
+    for j, (_lot, _slot, base) in enumerate(bases):
+        at = START + datetime.timedelta(days=10, minutes=j)
         for x in range(side):
             for y in range(side):
-                yield {"base_id": base, "bx": x, "by": y, "core_lot": core_lot, "core_slot": int(core_slot),
-                       "cx": x, "cy": y, "dt_lot": f"DT{k // 25:04d}", "dt_slot": k % 25 + 1,
-                       "dt_x": x, "dt_y": y, "event_time": at}
+                for layer in range(1, layers + 1):
+                    core_lot, core_slot, _wafer = cores[(layer - 1) * len(bases) + j]
+                    yield {"base_id": base, "bx": x, "by": y, "layer": str(layer), "core_lot": core_lot,
+                           "core_slot": int(core_slot), "cx": x, "cy": y, "dt_lot": f"DT{j // 25:04d}",
+                           "dt_slot": j % 25 + 1, "dt_x": x, "dt_y": y, "event_time": at}
 
 
 class _Lines(io.RawIOBase):
@@ -136,14 +142,17 @@ def copy(engine, table: str, rows, log=print) -> int:
     return held
 
 
-def seed(engine, *, lots=4000, slots=25, steps=100, side=20, bonded=5000, log=print) -> dict:
+def seed(engine, *, lots=4000, slots=25, steps=100, side=20, bases=500, layers=10, tables=TABLES,
+         log=print) -> dict:
     listed = wafers(lots, slots)
-    if 2 * bonded > len(listed):
-        raise ValueError(f"{bonded} core and {bonded} base wafers need {2 * bonded} wafers - there are {len(listed)}")
-    cores, bases = listed[:bonded], listed[bonded:2 * bonded]
-    return {"wafer_process": copy(engine, "wafer_process", keyed("wafer_process", process_rows(listed, steps)), log),
-            "core_wafer_map": copy(engine, "core_wafer_map", keyed("core_wafer_map", core_map_rows(cores, side)), log),
-            "bonding_log": copy(engine, "bonding_log", keyed("bonding_log", bonding_rows(bases, cores, side)), log)}
+    need = bases * (layers + 1)
+    if need > len(listed):
+        raise ValueError(f"{bases * layers} core and {bases} base wafers need {need} wafers - there are {len(listed)}")
+    cores, base_wafers = listed[:bases * layers], listed[bases * layers:need]
+    rows = {"wafer_process": lambda: process_rows(listed, steps),
+            "core_wafer_map": lambda: core_map_rows(cores, side),
+            "bonding_log": lambda: bonding_rows(base_wafers, cores, side, layers)}
+    return {table: copy(engine, table, keyed(table, rows[table]()), log) for table in tables}
 
 
 def main(argv=None) -> int:
@@ -152,7 +161,9 @@ def main(argv=None) -> int:
     ap.add_argument("--slots", type=int, default=25)
     ap.add_argument("--steps", type=int, default=100)
     ap.add_argument("--side", type=int, default=20, help="a map is side x side dies")
-    ap.add_argument("--bonded", type=int, default=5000, help="core wafers, and as many bonded base wafers")
+    ap.add_argument("--bases", type=int, default=500, help="base wafers - a package is one of their dies")
+    ap.add_argument("--layers", type=int, default=10, help="chips a package, each from its own core wafer")
+    ap.add_argument("--tables", nargs="+", choices=TABLES, default=TABLES, help="the tables to write")
     args = ap.parse_args(argv)
     import paths
     if not paths.IS_ISOLATED:
@@ -161,7 +172,8 @@ def main(argv=None) -> int:
         return 2
     from database.database import engine
     print(f"[seed_walk_ops] {paths.describe_isolation() if hasattr(paths, 'describe_isolation') else paths.DATA_ROOT}")
-    seed(engine, lots=args.lots, slots=args.slots, steps=args.steps, side=args.side, bonded=args.bonded)
+    seed(engine, lots=args.lots, slots=args.slots, steps=args.steps, side=args.side, bases=args.bases,
+         layers=args.layers, tables=args.tables)
     return 0
 
 
