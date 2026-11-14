@@ -3122,7 +3122,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 > 이 고침 밖  키 칸이 datetime 인 옛 표 — 그 칸은 오늘처럼 온 글자 그대로 저장 · 키도 그 글자 (존 결함이 남음)
 > 찾기     cd server && python -c "from database import crud; from chain.cell_layer import key_columns; print([(t, c) for t in sorted(crud.TABLE_CONFIG) for c in sorted(key_columns(t)) if (crud.TABLE_CONFIG[t].get('column_types') or {}).get(c) == 'datetime'])"
 > 답의 뜻  []  -> 그런 표 없음
->          [(표, 칸), ...]  -> 그 칸의 존 결함은 남음 (이 박스: inspection_run.observed_at · lot_slot_move.event_time · step_inspection_run.observed_at)
+>          [(표, 칸), ...]  -> 그 칸의 존 결함은 남음 (이 박스: inspection_run.observed_at · step_inspection_run.observed_at)
 >          고치는 길: 어드민 Tables 에서 그 칸의 타입을 "string" 으로 저장 -> 재해석 큐의 retype 이 시각을 키 철자 그대로 글자로 바꿈
 > 끄는 법  되돌리기 커밋 하나
 > ```
