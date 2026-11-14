@@ -49,6 +49,7 @@
 | 클라B | 같은 잣대로 어드민 탭 전부 셈 + 고칠 곳 목록 | ⏭ |
 | 클라B | screen_layout admin.html — main 에도 있는 실패 이름 41 개 (main c1d0e846d · pivot 0f5a5b3b2 두 실행이 같이 가진 것, 각 100 중 42 실패). 이름의 찾은 수(«words - 60»)를 ':' 뒤로 옮기고, 러너가 narrowed 실행에서 KNOWN_RED 의 ran 검사와 «remove» 줄을 FLOORS 처럼 끄면 KNOWN_RED 에 적는다. 1536x864 «Chain, every rule group open» 기다림은 흔들림이라 안 적는다 | ⏭ «~N» 뒤 |
 | 총괄 | 박스 선언과 데이터 어긋남 셋 (11-14 D 셈, 읽기만) — bonding_log: 원천 bonded_from · bw_dt_seat 이 묶는 base_id · bx · by · cx · cy · dt_x · dt_y · event_time 이 미선언이고 (값 든 행 375k), 선언된 키 칸 base_lot · base_slot · bonding_index · b_wx · b_wy 는 0 행. lot_event: event_group_key · lot · wafers 미선언. dt_transfer: 시간 칸 event_time 이 string | ⏭ |
+| D | generate_source_rows: 엔티티 키 값 공간 (엔티티 키에 묶인 칸은 그 엔티티의 키 공간에서 값을 받아 표 사이가 이어짐) + 운영 크기 seed 를 위한 COPY 쓰기 (D 11-14 — 걷기 판은 seed_walk_ops a6fe3ba16 이 따로 채움) | ⏭ |
 | 클라2 | 배치 잣대 도구 + 메인 그리드 우측 탭 → 수집기 특성 → 맵 창 목업 | ⏭ 갈아엎기 몫 뒤 |
 | 총괄 | D 판 기계 차례 · 박스에서 맵 에디터 직접 써 보고 불편 목록 | ⏭ |
 
