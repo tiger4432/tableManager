@@ -51,6 +51,7 @@ logger = logging.getLogger("EnrichmentConfig")
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 from chain import rule_shape
 import chain_bindings
+import expression
 from declaration_names import bare_name as _bare_name
 
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
@@ -317,8 +318,8 @@ def _resolve_view_query(view: dict) -> tuple:
 AGGREGATION_FUNCTIONS = ("count", "min", "max", "unique_concat")
 #: 컬럼 없이 설 수 있는 유일한 함수 — 세는 대상이 「행」이라서다.
 AGGREGATIONS_WITHOUT_COLUMN = ("count",)
-#: `separator` 를 받는 함수와 그 기본값 (총괄 242dea225).
-AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": ", "}
+#: `separator` 를 받는 함수와 그 기본값 (총괄 242dea225) - `UniqueConcatenate` 의 것 하나 (총괄 11-14: 두 자리에 적혀 있었다).
+AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": expression.JOINER}
 
 
 #: An old record and the expression that answers its rows the same (lead 5667ea0fe).
