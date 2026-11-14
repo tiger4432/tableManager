@@ -58,6 +58,21 @@ def test_help_on_a_cp949_console_prints_and_exits_0(tmp_path):
     assert "usage:" in said and "(owner 11-14 ?ㄱ?)" in said, said   # the docstring's «ㄱ»; cp949 lacks «»
 
 
+def test_zero_branches_read_is_refused_not_a_clean_bill(tmp_path):
+    """D 11-14: right after a rebase the default window read 0 branches and the answer looked like «0 off-tree»."""
+    repo, _c = _repo(tmp_path)
+    latest = _git(repo, "rev-parse", "main")                                 # nothing moved after it
+    done = subprocess.run([sys.executable, os.path.join(script_dir, "..", "scripts", "off_tree_commits.py"), "trial",
+                           "--main", "main", "--since", latest, "--dismissed", str(tmp_path / "none")],
+                          cwd=repo, capture_output=True, encoding="utf-8", errors="replace")
+    assert done.returncode == 2 and done.stdout == "", done.stdout + done.stderr
+    assert "read 0 branches - nothing was checked; widen with --since" in done.stderr, done.stderr
+    moved = subprocess.run([sys.executable, os.path.join(script_dir, "..", "scripts", "off_tree_commits.py"), "trial",
+                            "--main", "main", "--dismissed", str(tmp_path / "none")],
+                           cwd=repo, capture_output=True, encoding="utf-8", errors="replace")
+    assert moved.returncode == 1 and "branch(es) read, 1 commit(s) off trial" in moved.stderr, moved.stderr
+
+
 def test_only_the_lane_commit_the_tree_lacks_is_listed(tmp_path):
     repo, c = _repo(tmp_path)
     rows, read = off_tree_commits.off_tree("trial", "main", dismissed_path=str(tmp_path / "none"), cwd=repo)

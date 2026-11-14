@@ -4,7 +4,8 @@
 >
 > ```
 > 돌릴 명령  cd server && conda run -n assy_manager python scripts/off_tree_commits.py origin/<착지할 가지>
-> 답의 뜻    stderr «N branch(es) read» 는 0 보다 커야 한다 (0 이면 명령이 틀렸다). stdout 이 0 줄 = 통과, 착지한다
+> 답의 뜻    stderr «N branch(es) read» 와 stdout 0 줄 = 통과, 착지한다
+>          «read 0 branches - nothing was checked» (exit 2) = 아무것도 안 봄 -> --since <더 오래된 SHA> 로 넓혀 다시
 >          줄마다  레인 · SHA · server/client · 가지 · 제목 — 그 나무가 못 받은 커밋 (같은 patch 의 복사본 · main 이 가진 것은 빠짐)
 > 할 일      줄이 있으면 착지하지 않는다. 그 레인이 줄마다 답한다:
 >          필요   -> 착지할 가지로 cherry-pick 하고 다시 돌린다
