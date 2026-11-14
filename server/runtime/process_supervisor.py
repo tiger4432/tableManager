@@ -1054,17 +1054,12 @@ class Supervisor:
         if verdict == VERDICT_PORT_CONFLICT:
             self._log(f"CHILD PERMANENTLY FAILED - PORT CONFLICT: {child.spec.name}",
                       level="ERROR")
-            self._log(f"  {detail}", level="ERROR")
+            for line in str(detail).splitlines():         # who holds it, why, what to do: describe_port_conflict's
+                self._log(f"  {line}", level="ERROR")
             self._log("  This is NOT an environment outage: the database and the "
                       "network are irrelevant to", level="ERROR")
             self._log("  a port another process owns, and no number of retries "
                       "will free it.", level="ERROR")
-            self._log("  Almost always a second launcher started while the first "
-                      "was still running.", level="ERROR")
-            self._log("  [HOW TO FIX] 기존 스택이 이미 떠 있으면 그대로 쓰십시오. "
-                      "중복 기동이라면 위 PID 를 종료한 뒤", level="ERROR")
-            self._log("  (taskkill /PID <pid> /T /F) 런처를 다시 시작하십시오.",
-                      level="ERROR")
         else:
             self._log(f"CHILD PERMANENTLY FAILED: {child.spec.name}", level="ERROR")
             self._log(f"  {child.failure_reason}", level="ERROR")
