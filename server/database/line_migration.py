@@ -133,6 +133,42 @@ def _note_page(db, table, transaction_id, page, copied, seconds, done) -> None:
     db.flush()
 
 
+def unrecorded_page(db, table: str, table_cfg: dict, after, page_size: int) -> tuple:
+    """([(row_id, column, t's value, its winning line's value)], cells compared, next row id or None) - of the next
+    `page_size` rows of t after row id `after`, each cell whose won_by line holds another value than t shows: a write
+    that no line records (lead 11-14 - the old release 11-11e writing a row after the copy moved it; its layer is in
+    cell_sources, and `copy_page(rows=)` brings it over). A won_by naming no line is listed with None. The formula's
+    mark (FORMULA_WON) holds no line and is not compared. Reads only."""
+    from sqlalchemy import select
+
+    from . import crud
+
+    s = lines.shape(db, table, table_cfg, assign=False)
+    lt, bits, kinds = s["lines"], s["bits"], s["kinds"]
+    t = lines.current_table(db, table, table_cfg, won_by=True)
+    q = select(t).order_by(t.c.row_id).limit(page_size)
+    rows = db.execute(q if after is None else q.where(t.c.row_id > after)).mappings().all()
+    won = {r["row_id"]: lines.won_by_cells(r[lines.WON_BY], bits) for r in rows}
+    ids = sorted({lid for cells in won.values() for lid in cells.values() if lid != lines.FORMULA_WON})
+    cells = [lt.c[lines.value_column(c)] for c in bits if lines.value_column(c) in lt.c]
+    said = {}
+    for at in range(0, len(ids), 1000):
+        for line in db.execute(select(lt.c.line_id, *cells).where(lt.c.line_id.in_(ids[at:at + 1000]))).mappings():
+            said[line["line_id"]] = line
+    out, compared = [], 0
+    for r in rows:
+        for column, line_id in sorted(won[r["row_id"]].items()):
+            if line_id == lines.FORMULA_WON or column not in t.c:
+                continue
+            compared += 1
+            kind = kinds.get(column, "string")
+            line = said.get(line_id)
+            value = None if line is None else crud.line_value(line[lines.value_column(column)], kind)
+            if line is None or crud.line_text(r[column], kind) != crud.line_text(value, kind):
+                out.append((r["row_id"], column, r[column], value))
+    return out, compared, (rows[-1]["row_id"] if len(rows) == page_size else None)
+
+
 def take_copy_lines(db, table, cfg, rows, tx) -> int:
     """Take these rows' copy lines (batch `tx`) out of t__lines, and the won_by entries naming them - before
     copy_page(rows=) copies them again (copy_layers_to_lines --rows). In the caller's transaction. -> lines taken."""

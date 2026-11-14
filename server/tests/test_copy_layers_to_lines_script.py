@@ -182,6 +182,56 @@ def test_a_copy_killed_half_way_then_written_by_the_old_release_resumes_on_the_r
     assert out["mismatched"] == 0 and not out.get("held"), out   # and no mismatch names r1
 
 
+def test_verify_lists_a_copied_row_the_old_release_wrote_and_rows_brings_its_layer_over(tmp_path, monkeypatch):
+    """Lead 11-14 (owner «ㄱ»): after the copy the old release wrote r1 the old way (a layer and t). --verify lists r1's
+    cell - its winning line holds the copied value - in the shape --rows reads, and --rows makes r1's lines hold the
+    old release's layer. r2 (a person's older value winning over a newer file's) and r3 nobody wrote: never listed."""
+    import csv
+
+    monkeypatch.chdir(tmp_path)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    for model in (lines.LineColumn, lines.AuditBatch, lines.LineSource, CellOverwrite, CellSource,
+                  FileIngestionCheckpoint):
+        model.__table__.create(engine)
+    t2 = datetime(2026, 11, 2, 9, tzinfo=timezone.utc)
+    layers = [("r1", "fileA", "v1", T1), ("r2", "user", "u", T1), ("r2", "fileA", "x", t2), ("r3", "fileA", "v3", T1)]
+    with Session(bind=engine) as db:
+        Table("t", MetaData(), *lines._data_columns(CFG, sql_type_of, row_id_key=True)).create(db.connection())
+        db.execute(text("INSERT INTO t (row_id, business_key_val, lot) VALUES "
+                        "('r1', 'k1', 'v1'), ('r2', 'k2', 'u'), ('r3', 'k3', 'v3')"))
+        for row_id, source, value, at in layers:
+            db.execute(CellSource.__table__.insert().values(table_name="t", row_id=row_id, column_name="lot",
+                                                            source_name=source, value=value, ingested_at=at,
+                                                            updated_by="seed"))
+        lines.ensure_line_table(db, "t", CFG)
+        db.commit()
+    script.copy_table(engine, "t", CFG, 1000, say=lambda line: None)
+    said = []
+    assert script.verify_table(engine, "t", CFG, 2, say=said.append)["cells"] == 0, said
+    assert said == ["t: every cell matches its winning line (3 compared)"], said     # canary: each row compared
+    with Session(bind=engine) as db:                          # the old release writes r1 the old way
+        db.execute(CellSource.__table__.insert().values(table_name="t", row_id="r1", column_name="lot",
+                                                        source_name="fileB", value="new1",
+                                                        ingested_at=datetime(2026, 11, 14, 15, tzinfo=timezone.utc),
+                                                        updated_by="old release"))
+        db.execute(text("UPDATE t SET lot = 'new1' WHERE row_id = 'r1'"))
+        db.commit()
+
+    out = script.verify_table(engine, "t", CFG, 2, say=said.append)
+    with open(out["record"], newline="", encoding="utf-8") as f:
+        listed = [tuple(r.values()) for r in csv.DictReader(f)]
+    assert listed == [("t", "r1", "lot", "new1", "v1")], listed
+    assert said[-1].startswith("t: 1 cell(s) on 1 row(s) differ from their winning line (3 compared) - listed in "), said
+    assert script.recorded_rows(out["record"]) == {"t": ["r1"]}       # what --rows reads
+
+    script.copy_table(engine, "t", CFG, 1000, say=lambda line: None, rows=["r1"])
+    with Session(bind=engine) as db:
+        lt = lines.shape(db, "t", CFG)["lines"]
+        assert db.execute(select(lt.c[lines.value_column("lot")]).where(
+            lt.c.row_id == "r1", lt.c.source_name == "fileB")).scalar() == "new1"
+    assert script.verify_table(engine, "t", CFG, 2, say=said.append)["cells"] == 0, said[-1]
+
+
 def test_an_old_layer_table_without_the_owner_columns_is_refused_in_one_line():
     engine, said = build("b"), []
     with engine.begin() as conn:
