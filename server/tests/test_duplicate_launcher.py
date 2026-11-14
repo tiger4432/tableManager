@@ -17,6 +17,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -47,6 +48,15 @@ def held_port():
         yield srv.getsockname()[1]
     finally:
         srv.close()
+
+
+def _held_by_a_plain_process(port):
+    """describe_port_conflict's shape for a holder that is not the maintenance page: fact, cause, remedy."""
+    return "\n".join([f"TCP port {port} is already held by PID 8444 (python.exe) [bind failed (OSError)]",
+                      "이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다.",
+                      "이미 떠 있는 스택이라면 그대로 사용하십시오. 새로 띄울 필요가 없습니다.",
+                      "정말로 재시작하려면 위 PID 를 먼저 종료하십시오:",
+                      "    taskkill /PID <pid> /T /F"])
 
 
 def free_port():
@@ -266,9 +276,7 @@ def test_a_port_conflict_is_terminal_and_names_the_owner(tmp_path):
     called it a shared-cause outage and retried on 60 s FOREVER - which is what
     production actually did, 74 times."""
     h = _Harness(tmp_path, _two_port_binders(),
-                 port_probe=lambda spec: (
-                     True, f"TCP port {spec.ports[0]} is already held by "
-                           f"PID 8444 (python.exe) [bind failed (OSError)]"),
+                 port_probe=lambda spec: (True, _held_by_a_plain_process(spec.ports[0])),
                  environment_probe=lambda: (False, None))
     h.sup.start_all()
     h.burn_the_budget()
@@ -291,7 +299,7 @@ def test_a_port_conflict_is_terminal_and_names_the_owner(tmp_path):
 
     errs = "\n".join(h.errors())
     assert "PORT CONFLICT" in errs
-    assert "second launcher" in errs
+    assert "이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다." in errs, "the banner prints describe's cause"
     assert "taskkill" in errs, "the banner must carry the remedy"
 
     st = json.load(open(h.sup.status_file, encoding="utf-8"))
@@ -423,6 +431,33 @@ def test_the_real_probe_sees_a_real_socket(held_port):
     free = ChildSpec("web", ["python", "s.py"], ".", ports=(free_port(),),
                      port_host="127.0.0.1")
     assert ps.port_conflict(free) == (False, None)
+
+
+def test_the_supervisor_banner_names_the_maintenance_page_and_guesses_no_cause(tmp_path):
+    """The page left on holds the API's port: the banner says so and keeps none of a plain holder's cause or remedy."""
+    port = free_port()
+    log = tmp_path / "page.log"
+    page = subprocess.Popen([sys.executable, os.path.join(ROOT, "server", "runtime", "maintenance_page.py")],
+                            env=dict(os.environ, ASSY_API_HOST="127.0.0.1", ASSY_API_PORT=str(port),
+                                     PYTHONIOENCODING="utf-8"),
+                            stdout=open(log, "wb"), stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 30
+        while "Notice page on port" not in log.read_text(encoding="utf-8", errors="replace"):
+            assert page.poll() is None, log.read_text(encoding="utf-8", errors="replace")
+            assert time.monotonic() < deadline, "the page never came up"
+            time.sleep(0.2)
+        h = _Harness(tmp_path, [ChildSpec("web", ["python", "s.py"], ".", ports=(port,), port_host="127.0.0.1")],
+                     environment_probe=lambda: (False, None))         # the real port probe
+        h.sup.start_all()
+        h.burn_the_budget()
+    finally:
+        page.kill()
+        page.wait(10)
+    errs = "\n".join(h.errors())
+    assert h.sup._find("web").terminal_verdict == VERDICT_PORT_CONFLICT
+    assert "TCP port %d is held by the maintenance page (PID %d) - close its window" % (port, page.pid) in errs, errs
+    assert "second launcher" not in errs and "실행 중일" not in errs and "taskkill" not in errs, errs
 
 
 # ===========================================================================
@@ -638,8 +673,7 @@ def test_the_refusal_survives_the_production_console(tmp_path):
     # The supervisor's own port-conflict banner, same rule.
     h = _Harness(tmp_path,
                  [ChildSpec("web", ["python", "s.py"], ".", ports=(18080,))],
-                 port_probe=lambda spec_: (
-                     True, "TCP port 18080 is already held by PID 8444 (python.exe)"),
+                 port_probe=lambda spec_: (True, _held_by_a_plain_process(18080)),
                  environment_probe=lambda: (False, None))
     h.sup.start_all()
     h.burn_the_budget()
