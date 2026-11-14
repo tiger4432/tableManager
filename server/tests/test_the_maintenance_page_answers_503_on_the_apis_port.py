@@ -80,10 +80,17 @@ def test_a_held_port_is_refused_at_once_with_the_next_action(tmp_path):
     assert took < 15, "it refuses, it does not wait (%.1f s)" % took
 
 
-def test_the_launchers_port_line_names_the_page_when_it_holds_the_port(tmp_path):
-    sys.path.insert(0, SERVER_DIR)
-    from runtime import process_supervisor
+def _launcher_refusal(tmp_path, port):
+    env = dict(_env(port), ASSY_DATA_ROOT=str(tmp_path))      # launcher.log stays out of the tree
+    done = subprocess.run([sys.executable, os.path.join(os.path.dirname(SERVER_DIR), "run_decoupled_app.py"),
+                           "--server-only", "--preflight-only"], cwd=os.path.dirname(SERVER_DIR), env=env,
+                          capture_output=True, timeout=120)
+    said = (done.stdout + done.stderr).decode("utf-8", "replace")
+    assert done.returncode == 1 and "REFUSING TO START" in said, said
+    return said
 
+
+def test_the_launchers_refusal_names_the_page_when_it_holds_the_port(tmp_path):
     port = _free_port()
     log = tmp_path / "page.log"
     process = subprocess.Popen([sys.executable, PROGRAM], env=_env(port), stdout=open(log, "wb"),
@@ -94,17 +101,19 @@ def test_the_launchers_port_line_names_the_page_when_it_holds_the_port(tmp_path)
             assert process.poll() is None, log.read_text(encoding="utf-8", errors="replace")
             assert time.monotonic() < deadline, "the page never came up"
             time.sleep(0.2)
-        said = process_supervisor.describe_port_conflict(port, "127.0.0.1")
+        said = _launcher_refusal(tmp_path, port)
     finally:
         process.kill()
         process.wait(10)
-    assert said == "TCP port %d is held by the maintenance page (PID %d) - close its window" % (port, process.pid), said
+    assert "TCP port %d is held by the maintenance page (PID %d) - close its window" % (port, process.pid) in said, said
+    assert "실행 중일" not in said and "taskkill" not in said, said
 
-    holder = socket.socket()                    # any other holder keeps the generic line
+    holder = socket.socket()                    # any other holder keeps today's cause and remedy
     holder.bind(("127.0.0.1", port))
     holder.listen()
     try:
-        other = process_supervisor.describe_port_conflict(port, "127.0.0.1")
+        said = _launcher_refusal(tmp_path, port)
     finally:
         holder.close()
-    assert other.startswith("TCP port %d is already held by PID %d" % (port, os.getpid())), other
+    assert "TCP port %d is already held by PID %d" % (port, os.getpid()) in said, said
+    assert "이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다." in said and "taskkill /PID <pid> /T /F" in said, said

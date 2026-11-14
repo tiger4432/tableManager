@@ -96,13 +96,8 @@ def refuse_if_ports_are_taken(api_host, api_port):
               " 기동을 중단합니다: 필요한 포트를 이미 다른 프로세스가 쓰고 있습니다.",
               " REFUSING TO START - required ports are already in use.", ""]
     for _port, detail in conflicts:
-        banner.append(f"   {detail}")
+        banner += [f"   {line}" for line in detail.splitlines()]
     banner += [
-        "",
-        " 이 서버 스택이 이미 실행 중일 가능성이 가장 높습니다.",
-        " 이미 떠 있는 스택이라면 그대로 사용하십시오. 새로 띄울 필요가 없습니다.",
-        " 정말로 재시작하려면 위 PID 를 먼저 종료하십시오:",
-        "     taskkill /PID <pid> /T /F",
         "",
         " (아무것도 기동하지 않았습니다. 기존 프로세스는 그대로 살아 있습니다.)",
         " Nothing was started. The processes that own these ports are untouched.",
