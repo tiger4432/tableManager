@@ -24,8 +24,8 @@
 >          «Port 8080 is in use (…) - stop the launcher first, then run maintenance.bat again» = 서버가 아직 떠 있음
 >          -> 런처 창을 닫고(또는 그 PID 를 끄고) 다시 실행. 기다리지 않고 바로 끝남
 > 끄기     그 창에서 Ctrl+C 또는 창을 닫음. 그 뒤 run_app.bat
->          끄는 걸 잊고 런처를 켜면 런처가 «REFUSING TO START … TCP port 8080 is already held by PID … (python.exe)» 로
->          멈춤 — 그 python.exe 가 이 창임(창 제목 «assyManager maintenance page»). 이 창을 닫고 런처를 다시 켬
+>          끄는 걸 잊고 런처를 켜면 런처가 «TCP port 8080 is held by the maintenance page (PID …) - close its window» 로
+>          멈춤 (창 제목 «assyManager maintenance page»). 이 창을 닫고 런처를 다시 켬
 > ```
 
 > ## [11-14] **AI 규칙이 싣는 지난 교정이 «최근 5» 가 아니라 «지금 물음과 닮은 5»** — git pull · 런처 재기동(API · 체인 워커)

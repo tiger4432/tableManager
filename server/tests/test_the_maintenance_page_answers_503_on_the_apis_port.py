@@ -78,3 +78,33 @@ def test_a_held_port_is_refused_at_once_with_the_next_action(tmp_path):
     assert done.stdout.startswith("Port %d is in use (" % port), done.stdout
     assert done.stdout.rstrip().endswith("- stop the launcher first, then run maintenance.bat again"), done.stdout
     assert took < 15, "it refuses, it does not wait (%.1f s)" % took
+
+
+def test_the_launchers_port_line_names_the_page_when_it_holds_the_port(tmp_path):
+    sys.path.insert(0, SERVER_DIR)
+    from runtime import process_supervisor
+
+    port = _free_port()
+    log = tmp_path / "page.log"
+    process = subprocess.Popen([sys.executable, PROGRAM], env=_env(port), stdout=open(log, "wb"),
+                               stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 30
+        while "Notice page on port" not in log.read_text(encoding="utf-8", errors="replace"):
+            assert process.poll() is None, log.read_text(encoding="utf-8", errors="replace")
+            assert time.monotonic() < deadline, "the page never came up"
+            time.sleep(0.2)
+        said = process_supervisor.describe_port_conflict(port, "127.0.0.1")
+    finally:
+        process.kill()
+        process.wait(10)
+    assert said == "TCP port %d is held by the maintenance page (PID %d) - close its window" % (port, process.pid), said
+
+    holder = socket.socket()                    # any other holder keeps the generic line
+    holder.bind(("127.0.0.1", port))
+    holder.listen()
+    try:
+        other = process_supervisor.describe_port_conflict(port, "127.0.0.1")
+    finally:
+        holder.close()
+    assert other.startswith("TCP port %d is already held by PID %d" % (port, os.getpid())), other

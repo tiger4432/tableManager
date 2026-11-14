@@ -437,6 +437,13 @@ def describe_port_conflict(port, host="0.0.0.0", timeout=PORT_PROBE_TIMEOUT_SEC)
         return None
     pid, name = port_owner(port)
     if pid:
+        from runtime import maintenance_page          # left on, it holds the API's port (owner 11-14 안 1)
+        try:
+            command = " ".join(_psutil_or_warn(None).Process(pid).cmdline())
+        except Exception:                                   # noqa: BLE001 - unread is «not the page»
+            command = ""
+        if maintenance_page.PROGRAM in command:
+            return f"TCP port {port} is held by the maintenance page (PID {pid}) - close its window"
         owner = f"PID {pid}" + (f" ({name})" if name else "")
     else:
         owner = "another process (its PID could not be read)"

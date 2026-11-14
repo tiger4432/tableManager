@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # server/, run as a file
 from runtime import process_supervisor  # noqa: E402
 
+#: how a port holder's command line shows this program
+PROGRAM = os.path.basename(__file__)
 STATUS = 503
 #: seconds a client is told to wait before asking again
 RETRY_AFTER = "300"
