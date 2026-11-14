@@ -29,6 +29,7 @@ the cells its write touched). The last page of a table writes its «copy» audit
 Refused while any product process (application_name assy_*) is connected to the database - stop the server first.
 """
 import argparse
+import hashlib
 import multiprocessing
 import os
 import sys
@@ -223,18 +224,44 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
         total = db.execute(select(func.count(func.distinct(cs.c.row_id))).where(cs.c.table_name == table)).scalar()
         after, copied, pages, mismatched, found = None, 0, 0, [], 0
         if rows is not None:
+            # a page of the file's rows a transaction, its own record moving per page (lead 11-15: one IN list of
+            # a million rows in one transaction is not shipped); the same rows again resume where a kill left them
+            from ingestion.checkpoint import STATUS_DONE
+
             path = os.path.abspath((RECORD % table)[:-4] + time.strftime(".again-%Y%m%d-%H%M%S.csv"))
-            taken = line_migration.take_copy_lines(db, table, cfg, rows, tx)
-            n, _ = line_migration.copy_page(db, table, cfg, None, len(rows), transaction_id=tx,
-                                            mismatched=mismatched, rows=rows)
-            db.commit()
-            if mismatched:
-                record(path, table, mismatched)
+            key = "%s:rows:%s" % (tx, hashlib.sha1("\n".join(sorted(rows)).encode("utf-8")).hexdigest()[:12])
+            held = line_migration.cursor_record(db, table, key)
+            if held is not None and held.status == STATUS_DONE:      # copied again to its end before: a new run
+                db.delete(held)
+                held = None
+            todo = [r for r in sorted(rows) if held is None or held.cursor is None or r > held.cursor]
+            if len(todo) < len(rows):
+                say("%s: again from row %s - %d of %d row(s) left" % (table, held.cursor, len(todo), len(rows)))
+            taken = n = 0
+            started = said = time.perf_counter()
+            for at in range(0, len(todo), page):
+                part, began = todo[at:at + page], time.perf_counter()
+                taken += line_migration.take_copy_lines(db, table, cfg, part, tx)
+                got, _ = line_migration.copy_page(db, table, cfg, None, len(part), transaction_id=tx,
+                                                  mismatched=mismatched, rows=part)
+                n += got
+                line_migration.note_page(db, table, key, part, got, time.perf_counter() - began,
+                                         at + page >= len(todo))
+                db.commit()
+                if mismatched:
+                    record(path, table, mismatched)
+                    found += len(mismatched)
+                    mismatched.clear()
+                now = time.perf_counter()
+                if now - said >= SAY_EVERY:
+                    said = now
+                    progress(say, table, len(rows) - len(todo) + at + len(part), len(rows), n, found,
+                             len(rows) - len(todo), now - started)
             say("%s: %d row(s) copied again - %d copy line(s) taken out, %d layer(s) copied - %s" % (
-                table, len(rows), taken, n, "%d cell(s) still do not match, listed in %s" % (len(mismatched), path)
-                if mismatched else "every cell matches"))
-            return {"table": table, "again": len(rows), "copied": n, "mismatched": len(mismatched),
-                    "record": path if mismatched else None}
+                table, len(todo), taken, n, "%d cell(s) still do not match, listed in %s" % (found, path)
+                if found else "every cell matches"))
+            return {"table": table, "again": len(todo), "copied": n, "mismatched": found,
+                    "record": path if found else None}
         rows = total
         # an earlier run's committed pages: the line starts from them and the time left is over the rest (lead 11-13)
         through, seeded = line_migration.copy_cursor(db, table, cfg, tx)
@@ -291,10 +318,14 @@ def copy_table(engine, table: str, cfg: dict, page: int, say=print, rows=None) -
                         "record": path if found or held else None, "vacuumed": took}
             if now - said >= SAY_EVERY:
                 said = now
-                done = min(already + pages * page, rows)
-                rate = (done - already) / (now - started)
-                say("%s: %d / %d rows, %d layer(s) copied, %d mismatched so far, about %.0f min left"
-                    % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
+                progress(say, table, min(already + pages * page, rows), rows, copied, found, already, now - started)
+
+
+def progress(say, table, done, rows, copied, found, already, seconds) -> None:
+    """⑥'s progress line - the copy and --rows say it alike (lead 11-15); the rate is this run's rows over its time."""
+    rate = (done - already) / seconds if seconds else 0
+    say("%s: %d / %d rows, %d layer(s) copied, %d mismatched so far, about %.0f min left"
+        % (table, done, rows, copied, found, (rows - done) / rate / 60 if rate else 0))
 
 
 def verify_table(engine, table: str, cfg: dict, page: int, say=print) -> dict:

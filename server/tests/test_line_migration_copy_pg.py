@@ -100,3 +100,37 @@ def test_verify_lists_a_copied_row_the_old_release_wrote_and_rows_brings_it_to_0
     assert script.recorded_rows(out["record"]) == {NAME: ["r2"]}
     script.copy_table(pg_engine, NAME, CFG, 1000, say=lambda line: None, rows=["r2"])
     assert script.verify_table(pg_engine, NAME, CFG, 2, say=said.append)["cells"] == 0, said[-1]
+
+
+def test_t_and_its_lines_are_compared_by_the_declared_type_on_pg(pg_engine, tmp_path, monkeypatch):
+    """The declared-type equality on PostgreSQL (lead 11-14 ㄷ): the reh_14c shape - spelling only named, the three
+    real differences listed by the copy and by --verify alike."""
+    import csv
+
+    from sqlalchemy.orm import Session
+
+    from scripts import copy_layers_to_lines as script
+    from tests.test_copy_layers_to_lines_script import DECLARED, build_text_stored
+
+    monkeypatch.chdir(tmp_path)
+    try:
+        real = build_text_stored(pg_engine)
+        out = script.copy_table(pg_engine, "t", DECLARED, 1000, say=lambda line: None)
+        with open(out["record"], newline="", encoding="utf-8") as f:
+            assert {(r["row_id"], r["column"]) for r in csv.DictReader(f)} == real
+        with Session(bind=pg_engine) as db:
+            named = lines.won_by_of(db, "t", ["r1", "r2", "r3", "r6"])
+        assert "value" in named.get("r1", {}) and "seen" in named.get("r2", {}) and "moved" not in named.get("r3", {})
+        assert "bx" in named.get("r6", {}), named
+        said = []
+        checked = script.verify_table(pg_engine, "t", DECLARED, 2, say=said.append)
+        with open(checked["record"], newline="", encoding="utf-8") as f:
+            assert {(r["row_id"], r["column"]) for r in csv.DictReader(f)} == real
+        assert said[-1].startswith("t: 3 cell(s) on 3 row(s) differ from their winning line (6 compared)"), said
+    finally:
+        with Session(bind=pg_engine) as db:
+            lines.drop_line_table(db, "t")
+            db.execute(text('DROP TABLE IF EXISTS "t"'))
+            for table in ("cell_sources", "audit_batches", "line_columns", "file_ingestion_checkpoints"):
+                db.execute(text(f"DELETE FROM {table} WHERE table_name = 't'"))
+            db.commit()
