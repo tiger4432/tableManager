@@ -717,7 +717,7 @@ def check_output_columns(rows_or_frame, table_name):
 
     Returns `{declared, produced, unknown, never_filled}`. `never_filled` is a QUESTION, not
     a fault — a parser that fills half a table is ordinary — and the framework's own columns
-    are left out of it by `models.FRAMEWORK_COLUMNS` rather than by a list spelled here.
+    are left out of it by `lines.NOT_DATA` rather than by a list spelled here.
     """
     _ensure_dynamic_models()
     from database import models
@@ -736,7 +736,7 @@ def check_output_columns(rows_or_frame, table_name):
 
     declared = [c.name for c in table.c]
     unknown = [k for k in produced if table.c.get(k) is None]
-    never_filled = sorted(set(declared) - set(produced) - set(models.FRAMEWORK_COLUMNS))
+    never_filled = sorted(set(declared) - set(produced) - models._not_data())
     return {"declared": declared, "produced": produced,
             "unknown": unknown, "never_filled": never_filled}
 

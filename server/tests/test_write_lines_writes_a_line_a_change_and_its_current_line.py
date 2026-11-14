@@ -421,7 +421,7 @@ def test_a_write_reads_t_s_shape_once_a_key_merge_too(db, monkeypatch):
     _write(db, {"key": {"k": "K1"}, "values": {"k": "K1", "a": "x"}, "source_name": "f1", "written_by": "loader"})
     _write(db, {"key": {"k": "K2"}, "values": {"k": "K2", "a": "y"}, "source_name": "f1", "written_by": "loader"})
     k2 = [r for r, row in _now(db).items() if row["k"] == "K2"][0]
-    seen = {"shape": 0, "value_types": 0, "physical_kinds": 0, "bit_maps": 0}
+    seen = {"shape": 0, "value_types": 0, "stored_columns": 0, "bit_maps": 0}
     for name in seen:
         real = getattr(lines, name)
 
@@ -433,7 +433,7 @@ def test_a_write_reads_t_s_shape_once_a_key_merge_too(db, monkeypatch):
     plain = dict(seen)
     seen.update(dict.fromkeys(seen, 0))
     merged = _write(db, {"row_id": k2, "values": {"k": "K1"}, "source_name": "f3", "written_by": "loader"})["merged"]
-    once = {"shape": 1, "value_types": 0, "physical_kinds": 1, "bit_maps": 1}
+    once = {"shape": 1, "value_types": 0, "stored_columns": 1, "bit_maps": 1}
     assert (plain, dict(seen), len(merged)) == (once, once, 1)
 
 

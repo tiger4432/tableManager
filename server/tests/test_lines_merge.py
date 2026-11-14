@@ -143,8 +143,8 @@ def test_a_callers_shape_gives_the_same_layers_and_spoken_and_shape_reads_kinds_
             put(db, row, source, None if minutes is None else T0 + timedelta(minutes=minutes), value, withdrawn)
     rows = list(CELLS)
     read = []
-    keep = lines.physical_kinds
-    monkeypatch.setattr(lines, "physical_kinds", lambda *a: read.append(a) or keep(*a))
+    keep = lines.stored_columns
+    monkeypatch.setattr(lines, "stored_columns", lambda *a: read.append(a) or keep(*a))
     s = lines.shape(db, "t", CFG)
     assert len(read) == 1
     assert lines.layers(db, "t", rows) and lines.layers(db, "t", rows, s=s) == lines.layers(db, "t", rows)

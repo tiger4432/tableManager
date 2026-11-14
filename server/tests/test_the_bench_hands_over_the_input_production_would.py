@@ -355,12 +355,12 @@ def test_output_columns_are_judged_by_the_upserts_own_predicate(db_session):
 
 def test_the_framework_columns_are_not_counted_as_never_filled(db_session):
     """⚠️ 「never filled」 IS A QUESTION, NOT A FAULT — and it would be a useless one if it
-    listed `row_id` and `created_at` every time. The exclusion is `models.FRAMEWORK_COLUMNS`,
+    listed `row_id` and `created_at` every time. The exclusion is `lines.NOT_DATA`,
     production's own name for them, rather than a list spelled in the bench."""
     from database import models
 
     checked = dev_bench.check_output_columns([{"EQP_ID": "E1"}], "raw_table_1")
-    assert not (set(checked["never_filled"]) & set(models.FRAMEWORK_COLUMNS))
+    assert not (set(checked["never_filled"]) & set(models._not_data()))
 
 
 def test_a_table_that_is_not_declared_is_refused_by_name(db_session):
@@ -381,7 +381,7 @@ def test_neither_new_function_re_implements_what_it_asks():
         assert rebuilt not in sweep, rebuilt
 
     check = inspect.getsource(dev_bench.check_output_columns)
-    assert "table.c.get(" in check and "FRAMEWORK_COLUMNS" in check
+    assert "table.c.get(" in check and "_not_data()" in check
     assert "created_at" not in check, "the system columns are spelled here again"
 
 

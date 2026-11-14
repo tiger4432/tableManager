@@ -35,6 +35,11 @@ HUMAN_SOURCE_SQL = "(source_name = 'user' OR source_name LIKE 'user (%')"
 #: The columns every data table carries before its declared ones (today's framework columns, same types).
 FRAMEWORK = (("row_id", String), ("business_key_val", String), ("created_at", DateTime(timezone=True)),
              ("updated_at", DateTime(timezone=True)))
+#: The graph-sync columns retired 2026-08-31 - a table built before keeps them (21e9df3d6), the product never builds
+#: or writes them (lead 11-14 14c).
+RETIRED = ("is_graph_synced", "needs_graph_rollback", "graph_synced_at")
+#: THE answer to «not a data column»: the framework's own and the retired ones - every caller asks this set.
+NOT_DATA = frozenset({name for name, _type in FRAMEWORK} | set(RETIRED))
 
 
 class LineColumn(Base):
@@ -326,18 +331,27 @@ def value_types(db, table_name: str) -> dict:
 
 def physical_kinds(db, relation: str) -> dict:
     """{column: "number" | "datetime" | "string"} of a relation's stored columns, framework columns left out."""
-    from sqlalchemy import inspect
+    return {name: kind_of(kind) for name, kind in stored_columns(db, relation).items()}
+
+
+def kind_of(stored_type) -> str:
+    """A stored column type -> "number" | "datetime" | "string" - the one fold (line values are text)."""
     from sqlalchemy.types import DateTime as _DateTime, Float, Integer as _Integer, Numeric
 
-    framework = {n for n, _ in FRAMEWORK}
-    out = {}
-    for col in inspect(db.connection()).get_columns(relation):
-        if col["name"] in framework or col["name"] == WON_BY:
-            continue
-        kind = col["type"]
-        out[col["name"]] = ("number" if isinstance(kind, (Float, Numeric, _Integer)) else
-                            "datetime" if isinstance(kind, _DateTime) else "string")
-    return out
+    return ("number" if isinstance(stored_type, (Float, Numeric, _Integer)) else
+            "datetime" if isinstance(stored_type, _DateTime) else "string")
+
+
+def stored_columns(db, relation: str) -> dict:
+    """{column: its SQLAlchemy type as the database holds it} of a relation, framework columns left out - THE read of
+    a relation's stored columns (`physical_kinds` folds it to three kinds; `current_table` binds to it as it is, so a
+    column t holds but the declaration no longer names - an 08-31 leftover boolean, a jsonb - keeps its own type in a
+    write, lead 11-14 14c)."""
+    from sqlalchemy import inspect
+
+    framework = NOT_DATA
+    return {col["name"]: col["type"] for col in inspect(db.connection()).get_columns(relation)
+            if col["name"] not in framework and col["name"] != WON_BY}
 
 
 def bit_map(db, table_name: str) -> dict:
@@ -415,10 +429,11 @@ def bit_columns(family: str, chunks: int) -> list:
 
 def _data_columns(table_cfg: dict, sql_type_of, row_id_key: bool) -> list:
     columns = [Column(name, type_, primary_key=(row_id_key and name == "row_id")) for name, type_ in FRAMEWORK]
-    framework = {name for name, _ in FRAMEWORK}
+    framework = NOT_DATA
+    stored = table_cfg.get("stored_types") or {}
     for name, type_str in (table_cfg.get("column_types") or {}).items():
         if name not in framework:
-            columns.append(Column(name, sql_type_of(type_str)))
+            columns.append(Column(name, stored.get(name) or sql_type_of(type_str)))
     return columns
 
 
@@ -503,7 +518,7 @@ def shape(db, table_name: str, table_cfg: dict, assign: bool = True) -> dict:
 
     table_cfg = _as_stored(db, table_name, table_cfg)
     types = table_cfg["column_types"]
-    declared = [name for name in types if name not in {n for n, _ in FRAMEWORK}]
+    declared = [name for name in types if name not in NOT_DATA]
     bits = assign_bits(db, table_name, declared) if assign else bit_map(db, table_name)
     chunks = chunk_count(db, table_name)
     meta = MetaData()
@@ -516,7 +531,7 @@ def shape(db, table_name: str, table_cfg: dict, assign: bool = True) -> dict:
         line_cols += [Column(name, BigInteger, nullable=False, server_default=text("0"))
                       for name in bit_columns(family, chunks)]
     # a line's value cells are text whatever the declared type (crud.line_text) - retyping touches t only
-    framework = {n for n, _ in FRAMEWORK}
+    framework = NOT_DATA
     data = [c if c.name in framework else Column(value_column(c.name), String)
             for c in _data_columns(table_cfg, sql_type_of, row_id_key=False) if c.name != "row_id"]
     lines = Table(lines_relation(table_name), meta, *line_cols, Column("row_id", String, nullable=False), *data)
@@ -544,7 +559,9 @@ def _as_stored(db, table_name: str, table_cfg: dict) -> dict:
 
     if not inspect(db.connection()).has_table(table_name):
         return table_cfg
-    return {**table_cfg, "column_types": physical_kinds(db, table_name)}
+    stored = stored_columns(db, table_name)
+    return {**table_cfg, "column_types": {name: kind_of(kind) for name, kind in stored.items()},
+            "stored_types": stored}
 
 
 def current_table(db, table_name: str, table_cfg: dict, won_by=None, stored=False):
@@ -979,7 +996,7 @@ def ensure_declared(engine, tables=None) -> dict:
             built = not said and has_lines(db, name)
             have = {c["name"] for c in insp.get_columns(lines_relation(name))} if built else set()
             missing = [c for c in (cfg.get("column_types") or {})          # a framework name is t__lines' own column
-                       if c not in {n for n, _ in FRAMEWORK} and value_column(c) not in have] if built else []
+                       if c not in NOT_DATA and value_column(c) not in have] if built else []
         if said:
             refused[name] = said
             log.error("[Lines] %s: %s", name, said)
