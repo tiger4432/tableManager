@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [14c] **운영 탐침 — 읽기만, 한 화면**
+>
+> ```
+> 돌릴 것   server 폴더에서   python scripts/ops_probe.py
+> 뜻       PG 버전 · RAM · 설정 여섯 · DB 크기 · 묶음 넷(lines · ledger · cell_sources/audit · other) · 큰 표 열
+>          · 남은 칸(선언에도 FRAMEWORK 에도 없는 칸, 종류별 표 수) · 순차 읽기 MB/s 와 «from disk N of M blocks»
+>          from disk 가 0 에 가까우면 그 MB/s 는 캐시 속도이지 디스크가 아니다
+> 긴 목록  python scripts/ops_probe.py --full probe.txt   (관계 전부 · 남은 칸 전부 · pg_stat_io)
+> 끄기     없음 — 읽기 전용 트랜잭션, 쓰지 않는다
+> ```
+
 > ## [상설] **업데이트 중 안내 페이지 — maintenance.bat** — 서버를 끈 동안만. 이주 · 재기동 없음
 >
 > ```
