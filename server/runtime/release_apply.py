@@ -23,7 +23,9 @@ AGAIN = "ASSY_RELEASE_RELAUNCHED"
 
 
 def _git(root, *args):
-    run = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    # git writes utf-8; read on a cp949 locale a byte of it killed the reader and the output read "" - the «tracked
+    # files changed» guard let the release through (box 11-14, core.quotepath=false)
+    run = subprocess.run(["git", *args], cwd=root, capture_output=True, encoding="utf-8", errors="replace")
     return run.returncode, (run.stdout or "").strip(), (run.stderr or run.stdout or "").strip()
 
 
