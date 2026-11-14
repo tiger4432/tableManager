@@ -75,8 +75,9 @@ def test_a_held_port_is_refused_at_once_with_the_next_action(tmp_path):
     finally:
         holder.close()
     assert done.returncode == 1, done.stdout + done.stderr
-    assert done.stdout.startswith("Port %d is in use (" % port), done.stdout
-    assert done.stdout.rstrip().endswith("- stop the launcher first, then run maintenance.bat again"), done.stdout
+    lines = done.stdout.splitlines()
+    assert lines[0].startswith("TCP port %d is already held by PID %d" % (port, os.getpid())), done.stdout
+    assert "    taskkill /PID <pid> /T /F" in lines and lines[-1] == "Nothing served.", done.stdout
     assert took < 15, "it refuses, it does not wait (%.1f s)" % took
 
 

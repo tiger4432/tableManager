@@ -460,6 +460,95 @@ def test_the_supervisor_banner_names_the_maintenance_page_and_guesses_no_cause(t
     assert "second launcher" not in errs and "실행 중일" not in errs and "taskkill" not in errs, errs
 
 
+#: what a fake holder makes describe_port_conflict say - three lines, none of them any caller's own words
+FAKE_HOLDER = ["FAKE fact about the holder", "FAKE cause", "FAKE remedy"]
+#: every function that reaches describe_port_conflict's text, by name; a new one is red until its row is added below
+PORT_TEXT_CALLERS = {("run_decoupled_app.py", "refuse_if_ports_are_taken"),
+                     ("server/runtime/maintenance_page.py", "serve"),
+                     ("server/runtime/process_supervisor.py", "port_conflict"),
+                     ("server/runtime/process_supervisor.py", "preflight_port_check"),
+                     ("server/runtime/process_supervisor.py", "_register_failure")}
+
+
+def test_every_caller_of_describe_port_conflict_is_one_of_the_rows_below():
+    """The census as a gate: functions that call describe_port_conflict, or a function that hands its text on."""
+    import ast
+    reach = {"describe_port_conflict", "port_conflict", "preflight_port_check", "port_probe"}
+    files = [os.path.join(ROOT, f) for f in os.listdir(ROOT) if f.endswith(".py")]
+    for top, dirs, names in os.walk(os.path.join(ROOT, "server")):
+        dirs[:] = [d for d in dirs if d not in ("tests", "_archive", "__pycache__", "node_modules")]
+        files += [os.path.join(top, n) for n in names if n.endswith(".py")]
+    found, defs = set(), 0
+    for path in files:
+        try:
+            tree = ast.parse(open(path, encoding="utf-8").read())
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            defs += fn.name == "describe_port_conflict"
+            called = {c.func.attr if isinstance(c.func, ast.Attribute) else getattr(c.func, "id", None)
+                      for c in ast.walk(fn) if isinstance(c, ast.Call)}
+            if called & reach:
+                found.add((os.path.relpath(path, ROOT).replace(os.sep, "/"), fn.name))
+    assert defs == 1, "the scan did not see describe_port_conflict's definition - the instrument, not the code"
+    assert found == PORT_TEXT_CALLERS, found ^ PORT_TEXT_CALLERS
+
+
+def test_every_caller_passes_describes_lines_through_unchanged(tmp_path, monkeypatch):
+    """Each caller prints describe's lines as they are, plus its own facts only - no cause or remedy of its own."""
+    monkeypatch.setattr(ps, "describe_port_conflict", lambda *a, **k: "\n".join(FAKE_HOLDER))
+    port = free_port()
+    assert ps.preflight_port_check([port]) == [(port, "\n".join(FAKE_HOLDER))]
+    assert ps.port_conflict(ChildSpec("web", ["python", "s.py"], ".", ports=(port,))) == (True, "\n".join(FAKE_HOLDER))
+
+    # the maintenance page, in this process
+    from runtime import maintenance_page
+    monkeypatch.setenv("ASSY_API_HOST", "127.0.0.1")
+    monkeypatch.setenv("ASSY_API_PORT", str(port))
+    said = []
+    assert maintenance_page.serve(say=said.append) == 1
+    assert said == FAKE_HOLDER + ["Nothing served."]
+
+    # the supervisor (_register_failure -> port_conflict -> _fail_permanently), its banner between the rules
+    h = _Harness(tmp_path, [ChildSpec("web", ["python", "s.py"], ".", ports=(port,))],
+                 environment_probe=lambda: (False, None))
+    h.sup.start_all()
+    h.burn_the_budget()
+    logged = [m for _, m in h.logs]
+    first = logged.index("=" * 68)
+    banner = logged[first + 1:logged.index("=" * 68, first + 1)]
+    assert banner == (["CHILD PERMANENTLY FAILED - PORT CONFLICT: web"] + ["  " + line for line in FAKE_HOLDER] + [
+        "  This is NOT an environment outage: the database and the network are irrelevant to",
+        "  a port another process owns, and no number of retries will free it.",
+        "  Giving up - this child will NOT be restarted again.",
+        "  /health now reports unhealthy until it is fixed and the launcher restarted."]), banner
+
+    # the launcher, as a process: describe faked inside it, its refusal printed between the rules
+    child = tmp_path / "launch_with_a_fake_holder.py"
+    child.write_text("\n".join([
+        "import os, runpy, sys",
+        "sys.path.insert(0, os.path.join(sys.argv[1], 'server'))",
+        "from runtime import process_supervisor",
+        "process_supervisor.describe_port_conflict = lambda *a, **k: os.environ['FAKE_HOLDER'].replace('|', chr(10))",
+        "sys.argv = [os.path.join(sys.argv[1], 'run_decoupled_app.py'), '--server-only', '--preflight-only']",
+        "runpy.run_path(sys.argv[0], run_name='__main__')"]), encoding="utf-8")
+    env = dict(os.environ, ASSY_DATA_ROOT=str(tmp_path), ASSY_API_PORT=str(port), ASSY_API_HOST="127.0.0.1",
+               PYTHONIOENCODING="utf-8", FAKE_HOLDER="|".join(FAKE_HOLDER))
+    res = subprocess.run([sys.executable, str(child), ROOT], cwd=ROOT, env=env, capture_output=True, timeout=120)
+    out = [line.replace(chr(27) + "[0m", "")                      # the console's colour reset ends each line
+           for line in (res.stdout + res.stderr).decode("utf-8", "replace").splitlines()]
+    assert res.returncode == 1, out
+    rules = [i for i, line in enumerate(out) if line.endswith("=" * 68)]
+    printed = out[rules[0] + 1:rules[1]]
+    own = [" 기동을 중단합니다: 필요한 포트를 이미 다른 프로세스가 쓰고 있습니다.",
+           " REFUSING TO START - required ports are already in use.", ""] + ["   " + line for line in FAKE_HOLDER] + [
+           "", " (아무것도 기동하지 않았습니다. 기존 프로세스는 그대로 살아 있습니다.)",
+           " Nothing was started. The processes that own these ports are untouched."]
+    assert len(printed) == len(own) and all(line.endswith(want) for line, want in zip(printed, own)), printed
+
+
 # ===========================================================================
 # (3) The child's own output has to exist in a file.
 # ===========================================================================
