@@ -21,7 +21,7 @@
 > 사용자    앱 주소 아무 경로나 열면 «Updating / Back soon» (+ 메모) 한 쪽. /health 도 503 = 꺼짐으로 읽힘
 >          포트 · 주소는 런처와 같은 자리에서 읽음(ASSY_API_PORT · ASSY_API_HOST) — 따로 맞출 것 없음
 > 창의 줄   «Notice page on port 8080 - close this window before starting the launcher» = 떠 있음
->          «Port 8080 is in use (…) - stop the launcher first, then run maintenance.bat again» = 서버가 아직 떠 있음
+>          «TCP port 8080 is already held by PID … (python.exe)» + 원인 · taskkill 줄 + «Nothing served.» = 서버가 아직 떠 있음
 >          -> 런처 창을 닫고(또는 그 PID 를 끄고) 다시 실행. 기다리지 않고 바로 끝남
 > 끄기     그 창에서 Ctrl+C 또는 창을 닫음. 그 뒤 run_app.bat
 >          끄는 걸 잊고 런처를 켜면 런처가 «TCP port 8080 is held by the maintenance page (PID …) - close its window» 로

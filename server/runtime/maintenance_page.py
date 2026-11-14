@@ -20,7 +20,7 @@ PROGRAM = os.path.basename(__file__)
 STATUS = 503
 #: seconds a client is told to wait before asking again
 RETRY_AFTER = "300"
-BUSY = "Port %s is in use (%s) - stop the launcher first, then run maintenance.bat again"
+NOTHING_SERVED = "Nothing served."
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -89,7 +89,9 @@ def serve(note: str = "", say=_say) -> int:
     host, port = process_supervisor.api_bind()
     taken = process_supervisor.preflight_port_check([int(port)], host=host)
     if taken:
-        say(BUSY % (port, taken[0][1]))
+        for line in taken[0][1].splitlines():           # who holds it, why, what to do: describe_port_conflict's
+            say(line)
+        say(NOTHING_SERVED)
         return 1
     handler = handler_for(page(note))
     servers = []
@@ -99,7 +101,8 @@ def serve(note: str = "", say=_say) -> int:
     except OSError as e:
         for server in servers:
             server.server_close()
-        say(BUSY % (port, e))
+        say("Port %s could not be bound (%s)" % (port, e))
+        say(NOTHING_SERVED)
         return 1
     say("Notice page on port %s - close this window before starting the launcher" % port)
     for server in servers[1:]:
