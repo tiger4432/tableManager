@@ -43,6 +43,25 @@ def test_apply_releases_refusal(tmp_path):
         "[Release] not applied: %s is not a git copy (" % os.path.join(str(tmp_path), "설치??copy?")), lines
 
 
+def test_a_changed_korean_named_file_is_refused_not_read_as_nothing(tmp_path):
+    copy = tmp_path / "install"
+    copy.mkdir()
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(copy)]
+    subprocess.run(["git", "init", "-q", str(copy)], check=True)
+    subprocess.run(git + ["config", "core.quotepath", "false"], check=True)     # names come out as utf-8
+    (copy / "변경—a.txt").write_text("1", encoding="utf-8")
+    subprocess.run(git + ["add", "."], check=True)
+    subprocess.run(git + ["commit", "-qm", "c"], check=True)
+    (copy / "변경—a.txt").write_text("2", encoding="utf-8")
+    (copy / "release").mkdir()
+    (copy / "release" / "x.bundle").write_text("", encoding="utf-8")
+    code, lines = _run(["-c", "import sys; sys.path.insert(0, sys.argv[1]); from runtime import release_apply; "
+                              "sys.exit(release_apply.main(root=sys.argv[2]))", SERVER_DIR, str(copy)], tmp_path)
+    assert code == 1 and lines == [
+        "[Release] not applied: 1 tracked file(s) changed in this copy (변경?a.txt) - nothing was changed; "
+        "put them back with ?git checkout -- <file>? or send the list to the lead, then start again"], lines
+
+
 def test_the_maintenance_pages_refusal(tmp_path):
     code, lines = _run(_with_a_fake_holder(tmp_path, os.path.join(SERVER_DIR, "runtime", "maintenance_page.py")),
                        tmp_path, ASSY_API_HOST="127.0.0.1", ASSY_API_PORT="8080")
@@ -50,6 +69,8 @@ def test_the_maintenance_pages_refusal(tmp_path):
 
 
 def test_the_launchers_refusal(tmp_path):
+    # Green with or without the launcher's make_stdout_safe call: its refusal goes through ConsoleSafeHandler, and its
+    # print() lines (--help, the start banner) hold nothing cp949 lacks today. The call stays for those print() lines.
     code, lines = _run(_with_a_fake_holder(tmp_path, os.path.join(ROOT, "run_decoupled_app.py"), "--server-only",
                                            "--preflight-only"), tmp_path, ASSY_API_HOST="127.0.0.1", ASSY_API_PORT="8080")
     assert code == 1, lines
