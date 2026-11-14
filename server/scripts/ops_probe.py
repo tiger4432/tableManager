@@ -27,9 +27,12 @@ MB = 2 ** 20
 def ram() -> str:
     try:
         import psutil
+    except ImportError:
+        return "unknown (no psutil)"
+    try:
         return "%.0f GB" % (psutil.virtual_memory().total / 2 ** 30)
-    except Exception:                                               # noqa: BLE001 - said, not raised
-        return "unknown"
+    except psutil.Error as exc:
+        return "unknown (%s)" % type(exc).__name__
 
 
 def group(name) -> str:
@@ -108,7 +111,7 @@ def probe(url, tables, full=None) -> list:
     try:
         long += ["pg_stat_io %s" % (r,) for r in q("SELECT backend_type, object, context, reads, read_time "
                                                    "FROM pg_stat_io WHERE reads > 0 ORDER BY reads DESC")]
-    except Exception as exc:                                        # noqa: BLE001 - an older server
+    except psycopg2.Error as exc:                                   # an older server: no pg_stat_io
         conn.rollback()
         long.append("pg_stat_io not available: %s" % type(exc).__name__)
     conn.rollback()
