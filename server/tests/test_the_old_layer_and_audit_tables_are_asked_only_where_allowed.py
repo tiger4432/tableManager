@@ -15,7 +15,9 @@ DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 #: who may still name cell_sources after the landing: the copy (database/line_migration) and the rollback (B's
 #: write_back, wherever it lands - by name). Their callers are not counted through them.
-CELL_SOURCES_ALLOWED = {# 까닭: 운영 복사 전 - the copy retires the round after it has run in operation (lead 11-11)
+CELL_SOURCES_ALLOWED = {# the ops probe sizes them read-only before the upgrade window (lead 11-14)
+                        "scripts/ops_probe.py:<module>", "scripts/ops_probe.py:main", "scripts/ops_probe.py:probe", "scripts/ops_probe.py:group",
+                        # 까닭: 운영 복사 전 - the copy retires the round after it has run in operation (lead 11-11)
                         "database/line_migration.py:copy_page", "database/line_migration.py:copy_total",
                         "database/line_migration.py:copied_through", "database/line_migration.py:_copyable",
                         # the migration command that drives the copy - same reason (lead 11-12)
@@ -44,7 +46,9 @@ def _module(rel):
 
 #: audit_logs keeps the events that are not a cell - ledger receipts, set_aside, reset (owner 11-11 ㄱ): its writers
 #: and the history screen's two routes. A cell line written there still counts (`cell_line_to_audit`).
-AUDIT_EVENTS_ALLOWED = {"database/crud.py:create_audit_log", "database/crud.py:bulk_insert_audit_logs",
+AUDIT_EVENTS_ALLOWED = {# the ops probe sizes them read-only before the upgrade window (lead 11-14)
+                        "scripts/ops_probe.py:<module>", "scripts/ops_probe.py:main", "scripts/ops_probe.py:probe", "scripts/ops_probe.py:group",
+                        "database/crud.py:create_audit_log", "database/crud.py:bulk_insert_audit_logs",
                         "ledger/store.py:_insert_audit_row", "main.py:get_recent_audit_logs",
                         "main.py:get_transaction_logs",
                         # replay._write_resolved — 칸 사건이 audit_logs 에 남는 마지막 자리. 소유자 «전 → 후» 물음과 A 의
