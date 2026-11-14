@@ -770,6 +770,14 @@ class FileIngestionCheckpoint(Base):
     # The transaction this content's read writes under (총괄 10-20): a read resumed from this checkpoint writes under
     # the same one, so the file's rows are one transaction however many runs it took. Null on rows written before it.
     transaction_id = Column(String(64), nullable=True)
+    # The cell-source copy's resume position, one row a table (owner 11-14 «추천대로» - the one «resume position»
+    # seat): file_signature the copy's transaction_id «copy_lines:<table>», `cursor` the last row id of the last page
+    # it committed, written in that page's transaction (`line_migration.copy_cursor`), and what it took - pages,
+    # layers, seconds (owner: ops figures recorded). Null on a file's row.
+    cursor = Column(String, nullable=True)
+    pages = Column(Integer, nullable=True)
+    layers = Column(BigInteger, nullable=True)
+    seconds = Column(Float, nullable=True)
 
     __table_args__ = (
         Index("idx_fic_identity", "table_name", "file_signature", unique=True,

@@ -80,15 +80,57 @@ def copy_total(db, table: str) -> int:
     return db.execute(select(func.count()).select_from(cs).where(cs.c.table_name == table)).scalar() or 0
 
 
-def copied_through(db, table: str, table_cfg: dict, transaction_id: str):
-    """The last row id an interrupted copy already moved - the highest row of t's lines whose batch is the copy's
-    transaction_id (a page commits whole, so every row up to it is copied) - or None. copy_page resumes from it when
-    asked from the start; the driver may say it (B 11-11). The driver passes one transaction_id per table across
-    runs, so this finds the earlier run's lines."""
+def _cursor_record(db, table: str, transaction_id: str):
+    from .models import FileIngestionCheckpoint as Record
+
+    return db.query(Record).filter(Record.table_name == table,
+                                   Record.file_signature == transaction_id).one_or_none()
+
+
+def copy_cursor(db, table: str, table_cfg: dict, transaction_id: str) -> tuple:
+    """(the row id after which an interrupted copy resumes, or None; True when this call seeded it) - THE resume
+    position: its own record (a file_ingestion_checkpoints row, file_signature the copy's transaction_id), written by
+    copy_page in each page's transaction, so no write moves it. Before it, the position was the copy lines' highest
+    row id, and a key merge moves a row's lines onto its key holder: a holder past the position made the resume skip
+    every row up to it (lead 11-14, the merge-between-runs gate). No record but copy lines there - a copy stopped
+    before this record existed: seeded once, in the caller's transaction, from those lines' highest row id. That is
+    still the truth on a database the old release ran on since (ops 11-14: ⑥ stopped half way, back to 11-11e) - the
+    old release has no line tables, so nothing moved a line; after a 14b key merge it would not be."""
     from sqlalchemy import func, select
 
+    from .models import FileIngestionCheckpoint as Record
+
+    record = _cursor_record(db, table, transaction_id)
+    if record is not None:
+        return record.cursor, False
     lt = lines.shape(db, table, table_cfg)["lines"]
-    return db.execute(select(func.max(lt.c.row_id)).where(lt.c.batch == transaction_id)).scalar()
+    seed = db.execute(select(func.max(lt.c.row_id)).where(lt.c.batch == transaction_id)).scalar()
+    if seed is None:
+        return None, False
+    db.add(Record(table_name=table, file_signature=transaction_id, cursor=seed, transaction_id=transaction_id))
+    db.flush()
+    return seed, True
+
+
+def _note_page(db, table, transaction_id, page, copied, seconds, done) -> None:
+    """The page just copied on its table's record (`copy_cursor`), in the page's transaction."""
+    from ingestion.checkpoint import STATUS_DONE, STATUS_IN_PROGRESS
+
+    from .models import FileIngestionCheckpoint as Record
+
+    record = _cursor_record(db, table, transaction_id)
+    if record is None:
+        record = Record(table_name=table, file_signature=transaction_id, transaction_id=transaction_id,
+                        processed_rows=0, pages=0, layers=0, seconds=0.0)
+        db.add(record)
+    if page:                                       # a copy's last page may be empty: a full page cannot tell it is last
+        record.cursor = page[-1]
+        record.processed_rows = (record.processed_rows or 0) + len(page)
+        record.pages = (record.pages or 0) + 1
+        record.layers = (record.layers or 0) + copied
+    record.seconds = (record.seconds or 0.0) + seconds
+    record.status = STATUS_DONE if done else STATUS_IN_PROGRESS
+    db.flush()
 
 
 def take_copy_lines(db, table, cfg, rows, tx) -> int:
@@ -118,16 +160,20 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
     copied line is history under it). t's values are not touched; won_by names a line only where the line's value
     is what t shows. In the caller's transaction - the caller commits per page.
     The last page (next_after None) writes the «copy» audit row; a first page (after None) on a copied table
-    raises AlreadyCopied, on a table an earlier run left half copied resumes after copied_through.
+    raises AlreadyCopied, on a table an earlier run left half copied resumes after its record (`copy_cursor`), which
+    each page moves to its last row - with the page's rows, layers and seconds.
     `mismatched`: filled with (row_id, column, t's value, the lines' winner) where the copied lines merged again do not
     give what t shows - the migration's gate (owner 11-11); the caller records them (owner ㄴ).
     `rows`: these rows only, as a page - `--rows` copying a record's rows again; no resume, no «copy» audit row.
     -> (cells copied, next_after or None)."""
+    import time
+
     from sqlalchemy import func, select, update
 
     from . import crud
     from .models import CellSource
 
+    began = time.perf_counter()
     _copyable(db, table, table_cfg)
     ab = lines.AuditBatch.__table__
     only = rows                                        # `rows` is t's rows of the page below
@@ -139,7 +185,7 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
             n = db.execute(select(func.count()).select_from(s["lines"])
                            .where(s["lines"].c.batch == done)).scalar() or 0
             raise AlreadyCopied(table, n)
-        after = copied_through(db, table, table_cfg, transaction_id)
+        after = copy_cursor(db, table, table_cfg, transaction_id)[0]
     cs = CellSource.__table__
     t = lines.current_table(db, table, table_cfg)
     q = select(cs.c.row_id).where(cs.c.table_name == table).group_by(cs.c.row_id).order_by(cs.c.row_id)
@@ -215,6 +261,8 @@ def copy_page(db, table: str, table_cfg: dict, after, page_size: int, *, transac
         else:
             for row_id, won_by in named:
                 db.execute(update(t).where(t.c.row_id == row_id).values({lines.WON_BY: won_by}))
+    if only is None and (page or next_after is None):
+        _note_page(db, table, transaction_id, page, copied, time.perf_counter() - began, next_after is None)
     if next_after is None and only is None:
         db.execute(ab.insert().values(transaction_id=transaction_id, table_name=table, written_by=written_by,
                                       work_kind=COPY_WORK, at=func.now()))
