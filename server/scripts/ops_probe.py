@@ -59,7 +59,9 @@ def probe(url, tables, full=None) -> list:
     out.append("OPS PROBE read_only=%s | %s | RAM %s" % (q("SHOW default_transaction_read_only")[0][0],
                                                           q("SHOW server_version")[0][0], ram()))
     out.append(" ".join("%s=%s" % (s, q("SHOW " + s)[0][0]) for s in SETTINGS))
-    out.append("db %s" % q("SELECT pg_size_pretty(pg_database_size(current_database()))")[0][0])
+    out.append("db %s | collation %s ctype %s" % q("SELECT pg_size_pretty(pg_database_size(current_database())), "
+                                                    "datcollate, datctype FROM pg_database "
+                                                    "WHERE datname = current_database()")[0])
     rows = q("""SELECT n.nspname, c.relname, c.reltuples::bigint, pg_total_relation_size(c.oid),
                        pg_relation_size(c.oid), pg_indexes_size(c.oid), coalesce(t.spcname, 'default'),
                        coalesce(s.heap_blks_read, 0) + coalesce(s.idx_blks_read, 0),
@@ -95,6 +97,15 @@ def probe(url, tables, full=None) -> list:
             long.append("leftover %s.%s %s" % (name, col, typ))
     out.append("leftover columns in %d tables: %s" % (left_tables, ", ".join(
         "%s %s x%d" % (c, t, n) for (c, t), n in sorted(kinds.items(), key=lambda kv: -kv[1])[:4]) or "none"))
+    # the key-column indexes a walk's census can stream on (lead 11-14, round 1 A): ix_auto_* per data table
+    data = sorted(name for name, cfg in (tables or {}).items() if isinstance(cfg, dict) and "column_types" in cfg)
+    auto = {}
+    for table, definition in q("SELECT tablename, indexdef FROM pg_indexes WHERE schemaname = 'public' "
+                               "AND indexname LIKE 'ix\\_auto\\_%%' ORDER BY 1, 2"):
+        auto.setdefault(table, []).append(definition.split(" USING ", 1)[-1])
+    out.append("ix_auto indexes: %d on %d of %d data tables (--full: one line a table)" % (
+        sum(len(auto.get(t, ())) for t in data), sum(1 for t in data if t in auto), len(data)))
+    long += ["ix_auto %s: %s" % (t, " | ".join(auto.get(t, ())) or "none") for t in data]
     cand = [r for r in rows if 200 * MB <= r[4] <= 2048 * MB]
     if cand:
         nsp, rel, heap = cand[0][0], cand[0][1], cand[0][4]

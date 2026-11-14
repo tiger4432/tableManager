@@ -7,7 +7,9 @@
 > 뜻       PG 버전 · RAM · 설정 여섯 · DB 크기 · 묶음 넷(lines · ledger · cell_sources/audit · other) · 큰 표 열
 >          · 남은 칸(선언에도 FRAMEWORK 에도 없는 칸, 종류별 표 수) · 순차 읽기 MB/s 와 «from disk N of M blocks»
 >          from disk 가 0 에 가까우면 그 MB/s 는 캐시 속도이지 디스크가 아니다
-> 긴 목록  python scripts/ops_probe.py --full probe.txt   (관계 전부 · 남은 칸 전부 · pg_stat_io)
+>          (main 다음 릴리스부터) db 줄의 «collation · ctype» 과 «ix_auto indexes: N on M of K data tables»
+>          — 걷기의 키 집계가 인덱스를 타려면 이 정렬과 키 칸 인덱스가 있어야 한다. 그 두 줄을 총괄께
+> 긴 목록  python scripts/ops_probe.py --full probe.txt   (관계 전부 · 남은 칸 전부 · pg_stat_io · 표마다 ix_auto 인덱스)
 > 끄기     없음 — 읽기 전용 트랜잭션, 쓰지 않는다
 > ```
 
