@@ -117,6 +117,7 @@
 > ⑨ ★ 되돌리기 — 옛 릴리스를 같은 DB 위에 (소유자 11-13: 백업 없음). 줄 표 · won_by 칸은 DB 에 남는다
 >          런처를 끈다 -> git reset --hard <② 의 이전 커밋> -> 런처를 띄운다. 옛 층 표는 이주가 읽기만 했다
 >   뜬다          시작 줄 [Schema] no drift - ... (N unmapped column group(s), harmless) — 줄 표 · won_by 를 세고 지나간다. won_by 는 grid 열이 아니다
+>                 file_ingestion_checkpoints 의 이어 하기 칸 넷(cursor · pages · layers · seconds)도 N 에 한 묶음으로 든다 (박스, 11-11e 를 그 칸 넷 위에 띄움: N 0 -> 1, 다른 줄 없음)
 >   보이는 것      grid 는 착지 뒤 값을 그대로 보이지만, 착지 뒤 쓴 칸의 셀 소스 · 이력은 옛 층만 보인다
 >                 셀 소스 패널은 옛 파일 층을 «이긴 층» 으로 적는데 칸은 새 값이다. 칸이 맞고 패널이 옛 것이다
 >                 재계산(R3 resolve)은 아무것도 안 바꾼다 (박스, 세 행) · 같은 행의 다른 칸을 써도 그 칸은 그대로
