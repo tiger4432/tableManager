@@ -83,6 +83,9 @@ def off_tree(tree, main, since=None, dismissed_path=DISMISSED, cwd=None):
 
 
 def main():
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # server/, run as a file
+    from utils.logger import make_stdout_safe
+    make_stdout_safe()                                  # argparse's --help prints the docstring's «» before the line below
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("tree", help="the landing tree, e.g. origin/ovh-trial-1111")
     parser.add_argument("--main", default="origin/main")

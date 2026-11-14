@@ -50,6 +50,14 @@ def _repo(tmp_path):
     return repo, {"old": old, "lost": lost, "copied": copied, "on_main": on_main}
 
 
+def test_help_on_a_cp949_console_prints_and_exits_0(tmp_path):
+    done = subprocess.run([sys.executable, os.path.join(script_dir, "..", "scripts", "off_tree_commits.py"), "--help"],
+                          cwd=str(tmp_path), capture_output=True, env=dict(os.environ, PYTHONIOENCODING="cp949"))
+    said = (done.stdout + done.stderr).decode("cp949", "replace")
+    assert done.returncode == 0 and "Traceback" not in said, said
+    assert "usage:" in said and "(owner 11-14 ?ㄱ?)" in said, said   # the docstring's «ㄱ»; cp949 lacks «»
+
+
 def test_only_the_lane_commit_the_tree_lacks_is_listed(tmp_path):
     repo, c = _repo(tmp_path)
     rows, read = off_tree_commits.off_tree("trial", "main", dismissed_path=str(tmp_path / "none"), cwd=repo)
