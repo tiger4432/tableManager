@@ -102,9 +102,10 @@ def test_seed_nodes_are_the_declared_types_nodes_a_name_a_line(walks):
     assert said["nodes"] == {"delam": DELAM, "void": VOID}
 
 
-def test_seed_nodes_say_how_many_the_seed_cap_left_out(monkeypatch):
+def test_seed_nodes_say_the_seed_cap_left_some_out(monkeypatch):
+    # `truncated.seeds` is a cut, not a count - the stored lookup reads one past the cap and says 1 (lead 11-14)
     monkeypatch.setattr(report_reads, "_walk", lambda db, cell, **a: dict(KINDS, truncated={"seeds": 3}))
-    assert Reads().seed_nodes()["context"].splitlines()[0] == "2 defect_kind node(s) - 3 more not listed"
+    assert Reads().seed_nodes()["context"].splitlines()[0] == "2 defect_kind node(s) - more not listed"
 
 
 def test_causes_walk_from_the_named_seeds_and_keep_each_candidates_path(walks):
